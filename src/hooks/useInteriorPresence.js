@@ -7,11 +7,12 @@ import { useBlocks } from '../contexts/BlocksContext';
 import { createPresenceWriter, useLiveMerge, useLiveRoomCleanup } from '../lib/livePresence';
 import { liveRemove } from '../lib/liveNet';
 import { presenceNow } from '../lib/presenceClock';
+import { occKey, useOccEnter, useOccFilter } from '../lib/occupancy';
 
 // useParkPresence.js ile BİREBİR aynı desen (bkz. o dosyadaki yorumlar) —
 // tek fark, Banka/Karakol/Camii/Gazino'nun hepsi `locationId` alanıyla
 // ayrılan TEK bir `interiorPresence` koleksiyonunu paylaşıyor (madde 17).
-const STALE_MS = 90_000; // v130: Firestore nabzı ~30–40 sn
+const STALE_MS = 150_000; // v138: Firestore nabzı 60 sn; hayaletleri artık RTDB (occ) ayıklıyor
 const MAX_PRESENCE_DOCS = 40;
 
 /**
@@ -87,7 +88,11 @@ export function useInteriorPresence(locationId) {
     [liveRoom]
   );
   useLiveRoomCleanup(liveRoom, user?.uid);
-  const liveOthers = useLiveMerge(liveRoom, others, Boolean(user));
+  // v138 — "kaç kişi var" için RTDB kaydı + hayalet ayıklama (bkz. lib/occupancy.js)
+  const occK = locationId ? occKey.interior(locationId) : null;
+  useOccEnter('interior', occK, Boolean(user));
+  const freshOthers = useOccFilter(occK, others);
+  const liveOthers = useLiveMerge(liveRoom, freshOthers, Boolean(user));
 
   // UGC D2: engellediğin oyuncunun konuşma balonu gösterilmez (avatarı görünür kalır).
   // Tüm dünya ekranları "others"ı buradan aldığı için tek noktada uygulanır.

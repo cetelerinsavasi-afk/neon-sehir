@@ -217,6 +217,15 @@
           ".validate": false
         }
       }
+    },
+    "occ": {
+      ".read": "auth != null",
+      "$place": {
+        "$uid": {
+          ".write": "auth != null && auth.uid === $uid && $place.matches(/^(park|i~[A-Za-z0-9_-]{1,60}|h~[A-Za-z0-9_-]{1,120})$/)",
+          ".validate": "newData.isNumber() && newData.val() <= now + 60000"
+        }
+      }
     }
   }
 }

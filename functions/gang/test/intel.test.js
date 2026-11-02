@@ -424,3 +424,29 @@ test('v109: soygun durdurma prestiji Polis Teşkilatına (eski İstihbarat) + si
   assert.equal(rep.bustPrestige, 1_000_000);
   assert.ok(!h.intelChat().some((m) => /soygunu durdurdu/.test(m)), 'v111: soygun durdurma teşkilata duyurulmaz (kimlik gizliliği)');
 });
+
+test('v137: polis günde en fazla 1 tır ihbar eder ve 1 tırın içeriğini açar; ertesi gün hak yenilenir', async () => {
+  const h = await createHarness();
+  const { mole, truckId } = await tradeGangWithMole(h, { moleRank: 'kidemli' });
+  await h.act(mole, 'joinIntel', { codeName: 'Köstebek' });
+  await h.tickTo('2026-09-22', '08:00');
+  // aynı gün yolda ikinci bir tır
+  const t2 = `${truckId}x`;
+  h.db._store.set(`gangWorlds/test/trucks/${t2}`, { data: { ...h.get(`trucks/${truckId}`), code: '9999' }, version: 1 });
+  h.db._store.set(`gangWorlds/test/trucks/${t2}/cargo/main`, { data: { ...(h.get(`trucks/${truckId}/cargo/main`) || {}) }, version: 1 });
+  await h.act(mole, 'reportTruck', { truckId });
+  assert.equal((await h.membership(mole)).intelTruckReportDay, '2026-09-22');
+  assert.match((await h.fails(mole, 'reportTruck', { truckId: t2 })).message, /günde 1/);
+  // içerik açma hakkı ihbardan bağımsız
+  const r1 = `${truckId}_2026-09-22`;
+  await h.act(mole, 'leakTruck', { reportId: r1 });
+  // ikinci tır başka biri tarafından ihbar edilse bile aynı polis ikinci içeriği açamaz
+  const r2 = `${t2}_2026-09-22`;
+  h.db._store.set(`gangWorlds/test/intelReports/${r2}`, { data: { ...h.get(`intelReports/${r1}`), truckId: t2, truckCode: '9999', leaked: false, estReward: null }, version: 1 });
+  assert.match((await h.fails(mole, 'leakTruck', { reportId: r2 })).message, /günde 1/);
+  assert.equal(h.get(`intelReports/${r2}`).leaked, false);
+  // ertesi gün haklar yenilenir (gün anahtarı değişti)
+  const ms = await h.membership(mole);
+  assert.notEqual(ms.intelTruckReportDay, '2026-09-23');
+  assert.notEqual(ms.intelTruckLeakDay, '2026-09-23');
+});

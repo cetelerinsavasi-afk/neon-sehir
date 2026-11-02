@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 import { getFunctions } from 'firebase/functions';
 
 const firebaseConfig = {
@@ -14,7 +14,28 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+// v138 MALİYET — Firestore YEREL ÖNBELLEĞİ (cihazda, IndexedDB). Bir ekrana (çete listesi,
+// sohbet, ev listesi…) dönüldüğünde sorgu sıfırdan okunmaz: 30 dk içinde yeniden açılan
+// sorgularda sadece DEĞİŞEN belgeler faturalanır, ekranlar da önbellekten anında açılır.
+// IndexedDB yoksa (gizli sekme vb.) SDK kendiliğinden eski (bellek içi) moda döner.
+// Acil kapatma: localStorage 'neon.noFsCache' = '1'.
+function createDb() {
+  let off = false;
+  try {
+    off = window.localStorage.getItem('neon.noFsCache') === '1';
+  } catch {
+    /* depolama kapalı */
+  }
+  if (!off) {
+    try {
+      return initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) });
+    } catch (err) {
+      console.warn('Firestore önbelleği açılamadı, bellek içi devam:', err?.code || err);
+    }
+  }
+  return getFirestore(app);
+}
+export const db = createDb();
 export const functions = getFunctions(
   app,
   import.meta.env.VITE_FIREBASE_FUNCTIONS_REGION || 'europe-west1'

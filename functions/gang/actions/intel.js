@@ -546,6 +546,8 @@ export function createIntelActions(core) {
       const truck = truckSnap.data();
       if (!truck || truck.gangId !== membership.gangId) fail('permission-denied', 'Bu tırı göremezsin.');
       if (!atLeast(core.effRank(meSnap.data(), ctx), 'tetikci')) fail('permission-denied', 'Tırları görmek için en az Tetikçi olmalısın.');
+      // v137 — polis başına günde EN FAZLA 1 tır ihbarı (İstanbul günü)
+      if (membership.intelTruckReportDay === ctx.dateKey) fail('resource-exhausted', 'Bugünkü tır ihbar hakkını kullandın (günde 1). 00:00\'dan sonra yenilenir.');
       if (truck.status !== 'in_transit') fail('failed-precondition', 'Sadece seferdeki tırlar ihbar edilebilir.');
       // v67: ihbar, tır yola çıktıktan sonraki 6 saat içinde (sonra saldırı başlar)
       const { departAtMs, attackAtMs } = truckTimes(truck);
@@ -569,6 +571,7 @@ export function createIntelActions(core) {
         opWarId: null,
       });
       tx.update(ctx.ref.roster(rid), { prestige: FV.increment(INTEL.REPORT_PRESTIGE) });
+      tx.set(ctx.ref.membership(ctx.actorId), { intelTruckReportDay: ctx.dateKey }, { merge: true }); // v137 günlük hak
       core.intelStat(tx, ctx, rid, { truckReports: 1 }); // v94 üye raporu
       announceIntel(tx, ctx, '📡', `${rosterSnap.data().codeName}, TIR #${truck.code} (${gang?.name || ''}) tırını ihbar etti.`);
       ctx.logs.push({ gang: 'intel_report', world: ctx.worldId, reportId });
@@ -595,6 +598,8 @@ export function createIntelActions(core) {
       ]);
       if (!atLeast(core.effRank(meSnap.data(), ctx), 'kidemli')) fail('permission-denied', 'Tır içeriğini görmek için en az Kıdemli olmalısın.');
       if (rep.leaked) fail('already-exists', 'Bu tırın içeriği zaten sızdırıldı.');
+      // v137 — polis başına günde EN FAZLA 1 tır içeriği açma (İstanbul günü)
+      if (membership.intelTruckLeakDay === ctx.dateKey) fail('resource-exhausted', 'Bugünkü tır içeriği açma hakkını kullandın (günde 1). 00:00\'dan sonra yenilenir.');
       if (truckSnap.data()?.status !== 'in_transit' || truckSnap.data()?.departDateKey !== rep.departDateKey) fail('failed-precondition', 'Bu sefer bitti.');
       const items = cargoSnap.data()?.items || {};
       const estReward = core.instantValueOf(items);
@@ -608,6 +613,7 @@ export function createIntelActions(core) {
       });
       if (opSnap?.exists) tx.update(opSnap.ref, { estReward });
       tx.update(ctx.ref.roster(rid), { prestige: FV.increment(INTEL.LEAK_PRESTIGE) });
+      tx.set(ctx.ref.membership(ctx.actorId), { intelTruckLeakDay: ctx.dateKey }, { merge: true }); // v137 günlük hak
       core.intelStat(tx, ctx, rid, { truckLeaks: 1 });
       announceIntel(tx, ctx, '📦', `${rosterSnap.data().codeName}, TIR #${rep.truckCode} içeriğini sızdırdı — ödül değeri ${estReward.toLocaleString('tr-TR')}.`);
       ctx.logs.push({ gang: 'intel_leak', world: ctx.worldId, reportId });

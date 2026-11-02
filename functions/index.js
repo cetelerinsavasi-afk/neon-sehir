@@ -27,6 +27,7 @@ import { stockUnitCost } from './shopStockRules.js'; // v130
 import { createVenue } from './venue.js';
 import { createOffice } from './office.js';
 import { createPresenceSummary } from './presenceSummary.js';
+import { createCron } from './cron.js';
 import { createGym, gymPriceOf, withBonus, botGymPool } from './gym.js';
 import { createFutbolPro, assignGoalCredits, computeMatchRatings } from './futbolPro.js';
 import { futbolDayKey, prevDayKey, bizDayStartMs, midnightDayKey } from './businessCatalogData.js';
@@ -85,7 +86,12 @@ const withRates = (fn) => async (...args) => {
 const wrapTrigger = (raw) => (a, b) => (typeof a === 'function' ? raw(withRates(a)) : raw(a, withRates(b)));
 const onCall = wrapTrigger(onCallRaw);
 const onRequest = wrapTrigger(onRequestRaw);
-const onSchedule = wrapTrigger(onScheduleRaw);
+// v138 MALİYET — zamanlanmış işler artık ayrı Cloud Scheduler işleri DEĞİL: onSchedule işi
+// kaydeder, tek bir cronTick (dakikada bir) zamanı gelenleri çalıştırır (bkz. functions/cron.js).
+// Gerçek ayrı tetikleyici sadece dailyReset + dailyResetRecovery (onScheduleReal).
+const cron = createCron();
+const onScheduleReal = wrapTrigger(onScheduleRaw);
+const onSchedule = (opts, fn) => cron.register(opts, withRates(fn));
 // v127 — çete sistemine (polis maaşı, operasyon ücreti, çete bağışı) belediye bağlantısı;
 // belediye nesnesi dosyanın sonunda (çete fonksiyonlarından sonra) kurulur.
 const belediyeRef = { current: null };
@@ -383,7 +389,8 @@ export const playerNameSweep = onSchedule({ schedule: '40 4 * * 1', timeZone: 'E
 
 // v124 — tek seferlik geçişler saatte bir denenir; bitenler bayrakla atlanır
 // (her adım idempotent). Tümü bitince bu iş tek belge okuyup çıkar.
-export const v124Migrate = onSchedule({ schedule: 'every 60 minutes', timeoutSeconds: 540 }, async () => {
+// v137 maliyet: saatte bir → günde bir (geçişler bitti; dailyReset de her gece çalıştırıyor)
+export const v124Migrate = onSchedule({ schedule: 'every 24 hours', timeoutSeconds: 540 }, async () => {
   const cfg = (await db.doc('gangSystem/config').get()).data() || {};
   const r = await v124Migrations.runAll({ liveWorldId: cfg.liveWorldId || null });
   console.log(JSON.stringify({ v124Migrate: r }));
@@ -403,13 +410,13 @@ async function runChampV2Migration() {
   if (today > CHAMP_V2_START_DAY && !out[0]?.error) await flagRef.set({ doneAtMs: Date.now(), last: out[0] || null }, { merge: true });
   return out;
 }
-export const champV2Migrate = onSchedule({ schedule: 'every 60 minutes', timeoutSeconds: 540 }, async () => {
+export const champV2Migrate = onSchedule({ schedule: 'every 24 hours', timeoutSeconds: 540 }, async () => {
   const r = await runChampV2Migration();
   console.log(JSON.stringify({ champV2Migrate: r }));
 });
 
 // v130 — silahçı / galeri vitrin → stok geçişi (bir kez; saatlik iş + deploy sonrası elle)
-export const shopV130Migrate = onSchedule({ schedule: 'every 60 minutes', timeoutSeconds: 540 }, async () => {
+export const shopV130Migrate = onSchedule({ schedule: 'every 24 hours', timeoutSeconds: 540 }, async () => {
   const r = await shop.migrateVitrin();
   console.log(JSON.stringify({ shopV130Migrate: r }));
 });
@@ -1402,13 +1409,14 @@ export const buyFactoryMachine = onCall(async (request) => {
     const [userSnap, factorySnap, miningCountSnap] = await Promise.all([
       tx.get(userRef),
       tx.get(factoryRef),
-      machineType === 'mining' ? tx.get(machinesRef.where('type', '==', 'mining')) : null,
+      // v137 maliyet: makineler tek tek okunmaz, sadece SAYILIR (1.000 makineye kadar 1 okuma)
+      machineType === 'mining' ? tx.get(machinesRef.where('type', '==', 'mining').count()) : null,
     ]);
     if (!factorySnap.exists) {
       throw new HttpsError('failed-precondition', 'Önce bir fabrika kurmalısın.');
     }
     if (machineType === 'mining') {
-      price = await miningMachinePrice(miningCountSnap.size);
+      price = await miningMachinePrice(Number(miningCountSnap.data().count || 0));
     } else {
       price = MACHINE_TYPES[machineType].price;
     }
@@ -2311,16 +2319,33 @@ export const ensureFactoryMigrationsV38 = onCall(async (request) => {
 // vurur (üretim yine o gece 00:00'da dailyReset içinde gerçekleşir).
 // triggerAllMining VE runFactoryMachines tarafından ORTAK kullanılır ki
 // damgalama mantığı iki yerde tekrar edilmesin.
-async function stampUntriggeredMining(ownerUid, dateKey) {
+async function stampUntriggeredMining(ownerUid, dateKey, preloadedDocs = null) {
   const machinesRef = db.collection('factories').doc(ownerUid).collection('machines');
-  const machinesSnap = await machinesRef.where('type', '==', 'mining').get();
-  const untriggered = machinesSnap.docs.filter((m) => m.data().miningTriggeredDateKey !== dateKey);
-  if (untriggered.length > 0) {
+  const miningQ = machinesRef.where('type', '==', 'mining');
+  let miningDocs;
+  if (preloadedDocs) {
+    // runFactoryMachines tüm makineleri zaten okudu — tekrar okunmaz (v137 maliyet)
+    miningDocs = preloadedDocs.filter((m) => m.data().type === 'mining');
+  } else {
+    // v137 maliyet: hepsi bugün zaten tetiklendiyse makineler tek tek okunmaz
+    // (iki SAYIM = ~2 okuma; eskiden her basışta yüzlerce makine okunuyordu).
+    try {
+      const [all, done] = await Promise.all([miningQ.count().get(), miningQ.where('miningTriggeredDateKey', '==', dateKey).count().get()]);
+      const totalCount = Number(all.data().count || 0);
+      if (totalCount === 0 || Number(done.data().count || 0) >= totalCount) return { triggeredCount: 0, totalCount };
+    } catch (err) {
+      console.warn('stampUntriggeredMining sayım atlandı', err?.message || err); // eski yola düş
+    }
+    miningDocs = (await miningQ.get()).docs;
+  }
+  const untriggered = miningDocs.filter((m) => m.data().miningTriggeredDateKey !== dateKey);
+  // v137: 500'den fazla makine olursa tek batch'e sığmaz — 450'lik parçalar
+  for (let i = 0; i < untriggered.length; i += 450) {
     const batch = db.batch();
-    untriggered.forEach((m) => batch.update(m.ref, { miningTriggeredDateKey: dateKey }));
+    untriggered.slice(i, i + 450).forEach((m) => batch.update(m.ref, { miningTriggeredDateKey: dateKey }));
     await batch.commit();
   }
-  return { triggeredCount: untriggered.length, totalCount: machinesSnap.size };
+  return { triggeredCount: untriggered.length, totalCount: miningDocs.length };
 }
 
 // triggerAllMining — mining makineleri işçi gerektirmez ama artık OTOMATİK
@@ -2375,7 +2400,7 @@ export const runFactoryMachines = onCall(async (request) => {
     (m) => m.data().lastProducedDateKey !== dateKey && m.data().ownerTriggeredDateKey !== dateKey
   );
 
-  const mining = await stampUntriggeredMining(uid, dateKey);
+  const mining = await stampUntriggeredMining(uid, dateKey, machinesSnap.docs);
 
   let workerTriggeredCount = 0;
   if (untriggeredWorkerMachines.length > 0) {
@@ -2767,10 +2792,10 @@ async function recoverMiningFromNotifications(dateKey) {
   return qty;
 }
 
-export const dailyReset = onSchedule({ schedule: '0 0 * * *', ...DAILY_RESET_OPTS }, async () => {
+export const dailyReset = onScheduleReal({ schedule: '0 0 * * *', ...DAILY_RESET_OPTS }, async () => {
   await runDailyResetGuarded(istanbulDateKey(), 'schedule');
 });
-export const dailyResetRecovery = onSchedule({ schedule: '15,45 0-3 * * *', ...DAILY_RESET_OPTS }, async () => {
+export const dailyResetRecovery = onScheduleReal({ schedule: '15,45 0-3 * * *', ...DAILY_RESET_OPTS }, async () => {
   const r = await runDailyResetGuarded(istanbulDateKey(), 'recovery');
   if (!r?.skipped) console.log('dailyResetRecovery çalıştı', JSON.stringify(r));
 });
@@ -6534,6 +6559,8 @@ export const expireInteriorPresence = onSchedule({ schedule: 'every 5 minutes' }
   }
   // v65: 3D Ev canlı kayıtları da aynı süpürmeyle temizlenir.
   await houses.expirePresence(TWO_MIN, admin.firestore.Timestamp).catch((err) => console.error('housePresence süpürme:', err));
+  // v137 maliyet: giriş/çıkış tetikleyicileri artık beklemiyor; ertelenen sayım burada yapılır.
+  await presenceSummaryJob.flushIfDirty().catch((err) => console.error('presence flush:', err));
   // v80: nabzı kesilen yayınlar kapatılır, bağışları ödenir
   await stream.sweep().catch((err) => console.error('yayın süpürme:', err));
   // v92 — eski günlerin maç sohbeti (Stadyum › Maçlar)
@@ -6551,13 +6578,10 @@ export const presenceSummary = onSchedule({ schedule: 'every 10 minutes' }, asyn
 // Sadece belge OLUŞUNCA/SİLİNİNCE tetiklenir (nabız güncellemeleri tetiklemez).
 // v82.1: isimler 'mekanSayac…' — sunucuda eski sürümden kalma presenceInteriorIn adlı
 // HTTPS fonksiyonuyla çakışmasın (Firebase aynı isimde tür değişikliğine izin vermiyor).
-const presenceNudge = (event) => presenceSummaryJob.nudge(Date.parse(event.time) || Date.now()).catch((err) => console.error('presence nudge:', err));
-export const mekanSayacParkGiris = onDocumentCreated('parkPresence/{uid}', presenceNudge);
-export const mekanSayacParkCikis = onDocumentDeleted('parkPresence/{uid}', presenceNudge);
-export const mekanSayacIcGiris = onDocumentCreated('interiorPresence/{uid}', presenceNudge);
-export const mekanSayacIcCikis = onDocumentDeleted('interiorPresence/{uid}', presenceNudge);
-export const mekanSayacEvGiris = onDocumentCreated('housePresence/{uid}', presenceNudge);
-export const mekanSayacEvCikis = onDocumentDeleted('housePresence/{uid}', presenceNudge);
+// v138 — mekanSayac* tetikleyicileri KALDIRILDI: "kaç kişi var" artık Realtime Database'teki
+// occ/{yer}/{uid} kayıtlarından (bağlantı kopunca kendiliğinden silinir) oyuncunun cihazında
+// sayılıyor — anında ve doğru, Firestore okuması/fonksiyon çağrısı yok. presenceSummary (10 dk)
+// eski sürüm istemciler için bir süre daha çalışır.
 
 // ---------------------------------------------------------------------------
 // buyFromBufe — Park'taki büfeden içecek/atıştırmalık satın alma.
@@ -20703,7 +20727,8 @@ export const verifyPlayPurchase = onCall(async (request) => {
 // v91.1 — İade koruması + teslim güvencesi: 30 dakikada bir Google'ın iade
 // listesi taranır (iade edilen zümrüt geri alınır) ve "teslim edildi"
 // bildirilememiş satın almalar tekrar denenir.
-export const playBillingSweep = onSchedule({ schedule: 'every 30 minutes', timeoutSeconds: 300 }, async () => {
+// v137 maliyet: 30 dk → 2 saat (her tur ~1 dk faturalanıyordu; iade/tüketme tekrarı için 2 saat yeterli)
+export const playBillingSweep = onSchedule({ schedule: 'every 2 hours', timeoutSeconds: 300 }, async () => {
   try {
     const v = await playBilling.processVoidedPurchases();
     if (v.revoked || v.notCredited) console.log('playBilling voided', JSON.stringify(v));
@@ -22787,3 +22812,14 @@ export const getStateReport = onCall(async (request) => {
   await closeStateDays(db, admin.firestore.FieldValue, { todayKey: istanbulDateKey() }).catch((err) => console.error('closeStateDays', err?.message || err));
   return readStateReport(db, { todayKey: istanbulDateKey() });
 });
+
+// v138 — TEK ZAMANLAYICI: dakikada bir; o dakikada zamanı gelen kayıtlı işleri çalıştırır.
+// event.scheduleTime = Cloud Scheduler'ın PLANLADIĞI an (gecikmeli gelse bile doğru dakika).
+export const cronTick = onScheduleRaw(
+  { schedule: 'every 1 minutes', timeZone: 'Europe/Istanbul', timeoutSeconds: 540, memory: '1GiB', maxInstances: 5 },
+  async (event) => {
+    const at = Date.parse(event?.scheduleTime || '') || Date.now();
+    const r = await cron.tick(at);
+    if (r.failed || r.ms > 60_000) console.log(JSON.stringify({ cronTick: r }));
+  }
+);

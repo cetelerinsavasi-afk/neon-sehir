@@ -34,6 +34,7 @@ import './FactoryScreen.css';
 import { machineTax, withMachineTax } from '../../../functions/tax.js';
 import { useBelediyeRates } from '../../hooks/useBelediyeRates';
 import { fmtRate, MACHINE_RATE_KEY } from '../../../functions/belediyeRates.js';
+import { trMidnightNote } from '../../lib/istanbulTime';
 
 const FACTORY_CREATE_COST = 100000;
 const MACHINE_PRICES = { tamirMalzemesi: 50000, silahUpgrade: 50000, arabaGelistirme: 50000, yasakliMadde: 100000 };
@@ -561,6 +562,7 @@ function OwnerView({ factory, machines, player, myUid }) {
     month: '2-digit',
     day: '2-digit',
   }).format(new Date(Date.now()));
+  const trMid = trMidnightNote(); // v137 yurtdışındaki oyuncu için yerel saat karşılığı
 
   const hasAnyEmployment = !!player?.employment;
   const miningMachines = machines.filter((m) => m.type === 'mining');
@@ -632,7 +634,7 @@ function OwnerView({ factory, machines, player, myUid }) {
         <span className="factory-machine-name">{MACHINE_LABELS[m.type]}</span>
         {ownerTriggeredToday && (
           <span className="factory-machine-status">
-            ⏳ İşçi bugün gelmezse 00:00'da senin adına (2/10 verimle) üretilecek.
+            ⏳ İşçi bugün gelmezse 00:00'da{trMid} senin adına (2/10 verimle) üretilecek.
           </span>
         )}
         {m.workerId === myUid ? (
@@ -660,7 +662,7 @@ function OwnerView({ factory, machines, player, myUid }) {
             </div>
             {producedToday && (
               <p className="factory-produced-warning small">
-                00:00'dan sonra tekrar üretim yapabilirsin.
+                00:00'dan{trMid} sonra tekrar üretim yapabilirsin.
               </p>
             )}
           </div>
@@ -751,7 +753,8 @@ function OwnerView({ factory, machines, player, myUid }) {
         </button>
         <p className="factory-hint small">
           Bugün henüz çalışan bir işçisi olmayan makineleri sen çalıştırmış olursun (2/10 verimle);
-          işçi gün içinde gelip üretirse işçinin üretimi geçerli olur.
+          işçi gün içinde gelip üretirse işçinin üretimi geçerli olur. Üretilen mallar gece
+          00:00'da{trMid || ' (Türkiye saati)'} envanterine eklenir.
         </p>
       </div>
 
@@ -768,7 +771,7 @@ function OwnerView({ factory, machines, player, myUid }) {
                 <div className="factory-machine-self">
                   <span className="factory-machine-status">
                     {miningAllTriggeredToday
-                      ? "✅ Üretim başladı — 00:00'da kripto bakiyene eklenecek."
+                      ? `✅ Üretim başladı — 00:00'da${trMid} kripto bakiyene eklenecek.`
                       : miningTriggeredCount > 0
                         ? `${miningTriggeredCount}/${miningMachines.length} için üretim başladı — "Makineleri Çalıştır" ile kalanları da başlat.`
                         : '"Makineleri Çalıştır" butonuyla üretimi başlatabilirsin.'}
@@ -1066,6 +1069,7 @@ function WorkerView({ player, myUid }) {
     month: '2-digit',
     day: '2-digit',
   }).format(new Date(Date.now()));
+  const trMid = trMidnightNote(); // v137
   const producedToday = player.employmentProducedDateKey === dateKey;
 
   // handleShiftGameComplete — FactoryShiftGame'e `onComplete` olarak
@@ -1122,7 +1126,7 @@ function WorkerView({ player, myUid }) {
         </button>
         {producedToday && (
           <p className="factory-produced-warning">
-            Bugün zaten üretim yaptın. 00:00'dan sonra tekrar üretim yapabilirsin.
+            Bugün zaten üretim yaptın. 00:00'dan{trMid} sonra tekrar üretim yapabilirsin.
           </p>
         )}
         {result && (

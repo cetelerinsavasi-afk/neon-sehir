@@ -87,3 +87,22 @@ export function nextSponsorshipSettleLabel(now = Date.now()) {
 export function istanbulDateKey(date = new Date(Date.now())) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Europe/Istanbul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(date);
 }
+
+// v137 — YURTDIŞINDAKİ OYUNCU: oyunun "00:00"ı Türkiye saatidir. Telefonun saat dilimi
+// Türkiye'den farklıysa "(Türkiye saati · senin saatinle 17:00, 5 sa 12 dk sonra)" gibi
+// bir not döner; Türkiye'deyse boş metin (mevcut görünüm değişmez).
+export function trMidnightNote(now = Date.now()) {
+  try {
+    const at = new Date(now);
+    const fmt = (tz) => new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false }).format(at);
+    const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (!localTz || fmt(localTz) === fmt('Europe/Istanbul')) return '';
+    const left = msUntilIstanbulMidnight(now);
+    const local = new Intl.DateTimeFormat('tr-TR', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(now + left));
+    const h = Math.floor(left / 3_600_000);
+    const m = Math.floor((left % 3_600_000) / 60_000);
+    return ` (Türkiye saati · senin saatinle ${local}, ${h > 0 ? `${h} sa ` : ''}${m} dk sonra)`;
+  } catch {
+    return ' (Türkiye saati)';
+  }
+}

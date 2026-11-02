@@ -220,7 +220,7 @@ export function useGangAlerts(uid) {
     const reportedBets = new Set(betReps.map((r) => r.id));
     // v67: tır ihbarı / sızdırma / operasyon her tırın kendi 6 saatlik penceresinde
     const openRep = (r) => now < truckAttackAt(r);
-    const myRoad = myTrucks.filter((t) => t.status === 'in_transit' && t.departDateKey === today && now < truckAttackAt(t) && !reportedTrucks.has(t.id));
+    const myRoad = ms.intelTruckReportDay === today ? [] : myTrucks.filter((t) => t.status === 'in_transit' && t.departDateKey === today && now < truckAttackAt(t) && !reportedTrucks.has(t.id));
     const myBets = [...all.values()].filter((x) => x.type === 'bet' && ['accepted', 'active'].includes(x.status) && x.startsAtMs && now < x.startsAtMs + 6 * 3600_000 && (x.gangIds || []).includes(gangId) && !reportedBets.has(x.id));
     const ops =
       Boolean(rid) &&
@@ -231,7 +231,7 @@ export function useGangAlerts(uid) {
     const intel = { sohbet: intelChat, savas: intelWar || iUnvoted > 0 || iClaim || intelApps.length > 0, operasyon: ops };
     // v38: anasayfa hatırlatıcıları (📋 paneli)
     const canLeak = Boolean(rid && gangId && atLeast(rank, 'kidemli'));
-    const leakTruck = truckReps.some((r) => r.gangId === gangId && !r.leaked && openRep(r));
+    const leakTruck = ms.intelTruckLeakDay !== today && truckReps.some((r) => r.gangId === gangId && !r.leaked && openRep(r));
     const leakBet = betReps.some((r) => (r.gangIds || []).includes(gangId) && !r.leaked);
     const reminders = {
       joinWar: gangWar || intelWar,
@@ -242,5 +242,5 @@ export function useGangAlerts(uid) {
     // alt çubuktaki "Çeteler" noktası: "Tüm Çeteler" sohbeti de yakar (kullanıcı isteği)
     return { worldId: w, uid, gang, intel, chans, reminders, any: Object.values(gang).some(Boolean) || Object.values(intel).some(Boolean) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [now, seenTick, handover, w, uid, gangId, rid, rank, irank, gGen, gYon, gTum, iGen, iYon, pub, mine, intelWars, slot, gVotes, iVotes, gDists, iDists, allianceIn, gUnvoted, iUnvoted, truckReps, betRepsAll, myTrucks, today, hourKey, gJoined, iJoined, canReport, isLead, intelApps]);
+  }, [now, seenTick, handover, w, uid, gangId, rid, rank, irank, gGen, gYon, gTum, iGen, iYon, pub, mine, intelWars, slot, gVotes, iVotes, gDists, iDists, allianceIn, gUnvoted, iUnvoted, truckReps, betRepsAll, myTrucks, today, hourKey, gJoined, iJoined, canReport, isLead, intelApps, ms.intelTruckReportDay, ms.intelTruckLeakDay]);
 }

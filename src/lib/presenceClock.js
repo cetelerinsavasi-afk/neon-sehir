@@ -9,6 +9,8 @@ let skewMs = 0;
 export const serverNow = () => Date.now() - skewMs;
 
 export function presenceNow(snap, uid) {
+  // v138: yerel önbellekten gelen (eski) anlık görüntü saat ölçümüne katılmaz
+  if (snap?.metadata?.fromCache) return serverNow();
   let ref = 0;
   let mine = 0;
   snap.forEach((d) => {

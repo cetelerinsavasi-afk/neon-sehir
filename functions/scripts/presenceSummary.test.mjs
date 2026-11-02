@@ -34,3 +34,34 @@ test('presence özeti: aktifleri sayar, değişmediyse yazmaz, 8 dk sonra canlı
   r = await job.run();
   assert.equal(r.written, true, 'canlılık yazımı');
 });
+
+test('v137: giriş/çıkış tetikleyicisi beklemez; aralık dolmadıysa erteler, flushIfDirty sayar', async () => {
+  const db = new FakeFirestore({ yieldEvery: false });
+  const S = (p, d) => db._store.set(p, { data: d, version: 1 });
+  const G = (p) => db._store.get(p)?.data;
+  const clock = { t: 1_800_000_000_000 };
+  const ts = (ago) => Timestamp.fromMillis(clock.t - ago);
+  const job = createPresenceSummary({ db, Timestamp, now: () => clock.t });
+  S('parkPresence/a', { updatedAt: ts(1_000) });
+  let r = await job.nudge(clock.t);
+  assert.equal(r.written, true, 'ilk olay hemen sayılır');
+  assert.equal(G('stats/presence').park, 1);
+  clock.t += 3_000;
+  S('parkPresence/b', { updatedAt: ts(500) });
+  r = await job.nudge(clock.t);
+  assert.deepEqual(r, { deferred: true }, '15 sn dolmadı → ertelenir, uyumaz');
+  assert.equal(G('stats/presence').park, 1);
+  r = await job.nudge(clock.t - 10_000);
+  assert.deepEqual(r, { deferred: true }, 'kapsanmış eski olay → işlem yok');
+  clock.t += 60_000;
+  S('parkPresence/a', { updatedAt: ts(1_000) });
+  S('parkPresence/b', { updatedAt: ts(1_000) });
+  r = await job.flushIfDirty();
+  assert.equal(r.written, true, 'kirli olay süpürmede sayılır');
+  assert.equal(G('stats/presence').park, 2);
+  r = await job.flushIfDirty();
+  assert.deepEqual(r, { skipped: true }, 'kirli olay kalmadı');
+  clock.t += 20_000;
+  r = await job.nudge(clock.t);
+  assert.ok(!r.deferred, 'aralık dolunca yeni olay hemen sayılır');
+});

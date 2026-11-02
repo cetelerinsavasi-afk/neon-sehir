@@ -155,6 +155,9 @@ export default function OpsTab({ d }) {
   const [op, setOp] = useState(null);
   const [bribe, setBribe] = useState(0);
   const [ask, setAsk] = useState(null);
+  // v137 — polis başına günde 1 tır ihbarı + 1 tır içeriği açma (sunucu da denetler)
+  const reportUsed = ms.intelTruckReportDay === today;
+  const leakUsed = ms.intelTruckLeakDay === today;
   const price = 100_000; // İstihbarat operasyonu: sabit 100.000 (artık artmaz)
   const reported = new Set(reports.map((r) => r.truckId));
   const road = myTrucks.filter((t) => t.status === 'in_transit' && t.departDateKey === today);
@@ -199,11 +202,13 @@ export default function OpsTab({ d }) {
               )}
             </div>
             <div className="gx-row-2">
-              {!r.leaked && inThatGang && open && (
+              {!r.leaked && inThatGang && open && (leakUsed ? (
+                <span className="gx-pill">🔒 Bugünkü içerik açma hakkın kullanıldı</span>
+              ) : (
                 <Btn small kind="ghost" onClick={() => setAsk({ type: 'leak', r })}>
                   📦 İçeriği sızdır
                 </Btn>
-              )}
+              ))}
               {r.opWarId ? (
                 <span className="gx-pill intel">🎯 Operasyon başladı</span>
               ) : lead && open ? (
@@ -232,6 +237,8 @@ export default function OpsTab({ d }) {
                 <span className="gx-pill intel">📡 İhbar edildi</span>
               ) : !isOpen(t) ? (
                 <span className="gx-pill">🔒 {fmtClock(truckAttackAt(t))}</span>
+              ) : reportUsed ? (
+                <span className="gx-pill">🔒 Bugünkü ihbar hakkın kullanıldı</span>
               ) : (
                 <Btn small kind="ghost" onClick={() => setAsk({ type: 'report', t })}>
                   📡 İhbar et
@@ -271,7 +278,7 @@ export default function OpsTab({ d }) {
         <Confirm
           icon={ask.type === 'report' ? '📡' : '📦'}
           title={ask.type === 'report' ? `TIR #${ask.t.code} ihbar edilsin mi?` : `TIR #${ask.r.truckCode} içeriği sızdırılsın mı?`}
-          lines={ask.type === 'report' ? ['✦ +500.000 prestij', '🚓 Teşkilat bu tırı görür, yükünü göremez'] : ['✦ +500.000 prestij', '💰 Teşkilat yükün değerini görür']}
+          lines={ask.type === 'report' ? ['✦ +500.000 prestij', '🚓 Teşkilat bu tırı görür, yükünü göremez', '📅 Günde yalnızca 1 tır ihbar edebilirsin'] : ['✦ +500.000 prestij', '💰 Teşkilat yükün değerini görür', '📅 Günde yalnızca 1 tırın içeriğini açabilirsin']}
           confirmLabel={ask.type === 'report' ? 'İhbar et' : 'Sızdır'}
           busy={Boolean(busy)}
           onCancel={() => setAsk(null)}

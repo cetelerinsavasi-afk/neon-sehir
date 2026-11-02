@@ -7,6 +7,7 @@ import { useBlocks } from '../contexts/BlocksContext';
 import { createPresenceWriter, useLiveMerge, useLiveRoomCleanup } from '../lib/livePresence';
 import { liveRemove } from '../lib/liveNet';
 import { presenceNow } from '../lib/presenceClock';
+import { occKey, useOccEnter, useOccFilter } from '../lib/occupancy';
 
 // Bir presence kaydı ne kadar süre güncellenmezse "hayalet" (terk
 // edilmiş sekme/çökme) sayılıp listeden düşürülür. Sunucu tarafında da
@@ -20,7 +21,7 @@ import { presenceNow } from '../lib/presenceClock';
 // çok sıkı tutulursa (ör. nabız aralığına çok yakın), sadece ekranı
 // kararan/hafifçe geciken bir arkadaş bile anlık olarak "kayboluyor"
 // gibi görünüyordu.
-const STALE_MS = 90_000; // v130: Firestore nabzı ~30–40 sn
+const STALE_MS = 150_000; // v138: Firestore nabzı 60 sn; hayaletleri artık RTDB (occ) ayıklıyor
 
 // Aynı anda parkta çok fazla kişi olsa bile (viral bir an, bot saldırısı
 // vb.) her istemcinin dinleyeceği doküman sayısını üst sınırlıyoruz —
@@ -99,7 +100,11 @@ export function useParkPresence() {
     [liveRoom]
   );
   useLiveRoomCleanup(liveRoom, user?.uid);
-  const liveOthers = useLiveMerge(liveRoom, others, Boolean(user));
+  // v138 — "kaç kişi var" için RTDB kaydı + hayalet ayıklama (bkz. lib/occupancy.js)
+  const occK = occKey.park();
+  useOccEnter('park', occK, Boolean(user));
+  const freshOthers = useOccFilter(occK, others);
+  const liveOthers = useLiveMerge(liveRoom, freshOthers, Boolean(user));
 
   // UGC D2: engellediğin oyuncunun konuşma balonu gösterilmez (avatarı görünür kalır).
   // Tüm dünya ekranları "others"ı buradan aldığı için tek noktada uygulanır.

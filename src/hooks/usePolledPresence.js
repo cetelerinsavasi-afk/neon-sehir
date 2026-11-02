@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { collection, doc, getDocs, limit, onSnapshot, query, Timestamp, where } from 'firebase/firestore';
 import { db } from '../firebase';
+import { useOccCounts } from '../lib/occupancy';
 
 // =============================================================================
 // "Mekanda/evde kaç kişi var" sayıları.
@@ -112,11 +113,31 @@ function useLegacyPoll(collectionName, enabled, max) {
   return list;
 }
 
+// v138 — RTDB (occ) sayıları: anında ve doğru; Firestore okuması yok (bkz. lib/occupancy.js)
+function synthOcc(collectionName, counts, max) {
+  const out = [];
+  const push = (n, extra, prefix) => {
+    for (let i = 0; i < n && out.length < max; i++) out.push({ uid: `${prefix}#${i}`, ...extra });
+  };
+  for (const [key, n] of Object.entries(counts)) {
+    if (collectionName === 'parkPresence' && key === 'park') push(n, {}, 'p');
+    else if (collectionName === 'interiorPresence' && key.startsWith('i~')) push(n, { locationId: key.slice(2) }, key);
+    else if (collectionName === 'housePresence' && key.startsWith('h~')) push(n, { houseId: key.slice(2) }, key);
+  }
+  return out;
+}
+
 export function usePolledPresence(collectionName, { enabled = true, max = 300 } = {}) {
-  const summary = useSummary(enabled);
-  const legacy = useLegacyPoll(collectionName, enabled && summary.state === 'missing', max);
+  const occ = useOccCounts(enabled);
+  const occOk = Boolean(occ);
+  const fromOcc = useMemo(() => (occ ? synthOcc(collectionName, occ, max) : null), [occ, collectionName, max]);
+  // RTDB sayıları geldiyse eski özet/yoklama hiç açılmaz (okuma yok)
+  const summary = useSummary(enabled && occ === null);
+  const legacy = useLegacyPoll(collectionName, enabled && occ === null && summary.state === 'missing', max);
   const fromSummary = useMemo(() => (summary.state === 'ok' && summary.data ? synth(collectionName, summary.data, max) : null), [summary, collectionName, max]);
   if (!enabled) return EMPTY;
+  if (occOk) return fromOcc;
+  if (occ === undefined) return EMPTY; // RTDB yükleniyor (kısa süre)
   return fromSummary || legacy;
 }
 const EMPTY = [];

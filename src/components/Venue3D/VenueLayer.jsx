@@ -7,6 +7,7 @@ import { venueTo2d } from '../../../functions/venueLayouts.js';
 import { CamiiPart, BankaPart, GazinoPart, KarakolPart, GaleriPart, SilahPart, ModifiyePart, ParkPart, BelediyePart } from './venueParts';
 import '../../styles/worldScreenChrome.css';
 import './Venue3D.css';
+import { occEnter, occKey } from '../../lib/occupancy';
 
 // =============================================================================
 // v92 Faz 8 — Oyunun 3D mekânları (Camii, Banka, Gazino, Karakol, Galeri,
@@ -80,13 +81,15 @@ export default function VenueLayer({ venue, engineRef, interact, mode, onNpcs, a
       })
       .catch(() => {});
     recordVenueVisit(venue.loc).catch(() => {});
-    const iv = setInterval(beat, 30_000);
+    const iv = setInterval(beat, 60_000); // v138 maliyet: 30 → 60 sn
+    const leaveOcc = occEnter(venue.loc === 'park' ? 'park' : 'interior', venue.loc === 'park' ? occKey.park() : occKey.interior(venue.loc));
     const onVis = () => !document.hidden && beat();
     document.addEventListener('visibilitychange', onVis);
     return () => {
       alive = false;
       clearInterval(iv);
       document.removeEventListener('visibilitychange', onVis);
+      leaveOcc();
       deleteDoc(doc(db, coll, user.uid)).catch(() => {});
     };
   }, [user, venue.loc, engineRef]);

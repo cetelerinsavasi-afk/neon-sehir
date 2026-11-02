@@ -74,6 +74,7 @@ import PhotoStoryEditor from './PhotoStoryEditor';
 import { invalidateSixtagramFeed } from '../../hooks/useSixtagramFeed';
 import EntranceDoorBar from './EntranceDoorPicker';
 import { armStallWatchdog } from '../../hooks/useFirestoreResume';
+import { occKey, useOccEnter } from '../../lib/occupancy';
 import { doorKey, isDoorItemKey, resolveEntrance } from '../../../functions/houseDoor.js';
 
 // =============================================================================
@@ -85,7 +86,7 @@ import { doorKey, isDoorItemKey, resolveEntrance } from '../../../functions/hous
 //   odadakileri çıkarma, davet.
 // =============================================================================
 
-const PRESENCE_STALE_MS = 90_000; // v130: nabız 30 sn
+const PRESENCE_STALE_MS = 90_000; // v130: nabız 30 sn · v138: nabız 60 sn (90 sn hâlâ yeterli)
 const CHAT_TTL_MS = 60 * 60 * 1000; // mekân sohbet mesajları 1 saat görünür
 // v77 — işletmeye girince üstte çıkan butonlar
 const BIZ_TOP_BUTTONS = {
@@ -226,6 +227,8 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const [errMsg, setErrMsg] = useState('');
   const [info, setInfo] = useState(null);
   const [entered, setEntered] = useState(false); // sunucu girişi onayladı mı (v77: sahne öncesinden kurulur)
+  // v138 — "kaç kişi var": sunucu girişi onaylayınca RTDB'de bu evde sayılırım (bkz. lib/occupancy.js)
+  useOccEnter('house', occKey.house(houseId), Boolean(user) && entered);
   const [mode, setMode] = useState('walk');
   const [view, setView] = useState('3d');
   const [freeCam, setFreeCam] = useState(false); // v92 — 2D'de kamera serbest mi
@@ -802,7 +805,8 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
           lastLiveAt = now;
         }
         const stopped = moving && !changed;
-        if (keyChanged || stopped || now - lastFsAt >= 30_000) writeFs(); // v130: nabız 15 → 30 sn
+        // v138 maliyet: nabız 30 → 60 sn; durunca yazım en fazla 15 sn'de bir (konum zaten RTDB'de)
+        if (keyChanged || (stopped && now - lastFsAt >= 15_000) || now - lastFsAt >= 60_000) writeFs();
         moving = changed && !keyChanged;
         last = sig;
         lastKey = keySig;

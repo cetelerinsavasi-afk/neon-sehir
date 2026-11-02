@@ -19,7 +19,7 @@ export const PRESENCE_SUMMARY_KEEPALIVE_MS = 8 * 60 * 1000; // v130: iş 10 dk'd
 
 const sorted = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
 
-export function createPresenceSummary({ db, Timestamp, now = () => Date.now(), sleep = (ms) => new Promise((r) => setTimeout(r, ms)) }) {
+export function createPresenceSummary({ db, Timestamp, now = () => Date.now() }) {
   const lockRef = () => db.collection('stats').doc('presenceRun');
   async function run() {
     const t = now();
@@ -45,25 +45,35 @@ export function createPresenceSummary({ db, Timestamp, now = () => Date.now(), s
     await ref.set({ ...out, atMs: t });
     return { written: true, ...out };
   }
-  // Giriş/çıkış olayı: bu olayı kapsayan bir sayım zaten yapıldıysa ya da planlandıysa
-  // hiçbir şey yapma; değilse (en erken GAP sonra) sayımı bu çağrı yapar.
+  // v137 MALİYET: Eskiden tetikleyici, sayım zamanı gelene kadar (en fazla 15 sn)
+  // fonksiyonun içinde UYUYARAK bekliyordu — bu bekleme Cloud Run'da saniye saniye
+  // faturalanıyordu (Ekim 2026: CPU faturasının ~yarısı). Artık beklenmez:
+  //  - son sayımın üstünden GAP geçtiyse sayım hemen yapılır;
+  //  - geçmediyse olay "kirli" (dirtyMs) işaretlenir ve hemen dönülür. Kirli olay
+  //    bir sonraki giriş/çıkışta ya da 5 dakikalık süpürmede (flushIfDirty) sayılır.
   async function nudge(eventMs = now()) {
-    let runAt = null;
+    let go = false;
     await db.runTransaction(async (tx) => {
+      go = false;
       const d = (await tx.get(lockRef())).data() || {};
       const last = Number(d.lastRunMs || 0);
-      const sched = Number(d.scheduledMs || 0);
-      if (last >= eventMs || sched >= eventMs) {
-        runAt = null;
-        return;
+      if (last >= eventMs) return; // bu olayı kapsayan sayım zaten yapıldı
+      const t = now();
+      if (t - last >= PRESENCE_NUDGE_GAP_MS) {
+        go = true;
+        tx.set(lockRef(), { lastRunMs: t }, { merge: true });
+      } else if (Number(d.dirtyMs || 0) < eventMs) {
+        tx.set(lockRef(), { dirtyMs: eventMs }, { merge: true });
       }
-      runAt = Math.max(now(), last + PRESENCE_NUDGE_GAP_MS, eventMs);
-      tx.set(lockRef(), { scheduledMs: runAt }, { merge: true });
     });
-    if (runAt === null) return { skipped: true };
-    const wait = runAt - now();
-    if (wait > 0) await sleep(wait);
+    if (!go) return { deferred: true };
     return run();
   }
-  return { run, nudge };
+  // Ertelenmiş (kirli) olay varsa sayımı yap. 5 dk'lık süpürmeden çağrılır.
+  async function flushIfDirty() {
+    const d = (await lockRef().get()).data() || {};
+    if (Number(d.dirtyMs || 0) <= Number(d.lastRunMs || 0)) return { skipped: true };
+    return run();
+  }
+  return { run, nudge, flushIfDirty };
 }
