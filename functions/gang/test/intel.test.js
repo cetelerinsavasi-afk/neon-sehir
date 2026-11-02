@@ -136,8 +136,8 @@ test('operasyon: sadece ihbarlı tıra, 12:00ye kadar, ücret sabit (v108: devle
   await h.act(mole, 'reportTruck', { truckId });
   await h.fails(mole, 'startOperation', { reportId }); // Muhbir başlatamaz
   const op = await h.act(chief, 'startOperation', { reportId, bribe: 0 });
-  assert.equal(op.started[0].price, 100_000, 'İstihbarat operasyonu sabit 100.000');
-  assert.equal(h.treasury().out.ist_operasyon, 100_000, 'v108: ücreti devlet öder (kasa kontrolü yok)');
+  assert.equal(op.started[0].price, 50_000, 'v139: Polis operasyonu sabit 50.000');
+  assert.equal(h.treasury().out.ist_operasyon, 50_000, 'v108: ücreti devlet öder (kasa kontrolü yok)');
   assert.equal(h.get('intel/main/private/state').kasa || 0, 0, 'İstihbarat kasası kapalı');
   assert.equal(h.get('sabotageDays/2026-09-22').count, 1, 'operasyon oyun geneli sayacı artırır');
   await h.fails(chief, 'startOperation', { reportId });

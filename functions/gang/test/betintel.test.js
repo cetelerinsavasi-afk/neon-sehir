@@ -59,7 +59,7 @@ test('operasyon: Başkan/Şef, 100k, 00:00 öncesi; savaş 3 taraflı başlar; �
   await h.fails(S.A.ids[1], 'startBetOperation', { warId: S.warId }); // Muhbir başlatamaz
   await h.act(S.bas, 'startBetOperation', { warId: S.warId }); // tutar görülmeden de olur
   await h.fails(S.outsider, 'startBetOperation', { warId: S.warId }); // ikinci operasyon yok
-  assert.equal(h.treasury().out.ist_operasyon, 100_000, 'v108: operasyon ücretini devlet öder');
+  assert.equal(h.treasury().out.ist_operasyon, 50_000, 'v108: operasyon ücretini devlet öder (v139: 50.000)');
   // çeteler 00:00'a kadar görmez
   assert.equal(h.get(`wars/${S.warId}`).sides.intel, undefined);
   await h.tickTo('2026-09-22', '00:05');
@@ -110,8 +110,8 @@ test('bahis başlayamazsa (çete dağıldı) operasyon ücreti (v108) devlete ia
   await h.tickTo('2026-09-22', '00:05');
   assert.equal(h.get(`wars/${S.warId}`).status, 'cancelled');
   const t = h.treasury();
-  assert.equal(t.out.ist_operasyon, 100_000);
-  assert.equal(t.in.ist_iade, 100_000, 'iade: devlete net maliyet 0');
+  assert.equal(t.out.ist_operasyon, 50_000);
+  assert.equal(t.in.ist_iade, 50_000, 'iade: devlete net maliyet 0');
 });
 
 test('v35: ihbar/operasyon ilk saldırı diliminin sonuna kadar; savaş başladıktan sonra başlatılan operasyonla İstihbarat hemen 3. taraf olur', async () => {

@@ -746,12 +746,12 @@ export function createWarActions(core) {
   // SABOTAJ (çete) — 00:00–12:00 arası Baba/Sağ Kol başlatır; saldırılar
   // tır sahibine 12:00'de duyurulur; saldırı 12–24 (v38: 4 dilim); haraç (alt/üst
   // sınır yok) 21:00'e kadar ödenir; sonuç tır varışında (00:00).
-  // Ücret: SABİT — çete sabotajı 50.000, İstihbarat operasyonu 100.000
+  // Ücret: SABİT — çete sabotajı 50.000, Polis (İstihbarat) operasyonu 50.000 (v139)
   // (artık her yeni sabotaj/operasyonla artmaz).
   // Depo: saldıran çetenin deposunda tırın GERÇEK yükü kadar boş yer olmalı
   // (başlarken ayrılır, sonuçta/haraçta serbest kalır).
   // ---------------------------------------------------------------------------
-  // org === 'intel' → İstihbarat operasyonu (100.000); aksi halde çete sabotajı (50.000).
+  // org === 'intel' → Polis operasyonu (50.000, v139); aksi halde çete sabotajı (50.000).
   // `count` yalnızca günlük sayaç olarak tutulur, fiyatı ETKİLEMEZ.
   function sabotagePrice(dayDoc, org) {
     const count = Number(dayDoc?.count || 0);
