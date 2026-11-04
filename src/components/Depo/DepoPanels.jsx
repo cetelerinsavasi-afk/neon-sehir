@@ -5,6 +5,7 @@ import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useInventory } from '../../hooks/useInventory';
+import { useDepoMarket } from '../../hooks/useDepoMarket';
 import { shopAction } from '../../services/gameActions';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import PriceField from '../Shop/PriceField';
@@ -36,6 +37,10 @@ export function depoErrText(err) {
   if (m === 'own-short') return 'Envanterinde o kadar yasaklı madde yok.';
   if (m === 'depo-short') return 'Depoda o kadar yok.';
   if (m.startsWith('depo-stock:')) return `Depoda yeterli yasaklı madde yok (kalan: ${fmt(m.split(':')[1])}).`;
+  if (m.startsWith('market-stock:')) {
+    const [, n, pr] = m.split(':');
+    return `Bu fiyattan (${fmt(pr)}) şu an en fazla ${fmt(n)} adet var.`;
+  }
   if (m.startsWith('depo-gold:')) return `Deponun kasası yetmiyor: en fazla ${fmt(m.split(':')[1])} adet alabilir.`;
   if (m.startsWith('price-changed')) return `Fiyat az önce değişti (yeni adet fiyatı: ${fmt(m.split(':')[1])}). Kontrol edip tekrar dene.`;
   if (m === 'biz-closed') return 'Bu depo kapandı.';
@@ -62,7 +67,12 @@ export function DepoTradeSheet({ depotId, houseDoc, onClose }) {
   const { inventory } = useInventory();
   const isGame = depotId === GAME_DEPO_ID || Boolean(houseDoc?.bizGame);
   const view = useDepotView(depotId, isGame);
-  const prices = isGame ? GAME_DEPO_PRICES : { ...depoPricesOf(houseDoc), ...(view?.buy ? { buy: view.buy, sell: view.sell } : {}) };
+  // v142: oyunun deposunda "Al" fiyatı piyasa (malı olan en ucuz oyuncu deposu; kendi deposu hariç)
+  const market = useDepoMarket({ enabled: isGame, excludeOwner: user?.uid || null });
+  const prices = isGame
+    ? { ...GAME_DEPO_PRICES, sell: market?.price || GAME_DEPO_PRICES.sell }
+    : { ...depoPricesOf(houseDoc), ...(view?.buy ? { buy: view.buy, sell: view.sell } : {}) };
+  const marketAvail = isGame && market && !market.game ? market.available : Infinity;
   const [tab, setTab] = useState('buy');
   const [qty, setQty] = useState(1);
   const [busy, setBusy] = useState(false);
@@ -74,7 +84,7 @@ export function DepoTradeSheet({ depotId, houseDoc, onClose }) {
   // en fazla: al → (stok, cebindeki altın) · sat → (envanter, deponun kasası)
   const max =
     tab === 'buy'
-      ? Math.min(isGame ? Infinity : Number(view?.stock || 0), Math.floor(gold / unit))
+      ? Math.min(isGame ? marketAvail : Number(view?.stock || 0), Math.floor(gold / unit))
       : Math.min(mine, isGame ? Infinity : Number(view?.cap || 0));
   const safeMax = Number.isFinite(max) ? Math.max(0, max) : 0;
   useEffect(() => {
@@ -109,7 +119,7 @@ export function DepoTradeSheet({ depotId, houseDoc, onClose }) {
       <div className="bz-head">
         <div className="bz-head-main">
           <h3>💊 Yasaklı madde</h3>
-          <p>{isGame ? 'Neon Liman Deposu · sınırsız stok' : houseDoc?.name || 'Depo'}</p>
+          <p>{isGame ? 'Neon Liman Deposu · piyasa fiyatı' : houseDoc?.name || 'Depo'}</p>
         </div>
         {onClose && (
           <button className="bz-x" onClick={onClose} aria-label="Kapat">
@@ -129,6 +139,12 @@ export function DepoTradeSheet({ depotId, houseDoc, onClose }) {
         <span>{tab === 'buy' ? 'Cebindeki altın' : 'Envanterindeki yasaklı madde'}</span>
         <b>{tab === 'buy' ? <Gold v={gold} /> : `${fmt(mine)} adet`}</b>
       </div>
+      {isGame && tab === 'buy' && Number.isFinite(marketAvail) && (
+        <div className="bz-row">
+          <span>Bu fiyattan satılan</span>
+          <b>{fmt(marketAvail)} adet</b>
+        </div>
+      )}
       {!isGame && (
         <div className="bz-row">
           <span>{tab === 'buy' ? 'Depodaki yasaklı madde' : 'Deponun alabileceği'}</span>
@@ -160,6 +176,8 @@ export function DepoTradeSheet({ depotId, houseDoc, onClose }) {
 // ---- sahip: fiyatlar -----------------------------------------------------------
 export function DepoPriceSection({ houseId, houseDoc }) {
   const saved = depoPricesOf(houseDoc);
+  // v142 piyasa fiyatı: malı olan DİĞER depoların en ucuzu (yoksa oyunun fiyatı)
+  const market = useDepoMarket({ exclude: houseId });
   const [buy, setBuy] = useState(saved.buy);
   const [sell, setSell] = useState(saved.sell);
   const [busy, setBusy] = useState(false);
@@ -185,6 +203,11 @@ export function DepoPriceSection({ houseId, houseDoc }) {
   return (
     <div className="bz-sec">
       <p className="bz-sec-title">💊 Yasaklı madde fiyatları</p>
+      {market && (
+        <button type="button" className="bz-tag sk-market dp-market" onClick={() => setSell(Math.min(DEPO_SELL.max, Math.max(DEPO_SELL.min, Math.round(market.price / DEPO_STEP) * DEPO_STEP)))}>
+          📈 Piyasa fiyatı <Gold v={market.price} />
+        </button>
+      )}
       <PriceField
         label="Satış fiyatın (oyuncuya satarken)"
         value={sell}

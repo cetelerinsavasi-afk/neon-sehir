@@ -7,3 +7,21 @@
 .dp-root .bz-tabs button {
   font-weight: 700;
 }
+
+/* v142 — sahip: piyasa fiyatı (malı olan en ucuz diğer depo) */
+.bz-tag.dp-market {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(34, 211, 238, 0.45);
+  background: rgba(34, 211, 238, 0.1);
+  color: #a5f3fc;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-bottom: 6px;
+}

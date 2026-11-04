@@ -334,3 +334,17 @@
   from { opacity: 0; transform: translate(-50%, -8px) scale(0.96); }
   to { opacity: 1; transform: translate(-50%, 0) scale(1); }
 }
+
+/* v142 — Kafe & Bar: sağ üst "-10 şüphe" butonu */
+.hb-topbtns.vn-calm-wrap {
+  right: 8px;
+  left: auto;
+}
+.hb-topbtn.vn-calm-btn {
+  border-color: #39ff88;
+  color: #39ff88;
+  background: rgba(4, 20, 10, 0.82);
+}
+.hb-topbtn.vn-calm-btn:disabled {
+  opacity: 0.6;
+}

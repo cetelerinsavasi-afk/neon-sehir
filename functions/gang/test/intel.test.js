@@ -136,8 +136,8 @@ test('operasyon: sadece ihbarlı tıra, 12:00ye kadar, ücret sabit (v108: devle
   await h.act(mole, 'reportTruck', { truckId });
   await h.fails(mole, 'startOperation', { reportId }); // Muhbir başlatamaz
   const op = await h.act(chief, 'startOperation', { reportId, bribe: 0 });
-  assert.equal(op.started[0].price, 50_000, 'v139: Polis operasyonu sabit 50.000');
-  assert.equal(h.treasury().out.ist_operasyon, 50_000, 'v108: ücreti devlet öder (kasa kontrolü yok)');
+  assert.equal(op.started[0].price, 10_000, 'v142: Polis tır operasyonu sabit 10.000');
+  assert.equal(h.treasury().out.ist_operasyon, 10_000, 'v108: ücreti devlet öder (kasa kontrolü yok)');
   assert.equal(h.get('intel/main/private/state').kasa || 0, 0, 'İstihbarat kasası kapalı');
   assert.equal(h.get('sabotageDays/2026-09-22').count, 1, 'operasyon oyun geneli sayacı artırır');
   await h.fails(chief, 'startOperation', { reportId });
@@ -147,16 +147,17 @@ test('operasyon: sadece ihbarlı tıra, 12:00ye kadar, ücret sabit (v108: devle
   await h.act(G.baba, 'rollDice', { warId: `def_${truckId}_2026-09-22` }); // 2 × 60k = 120k
   const cost = h.get(`trucks/${truckId}/cargo/main`).cost;
   assert.equal(cost, 100_000, '80 yasaklı madde × 1.250');
-  // çete kasası yetmese bile ceza kesilir (eksiye düşer)
+  // v142: çete kasasından ceza KESİLMEZ (sipariş parası zaten ödenmişti)
   await h.db.doc(`gangWorlds/test/gangs/${G.gangId}/private/state`).set({ kasa: 30_000 }, { merge: true });
   await h.tickTo('2026-09-23', '00:05');
   assert.equal(h.get(`trucks/${truckId}`).lastTrip.outcome, 'seized');
   assert.equal(h.get(`trucks/${truckId}`).gangId, G.gangId);
   const depot = h.get(`gangs/${G.gangId}/private/depot`);
-  assert.equal(depot.items?.yasakliMadde || 0, 80, 'yük çetede kalır');
+  assert.equal(depot.items?.yasakliMadde || 0, 0, 'v142: mallar imha edilir');
   assert.equal(depot.reservedUnits, 0);
-  assert.equal(h.get(`gangs/${G.gangId}/private/state`).kasa, 30_000 - 100_000, 'kasa eksiye düşer');
-  assert.equal(h.treasury().in.ist_operasyon, 100_000, 'v108: tahsilat devlet kasasına');
+  assert.equal(h.get(`gangs/${G.gangId}/private/state`).kasa, 30_000, 'v142: kasadan ceza kesilmez');
+  assert.equal(depot.usedUnits || 0, 0, 'v142: depoda yer kaplamaz');
+  assert.equal(h.treasury().in.ist_operasyon, 100_000, 'v142: sipariş tutarı devlet kasasına');
 });
 
 test('rüşvet: tutarı İstihbarat operasyonda belirler; savunan 12:00 duyurusundan sonra 18:00e kadar öder → operasyon durur, para (v108) devlete', async () => {

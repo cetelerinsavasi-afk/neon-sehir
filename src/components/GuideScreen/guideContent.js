@@ -225,6 +225,7 @@ export const CATS = [
         L('🪜', 'Polis Memurundan Emniyet Genel Müdürüne beş rütbe. Prestijle yükselirsin.'),
         L('📡', 'Çetelerin yoldaki tırlarını ihbar edersin, yüklerini sızdırırsın.'),
         L('💣', 'Emniyet Genel Müdürü ve Amirler operasyon başlatıp rüşvet ister. Tır sahibi öderse operasyon durur.'),
+        L('🚨', 'Operasyon 10.000 altın, devlet öder. Polis tırı yakalarsa mallar imha edilir, çetenin sipariş parası devlete geçer, tır çeteye döner.'),
         L('🐍', 'Hem çetede hem teşkilatta olabilirsin. Köstebek.'),
         L('⚖️', 'Bir polis çetenin Babası olursa iki yol var: çeteyi teslim et ya da rozeti bırak.'),
       ],

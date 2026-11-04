@@ -123,22 +123,17 @@ export function createClock(core, actions) {
         }
         if (ownerAlive) core.announce(tx, ctx, truck.gangId, '💥', `TIR #${truck.code} sabote edildi (${strongest.sides?.attacker?.name || ''}), yük çalındı. Tır geri döndü.`);
       } else if (attackWon && strongest.type === 'intelop') {
-        // v94: yük imha EDİLMEZ — çeteye ulaşır; çete kasasından tırdaki malın sipariş
-        // tutarı kadar ceza İstihbarat'a ödenir (kasa yetmezse eksiye düşer).
+        // v142: polis tırı yakalarsa MALLAR İMHA EDİLİR (depoya girmez), tır çeteye
+        // döner. Çetenin bu tır için verdiği SİPARİŞ TUTARI (sipariş anında zaten
+        // ödenmişti) devlet kasasına geçer. Çete kasasından ayrıca ceza KESİLMEZ.
+        // (Çete sabotajında ise mallar ele geçiren çeteye geçer, para ödülü olmaz.)
         outcome = 'seized';
-        const fine = ownerAlive ? Math.max(0, Math.floor(Number(cargo.cost ?? orderSnap?.data()?.cost ?? 0))) : 0;
+        const fine = Math.max(0, Math.floor(Number(cargo.cost ?? orderSnap?.data()?.cost ?? 0)));
+        if (fine > 0) core.creditIntel(tx, ctx, intelK, fine, { type: 'intel_op_reward', refId: strongest.id, from: { kind: 'gang', id: truck.gangId } });
         if (ownerAlive) {
-          const upd = { usedUnits: FV.increment(units) };
-          for (const [k, q] of Object.entries(cargo.items || {})) upd[`items.${k}`] = FV.increment(q);
-          tx.update(ctx.ref.depot(truck.gangId), upd);
-          if (fine > 0) {
-            tx.set(ctx.ref.gangState(truck.gangId), { kasa: FV.increment(-fine) }, { merge: true });
-            if (intelK?.exists) core.creditIntel(tx, ctx, intelK, fine, { type: 'intel_op_reward', refId: strongest.id, from: { kind: 'gang', id: truck.gangId } });
-            else ledger(tx, ctx, { type: 'intel_op_fine', amount: fine, from: { kind: 'gang', id: truck.gangId }, to: { kind: 'burn' }, refId: strongest.id, actorId: 'system' });
-          }
-          core.announce(tx, ctx, truck.gangId, '🚨', `Polis TIR #${truck.code} tırını yakaladı — yük depoda, kasadan ${fine.toLocaleString('tr-TR')} altın ceza kesildi.`);
+          core.announce(tx, ctx, truck.gangId, '🚨', `Polis TIR #${truck.code} tırını yakaladı — mallar imha edildi${summary ? ` (${summary})` : ''}, ${fine.toLocaleString('tr-TR')} altınlık sipariş devlete geçti. Tır geri döndü.`);
         }
-        core.announceIntel(tx, ctx, '🚔', `TIR #${truck.code} operasyonu BAŞARILI — çeteden ${fine.toLocaleString('tr-TR')} altın tahsil edildi (devlet kasasına).`);
+        core.announceIntel(tx, ctx, '🚔', `TIR #${truck.code} operasyonu BAŞARILI — mallar imha edildi, ${fine.toLocaleString('tr-TR')} altınlık sipariş devlet kasasına geçti.`);
         strongest.reward = fine;
       } else if (ownerAlive) {
         const upd = { usedUnits: FV.increment(units) };

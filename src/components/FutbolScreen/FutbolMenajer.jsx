@@ -8,6 +8,7 @@ import {
   respondFutbolManagerHandover,
   respondFutbolManagerApplication,
   listFutbolManagerApplications,
+  unbanFutbolManager,
   listFutbolTeamForManagers,
   cancelFutbolManagerListing,
   emptyFutbolTreasuryAndReclaim,
@@ -35,6 +36,8 @@ export default function FutbolMenajer({ team, role }) {
   const { player } = usePlayer();
   const [detail, setDetail] = useState(null);
   const [applications, setApplications] = useState(null);
+  const [bannedManagers, setBannedManagers] = useState([]); // v142 — cezalı menajerler (sadece başkan)
+  const [unbanTarget, setUnbanTarget] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -67,10 +70,14 @@ export default function FutbolMenajer({ team, role }) {
   const loadApplications = () => {
     if (role !== 'owner' || !team.managerListingOpen) {
       setApplications(null);
+      setBannedManagers([]);
       return;
     }
     listFutbolManagerApplications(team.id)
-      .then((res) => setApplications(res?.data?.applications || []))
+      .then((res) => {
+        setApplications(res?.data?.applications || []);
+        setBannedManagers(Array.isArray(res?.data?.bannedManagers) ? res.data.bannedManagers : []);
+      })
       .catch(() => {});
   };
 
@@ -427,6 +434,29 @@ export default function FutbolMenajer({ team, role }) {
                   </div>
                 </div>
               ))}
+              {/* v142 — Cezalı menajerler: sadece başkan, sadece cezalı varsa */}
+              {role === 'owner' && bannedManagers.length > 0 && (
+                <>
+                  <p className="futbol-kadro-section-title">Cezalı Menajerler</p>
+                  {bannedManagers.map((b) => (
+                    <div key={b.uid} className="futbol-buy-row">
+                      <div className="futbol-buy-info">
+                        <p className="futbol-buy-name">{b.name}</p>
+                        <p className="futbol-buy-meta">Seviye {b.level ?? 0} · Bu sezon başvuramaz</p>
+                      </div>
+                      <button
+                        className="futbol-admin-reset futbol-unban-x"
+                        disabled={busy}
+                        aria-label="Cezayı kaldır"
+                        title="Cezayı kaldır"
+                        onClick={() => setUnbanTarget(b)}
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))}
+                </>
+              )}
             </>
           ) : (
             <button
@@ -458,6 +488,22 @@ export default function FutbolMenajer({ team, role }) {
           confirmLabel="Evet, İstifa Et"
           onConfirm={handleConfirm}
           onCancel={() => setConfirmAction(null)}
+        />
+      )}
+      {unbanTarget && (
+        <ConfirmModal
+          title="Cezayı Kaldır"
+          message={`${unbanTarget.name} adlı menajerin cezası kaldırılacak. Bu menajer sezon bitmeden takımına tekrar başvuru yapabilir. Emin misin?`}
+          confirmLabel="Evet, Cezayı Kaldır"
+          onConfirm={() => {
+            const target = unbanTarget;
+            setUnbanTarget(null);
+            runAction(
+              () => unbanFutbolManager(team.id, target.uid),
+              `${target.name} adlı menajerin cezası kaldırıldı — tekrar başvuru yapabilir.`
+            ).then(loadApplications);
+          }}
+          onCancel={() => setUnbanTarget(null)}
         />
       )}
       {showBooklet && <ManagerBooklet onClose={() => setShowBooklet(false)} />}

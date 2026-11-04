@@ -3597,3 +3597,110 @@ button.gx-member.gx-member-btn:active {
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+/* ===================================================================
+   v142 — Sipariş ver (araba / silah) ve depo listesi: galeri ve
+   silahçıdaki gibi ALT ALTA kartlar (resim solda, bilgi ortada,
+   adet / işlem sağda).
+   =================================================================== */
+.gx-shop {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.gx-shop-item {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+}
+.gx-shop-item img {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #151d33;
+}
+.gx-shop-item .gx-shop-emoji {
+  width: 56px;
+  flex-shrink: 0;
+  text-align: center;
+}
+.gx-shop-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.gx-shop-info .gx-shop-name {
+  font-size: 13px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+.gx-shop-item .gx-stepper {
+  flex-shrink: 0;
+  gap: 8px;
+}
+.gx-shop-item .gx-stepper b {
+  min-width: 18px;
+  text-align: center;
+}
+
+.gx-depot-row.gx-depot-card {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 10px;
+}
+.gx-depot-card .gx-depot-img {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #151d33;
+}
+.gx-depot-emoji {
+  width: 56px;
+  flex-shrink: 0;
+  font-size: 26px;
+  text-align: center;
+}
+.gx-depot-card .gx-depot-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-wrap: anywhere;
+}
+.gx-depot-card .gx-depot-acts {
+  flex-shrink: 0;
+}
+
+.gx-list-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #0f1524;
+  border: 1px solid #2a3552;
+  text-align: left;
+}
+.gx-list-head img {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #151d33;
+}
+.gx-list-head-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}

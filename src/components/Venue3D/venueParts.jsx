@@ -441,7 +441,7 @@ const BUFE_MENU = [
   { id: 'oralet', label: 'Oralet', price: 40 },
   { id: 'latte', label: 'Latte', price: 500 },
 ];
-export function ParkPart({ panel, setPanel, flash, walk }) {
+export function ParkPart({ venue, panel, setPanel, flash, walk, engineRef }) {
   const { inventory } = useInventory();
   const qty = inventory?.yasakliMadde || 0;
   const [busy, setBusy] = useState(null);
@@ -478,6 +478,25 @@ export function ParkPart({ panel, setPanel, flash, walk }) {
       <Menu show={walk}>
         <SuspicionBadge />
       </Menu>
+      {/* v142 — sağ üst: Şüpheli Adam. Basınca panel HEMEN açılır, avatar da yanına yürür. */}
+      {walk && !panel && (
+        <div className="hb-topbtns">
+          <button
+            className="hb-topbtn"
+            onClick={() => {
+              const station = Object.keys(venue?.stations || {}).find((id) => venue.stations[id]?.some((a) => a.act === 'npc')) || 'pk_cp1';
+              try {
+                engineRef?.current?.approach?.(station);
+              } catch {
+                /* yürüme olmasa da panel açılır */
+              }
+              setPanel('npc');
+            }}
+          >
+            🕶️ Şüpheli adam
+          </button>
+        </div>
+      )}
       {panel === 'bufe' && (
         <Sheet title="🌭 Büfe" onClose={() => setPanel(null)} closeLabel="Kapat">
           <div className="v3-menu-grid">

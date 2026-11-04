@@ -653,6 +653,10 @@ export const listFutbolManagerOpportunities = () =>
 export const listFutbolManagerApplications = (teamId) =>
   httpsCallable(functions, 'listFutbolManagerApplications')({ teamId });
 
+// v142 — başkan, cezalı (bu sezon tekrar başvuramayan) menajerin cezasını kaldırır
+export const unbanFutbolManager = (teamId, managerUid) =>
+  httpsCallable(functions, 'unbanFutbolManager')({ teamId, managerUid });
+
 export const markFutbolTeamNotificationsRead = (teamId) =>
   httpsCallable(functions, 'markFutbolTeamNotificationsRead')({ teamId });
 

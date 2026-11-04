@@ -14,8 +14,8 @@ import { INTEL_LEADERS, atLeast, fmt } from '../gangConstants';
 
 // v33 — Bahisli savaşa müdahale: kabul edilmiş bahis 00:00'da başlamadan önce
 // ihbar (çetesinde Tetikçi+), içerik açma (Kıdemli+, toplam bahis görünür),
-// operasyon (Başkan/Şef, 50.000 — v139). Savaş 00:00'da 3 taraflı başlar.
-const BET_OP_PRICE = 50_000;
+// operasyon (Başkan/Şef, 10.000 — v142). Savaş 00:00'da 3 taraflı başlar.
+const BET_OP_PRICE = 10_000;
 const INTEL_WINDOW_MS = 6 * 3600_000;
 
 function BetOps({ d }) {
@@ -158,7 +158,7 @@ export default function OpsTab({ d }) {
   // v137 — polis başına günde 1 tır ihbarı + 1 tır içeriği açma (sunucu da denetler)
   const reportUsed = ms.intelTruckReportDay === today;
   const leakUsed = ms.intelTruckLeakDay === today;
-  const price = 50_000; // Polis operasyonu: sabit 50.000 (v139: 100.000 → 50.000)
+  const price = 10_000; // Polis tır operasyonu: sabit 10.000 (v142: 50.000 → 10.000)
   const reported = new Set(reports.map((r) => r.truckId));
   const road = myTrucks.filter((t) => t.status === 'in_transit' && t.departDateKey === today);
   const freeReports = reports.filter((r) => !r.opWarId && isOpen(r));

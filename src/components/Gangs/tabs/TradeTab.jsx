@@ -148,7 +148,17 @@ function OrderSheet({ trucks, routes, state, depot, gangId, memberCount, orders,
   const right = memberOrderRight(state, today, memberCount);
   const myRoutes = heldRoutes.some((r) => r.id === 'yasakliMadde') || right <= 0 ? heldRoutes : [...heldRoutes, { id: 'yasakliMadde', dailyOrderLimit: 0, memberOnly: true }];
   const [truckId, setTruckId] = useState(eligible[0]?.id || null);
-  const [product, setProduct] = useState(myRoutes[0]?.id || null);
+  // v142: bugün kalan sipariş bakiyesi (limit − harcanan) — panel açılınca EN ÇOK
+  // bakiyesi olan yol seçili gelir (eşitlikte eski sıra: araba → silah → yasaklı madde)
+  const balanceOf = (r) => {
+    const sp = state?.orderSpent?.dateKey === today ? Number(state.orderSpent.byProduct?.[r.id] || 0) : 0;
+    return Math.max(0, Number(r.dailyOrderLimit || 0) + (r.id === 'yasakliMadde' ? right : 0) - sp);
+  };
+  const [product, setProduct] = useState(() => {
+    let best = myRoutes[0] || null;
+    for (const r of myRoutes) if (balanceOf(r) > balanceOf(best)) best = r;
+    return best?.id || null;
+  });
   const [qty, setQty] = useState({});
   // Sınıra takılınca ilgili çubuk kısa süre kırmızı yanar (tır / limit / depo / kasa)
   const [flash, setFlash] = useState({ keys: [], n: 0 });
@@ -258,10 +268,12 @@ function OrderSheet({ trucks, routes, state, depot, gangId, memberCount, orders,
           {items.map((it) => (
             <div key={it.key} className={`gx-shop-item${qty[it.key] ? ' active' : ''}`}>
               {it.image ? <img src={it.image} alt={it.label} /> : <span className="gx-shop-emoji">{productOf(product).emoji}</span>}
-              <span className="gx-shop-name">{it.label}</span>
-              <span className="gx-shop-sub dim">{it.sub}</span>
-              <span className="gx-shop-price">
-                <s className="dim">{fmt(it.storePrice)}</s> <b>{fmt(half(it.key))}</b>
+              <span className="gx-shop-info">
+                <span className="gx-shop-name">{it.label}</span>
+                <span className="gx-shop-sub dim">{it.sub}</span>
+                <span className="gx-shop-price">
+                  <s className="dim">{fmt(it.storePrice)}</s> <b>{fmt(half(it.key))}</b>
+                </span>
               </span>
               <span className="gx-stepper">
                 <button type="button" onClick={() => setTo(it.key, (qty[it.key] || 0) - 1)} disabled={!qty[it.key]}>
@@ -343,13 +355,14 @@ function DepotItems({ depot, lead, listings }) {
               const listed = Number(depot?.listed?.[k] || 0);
               const free = q - listed;
               return (
-                <div key={k} className="gx-depot-row">
-                  {it.image ? <img className="gx-depot-img" src={it.image} alt="" /> : <span>{it.emoji}</span>}
+                <div key={k} className="gx-depot-row gx-depot-card">
+                  {it.image ? <img className="gx-depot-img" src={it.image} alt="" /> : <span className="gx-depot-emoji">{it.emoji}</span>}
                   <span className="gx-depot-name">
-                    {it.label}
-                    {listed > 0 && <span className="dim"> · 🏷️ {listed} ilanda</span>}
+                    <b>{it.label}</b>
+                    <span className="dim gx-mini">
+                      {fmt(q)} adet{listed > 0 ? ` · 🏷️ ${listed} ilanda` : ''}
+                    </span>
                   </span>
-                  <b>{fmt(q)}</b>
                   {lead && free > 0 && (
                     <span className="gx-depot-acts">
                       {k === 'yasakliMadde' ? (
@@ -432,6 +445,15 @@ function DepotItems({ depot, lead, listings }) {
             if (r) setAct(null);
           }}
         >
+          {act.type === 'list' && (
+            <div className="gx-list-head">
+              {act.it.image ? <img src={act.it.image} alt="" /> : <span className="gx-depot-emoji">{act.it.emoji}</span>}
+              <span className="gx-list-head-info">
+                <b>{act.it.label}</b>
+                <span className="dim gx-mini">Depoda ilana konabilir: {fmt(act.max)} adet</span>
+              </span>
+            </div>
+          )}
           <span className="dim gx-mini">Adet</span>
           <AmountInput value={qty} onChange={setQty} max={act.max} min={1} quick={[5, 10, 50]} />
           {act.type === 'dist' && <Chips options={DIST_GROUPS.map((g) => ({ id: g.id, label: g.label, icon: g.icon }))} value={group} onChange={setGroup} />}

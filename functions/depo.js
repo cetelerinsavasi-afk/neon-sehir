@@ -19,6 +19,16 @@
 //   houses/{id}.bizPrices.depo = { buy, sell } — işletme listesinde fiyat (herkes görür)
 // Ticaret vergisizdir (kullanıcı kararı yalnız envanter için "vergisiz" dedi;
 // ticarete de vergi eklenmedi).
+//
+// v142 — PİYASA (silahçı / galerideki sistemin aynısı): oyunun deposundan yasaklı
+// madde ALINCA aslında oyuncu depolarından alınır. İçinde mal olan depoların EN
+// UCUZU satar; aynı fiyatta birden çok depo varsa dünkü kazanç sırasında en altta
+// olan (sırası yoksa en alt sayılır) önce satar, malı biterse sıradakine geçilir.
+// Oyunun deposunun "Al" fiyatı = bu piyasa fiyatı. İçinde mal olan oyuncu deposu
+// yoksa oyunun deposu kendisi 2.250'den (sınırsız) satar. Oyunun deposuna SATMAK
+// değişmedi (1.500, sınırsız).
+//   shopOffers/depo — { v: 1, offers: { houseId: { p: satış fiyatı, s: stok, o: sahibi } } }
+//   (tek belge, herkes okur; SADECE içinde mal olan depolar yazılır)
 // =============================================================================
 
 import { goldTag } from './moneyLog.js';
@@ -32,6 +42,29 @@ export const DEPO_SELL = { min: 2000, max: 2250, def: 2250 }; // depo oyuncuya s
 export const GAME_DEPO_PRICES = { buy: 1500, sell: 2250 };
 export const DEPO_MAX_QTY = 100_000; // tek işlemde (taşma / hata koruması)
 export const CONTRABAND = 'yasakliMadde';
+export const DEPO_OFFERS_KIND = 'depo'; // shopOffers/depo
+const MARKET_MAX_DEPOTS = 12; // bir alışta en fazla bu kadar depo doğrulanır
+
+// v142 — piyasa (saf; sunucu + istemci): içinde mal olan depoların en ucuzu.
+// offers: shopOffers/depo.offers · exclude: sayılmayacak depo(lar) · excludeOwner: bu oyuncunun depoları
+// Dönen: { price, available } — available = o fiyattaki depoların toplam malı.
+// Mal olan depo yoksa oyunun fiyatı (sınırsız: available = Infinity).
+export function depoMarketOf(offers, exclude = null, excludeOwner = null) {
+  const skip = new Set([].concat(exclude || []).filter(Boolean));
+  let price = 0;
+  let available = 0;
+  for (const [hid, o] of Object.entries(offers || {})) {
+    if (skip.has(hid) || (excludeOwner && o?.o === excludeOwner)) continue;
+    const p = Math.floor(Number(o?.p) || 0);
+    const st = Math.floor(Number(o?.s) || 0);
+    if (p <= 0 || st <= 0 || p > GAME_DEPO_PRICES.sell) continue;
+    if (!price || p < price) {
+      price = p;
+      available = st;
+    } else if (p === price) available += st;
+  }
+  return price ? { price, available, game: false } : { price: GAME_DEPO_PRICES.sell, available: Infinity, game: true };
+}
 
 const onStep = (v, band) => Number.isInteger(v) && v >= band.min && v <= band.max && (v - band.min) % DEPO_STEP === 0;
 export const clampDepoPrice = (v, band) => {
@@ -88,6 +121,7 @@ export function createDepo({ db, FieldValue, HttpsError, splitIncomeForDebt, bus
   const depotRef = (id) => db.collection('depots').doc(id);
   const viewRef = (id) => db.collection('depotView').doc(id);
   const userRef = (uid) => db.collection('users').doc(uid);
+  const offersRef = () => db.collection('shopOffers').doc(DEPO_OFFERS_KIND);
   const invRef = (uid) => userRef(uid).collection('inventory').doc(CONTRABAND);
   const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
   const posQty = (v) => {
@@ -114,6 +148,10 @@ export function createDepo({ db, FieldValue, HttpsError, splitIncomeForDebt, bus
       stock: Math.max(0, Math.floor(Number(d[CONTRABAND]) || 0)),
     };
   }
+  // v142 — piyasa belgesine bu deponun satış fiyatı + stoğu (stok 0 → silinir)
+  function offerWrite(tx, houseId, price, stockN, ownerUid = null) {
+    tx.set(offersRef(), { offers: { [houseId]: stockN > 0 && price > 0 ? { p: price, s: stockN, o: ownerUid || null } : FieldValue.delete() }, updatedAtMs: now() }, { merge: true });
+  }
   // Depo envanteri + herkese açık görünüm (YAZMA)
   function writeDepot(tx, dep, { goldDelta = 0, stockDelta = 0, prices = null } = {}) {
     if (dep.game) return;
@@ -123,8 +161,111 @@ export function createDepo({ db, FieldValue, HttpsError, splitIncomeForDebt, bus
     const pr = prices || dep.prices;
     tx.set(depotRef(dep.id), { ownerUid: dep.h.ownerUid, gold, [CONTRABAND]: stock, updatedAtMs: now() }, { merge: true });
     tx.set(viewRef(dep.id), { buy: pr.buy, sell: pr.sell, stock, cap: capOf(gold, pr.buy), updatedAtMs: now() });
+    // v142: piyasa — sadece malı olan depo yazılır (malı yokken yeniden yazılmaz)
+    if (stock > 0 || dep.stock > 0) offerWrite(tx, dep.id, pr.sell, stock, dep.h.ownerUid);
     dep.gold = gold;
     dep.stock = stock;
+  }
+
+  // v142 — piyasa belgesi yoksa (ilk sürüm) bir kez kurulur: içinde mal olan depolar
+  async function ensureOffers() {
+    const s0 = await offersRef().get();
+    if (s0.exists && s0.data()?.v === 1) return { ok: true };
+    const ds = await db.collection('depots').get();
+    const withStock = ds.docs.filter((d) => d.id !== GAME_DEPO_ID && Math.floor(Number(d.data()?.[CONTRABAND]) || 0) > 0);
+    const houses = await Promise.all(withStock.map((d) => houseRef(d.id).get()));
+    const offers = {};
+    withStock.forEach((d, i) => {
+      const hs = houses[i];
+      if (!hs?.exists || hs.data()?.biz?.type !== DEPO_TYPE) return;
+      offers[d.id] = { p: depoPricesOf(hs.data()).sell, s: Math.floor(Number(d.data()[CONTRABAND]) || 0), o: hs.data().ownerUid || null };
+    });
+    await db.runTransaction(async (tx) => {
+      const s = await tx.get(offersRef());
+      if (s.exists && s.data()?.v === 1) return;
+      tx.set(offersRef(), { v: 1, offers, updatedAtMs: now() });
+    });
+    return { ok: true };
+  }
+
+  // v142 — OYUNUN DEPOSUNDAN ALIŞ → piyasa (içinde mal olan en ucuz oyuncu deposu).
+  // Aynı fiyatta: dünkü kazanç sırasında en altta olan önce; malı yetmezse sıradaki.
+  // En ucuz fiyattaki depoların toplam malından fazlası istenirse: market-stock:adet:fiyat.
+  // Kendi deposu sayılmaz. Mal olan depo yoksa oyunun kendisi satar (2.250, sınırsız).
+  const RANK_LAST = Number.MAX_SAFE_INTEGER;
+  const rankOf = (h) => (Number.isFinite(Number(h?.bizRank)) && Number(h.bizRank) > 0 ? Number(h.bizRank) : RANK_LAST);
+  async function gameBuy(uid, qty, expect) {
+    await ensureOffers();
+    let result = null;
+    await db.runTransaction(async (tx) => {
+      const [os, us, is] = await Promise.all([tx.get(offersRef()), tx.get(userRef(uid)), tx.get(invRef(uid))]);
+      if (!us.exists) fail('failed-precondition', 'Oyuncu bulunamadı.');
+      void is;
+      const map = os.data()?.offers || {};
+      const groups = new Map();
+      for (const [hid, o] of Object.entries(map)) {
+        const pr = Math.floor(Number(o?.p) || 0);
+        if (!isId(hid) || hid === GAME_DEPO_ID || pr <= 0 || Math.floor(Number(o?.s) || 0) <= 0) continue;
+        if (!groups.has(pr)) groups.set(pr, []);
+        groups.get(pr).push(hid);
+      }
+      const fixes = []; // [houseId, fiyat, stok] — belgesi yanlış olanlar düzeltilir
+      let tier = null; // { price, list: [{ dep }] }
+      let looked = 0;
+      for (const pr of [...groups.keys()].sort((a, b) => a - b)) {
+        if (looked >= MARKET_MAX_DEPOTS) break;
+        const ids = groups.get(pr).slice(0, MARKET_MAX_DEPOTS - looked);
+        looked += ids.length;
+        const snaps = await Promise.all(ids.map((hid) => Promise.all([tx.get(houseRef(hid)), tx.get(depotRef(hid))])));
+        const valid = [];
+        ids.forEach((hid, i) => {
+          const [hs, ds] = snaps[i];
+          const h = hs.exists ? { id: hid, ...hs.data() } : null;
+          const open = h && h.biz?.type === DEPO_TYPE;
+          const d = ds.exists ? ds.data() : {};
+          const stockN = open ? Math.max(0, Math.floor(Number(d[CONTRABAND]) || 0)) : 0;
+          const prices = open ? depoPricesOf(h) : null;
+          if (!open || stockN <= 0 || prices.sell !== pr || Math.floor(Number(map[hid]?.s) || 0) !== stockN) fixes.push([hid, prices?.sell || 0, stockN, h?.ownerUid]);
+          if (open && stockN > 0 && prices.sell === pr && h.ownerUid !== uid) {
+            valid.push({ game: false, id: hid, h, prices, gold: Math.max(0, Math.floor(Number(d.gold) || 0)), stock: stockN });
+          }
+        });
+        if (valid.length) {
+          valid.sort((a, b) => rankOf(b.h) - rankOf(a.h) || a.id.localeCompare(b.id));
+          tier = { price: pr, list: valid };
+          break;
+        }
+      }
+      const fixAll = () => fixes.forEach(([hid, pr, st, ow]) => offerWrite(tx, hid, pr, st, ow));
+      const unit = tier ? tier.price : GAME_DEPO_PRICES.sell;
+      const avail = tier ? tier.list.reduce((a, x) => a + x.stock, 0) : Infinity;
+      const total = unit * qty;
+      const bad = (expect != null && Number(expect) !== unit && 'price') || (qty > avail && 'stock') || (Number(us.data()?.gold || 0) < total && 'gold') || null;
+      if (bad) {
+        fixAll();
+        result = { bad, unit, avail };
+        return;
+      }
+      fixAll();
+      const atMs = now();
+      tx.update(userRef(uid), { gold: FieldValue.increment(-total), goldTag: goldTag('depo') });
+      tx.set(invRef(uid), { quantity: FieldValue.increment(qty) }, { merge: true });
+      if (tier) {
+        let left = qty;
+        for (const dep of tier.list) {
+          if (left <= 0) break;
+          const take = Math.min(left, dep.stock);
+          left -= take;
+          writeDepot(tx, dep, { goldDelta: unit * take, stockDelta: -take });
+          business?.recordIncomeTx?.(tx, { houseId: dep.id, h: dep.h, amount: unit * take, kind: 'sale', customerUid: uid, products: { [CONTRABAND]: take }, atMs });
+        }
+      }
+      result = { ok: true, side: 'buy', qty, unit, total, game: true, fromDepot: Boolean(tier) };
+    });
+    if (result.bad === 'price') fail('aborted', `price-changed:${result.unit}`);
+    if (result.bad === 'stock') fail('failed-precondition', `market-stock:${result.avail}:${result.unit}`);
+    if (result.bad === 'gold') fail('failed-precondition', 'gold');
+    return result;
   }
 
   // ---- müşteri: al / sat --------------------------------------------------------
@@ -133,6 +274,12 @@ export function createDepo({ db, FieldValue, HttpsError, splitIncomeForDebt, bus
     const depotId = String(p.depotId || '');
     const side = p.side === 'sell' ? 'sell' : p.side === 'buy' ? 'buy' : fail('invalid-argument', 'Geçersiz işlem.');
     const qty = posQty(p.qty);
+    // v142: oyunun deposundan ALIŞ piyasadan (en ucuz, malı olan oyuncu deposu)
+    if (depotId === GAME_DEPO_ID && side === 'buy') {
+      const r = await gameBuy(uid, qty, p.expect);
+      await advanceOnboardingStep(uid, 2); // Görev 2 — 1 adet yasaklı madde satın al
+      return r;
+    }
     let result = null;
     await db.runTransaction(async (tx) => {
       const dep = await readDepot(tx, depotId);
@@ -274,6 +421,7 @@ export function createDepo({ db, FieldValue, HttpsError, splitIncomeForDebt, bus
     // merge YOK: aynı kapanış iki kez iade etmesin
     if (state.depot) tx.set(depotRef(houseId), { ownerUid: h.ownerUid, gold: 0, [CONTRABAND]: 0, closedAtMs: now(), updatedAtMs: now() });
     tx.delete(viewRef(houseId));
+    if (stockN > 0) offerWrite(tx, houseId, 0, 0); // v142: piyasadan çıkar
     return { depotGold: gold, depotContraband: stockN };
   }
   async function statusExtra({ houseId, h }) {
@@ -288,8 +436,9 @@ export function createDepo({ db, FieldValue, HttpsError, splitIncomeForDebt, bus
     depoPrice: (uid, p) => price(uid, p),
     depoStock: (uid, p) => stock(uid, p),
     depoEnsureGame: () => ensureGame(),
+    depoOffersEnsure: () => ensureOffers(), // v142
   };
-  return { ops, trade, price, stock, ensureGame, readDepotForSale, writeDepotSale, bizHooks: { onCloseRead, onCloseWrite, statusExtra } };
+  return { ops, trade, price, stock, ensureGame, ensureOffers, readDepotForSale, writeDepotSale, bizHooks: { onCloseRead, onCloseWrite, statusExtra } };
 }
 
 // İki işletme modülünün kapanış kancalarını birleştirir (houses.js tek kanca bekler)

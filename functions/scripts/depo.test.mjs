@@ -192,3 +192,92 @@ test('2. el yasaklı madde ilanları: oyuncuya iade, sistem ilanı kapanır, çe
   assert.deepEqual(r2, { players: 0, qtyBack: 0, gangs: 0 });
   assert.equal(G('users/s/inventory/yasakliMadde').quantity, 8);
 });
+
+// ---------------------------------------------------------------------------
+// v142 — PİYASA: oyunun deposundan alış en ucuz (malı olan) oyuncu deposundan
+// ---------------------------------------------------------------------------
+import { depoMarketOf } from '../depo.js';
+
+function market() {
+  const h = setup();
+  // d1 (patron) 2.050 · d2 (ayse) 2.000 ama MALI YOK · d3 (mehmet) 2.050 · d4 (zeki) 2.000
+  h.S('users/ayse', { gold: 0 });
+  h.S('users/mehmet', { gold: 0 });
+  h.S('users/zeki', { gold: 0 });
+  h.S('houses/d2', { ownerUid: 'ayse', biz: { type: 'depo' }, bizType: 'depo', bizPrices: { depo: { buy: 1500, sell: 2000 } }, bizRank: 9 });
+  h.S('houses/d3', { ownerUid: 'mehmet', biz: { type: 'depo' }, bizType: 'depo', bizPrices: { depo: { buy: 1500, sell: 2050 } }, bizRank: 1 });
+  h.S('houses/d4', { ownerUid: 'zeki', biz: { type: 'depo' }, bizType: 'depo', bizPrices: { depo: { buy: 1500, sell: 2000 } }, bizRank: 2 });
+  h.S('houses/d1', { ...h.G('houses/d1'), bizRank: 3 });
+  h.S('depots/d1', { ownerUid: 'patron', gold: 0, yasakliMadde: 5 });
+  h.S('depots/d2', { ownerUid: 'ayse', gold: 0, yasakliMadde: 0 });
+  h.S('depots/d3', { ownerUid: 'mehmet', gold: 0, yasakliMadde: 4 });
+  h.S('depots/d4', { ownerUid: 'zeki', gold: 0, yasakliMadde: 3 });
+  return h;
+}
+
+test('v142 piyasa (saf): malı olan en ucuz; eşit fiyatta mallar toplanır; mal yoksa oyunun fiyatı', () => {
+  assert.deepEqual(depoMarketOf({}), { price: 2250, available: Infinity, game: true });
+  const o = { a: { p: 2000, s: 0 }, b: { p: 2050, s: 4 }, c: { p: 2050, s: 1 }, d: { p: 2100, s: 9 } };
+  assert.deepEqual(depoMarketOf(o), { price: 2050, available: 5, game: false }, 'malı olmayan en ucuz sayılmaz');
+  assert.deepEqual(depoMarketOf(o, 'b'), { price: 2050, available: 1, game: false }, 'kendi deposu hariç');
+  assert.deepEqual(depoMarketOf({ x: { p: 2000, s: 3, o: 'me' }, y: { p: 2100, s: 2, o: 'sen' } }, null, 'me'), { price: 2100, available: 2, game: false }, 'kendi depoları hariç');
+});
+
+test('v142 oyunun deposundan alış: en ucuz MALI OLAN depo satar, para o depoya gider; piyasa belgesi kurulur', async () => {
+  const h = market();
+  const r = await h.depo.trade('ali', { depotId: GAME_DEPO_ID, side: 'buy', qty: 2, expect: 2000 });
+  assert.equal(r.unit, 2000);
+  assert.equal(r.total, 4000);
+  assert.equal(h.G('users/ali').gold, 100_000 - 4000);
+  assert.equal(h.G('users/ali/inventory/yasakliMadde').quantity, 2);
+  assert.equal(h.G('depots/d4').yasakliMadde, 1, 'd2 de 2.000 ama malı yok → d4');
+  assert.equal(h.G('depots/d4').gold, 4000);
+  assert.equal(h.G('depots/d2').yasakliMadde, 0);
+  assert.deepEqual(h.G('shopOffers/depo').offers.d4, { p: 2000, s: 1, o: 'zeki' });
+  assert.equal(h.G('shopOffers/depo').offers.d2, undefined, 'malı olmayan depo piyasada yok');
+  assert.equal(h.income.at(-1).houseId, 'd4');
+  assert.deepEqual(h.steps, [['ali', 2]]);
+  // fiyat ekrandakinden farklıysa
+  await assert.rejects(h.depo.trade('ali', { depotId: GAME_DEPO_ID, side: 'buy', qty: 1, expect: 2250 }), /price-changed:2000/);
+  // o fiyatta 1 adet kaldı → 2 istenirse
+  await assert.rejects(h.depo.trade('ali', { depotId: GAME_DEPO_ID, side: 'buy', qty: 2, expect: 2000 }), /market-stock:1:2000/);
+  await h.depo.trade('ali', { depotId: GAME_DEPO_ID, side: 'buy', qty: 1, expect: 2000 });
+  assert.equal(h.G('depots/d4').yasakliMadde, 0);
+  assert.equal(h.G('shopOffers/depo').offers.d4, undefined, 'malı bitince piyasadan çıkar');
+});
+
+test('v142 eşit fiyat: dünkü kazançta en altta olan önce satar, malı bitince sıradaki; kendi deposundan alınmaz', async () => {
+  const h = market();
+  h.S('depots/d4', { ownerUid: 'zeki', gold: 0, yasakliMadde: 0 });
+  // 2.050: d1 (sıra 3) ve d3 (sıra 1) → önce d1 (en az kazanan), sonra d3
+  const r = await h.depo.trade('ali', { depotId: GAME_DEPO_ID, side: 'buy', qty: 7, expect: 2050 });
+  assert.equal(r.total, 7 * 2050);
+  assert.equal(h.G('depots/d1').yasakliMadde, 0);
+  assert.equal(h.G('depots/d1').gold, 5 * 2050);
+  assert.equal(h.G('depots/d3').yasakliMadde, 2);
+  assert.equal(h.G('depots/d3').gold, 2 * 2050);
+  // mehmet kendi deposu (d3) dışında mal olan depo yok → oyunun deposu 2.250
+  h.S('users/mehmet', { gold: 10_000 });
+  const r2 = await h.depo.trade('mehmet', { depotId: GAME_DEPO_ID, side: 'buy', qty: 1, expect: 2250 });
+  assert.equal(r2.fromDepot, false);
+  assert.equal(h.G('depots/d3').yasakliMadde, 2, 'kendi deposuna dokunulmaz');
+});
+
+test('v142 mal olan oyuncu deposu yoksa oyunun deposu 2.250 sınırsız satar; oyunun deposuna satış değişmedi', async () => {
+  const h = setup();
+  const r = await h.depo.trade('ali', { depotId: GAME_DEPO_ID, side: 'buy', qty: 40, expect: 2250 });
+  assert.equal(r.total, 40 * 2250);
+  assert.equal(r.fromDepot, false);
+  const s = await h.depo.trade('veli', { depotId: GAME_DEPO_ID, side: 'sell', qty: 1, expect: 1500 });
+  assert.equal(s.unit, 1500);
+});
+
+test('v142 sahip mal ekleyince / fiyat değişince / depo kapanınca piyasa belgesi güncellenir', async () => {
+  const h = setup();
+  await h.depo.stock('patron', { depotId: 'd1', asset: 'yasakliMadde', qty: 6 });
+  assert.deepEqual(h.G('shopOffers/depo').offers.d1, { p: 2050, s: 6, o: 'patron' });
+  await h.depo.price('patron', { depotId: 'd1', buy: 1500, sell: 2000 });
+  assert.deepEqual(h.G('shopOffers/depo').offers.d1, { p: 2000, s: 6, o: 'patron' });
+  await h.depo.stock('patron', { depotId: 'd1', asset: 'yasakliMadde', qty: -6 });
+  assert.equal(h.G('shopOffers/depo').offers.d1, undefined);
+});

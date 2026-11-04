@@ -17153,7 +17153,57 @@ export const listFutbolManagerApplications = onCall(async (request) => {
     throw new HttpsError('permission-denied', 'Bu takım sana ait değil.');
   }
   const appsSnap = await teamRef.collection('managerApplications').orderBy('appliedAt', 'desc').get();
-  return { applications: appsSnap.docs.map((d) => ({ id: d.id, ...d.data() })) };
+  // v142 — CEZALI MENAJERLER: bu sezon bu takıma tekrar başvuramayan eski
+  // menajerler (bannedManagerUids[uid] === güncel sezon). Sadece başkan görür
+  // (bu fonksiyon zaten sadece başkana açık). Cezalı yoksa hiçbir ek okuma yapılmaz.
+  const team = teamSnap.data();
+  const banMap = team.bannedManagerUids || {};
+  let bannedManagers = [];
+  if (Object.keys(banMap).length > 0) {
+    const season = await futbolCurrentSeasonForTeam(team);
+    const bannedUids = Object.keys(banMap).filter((u) => banMap[u] === season).slice(0, 30);
+    if (bannedUids.length > 0) {
+      const userSnaps = await db.getAll(...bannedUids.map((u) => db.collection('users').doc(u)));
+      bannedManagers = userSnaps.map((us, i) => ({
+        uid: bannedUids[i],
+        name: (us.exists && us.data()?.displayName) || 'İsimsiz Oyuncu',
+        level: (us.exists && us.data()?.futbolManagerLevel) || 0,
+      }));
+    }
+  }
+  return { applications: appsSnap.docs.map((d) => ({ id: d.id, ...d.data() })), bannedManagers };
+});
+
+// v142 — unbanFutbolManager: başkan, bu sezon cezalı olan (istifa / 3 yenilgi /
+// 3 gün hareketsizlik yüzünden görevden düşen) bir menajerin cezasını kaldırır;
+// o oyuncu sezon bitmeden bu takıma tekrar başvurabilir. SADECE takım başkanı,
+// takımda menajer yokken (ilan açıkken) kullanabilir.
+export const unbanFutbolManager = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const { teamId, managerUid } = request.data || {};
+  if (!teamId || !managerUid || typeof managerUid !== 'string') {
+    throw new HttpsError('invalid-argument', 'teamId ve managerUid gerekli.');
+  }
+  const teamRef = db.collection('futbolTeams').doc(teamId);
+  const teamName = await db.runTransaction(async (tx) => {
+    const snap = await tx.get(teamRef);
+    if (!snap.exists || snap.data().ownerUid !== uid) {
+      throw new HttpsError('permission-denied', 'Bu takım sana ait değil.');
+    }
+    const team = snap.data();
+    if (team.managerUid) {
+      throw new HttpsError('failed-precondition', 'Takımda menajer varken ceza kaldırılamaz.');
+    }
+    if (!team.bannedManagerUids || team.bannedManagerUids[managerUid] == null) {
+      throw new HttpsError('not-found', 'Bu oyuncunun cezası yok.');
+    }
+    tx.update(teamRef, { [`bannedManagerUids.${managerUid}`]: admin.firestore.FieldValue.delete() });
+    return team.name || 'Takım';
+  });
+  const batch = db.batch();
+  sendFutbolSms(batch, managerUid, `⚽ ${teamName} başkanı cezanı kaldırdı — bu takıma tekrar menajerlik başvurusu yapabilirsin.`, 'futbol_manager_unbanned');
+  await batch.commit();
+  return { ok: true };
 });
 
 // markFutbolTeamNotificationsRead — Bölüm 16 (Bildirimler): takımın çan

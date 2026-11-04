@@ -24,6 +24,7 @@ import { gymPriceOf, GAME_GYM_PRICE } from '../../../functions/gym.js';
 import { netPriceOf } from '../../../functions/venue.js';
 import { streamPriceOf } from '../../../functions/stream.js';
 import { depoPricesOf } from '../../../functions/depo.js';
+import { useDepoMarket } from '../../hooks/useDepoMarket';
 import { casinoPricesOf } from '../../../functions/casino.js';
 import { SLOT_GAME_COST, GAME_LOTTERY_CUT, lotteryTicketPrice } from '../../../functions/casinoRules.js';
 
@@ -82,7 +83,7 @@ const WORKSHOP_LINES = {
   silahci: [['Tamir', 'tamirMalzemesi'], ['Geliştirme', 'silahUpgrade']],
   modifiye: [['Tamir', 'tamirMalzemesi'], ['Geliştirme', 'arabaGelistirme']],
 };
-function bizPriceText(type, h, isGame = false) {
+function bizPriceText(type, h, isGame = false, depoMarket = null) {
   if (WORKSHOP_LINES[type]) {
     return WORKSHOP_LINES[type]
       .map(([label, m]) => {
@@ -96,7 +97,9 @@ function bizPriceText(type, h, isGame = false) {
   // v124 — depo: müşterinin bakışıyla (Al = depodan alırsın, Sat = depoya satarsın)
   if (type === 'depo') {
     const p = depoPricesOf(isGame ? null : h);
-    return `Al: ${fmt(p.sell)} altın · Sat: ${fmt(p.buy)} altın`;
+    // v142: oyunun deposunda "Al" = piyasa fiyatı (malı olan en ucuz oyuncu deposu)
+    const sell = isGame && depoMarket?.price ? depoMarket.price : p.sell;
+    return `Al: ${fmt(sell)} altın · Sat: ${fmt(p.buy)} altın`;
   }
   // v124 Faz 6 — gazino: slot ücreti + biletten havuza giden
   if (type === 'gazino') {
@@ -130,6 +133,8 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
   const { user, loading: authLoading } = useAuth();
   const { player } = usePlayer();
   const [houseId, setHouseId] = useState(null);
+  // v142 — depo listesinde oyunun deposunun "Al" fiyatı piyasadan (sadece depo listesinde dinlenir)
+  const depoMarket = useDepoMarket({ enabled: type === 'depo' && Boolean(user) && !houseId, excludeOwner: user?.uid || null });
   const { list: userList, loading: userLoading, gameRank, gamePeople: gameHousePeople } = useBusinessList(type, { enabled: Boolean(user) && !houseId });
   // v134 — misafir: işletmeler sunucudan (salt okuma), içine girip gezer
   const isGuest = !user && !authLoading;
@@ -331,7 +336,7 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
               <span className="hh-info">
                 <b>{game.name}</b>
                 <span>Sahibi: Neon Şehir</span>
-                {bizPriceText(type, null, true) && <span className="bh-price">{bizPriceText(type, null, true)}</span>}
+                {bizPriceText(type, null, true, depoMarket) && <span className="bh-price">{bizPriceText(type, null, true, depoMarket)}</span>}
               </span>
               <span className={`hh-count${gamePeople ? ' live' : ''}`}>
                 <i />

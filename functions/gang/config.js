@@ -66,9 +66,9 @@ export const GANG = {
   BET_INTEL_WINDOW_MS: 6 * MS_HOUR,
 
   // --- Sabotaj / Operasyon — SABİT ücret (artık her yeni sabotaj/operasyonla
-  // ARTMAZ). Çete sabotajı 50.000, Polis (İstihbarat) operasyonu 50.000 altın (v139: 100.000 → 50.000). ---
+  // ARTMAZ). Çete sabotajı 50.000, Polis (İstihbarat) tır operasyonu 10.000 altın (v142: 50.000 → 10.000). ---
   SABOTAGE_PRICE: 50_000,
-  INTEL_OP_PRICE: 50_000, // v139
+  INTEL_OP_PRICE: 10_000, // v142 (v139: 50.000)
   SABOTAGE_START_DEADLINE_HOUR: 12,
   ATTACK_PHASE_1_START_HOUR: 12, // sabotaj/operasyon 12:00–24:00 = 4 dilim (v38)
 
@@ -157,7 +157,7 @@ export const INTEL = {
   // v33: bahisli savaşa müdahale — ihbar/açma ödülü tırlarla aynı; operasyon sabit ücret
   BET_REPORT_PRESTIGE: 500_000, // v109
   BET_LEAK_PRESTIGE: 500_000, // v109
-  BET_OP_PRICE: 50_000, // v139: 100.000 → 50.000
+  BET_OP_PRICE: 10_000, // v142: polisin bahse operasyonu 50.000 → 10.000 (çete sabotajı 50.000 kalır)
   TAKEDOWN_PRESTIGE: 10_000_000, // ONAYLI: çete çökertme
   // v50: pazar savaşını kazanırsa kasaya, savaşa katılan TÜM tarafların
   // (çeteler + İstihbarat) toplam gücünün %5'i girer (eskiden kendi gücünün 1/10'u).
