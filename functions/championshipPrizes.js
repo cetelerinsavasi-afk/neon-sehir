@@ -41,9 +41,9 @@ export const CHAMP_V2_START_DAY = '2026-10-25';
 export const CHAMP_V2_MIGRATE_UNTIL = '2026-11-02';
 export const CHAMP_BOARD_SHOW = 10;
 
-// [üst sınır (ms, HARİÇ), ödül] — v132.1 tablosu: 25 sn altı 500.000 … 60 sn'ye kadar (dahil) 1.000
+// [üst sınır (ms, HARİÇ), ödül] — v132.1 tablosu: 25 sn altı 400.000 (v143: 500.000 → 400.000) … 60 sn'ye kadar (dahil) 1.000
 export const CHAMP_PRIZE_TIERS = [
-  [25000, 500000],
+  [25000, 400000],
   [26000, 250000],
   [27000, 150000],
   [28000, 100000],
@@ -59,7 +59,7 @@ export const CHAMP_PRIZE_TIERS = [
 ];
 
 // v130 — "Üstün Cabrio şampiyonu" başarısı: Üstün Cabrio (katalog 10) ile 250.000 ya da
-// 500.000 altınlık ödül (pisti 26 sn'nin altında bitirmek)
+// 400.000 altınlık ödül (pisti 26 sn'nin altında bitirmek)
 export const CABRIO_CATALOG_ID = 10;
 export const CABRIO_ACH_MIN_PRIZE = 250000;
 export const earnsCabrioAchievement = (catalogId, prize) => Number(catalogId) === CABRIO_CATALOG_ID && Number(prize) >= CABRIO_ACH_MIN_PRIZE;

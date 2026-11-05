@@ -58,8 +58,8 @@ test('v128 ödül tablosu (süre → altın)', () => {
   assert.equal(s(27.5), 100000);
   assert.equal(s(26.5), 150000);
   assert.equal(s(25.5), 250000);
-  assert.equal(s(22), 500000);
-  assert.equal(s(18), 500000);
+  assert.equal(s(22), 400000);
+  assert.equal(s(18), 400000);
   assert.equal(championshipTimePrize(0), 0);
   assert.equal(championshipTimePrize(null), 0);
 });
@@ -117,12 +117,12 @@ test('v128 geçiş: bugünkü eski yarışlar süresine göre ödenir, listeye g
   assert.deepEqual(h.grants, []);
 });
 
-test('v130 Üstün Cabrio başarısı: Cabrio ile 250.000 / 500.000 ödül (26 sn altı) → başarı; başka araç ya da yavaş süre → yok', async () => {
+test('v130 Üstün Cabrio başarısı: Cabrio ile 250.000 / 400.000 ödül (26 sn altı) → başarı; başka araç ya da yavaş süre → yok', async () => {
   const h = champSetup();
   const day = CHAMP_V2_START_DAY;
   for (const u of ['ali', 'veli', 'can', 'ece']) h.S(`users/${u}`, { gold: 0 });
   h.S('raceRooms/c1', legacyRoom('ali', 'x1', 10, 25500, day)); // 250.000 → başarı
-  h.S('raceRooms/c2', legacyRoom('veli', 'x2', 10, 24000, day)); // 500.000 → başarı
+  h.S('raceRooms/c2', legacyRoom('veli', 'x2', 10, 24000, day)); // 400.000 → başarı
   h.S('raceRooms/c3', legacyRoom('can', 'x3', 10, 26500, day)); // 200.000 → yok
   h.S('raceRooms/c4', legacyRoom('ece', 'x4', 9, 24000, day)); // başka araç → yok
   await h.champ.migrateLegacyDay(day, { todayKey: day });
