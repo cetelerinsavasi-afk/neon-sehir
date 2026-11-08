@@ -1,7 +1,7 @@
-# Neon Sehir v146.1 - cete paneli alt sekme ortusmesi + ucuz ilan otomatik satis 7 -> 3 gun
-#   1) Sunucu fonksiyonlari (2 grup, her biri 3 deneme)
+# Neon Sehir v146.2 - Karargah mobilya kategorisi + kursu egimi
+#   1) Sunucu fonksiyonlari (houseAction, 3 deneme)
 #   2) Hepsi basariliysa git commit + push (arayuz)
-#   Cift tikla: deploy-v146-1.bat   - soru sormaz.
+#   Cift tikla: deploy-v146-2.bat   - soru sormaz.
 
 $ErrorActionPreference = 'Continue'
 Set-Location -Path $PSScriptRoot
@@ -24,10 +24,7 @@ function Yukle($ad, $hedef) {
   return $false
 }
 
-$gruplar = @(
-  @('2. el ilanlar', 'functions:createListing,functions:buyListing,functions:settleMaterialListingBatches,functions:expireOldMarketplaceListings,functions:shopAction'),
-  @('cete', 'functions:gangAction,functions:gangClock')
-)
+$gruplar = @(, @('ev / mobilya', 'functions:houseAction'))
 foreach ($g in $gruplar) {
   if (-not (Yukle $g[0] $g[1])) {
     Write-Host "$($g[0]) yuklenemedi. git push YAPILMADI. Ciktiyi Claude'a gonder." -ForegroundColor Red
@@ -37,15 +34,15 @@ foreach ($g in $gruplar) {
 
 Write-Host ""
 Write-Host "===== git commit + push (arayuz) =====" -ForegroundColor Cyan
-foreach ($f in @('deploy-v146.ps1','deploy-v146.bat')) {
+foreach ($f in @('deploy-v146-1.ps1','deploy-v146-1.bat')) {
   if (Test-Path $f) { git rm -q -f -- $f 2>$null; if (Test-Path $f) { Remove-Item -Force $f } }
 }
-git add -- functions src deploy-v146-1.ps1 deploy-v146-1.bat
-git commit -q -m "v146.1: cete paneli alt sekme ortusmesi, ucuz ilan otomatik satis 3 gun" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -m "Claude-Session: https://claude.ai/code/session_0182eo1GmN9LMEuYnrHkisB1"
+git add -- functions src deploy-v146-2.ps1 deploy-v146-2.bat
+git commit -q -m "v146.2: Karargah mobilya kategorisi (10 yeni mobilya, kursu + toplanti masasi satista), kursu egimi duzeltildi" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -m "Claude-Session: https://claude.ai/code/session_0182eo1GmN9LMEuYnrHkisB1"
 git push
 if ($LASTEXITCODE -ne 0) {
   Write-Host "git push basarisiz. Sunucu guncel ama arayuz eski. Ciktiyi Claude'a gonder." -ForegroundColor Red
   exit 1
 }
 Write-Host ""
-Write-Host "TAMAM: v146.1 canlida." -ForegroundColor Green
+Write-Host "TAMAM: v146.2 canlida." -ForegroundColor Green

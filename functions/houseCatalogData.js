@@ -112,6 +112,10 @@ export const ITEM_PRICES = {
   kokorecarabasi: g(60000), donerarabasi: g(60000), simittezgahi: g(45000), koftearabasi: g(60000),
   plastikmasa: g(3000), plastiktabure: g(1500), korkuluk: g(8000),
   neon_kokorec: g(20000), neon_doner: g(20000), neon_simit: g(20000), neon_kofte: g(20000),
+  // v146.2 — Karargah (kürsü + toplantı masası mekândan satışa açıldı)
+  kursu: g(40000), toplantimasa: z(4),
+  stratejimasa: z(3), opspano: g(40000), babakoltuk: z(5), sancak: g(30000), guvenlikekran: z(3),
+  kumtorbasi: g(15000), telsiz: g(60000), parasayma: z(2), viskiaraba: g(45000), neon_karargah: g(20000),
   // YAPI
   wall2: g(10000), wall4: g(20000), walldoor: g(30000), glassdiv: g(50000), column: g(100000), podium: z(5), doordeco: g(20000), garagedoor: g(150000),
   // v101 — kapılar

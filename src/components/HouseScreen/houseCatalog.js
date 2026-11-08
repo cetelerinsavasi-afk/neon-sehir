@@ -5,6 +5,7 @@ import { ITEM_PRICES, HOUSE_TAKEABLES, FLOOR_TILE_KEYS, WALL_PANEL_KEYS, CEIL_TI
 import { v92CatalogEntries, V92_CATEGORIES, BOSSTABLE_TINTS, V92_TINTS, marketShelfV92 } from './houseCatalogV92';
 import { v135CatalogEntries, V135_TINTS } from './houseCatalogV135';
 import { v145CatalogEntries, V145_TINTS } from './houseCatalogV145'; // v145 — seyyar satıcılar
+import { v146CatalogEntries, V146_CATEGORIES, KARARGAH_MOVE } from './houseCatalogV146'; // v146.2 — Karargah
 import { petCatalogEntries, PET_CATEGORIES, PET_TINTS, PETSHOP_TINTS } from './houseCatalogPets'; // v137
 
 // =============================================================================
@@ -220,11 +221,12 @@ const CAT_BY_KEY = Object.fromEntries(
     { key: 'liman', name: 'Liman & Depo', icon: '⚓' },
     { key: 'resim', name: 'Resim Atölyesi', icon: '🎨' },
     ...PET_CATEGORIES, // v137 — Hayvanlar, Petshop
+    ...V146_CATEGORIES, // v146.2 — Karargah
   ].map((c) => [c.key, c])
 );
 const CAT_ORDER = [
   ['dukkan', 'silah', 'elektronik', 'spor', 'eglence', 'luks', 'garaj', 'studyo', 'liman'],
-  ['araba', 'motor', 'banka', 'ciftlik', 'hapis', 'cami', 'resim'],
+  ['karargah', 'araba', 'motor', 'banka', 'ciftlik', 'hapis', 'cami', 'resim'],
   ['oturma', 'masa', 'yatak', 'banyo', 'mutfak', 'dekor', 'hali', 'duvar', 'dis', 'hayvan', 'petshop'],
   ['yapi', 'kapi', 'tavan', 'zemin_parca', 'duvar_parca'],
 ];
@@ -3342,6 +3344,8 @@ export const CATALOG = [
   ...v135CatalogEntries(),
   // v145 — seyyar satıcı arabaları, plastik masa/tabure, korkuluk, neon tabelalar, mekân yol/deniz şeridi (houseCatalogV145.js)
   ...v145CatalogEntries({ neonBuild }),
+  // v146.2 — Karargah mobilyaları (houseCatalogV146.js)
+  ...v146CatalogEntries({ neonBuild }),
   // v137 — Hayvanlar (pati platformu + gezen hayvan) · Petshop (houseCatalogPets.js)
   ...petCatalogEntries(),
   // v92 — zemin parçaları ve duvar panelleri (yan yana döşenir)
@@ -3352,6 +3356,10 @@ export const CATALOG = [
 CATALOG.forEach((d) => {
   if (CAT_MOVE[d.k]) d.cat = CAT_MOVE[d.k];
   if (d.cat === 'mafya') d.cat = 'eglence'; // v132: Mafya → Gazino
+  if (KARARGAH_MOVE[d.k]) {
+    d.cat = 'karargah'; // v146.2: kürsü + toplantı masası artık satılır
+    d.venueOnly = false;
+  }
   d.price = ITEM_PRICES[d.k] || null;
   d.takes = HOUSE_TAKEABLES[d.k] || null;
   // v137.1 — kapılar: duvara takılır YA DA odanın ortasında (bölmeler arasında) durur

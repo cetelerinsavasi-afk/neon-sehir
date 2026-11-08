@@ -2150,7 +2150,7 @@ I('sehirmaketi', 'banka', 'Neon Şehir Maketi', '🏙️', (g) => {
 I('kursu', 'banka', 'Konuşma Kürsüsü', '🎤', (g) => {
   B(g, 0.7, 1.1, 0.5, '#4a2a14', 0, 0, 0, { r: 0.35 });
   const top = B(g, 0.78, 0.05, 0.58, '#2e1a0c', 0, 1.1, -0.02);
-  top.rotation.x = 0.2;
+  top.rotation.x = -0.2; // v146.2: okuma yüzeyi konuşmacıya (arkaya) doğru eğik
   Pl(g, 0.5, 0.5, K('#fff', { map: T('amblem'), op: 1 }), 0, 0.6, 0.252).material.transparent = true;
   Cy(g, 0.008, 0.3, '#222', 0.2, 1.15, -0.1, null, 6);
   Sp(g, 0.03, '#333', 0.2, 1.46, -0.08, null, 8);
