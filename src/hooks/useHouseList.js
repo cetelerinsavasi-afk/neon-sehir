@@ -116,6 +116,8 @@ export function useHouseList({ enabled = true, onlyLive = false } = {}) {
       loading,
       mine: mine.map(withCount).sort((a, b) => (a.createdAtMs || 0) - (b.createdAtMs || 0)),
       enterable: enterable.map(withCount).sort(sortFn),
+      // v146.4 — içinde biri olan karargahlar (Ziyaret › Popüler; kilit Ziyaret'te)
+      liveHq: onlyLive ? open.filter((h) => h.hq?.gangId).map(withCount) : [],
       counts,
     };
   }, [mine, open, invited, presence, social?.friendMap, user?.uid, loading, tick, onlyLive]);

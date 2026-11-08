@@ -4,6 +4,7 @@ import { db } from '../../firebase';
 import { useYesterdayVisits } from '../../hooks/useYesterdayVisits';
 import { usePolledPresence } from '../../hooks/usePolledPresence';
 import { useAuth } from '../../contexts/AuthContext';
+import { usePlayerSelect } from '../../hooks/usePlayer';
 import { regionEmojis, regionLabels } from '../../data/regions';
 import GuestVenue from '../Guest/GuestVenue';
 import { guestPlaces } from '../../lib/guestApi';
@@ -39,7 +40,10 @@ const GAME_VENUES = [
   { key: 'simitci', region: 'seyyar_satici_2', openKey: 'vendor:seyyar_satici_2', houseId: 'game_simitci' },
   { key: 'donerci', region: 'seyyar_satici_3', openKey: 'vendor:seyyar_satici_3', houseId: 'game_donerci' },
   { key: 'kofteci', region: 'seyyar_satici_4', openKey: 'vendor:seyyar_satici_4', houseId: 'game_kofteci' },
+  // v146.4 — Polis Teşkilatı: sadece polisler + başkan, yardımcıları, teşkilat bakanı (diğerlerine kilitli)
+  { key: 'teskilat', icon: '🚓', label: 'Polis Teşkilatı', openKey: 'teskilat', houseId: 'game_teskilat', police: true },
 ];
+const POLICE_SEATS = { bsk: 1, yrd1: 1, yrd2: 1, guv: 1 };
 const GAME_BY_KEY = Object.fromEntries(GAME_VENUES.map((g) => [g.key, g]));
 // işletme türü → oyunun aynı türdeki mekânı
 const GAME_OF_TYPE = { silahci: 'silah_magazasi', galeri: 'araba_galerisi', modifiye: 'modifiye_garaji' };
@@ -58,24 +62,41 @@ const OPTIONS = [
 // işletmeler ve ofisler sunucudan gelen salt-okuma listeyle gezilir
 const GUEST_OPTIONS = OPTIONS.filter((o) => o.key !== 'popular' && o.key !== 'houses' && o.key !== 'hq');
 
-// v146 — karargahlar: sadece kendi çetenin ve davet edildiğin çetelerin karargahına girilir
-function useHqList(enabled, uid) {
-  const [state, setState] = useState({ list: [], myGang: null, loading: false });
+// v146 — karargahlar / teşkilat: kendi çeten (ve davet eden çeteler), teşkilata polisler girer.
+// Üyelik bilgisi bir kez okunur, 5 dk önbellekte (Ziyaret her açıldığında tekrar okunmasın).
+const accessCache = { uid: null, at: 0, v: null };
+function useMyOrgAccess(uid) {
+  const [v, setV] = useState(() => (accessCache.uid === uid && Date.now() - accessCache.at < 300_000 ? accessCache.v : null));
   useEffect(() => {
-    if (!enabled || !uid) return undefined;
+    if (!uid || (accessCache.uid === uid && Date.now() - accessCache.at < 300_000)) return undefined;
     let alive = true;
-    setState((s) => ({ ...s, loading: true }));
     (async () => {
       const cfg = await getDoc(doc(db, 'gangSystem/config'));
       const w = cfg.data()?.liveWorldId || null;
-      const [ms, hs] = await Promise.all([w ? getDoc(doc(db, `gangWorlds/${w}/memberships/${uid}`)) : null, getDocs(query(collection(db, 'houses'), where('kind', '==', 'karargah'), limit(100)))]);
-      if (!alive) return;
-      setState({ list: hs.docs.map((d) => ({ id: d.id, ...d.data() })), myGang: ms?.data()?.gangId || null, loading: false });
-    })().catch(() => alive && setState({ list: [], myGang: null, loading: false }));
+      const ms = w ? await getDoc(doc(db, `gangWorlds/${w}/memberships/${uid}`)) : null;
+      const out = { gangId: ms?.data()?.gangId || null, police: Boolean(ms?.data()?.intelRosterId) };
+      Object.assign(accessCache, { uid, at: Date.now(), v: out });
+      if (alive) setV(out);
+    })().catch(() => alive && setV({ gangId: null, police: false }));
     return () => {
       alive = false;
     };
-  }, [enabled, uid]);
+  }, [uid]);
+  return v || { gangId: null, police: false };
+}
+function useHqList(enabled) {
+  const [state, setState] = useState({ list: [], loading: false });
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let alive = true;
+    setState((s) => ({ ...s, loading: true }));
+    getDocs(query(collection(db, 'houses'), where('kind', '==', 'karargah'), limit(100)))
+      .then((hs) => alive && setState({ list: hs.docs.map((d) => ({ id: d.id, ...d.data() })), loading: false }))
+      .catch(() => alive && setState({ list: [], loading: false }));
+    return () => {
+      alive = false;
+    };
+  }, [enabled]);
   return state;
 }
 
@@ -110,8 +131,12 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
   const yVisits = useYesterdayVisits(Boolean(user) && (filter === 'popular' || filter === 'houses'));
   const biz = useBusinessList(isBiz ? filter : null, { enabled: isBiz, includeGame: true });
   const offices = useOfficeList({ enabled: filter === 'offices' });
-  const hqs = useHqList(filter === 'hq', user?.uid);
+  const hqs = useHqList(filter === 'hq');
+  const access = useMyOrgAccess(user?.uid);
+  const mySeat = usePlayerSelect((p) => p?.belediyeSeat || null);
+  const canTeskilat = access.police || Boolean(POLICE_SEATS[mySeat]);
   const [lockNote, setLockNote] = useState(null);
+  useEffect(() => setLockNote(null), [filter]);
 
   const venuePeople = useMemo(() => {
     const out = { park: parkList.length };
@@ -123,16 +148,36 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
 
   const gameItem = (key, yv = 0) => {
     const g = GAME_BY_KEY[key];
+    const locked = Boolean(g.police) && !canTeskilat;
     return {
       id: `v_${key}`,
-      icon: regionEmojis[g.region],
-      name: regionLabels[g.region],
-      sub: 'Oyunun mekânı',
+      icon: locked ? '🔒' : g.icon || regionEmojis[g.region],
+      name: g.label || regionLabels[g.region],
+      sub: g.police ? (locked ? 'Sadece polisler girebilir' : 'Polis Teşkilatı') : 'Oyunun mekânı',
       people: g.houseId ? houseList.counts?.[g.houseId] || 0 : venuePeople[key] || 0,
       yv,
-      open: () => onVisitVenue?.(g.openKey),
+      locked,
+      open: locked ? () => setLockNote('🔒 Polis Teşkilatına sadece polisler girebilir.') : () => onVisitVenue?.(g.openKey),
     };
   };
+  // v146.4 — karargah kartı (kendi çeten / davetli → girilir, diğerleri kilitli)
+  const hqItem = (h, yv = 0) => {
+    const gid = h.hq?.gangId || String(h.id || h.houseId || '').replace(/^hq_/, '');
+    const mine = Boolean(access.gangId) && gid === access.gangId;
+    const ok = mine || (Boolean(access.gangId) && (h.hqInvites || []).includes(access.gangId));
+    const id = h.id || h.houseId;
+    return {
+      id: `h_${id}`,
+      icon: ok ? '🏴' : '🔒',
+      name: h.name || 'Karargah',
+      sub: mine ? 'Senin çeten' : ok ? '📨 Davetlisin' : 'Çete karargahı · sadece üyeleri',
+      people: houseList.counts?.[id] || h.people || 0,
+      yv,
+      locked: !ok,
+      open: ok ? () => onVisitHouse?.(id) : () => setLockNote(`🔒 ${h.name || 'Bu karargah'}: sadece çetenin üyeleri ve davet ettikleri girebilir.`),
+    };
+  };
+  const isHqId = (id) => String(id || '').startsWith('hq_');
   const houseItem = (h, yv = 0) => ({
     id: `h_${h.id || h.houseId}`,
     icon: h.biz?.type || h.bizType ? BIZ_TYPES[h.biz?.type || h.bizType]?.icon || '🏪' : '🏠',
@@ -148,7 +193,7 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
   const items = useMemo(() => {
     const byPeople = (a, b) => b.people - a.people || b.yv - a.yv;
     if (isGuest) {
-      if (filter === 'game') return GAME_VENUES.map((g) => gameItem(g.key));
+      if (filter === 'game') return GAME_VENUES.filter((g) => !g.police).map((g) => gameItem(g.key));
       const gl = guestType ? guestLists[guestType] : null;
       if (!gl) return [];
       const rank = (r) => (Number.isFinite(r) && r > 0 ? r : 9999);
@@ -172,17 +217,20 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
       yVisits.slice(0, POPULAR_N).forEach((r) => {
         if (GAME_BY_KEY[r.key]) cand.set(`v_${r.key}`, gameItem(r.key, r.count));
         else if (r.houseId) {
-          const live = liveHouses.find((h) => h.id === r.houseId);
-          cand.set(`h_${r.houseId}`, houseItem(live || r, r.count));
+          const live = liveHouses.find((h) => h.id === r.houseId) || (houseList.liveHq || []).find((h) => h.id === r.houseId);
+          cand.set(`h_${r.houseId}`, isHqId(r.houseId) ? hqItem(live || r, r.count) : houseItem(live || r, r.count));
         }
       });
-      // şu an içinde biri olanlar
+      // şu an içinde biri olanlar (v146.4: seyyar satıcılar, teşkilat ve karargahlar dahil)
       GAME_VENUES.forEach((g) => {
-        if ((venuePeople[g.key] || 0) > 0) cand.set(`v_${g.key}`, gameItem(g.key, yv[g.key]?.count || 0));
+        const it = gameItem(g.key, yv[g.key]?.count || 0);
+        if (it.people > 0) cand.set(it.id, it);
       });
       liveHouses.forEach((h) => cand.set(`h_${h.id}`, houseItem(h, yv[`h_${h.id}`]?.count || 0)));
+      (houseList.liveHq || []).forEach((h) => h.people > 0 && cand.set(`h_${h.id}`, hqItem(h, yv[`h_${h.id}`]?.count || 0)));
       // dün hiç kayıt yoksa liste oyunun mekânlarıyla tamamlanır
       GAME_VENUES.forEach((g) => {
+        if (g.police && !canTeskilat) return;
         if (cand.size < POPULAR_N && !cand.has(`v_${g.key}`)) cand.set(`v_${g.key}`, gameItem(g.key, yv[g.key]?.count || 0));
       });
       return [...cand.values()].sort(byPeople).slice(0, POPULAR_N);
@@ -190,20 +238,8 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
     if (filter === 'game') return GAME_VENUES.map((g) => gameItem(g.key)).sort(byPeople);
     if (filter === 'hq') {
       return hqs.list
-        .map((h) => {
-          const mine = Boolean(hqs.myGang) && h.hq?.gangId === hqs.myGang;
-          const ok = mine || (Boolean(hqs.myGang) && (h.hqInvites || []).includes(hqs.myGang));
-          return {
-            id: `h_${h.id}`,
-            icon: ok ? '🏴' : '🔒',
-            name: h.name || 'Karargah',
-            sub: mine ? 'Senin çeten' : ok ? '📨 Davetlisin' : 'Sadece üyeleri girebilir',
-            people: houseList.counts?.[h.id] || 0,
-            yv: mine ? 2 : ok ? 1 : 0,
-            locked: !ok,
-            open: ok ? () => onVisitHouse?.(h.id) : () => setLockNote(`🔒 ${h.ownerName || 'Bu çete'} karargahına sadece üyeleri ve davet ettikleri girebilir.`),
-          };
-        })
+        .map((h) => hqItem(h))
+        .map((x) => ({ ...x, yv: x.sub === 'Senin çeten' ? 2 : x.locked ? 0 : 1 }))
         .sort((a, b) => b.yv - a.yv || b.people - a.people || a.name.localeCompare(b.name, 'tr'));
     }
     if (filter === 'offices') {
@@ -239,7 +275,7 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
     if (gk) list.push({ ...gameItem(gk), sub: 'Sahibi: Neon Şehir', yv: -rank(biz.gameRank) });
     return list.sort(byPeople);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, yVisits, venuePeople, liveHouses, biz.list, biz.gameRank, biz.loading, allHouses, showAllHouses, offices, isGuest, guestType, guestLists, hqs, houseList.counts]);
+  }, [filter, yVisits, venuePeople, liveHouses, biz.list, biz.gameRank, biz.loading, allHouses, showAllHouses, offices, isGuest, guestType, guestLists, hqs, houseList.counts, houseList.liveHq, access, canTeskilat]);
   const hiddenEmpty = filter === 'houses' ? items.hiddenEmpty || 0 : 0;
 
   return (
@@ -253,7 +289,7 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
               ? 'İçinde biri olan evler üstte; boş evler dünün en çok ziyaret edilenlerine göre.'
               : 'En kalabalık üstte. Girmek için dokun; çıkınca bu ekrana dönersin.'}
         </p>
-        {lockNote && filter === 'hq' && (
+        {lockNote && (
           <p className="visit-hint visit-lock-note" onClick={() => setLockNote(null)}>
             {lockNote}
           </p>

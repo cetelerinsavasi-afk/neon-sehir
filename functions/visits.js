@@ -12,7 +12,7 @@
 // =============================================================================
 import { midnightDayKey } from './businessCatalogData.js';
 
-export const VISIT_VENUES = ['park', 'banka', 'karakol', 'camii', 'gazino', 'araba_galerisi', 'silah_magazasi', 'modifiye_garaji', 'belediye']; // v127: + belediye
+export const VISIT_VENUES = ['park', 'banka', 'karakol', 'camii', 'gazino', 'araba_galerisi', 'silah_magazasi', 'modifiye_garaji', 'belediye', 'kokorecci', 'simitci', 'donerci', 'kofteci', 'teskilat']; // v127: + belediye · v146.4: + seyyar satıcılar, teşkilat
 export const houseVisitKey = (houseId) => `h_${houseId}`;
 
 export function createVisits({ db, FieldValue, now = () => Date.now() }) {
@@ -47,7 +47,8 @@ export function createVisits({ db, FieldValue, now = () => Date.now() }) {
   // Ev/işletme girişi (houses.js enter). Sadece herkese açık evler ve işletmeler listede yer alır.
   async function recordHouseVisit(uid, houseId, h) {
     if (!houseId || !h) return { ok: false };
-    if (h.privacy !== 'public' && !h.biz?.type) return { ok: false };
+    // v146.4: çete karargahları da popülerlik sırasına girer (girişi kilitli olsa da)
+    if (h.privacy !== 'public' && !h.biz?.type && !h.hq?.gangId) return { ok: false };
     return recordVisit(uid, houseVisitKey(houseId), {
       houseId,
       name: String(h.name || 'Ev').slice(0, 40),

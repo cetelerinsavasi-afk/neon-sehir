@@ -210,6 +210,7 @@ function GameShell() {
   const [parkOpen, setParkOpen] = useState(false);
   const [bankOpen, setBankOpen] = useState(false);
   const [karakolOpen, setKarakolOpen] = useState(false);
+  const [teskilatOpen, setTeskilatOpen] = useState(false); // v146.4 — Ziyaret › Polis Teşkilatı
   const [mosqueOpen, setMosqueOpen] = useState(false);
   const [casinoOpen, setCasinoOpen] = useState(false);
   const [dealershipOpen, setDealershipOpen] = useState(false);
@@ -246,6 +247,7 @@ function GameShell() {
   useBackClose(parkOpen, venueClose(setParkOpen));
   useBackClose(bankOpen, venueClose(setBankOpen));
   useBackClose(karakolOpen, venueClose(setKarakolOpen));
+  useBackClose(teskilatOpen, venueClose(setTeskilatOpen));
   useBackClose(mosqueOpen, venueClose(setMosqueOpen));
   useBackClose(casinoOpen, venueClose(setCasinoOpen));
   useBackClose(dealershipOpen, venueClose(setDealershipOpen));
@@ -415,6 +417,7 @@ function GameShell() {
     weaponShop: setWeaponShopOpen,
     tuningGarage: setTuningGarageOpen,
     belediye: setBelediyeOpen, // v127
+    teskilat: setTeskilatOpen, // v146.4
   };
 
   // v146 — karargah davetinden (ekranı sağlayan yoksa) karargaha geçiş
@@ -472,7 +475,7 @@ function GameShell() {
   regionClickRef.current = handleRegionClick;
   const onRegionClickStable = useCallback((...a) => regionClickRef.current(...a), []);
   const mapCovered = Boolean(
-    watchStreamId || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || Boolean(vendorRegion) || heistTarget !== undefined || (effectiveRaceRoomId && raceExpanded)
+    watchStreamId || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || teskilatOpen || Boolean(vendorRegion) || heistTarget !== undefined || (effectiveRaceRoomId && raceExpanded)
   );
 
   return (
@@ -670,6 +673,14 @@ function GameShell() {
         />
       )}
       {belediyeOpen && !user && <GuestVenue venueKey="belediye" onExit={() => closeVenueMaybeReturnToVisit(setBelediyeOpen)} />}
+
+      {teskilatOpen && user && (
+        <VenueHouseScreen
+          venue="teskilat"
+          onExit={() => closeVenueMaybeReturnToVisit(setTeskilatOpen)}
+          fallback={<VenueFallbackNotice onDone={() => closeVenueMaybeReturnToVisit(setTeskilatOpen)} />}
+        />
+      )}
 
       {vendorRegion && user && (
         <VenueHouseScreen

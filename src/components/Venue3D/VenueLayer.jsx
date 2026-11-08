@@ -73,6 +73,11 @@ export default function VenueLayer({ venue, engineRef, interact, mode, onNpcs, a
   // v145: "light" mekânlarda (seyyar satıcılar) tutulmaz — sunucu kontrolü yok,
   // canlı oyuncular / kişi sayısı zaten 3D ev kaydından (ek Firestore yazması olmasın)
   const lightVenue = Boolean(venue.light);
+  // v146.4: hafif mekânlarda (seyyar satıcılar, teşkilat) da ziyaret sayılır — popülerlik sırası
+  useEffect(() => {
+    if (!user || !lightVenue || !venue.loc) return;
+    recordVenueVisit(venue.loc).catch(() => {});
+  }, [user, lightVenue, venue.loc]);
   useEffect(() => {
     if (!user || lightVenue) return undefined;
     const coll = venue.loc === 'park' ? 'parkPresence' : 'interiorPresence';

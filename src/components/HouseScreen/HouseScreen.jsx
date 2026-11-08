@@ -590,7 +590,9 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
         const dsg = { items: data.items || [], wall: data.wall, floor: data.floor, door: data.door || null };
         // v101.1: kapı sırası/varsayılanı fark yaratmasın diye kanonik anahtar
         const remote = { wall: data.wall || null, floor: data.floor || null, door: doorKey(data.door) };
-        const designer = info?.isOwner || data.editors?.[user?.uid] === true;
+        // v146.3: karargah yöneticisi (Baba / yetkili) da tasarımcı — yoksa her belge
+        // geldiğinde tasarım sunucudakine zorla geri döner (takılma + eşya geri zıplar)
+        const designer = info?.isOwner || data.editors?.[user?.uid] === true || canDesignRef.current;
         if (!designer || !appliedFirstRef.current) {
           appliedFirstRef.current = true;
           lastRemoteSurfRef.current = remote;
