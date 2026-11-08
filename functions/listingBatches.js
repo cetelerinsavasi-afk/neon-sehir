@@ -1,3 +1,5 @@
+import { AMAZOR_PRICES } from './itemRules.js';
+
 // v103 — 2. EL MALZEME İLANLARI: parti (batch) bazlı 7 gün + otomatik satış
 // -----------------------------------------------------------------------------
 // Aynı satıcı + aynı malzeme + aynı adet fiyatı tek ilanda birleşir, ama her
@@ -18,6 +20,9 @@
 // src/lib/autoSell.js (aynı formül — ikisi birlikte değişmeli).
 
 export const LISTING_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+// v146: fiyatı uygun (otomatik satılan) ilan 3 günde satılır; diğerleri 7 günde iade.
+export const AUTO_SELL_TTL_MS = 3 * 24 * 60 * 60 * 1000;
+export const ttlFor = (auto) => (auto ? AUTO_SELL_TTL_MS : LISTING_TTL_MS);
 
 // Aralığın %50'sinin altında mı? Tamsayı karşılaştırma: 2p < min + max.
 export function autoSellsAt(unitPrice, min, max) {
@@ -30,6 +35,15 @@ export function autoSellsAt(unitPrice, min, max) {
 export function materialRange(storePrice) {
   const max = Math.floor(Number(storePrice) || 0);
   return { min: Math.floor(max / 2), max };
+}
+
+// v146: ilanın parti süresi (otomatik satılan 3 gün, diğerleri 7 gün)
+export function materialTtl(materialType, unitPrice) {
+  const { min, max } = materialRange(AMAZOR_PRICES[materialType]);
+  return ttlFor(autoSellsAt(unitPrice, min, max));
+}
+export function itemTtl(price, band) {
+  return ttlFor(Number(band?.max) > 0 && autoSellsAt(price, band.min, band.max));
 }
 
 // İlanın partileri. Eski (partisiz) ilan tek parti sayılır: createdAt anı.
@@ -110,11 +124,11 @@ export function istanbulDayKeyOf(ms) {
 }
 
 // İlan belgesine yazılan zaman + bant alanları
-export function itemListingTimeFields(nowMs, band) {
+export function itemListingTimeFields(nowMs, band, price = null) {
   return {
     listedAtMs: nowMs,
     listedDayKey: istanbulDayKeyOf(nowMs),
-    expireAtMs: nowMs + LISTING_TTL_MS,
+    expireAtMs: nowMs + (price == null ? LISTING_TTL_MS : itemTtl(price, band)),
     bandMin: Math.floor(Number(band?.min) || 0),
     bandMax: Math.floor(Number(band?.max) || 0),
   };

@@ -8,7 +8,7 @@ export function autoSellsAt(unitPrice, min, max) {
   return 2 * p < Number(min) + Number(max);
 }
 
-export const AUTO_SELL_HINT = '⏱️ 7 gün içinde otomatik satılır';
+export const AUTO_SELL_HINT = '⏱️ 3 gün içinde otomatik satılır';
 
 // v115 — araç / silah ilanı (2. el + galerici/silahçı vitrini). Sunucu:
 // functions/listingBatches.js (itemCancelPenalty) — ikisi birlikte değişmeli.

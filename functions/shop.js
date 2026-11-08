@@ -53,7 +53,7 @@ import {
   itemListingFields,
 } from './itemRules.js';
 import { goldTag } from './moneyLog.js';
-import { itemListingTimeFields, batchesOf, consumeBatches, nextExpireAtMs } from './listingBatches.js';
+import { itemListingTimeFields, batchesOf, consumeBatches, nextExpireAtMs, materialTtl } from './listingBatches.js';
 import { planAutoSupply, planGameSupply, AUTO_SUPPLY_MAT_NAMES } from './autoSupply.js';
 import { VEHICLE_CATALOG, WEAPON_CATALOG } from './catalogData.js';
 import { VEHICLE_WEAPON_INITIAL_LIFE_DAYS, WEAPON_INITIAL_LIFE_DAYS } from './itemRules.js';
@@ -194,7 +194,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
         });
       } else if (hasBatches) {
         const batches = consumeBatches(batchesOf(l), t.qty);
-        tx.update(lref, { quantity: remaining, price: t.unit * remaining, batches, expireAtMs: nextExpireAtMs(batches) ?? FieldValue.delete() });
+        tx.update(lref, { quantity: remaining, price: t.unit * remaining, batches, expireAtMs: nextExpireAtMs(batches, materialTtl(l.materialType, t.unit)) ?? FieldValue.delete() });
       } else {
         tx.update(lref, { quantity: remaining, price: t.unit * remaining });
       }
@@ -815,7 +815,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       ...itemListingFields(itemType, itemId, item),
       price,
       // v115: 7. gün otomatik sat / ilandan kaldır (index.js settleItemListing)
-      ...itemListingTimeFields(now(), itemListingBand(itemType, item)),
+      ...itemListingTimeFields(now(), itemListingBand(itemType, item), price),
       shopHouseId: houseId,
       shopName: String(h.name || BIZ_TYPES[h.biz.type].label).slice(0, 40),
       createdAt: FieldValue.serverTimestamp(),

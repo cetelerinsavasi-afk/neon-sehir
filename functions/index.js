@@ -51,7 +51,7 @@ import { CHAMP_V2_START_DAY } from './championshipPrizes.js';
 import { championshipPodium } from './championshipPrizes.js';
 import { adPriceFor, countActiveAds } from './marketAds.js';
 import { gangExitBlockText } from './gang/config.js';
-import { LISTING_TTL_MS, autoSellsAt, materialRange, batchesOf, addBatch, consumeBatches, splitDue, nextExpireAtMs, itemListingTimeFields, itemCancelPenalty } from './listingBatches.js';
+import { LISTING_TTL_MS, autoSellsAt, materialRange, batchesOf, addBatch, consumeBatches, splitDue, nextExpireAtMs, itemListingTimeFields, itemCancelPenalty, materialTtl, itemTtl } from './listingBatches.js';
 import { createCosmetics } from './cosmetics.js';
 import { createPlayBilling, createGooglePlayApi } from './playBilling.js';
 import { createStream } from './stream.js';
@@ -8147,15 +8147,16 @@ async function settleMaterialListing(listingRef, nowMs = Date.now()) {
       return { skipped: 'closed' };
     }
     const batches = batchesOf(l, l.createdAt?.toMillis?.() ?? 0);
-    const { dueQty: rawDue, keep } = splitDue(batches, nowMs);
-    const dueQty = Math.min(rawDue, Math.max(0, Math.floor(Number(l.quantity || 0))));
-    if (dueQty <= 0) {
-      tx.update(listingRef, { batches: keep, expireAtMs: nextExpireAtMs(keep) ?? admin.firestore.FieldValue.delete() });
-      return { skipped: 'not_due' };
-    }
     const unitPrice = l.unitPrice || Math.round((l.price || 0) / (l.quantity || 1));
     const { min, max } = materialRange(AMAZOR_PRICES[l.materialType]);
     const auto = autoSellsAt(unitPrice, min, max);
+    const ttl = materialTtl(l.materialType, unitPrice); // v146: otomatik satılan 3 gün
+    const { dueQty: rawDue, keep } = splitDue(batches, nowMs, ttl);
+    const dueQty = Math.min(rawDue, Math.max(0, Math.floor(Number(l.quantity || 0))));
+    if (dueQty <= 0) {
+      tx.update(listingRef, { batches: keep, expireAtMs: nextExpireAtMs(keep, ttl) ?? admin.firestore.FieldValue.delete() });
+      return { skipped: 'not_due' };
+    }
     const sellerRef = db.collection('users').doc(l.sellerId);
     const sellerSnap = auto ? await tx.get(sellerRef) : null;
     const label = MATERIAL_SMS_LABELS[l.materialType] || 'malzeme';
@@ -8180,7 +8181,7 @@ async function settleMaterialListing(listingRef, nowMs = Date.now()) {
       addUserSms(
         tx,
         l.sellerId,
-        `✅ İlandaki ${qtyTxt} adet ${label} 7 gün içinde satılmadığı için otomatik satıldı: +${(payout - tax).toLocaleString('tr-TR')} altın (adet ${unitPrice.toLocaleString('tr-TR')}).`,
+        `✅ İlandaki ${qtyTxt} adet ${label} 3 gün içinde satılmadığı için otomatik satıldı: +${(payout - tax).toLocaleString('tr-TR')} altın (adet ${unitPrice.toLocaleString('tr-TR')}).`,
         'listing_auto_sold'
       );
     } else {
@@ -8212,7 +8213,7 @@ async function settleMaterialListing(listingRef, nowMs = Date.now()) {
         quantity: remaining,
         price: unitPrice * remaining,
         batches: keep,
-        expireAtMs: nextExpireAtMs(keep),
+        expireAtMs: nextExpireAtMs(keep, ttl),
       });
     }
     return { auto, qty: dueQty, payout };
@@ -8237,7 +8238,9 @@ async function settleItemListing(listingRef, nowMs = Date.now()) {
     }
     const startMs = Number(l.listedAtMs) || l.createdAt?.toMillis?.() || 0;
     if (!startMs) return { skipped: 'no_time' };
-    const dueAt = startMs + LISTING_TTL_MS;
+    // v146: fiyatı bandın ortasının altındaysa 3 gün, değilse 7 gün (bant kaydı yoksa 7)
+    const listedBand = Number(l.bandMax) > 0 ? { min: Number(l.bandMin) || 0, max: Number(l.bandMax) } : null;
+    const dueAt = startMs + itemTtl(l.price, listedBand);
     if (dueAt > nowMs) {
       if (l.expireAtMs !== dueAt) tx.update(listingRef, { expireAtMs: dueAt });
       return { skipped: 'not_due' };
@@ -8268,7 +8271,7 @@ async function settleItemListing(listingRef, nowMs = Date.now()) {
       );
       tx.delete(itemRef);
       tx.update(listingRef, { ...close, autoSold: true, soldAt: admin.firestore.FieldValue.serverTimestamp() });
-      sms = { uid: l.sellerId, text: `✅ İlandaki ${label} 7 gün içinde satılmadığı için otomatik satıldı: +${(payout - tax).toLocaleString('tr-TR')} altın.`, type: 'listing_auto_sold' };
+      sms = { uid: l.sellerId, text: `✅ İlandaki ${label} 3 gün içinde satılmadığı için otomatik satıldı: +${(payout - tax).toLocaleString('tr-TR')} altın.`, type: 'listing_auto_sold' };
       return { auto: true, payout };
     }
     if (l.shopHouseId) {
@@ -8332,7 +8335,17 @@ export const expireOldMarketplaceListings = onSchedule({ schedule: 'every 24 hou
     // v103: oyuncu malzeme ilanları parti bazlı (settleMaterialListingBatches);
     // eski partisiz ilan da aynı kurala (otomatik satış / iade) girer.
     if (listing.itemType === 'material' && listing.sellerId !== 'system') {
-      if (Array.isArray(listing.batches) || listing.expireAtMs != null) return;
+      if (Array.isArray(listing.batches) || listing.expireAtMs != null) {
+        // v146: otomatik satılan ilan 7 → 3 gün. Eski kayıtların süresini bir kez düzelt
+        // (zaten günlük okunan liste — ek okuma yok; sadece değişenlere yazma).
+        const unit = listing.unitPrice || Math.round((listing.price || 0) / (listing.quantity || 1));
+        const ttl = materialTtl(listing.materialType, unit);
+        const want = nextExpireAtMs(batchesOf(listing, listing.createdAt?.toMillis?.() ?? 0), ttl);
+        if (want != null && listing.expireAtMs != null && want < listing.expireAtMs) {
+          jobs.push((want <= now ? settleMaterialListing(doc.ref, now) : doc.ref.update({ expireAtMs: want })).catch((err) => console.error('ttl fix', doc.id, err)));
+        }
+        return;
+      }
       const legacyAt = listing.createdAt?.toMillis?.() ?? 0;
       if (legacyAt && now - legacyAt >= SEVEN_DAYS_MS) {
         jobs.push(settleMaterialListing(doc.ref, now).catch((err) => console.error('legacy settle', doc.id, err)));
@@ -10069,7 +10082,7 @@ export const createListing = onCall(async (request) => {
           quantity: quantityAfter,
           price: unitPriceNum * quantityAfter,
           batches,
-          expireAtMs: nextExpireAtMs(batches),
+          expireAtMs: nextExpireAtMs(batches, materialTtl(materialType, unitPriceNum)),
           lastAddedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
       } else {
@@ -10083,7 +10096,7 @@ export const createListing = onCall(async (request) => {
           unitPrice: unitPriceNum,
           price: unitPriceNum * qty,
           batches,
-          expireAtMs: nextExpireAtMs(batches),
+          expireAtMs: nextExpireAtMs(batches, materialTtl(materialType, unitPriceNum)),
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
           sold: false,
         });
@@ -10146,7 +10159,7 @@ export const createListing = onCall(async (request) => {
         vehicleRepairsUsed: v.repairsUsed || 0,
         price: priceNum,
         // v115: 00:00'dan önce iptal bedelsiz · 7. gün otomatik sat / kaldır
-        ...itemListingTimeFields(Date.now(), { min: vehicleMin, max: vehicleMax }),
+        ...itemListingTimeFields(Date.now(), { min: vehicleMin, max: vehicleMax }, priceNum),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         sold: false,
       });
@@ -10204,7 +10217,7 @@ export const createListing = onCall(async (request) => {
         weaponRepairsUsed: w.repairsUsed || 0,
         price: priceNum,
         // v115: 00:00'dan önce iptal bedelsiz · 7. gün otomatik sat / kaldır
-        ...itemListingTimeFields(Date.now(), { min: weaponMin, max: weaponMax }),
+        ...itemListingTimeFields(Date.now(), { min: weaponMin, max: weaponMax }, priceNum),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         sold: false,
       });
@@ -10836,7 +10849,7 @@ export const buyListing = onCall(async (request) => {
         });
       } else if (hasBatches) {
         const batches = consumeBatches(batchesOf(listing), qty);
-        tx.update(listingRef, { quantity: remaining, price: unitPrice * remaining, batches, expireAtMs: nextExpireAtMs(batches) });
+        tx.update(listingRef, { quantity: remaining, price: unitPrice * remaining, batches, expireAtMs: nextExpireAtMs(batches, materialTtl(listing.materialType, unitPrice)) });
       } else {
         tx.update(listingRef, { quantity: remaining, price: unitPrice * remaining });
       }

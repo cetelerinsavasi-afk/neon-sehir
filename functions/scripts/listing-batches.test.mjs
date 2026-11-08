@@ -52,6 +52,12 @@ const b = src.indexOf('// settleMaterialListingBatches');
 assert.ok(a > 0 && b > a);
 const code = "const MATERIAL_SMS_LABELS = { tamirMalzemesi: 'tamir malzemesi', yasakliMadde: 'yasaklı madde' };\n" + src.slice(a, b) + '\nreturn { settleMaterialListing };';
 
+const MOCK_PRICES = { tamirMalzemesi: 10, silahUpgrade: 100, arabaGelistirme: 500, yasakliMadde: 2500 };
+const mockMaterialTtl = (t, u) => {
+  const { min, max } = LB.materialRange(MOCK_PRICES[t]);
+  return LB.ttlFor(LB.autoSellsAt(u, min, max));
+};
+
 function setup() {
   const db = new FakeFirestore({ yieldEvery: false });
   const S = (p, d) => db._store.set(p, { data: d, version: 1 });
@@ -69,34 +75,35 @@ function setup() {
   };
   const fns = new Function(
     'db', 'admin', 'AMAZOR_PRICES', 'resaleTax', 'taxLedgerWrite', 'splitIncomeForDebt', 'goldTag', 'addUserSms',
-    'autoSellsAt', 'materialRange', 'batchesOf', 'splitDue', 'nextExpireAtMs',
+    'autoSellsAt', 'materialRange', 'batchesOf', 'splitDue', 'nextExpireAtMs', 'materialTtl',
     code
-  )(db, admin, { tamirMalzemesi: 10, silahUpgrade: 100, arabaGelistirme: 500, yasakliMadde: 2500 }, resaleTax, taxLedgerWrite, splitIncomeForDebt, goldTag, addUserSms,
-    LB.autoSellsAt, LB.materialRange, LB.batchesOf, LB.splitDue, LB.nextExpireAtMs);
+  )(db, admin, MOCK_PRICES, resaleTax, taxLedgerWrite, splitIncomeForDebt, goldTag, addUserSms,
+    LB.autoSellsAt, LB.materialRange, LB.batchesOf, LB.splitDue, LB.nextExpireAtMs, mockMaterialTtl);
   return { db, S, G, sms, fns };
 }
 
-test('ucuz ilan (7 < 7,5): 7. gün sadece ilk parti otomatik satılır, yeni parti kendi gününde', async () => {
+test('ucuz ilan (7 < 7,5): v146 — 3. gün sadece ilk parti otomatik satılır, yeni parti kendi gününde', async () => {
   const { S, G, sms, fns, db } = setup();
   const t0 = Date.UTC(2026, 9, 1);
   S('users/s1', { gold: 0 });
   S('marketplaceListings/mat_s1_tamirMalzemesi_7', {
     sellerId: 's1', itemType: 'material', materialType: 'tamirMalzemesi', unitPrice: 7, quantity: 200_000, price: 1_400_000, sold: false,
-    batches: [{ q: 100_000, at: t0 }, { q: 100_000, at: t0 + 6 * DAY }], expireAtMs: t0 + 7 * DAY,
+    batches: [{ q: 100_000, at: t0 }, { q: 100_000, at: t0 + 2 * DAY }], expireAtMs: t0 + 3 * DAY,
   });
   const ref = db.collection('marketplaceListings').doc('mat_s1_tamirMalzemesi_7');
-  const r = await fns.settleMaterialListing(ref, t0 + 7 * DAY);
+  assert.equal((await fns.settleMaterialListing(ref, t0 + 3 * DAY - 1)).skipped, 'not_due');
+  const r = await fns.settleMaterialListing(ref, t0 + 3 * DAY);
   assert.equal(r.auto, true);
   assert.equal(r.qty, 100_000);
   const l = G('marketplaceListings/mat_s1_tamirMalzemesi_7');
   assert.equal(l.quantity, 100_000);
   assert.equal(l.sold, false);
-  assert.equal(l.expireAtMs, t0 + 13 * DAY);
+  assert.equal(l.expireAtMs, t0 + 5 * DAY);
   assert.equal(G('users/s1').gold, 700_000, 'v124: malzeme satışında vergi yok');
   assert.equal(sms.length, 1);
   assert.match(sms[0].text, /otomatik satıldı/);
-  // 13. gün: kalan da satılır, ilan kapanır
-  await fns.settleMaterialListing(ref, t0 + 13 * DAY);
+  // 5. gün: kalan da satılır, ilan kapanır
+  await fns.settleMaterialListing(ref, t0 + 5 * DAY);
   const l2 = G('marketplaceListings/mat_s1_tamirMalzemesi_7');
   assert.equal(l2.sold, true);
   assert.equal(l2.autoSold, true);
@@ -112,6 +119,7 @@ test('pahalı ilan (8 ≥ 7,5): süresi dolan parti iade edilir; borçlu satıc�
     sellerId: 's1', itemType: 'material', materialType: 'tamirMalzemesi', unitPrice: 8, quantity: 30, price: 240, sold: false,
     batches: [{ q: 30, at: t0 }], expireAtMs: t0 + 7 * DAY,
   });
+  assert.equal((await fns.settleMaterialListing(db.collection('marketplaceListings').doc('x'), t0 + 3 * DAY)).skipped, 'not_due', 'pahalı ilan 7 gün kalır');
   await fns.settleMaterialListing(db.collection('marketplaceListings').doc('x'), t0 + 7 * DAY);
   assert.equal(G('users/s1/inventory/tamirMalzemesi').quantity, 30);
   assert.equal(G('users/s1').gold, 0);
@@ -132,8 +140,8 @@ test('pahalı ilan (8 ≥ 7,5): süresi dolan parti iade edilir; borçlu satıc�
 test('süresi dolmamış parti dokunulmaz; sistem ilanı atlanır', async () => {
   const { S, G, fns, db } = setup();
   const t0 = Date.UTC(2026, 9, 1);
-  S('marketplaceListings/z', { sellerId: 's1', itemType: 'material', materialType: 'tamirMalzemesi', unitPrice: 6, quantity: 5, sold: false, batches: [{ q: 5, at: t0 }], expireAtMs: t0 + 7 * DAY });
-  const r = await fns.settleMaterialListing(db.collection('marketplaceListings').doc('z'), t0 + 6 * DAY);
+  S('marketplaceListings/z', { sellerId: 's1', itemType: 'material', materialType: 'tamirMalzemesi', unitPrice: 6, quantity: 5, sold: false, batches: [{ q: 5, at: t0 }], expireAtMs: t0 + 3 * DAY });
+  const r = await fns.settleMaterialListing(db.collection('marketplaceListings').doc('z'), t0 + 2 * DAY);
   assert.equal(r.skipped, 'not_due');
   assert.equal(G('marketplaceListings/z').quantity, 5);
   S('marketplaceListings/sys', { sellerId: 'system', itemType: 'material', materialType: 'tamirMalzemesi', unitPrice: 6, quantity: 5, sold: false, expireAtMs: 1 });
@@ -148,6 +156,9 @@ test('v115 araç/silah ilanı: 00:00 öncesi iptal bedelsiz, sonrası ceza; zama
   const f = itemListingTimeFields(t, { min: 5000, max: 10000 });
   assert.equal(f.listedDayKey, '2026-10-23');
   assert.equal(f.expireAtMs, t + TTL);
+  // v146: fiyat verilirse ucuz ilan 3 gün, pahalı 7 gün
+  assert.equal(itemListingTimeFields(t, { min: 5000, max: 10000 }, 7499).expireAtMs, t + LB.AUTO_SELL_TTL_MS);
+  assert.equal(itemListingTimeFields(t, { min: 5000, max: 10000 }, 7500).expireAtMs, t + TTL);
   assert.equal(f.bandMin, 5000);
   assert.equal(f.bandMax, 10000);
   assert.equal(itemCancelPenalty(f, t + 30 * 1000), false, '23:59:30 bedelsiz');
@@ -172,30 +183,32 @@ function setupItems() {
   const code2 = src.slice(a, b) + '\nreturn { settleItemListing };';
   const fns = new Function(
     'db', 'admin', 'AMAZOR_PRICES', 'resaleTax', 'taxLedgerWrite', 'splitIncomeForDebt', 'goldTag', 'addUserSms',
-    'autoSellsAt', 'materialRange', 'batchesOf', 'splitDue', 'nextExpireAtMs', 'LISTING_TTL_MS', 'itemListingBand',
+    'autoSellsAt', 'materialRange', 'batchesOf', 'splitDue', 'nextExpireAtMs', 'LISTING_TTL_MS', 'itemListingBand', 'materialTtl', 'itemTtl',
     code2
   )(db, admin, {}, resaleTax, taxLedgerWrite, splitIncomeForDebt, goldTag, () => {},
-    LB.autoSellsAt, LB.materialRange, LB.batchesOf, LB.splitDue, LB.nextExpireAtMs, LB.LISTING_TTL_MS, () => ({ min: 5000, max: 10000 }));
+    LB.autoSellsAt, LB.materialRange, LB.batchesOf, LB.splitDue, LB.nextExpireAtMs, LB.LISTING_TTL_MS, () => ({ min: 5000, max: 10000 }), mockMaterialTtl, LB.itemTtl);
   return { db, S, G, fns };
 }
 
-test('v115 araç/silah ilanı 7. gün: ortanın altı oyuna satılır (ürün silinir), %50 ve üstü kaldırılır (ömür aynı); süresi dolmamış dokunulmaz', async () => {
+test('v115/v146 araç/silah ilanı: ortanın altı 3. gün oyuna satılır (ürün silinir), %50 ve üstü kaldırılır (ömür aynı); süresi dolmamış dokunulmaz', async () => {
   const { S, G, fns, db } = setupItems();
   const t0 = Date.UTC(2026, 9, 1, 9);
   S('users/u1', { gold: 0 });
   S('vehicles/v1', { ownerId: 'u1', listed: true, lifeDays: 9 });
   S('vehicles/v2', { ownerId: 'u1', listed: true, lifeDays: 9 });
   S('weapons/w1', { ownerId: 'u1', listed: true, lifeDays: 4, shopHouseId: 'h1', shopListingId: 'L3' });
-  S('marketplaceListings/L1', { sellerId: 'u1', itemType: 'vehicle', vehicleId: 'v1', vehicleModel: 'Şahin', price: 7000, ...LB.itemListingTimeFields(t0, { min: 5000, max: 10000 }), sold: false });
+  S('marketplaceListings/L1', { sellerId: 'u1', itemType: 'vehicle', vehicleId: 'v1', vehicleModel: 'Şahin', price: 7000, ...LB.itemListingTimeFields(t0, { min: 5000, max: 10000 }, 7000), sold: false });
   S('marketplaceListings/L2', { sellerId: 'u1', itemType: 'vehicle', vehicleId: 'v2', price: 7500, ...LB.itemListingTimeFields(t0, { min: 5000, max: 10000 }), sold: false });
   S('marketplaceListings/L3', { sellerId: 'u1', itemType: 'weapon', weaponId: 'w1', price: 9000, shopHouseId: 'h1', ...LB.itemListingTimeFields(t0, { min: 5000, max: 10000 }), sold: false });
 
-  // 6. gün: dokunulmaz
-  assert.equal((await fns.settleItemListing(db.collection('marketplaceListings').doc('L1'), t0 + 6 * DAY)).skipped, 'not_due');
+  // 2. gün: dokunulmaz
+  assert.equal((await fns.settleItemListing(db.collection('marketplaceListings').doc('L1'), t0 + 2 * DAY)).skipped, 'not_due');
   assert.equal(G('marketplaceListings/L1').sold, false);
+  // 3. gün: ucuz ilan satılır, pahalı ilan beklemede
+  await fns.settleItemListing(db.collection('marketplaceListings').doc('L1'), t0 + 3 * DAY);
+  assert.equal((await fns.settleItemListing(db.collection('marketplaceListings').doc('L2'), t0 + 3 * DAY)).skipped, 'not_due');
 
   const now = t0 + 7 * DAY;
-  await fns.settleItemListing(db.collection('marketplaceListings').doc('L1'), now);
   await fns.settleItemListing(db.collection('marketplaceListings').doc('L2'), now);
   await fns.settleItemListing(db.collection('marketplaceListings').doc('L3'), now);
 

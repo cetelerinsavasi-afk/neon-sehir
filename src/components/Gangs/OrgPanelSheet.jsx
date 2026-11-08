@@ -6,6 +6,7 @@
 // (karargaha Ziyaret'ten girilse de çalışsın).
 // =============================================================================
 import { useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { HqNavContext } from './hqNav';
 import { useAuth } from '../../contexts/AuthContext';
 import { GangProvider, useDocData, useGang } from './GangContext';
@@ -67,7 +68,9 @@ export default function OrgPanelSheet({ org = 'gang', onClose, onEnterHq }) {
   const worldId = config?.liveOpen ? config.liveWorldId : null;
   const mode = useMemo(() => ({ world: 'live', worldId, actorId: user?.uid }), [worldId, user?.uid]);
   const nav = useMemo(() => (onEnterHq ? { enterHq: onEnterHq } : null), [onEnterHq]);
-  return (
+  // v146.1: body'ye taşınır — mekânın alt araç çubukları / dönüşümlü kapsayıcılar
+  // paneli ya da sohbet kutusunu, bağış penceresini örtmesin.
+  return createPortal(
     <div className="gx-hq-panel" role="dialog" aria-label={org === 'intel' ? 'Polis Teşkilatı' : 'Çete'} onPointerDown={(e) => e.stopPropagation()}>
       <div className="gx-full-top">
         <span className="gx-full-title">{org === 'intel' ? '🚓 Polis Teşkilatı' : '🏴 Çete'}</span>
@@ -86,6 +89,7 @@ export default function OrgPanelSheet({ org = 'gang', onClose, onEnterHq }) {
           <div className="gx-loading">Yükleniyor…</div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

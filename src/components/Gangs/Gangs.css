@@ -3739,7 +3739,9 @@ button.gx-member.gx-member-btn:active {
 .gx-hq-panel {
   position: fixed;
   inset: 0;
-  z-index: 90;
+  height: 100%;
+  height: 100dvh;
+  z-index: 900; /* v146.1: body'de, mekân arayüzünün üstünde */
   background: radial-gradient(circle at 20% 0%, #1a1030 0%, #070a12 55%);
   display: flex;
   flex-direction: column;
@@ -3749,6 +3751,25 @@ button.gx-member.gx-member-btn:active {
   min-height: 0;
   display: flex;
   flex-direction: column;
+  padding-bottom: 0;
+}
+/* v146.1: sohbet kutusu ekrana sığsın — yazma alanı alt sekmelerin üstünde kalsın */
+.gx-hq-panel .gx-chat-list {
+  height: calc(100vh - 360px - env(safe-area-inset-bottom));
+  height: calc(100dvh - 360px - env(safe-area-inset-bottom));
+  min-height: 140px;
+  max-height: 52vh;
+}
+/* açılır pencere (bağış vb.) açıkken alt sekmeler gizlenir; pencere ekrana sığar */
+.gx-hq-panel:has(.gx-sheet-backdrop) .gx-hq-panel-nav {
+  display: none;
+}
+.gx-hq-panel .gx-sheet {
+  max-height: 88dvh;
+}
+.gx-hq-panel .gx-sheet-body {
+  overflow-y: auto;
+  min-height: 0;
 }
 .gx-hq-panel-body {
   flex: 1;
