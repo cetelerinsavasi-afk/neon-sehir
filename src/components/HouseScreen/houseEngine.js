@@ -3346,8 +3346,25 @@ export function createHouseEngine(
       // v77: bölme kaldırılınca üstündeki duvar eşyaları da kalkar (kaydedince envantere döner)
       const sel = objs.get(selectedId);
       if (sel && isDivider(sel.data.k)) attachedWallItems(sel.data).forEach(({ e }) => removeEntry(e.data.i));
+      // v146.3: zemin / duvar / tavan parçası silinince en yakın aynı tür parça seçilir —
+      // art arda "Sil" ile hızlıca temizlenir.
+      const tile = sel ? CATALOG_MAP[sel.data.k]?.tile : null;
+      const from = sel ? { x: sel.data.x, z: sel.data.z, y: sel.obj?.position?.y || 0 } : null;
       removeEntry(selectedId);
-      select(null);
+      let next = null;
+      if (tile && from) {
+        let best = Infinity;
+        for (const [id, e] of objs) {
+          if (CATALOG_MAP[e.data.k]?.tile !== tile || !layerOk(id)) continue;
+          const dy = (e.obj?.position?.y || 0) - from.y;
+          const d = (e.data.x - from.x) ** 2 + (e.data.z - from.z) ** 2 + dy * dy;
+          if (d < best) {
+            best = d;
+            next = id;
+          }
+        }
+      }
+      select(next);
       emitDesign();
     },
     // v132 — pazar ilanı kapanan (satılan / iptal) deneme eşyaları odadan kalkar

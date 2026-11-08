@@ -187,7 +187,8 @@ function Money({ gold = 0, gem = 0, small }) {
 const designSig = (d) =>
   `${d?.wall}|${d?.floor}|${doorKey(d?.door)}|` +
   (d?.items || [])
-    .map((it) => `${it.i}:${it.k}:${it.x}:${it.z}:${it.r || 0}:${it.c || 0}:${it.p === 1 ? 1 : 0}:${it.o === true ? 1 : it.o === false ? 0 : '-'}`)
+    // v146.3: sunucu konumu 3 haneye yuvarlar — fark sayılmasın (gereksiz yeniden kurulum = takılma)
+    .map((it) => `${it.i}:${it.k}:${Math.round(Number(it.x) * 1000)}:${Math.round(Number(it.z) * 1000)}:${it.r || 0}:${it.c || 0}:${it.p === 1 ? 1 : 0}:${it.o === true ? 1 : it.o === false ? 0 : '-'}`)
     .sort()
     .join(',');
 
@@ -296,6 +297,8 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
   const saveTimerRef = useRef(null);
   const writeChainRef = useRef(Promise.resolve());
   const appliedFirstRef = useRef(false);
+  const savesInFlightRef = useRef(0); // v146.3
+  const saveGuardUntilRef = useRef(0); // v146.3
   const seenMsgRef = useRef(new Set());
   const mountedAtRef = useRef(Date.now());
   const stopStreamRef = useRef(null); // v80: yayını kapat (evden çıkarken)
@@ -422,6 +425,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
     pendingDesignRef.current = null;
     setSaveState('saving');
     const allowBizClose = allowBizCloseRef.current;
+    savesInFlightRef.current += 1; // v146.3: kayıt sürerken gelen (eski) ev belgesi uygulanmaz
     return enqueue(async () => {
       try {
         const res = await houseAction({ op: 'save', houseId, design: dsg, ...(allowBizClose ? { allowBizClose: true } : {}) });
@@ -458,6 +462,10 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
         flash(err?.message || 'Kaydedilemedi.');
         // sunucu reddettiyse (örn. envanter) sunucudaki hâle dön
         appliedFirstRef.current = false;
+      } finally {
+        savesInFlightRef.current = Math.max(0, savesInFlightRef.current - 1);
+        // kayıttan hemen önce yola çıkmış eski belge kısa süre yok sayılır
+        saveGuardUntilRef.current = Date.now() + 2500;
       }
     });
   }, [enqueue, flash, houseId]);
@@ -590,7 +598,9 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
           // tasarımcı: denediğin (henüz alınmamış) kaplamalar yeniden kurulumda korunur
           eng.setDesign(loc ? { ...dsg, wall: loc.wall || dsg.wall, floor: loc.floor || dsg.floor, door: loc.door || dsg.door } : dsg, { force: true });
           setDesign(eng.getDesign());
-        } else if (!pendingDesignRef.current && !eng.isBusy()) {
+        } else if (!pendingDesignRef.current && !eng.isBusy() && savesInFlightRef.current === 0 && Date.now() >= saveGuardUntilRef.current) {
+          // v146.3: kendi kaydın sürerken / az önce bittiyse gelen belge eski olabilir —
+          // uygulanmaz (eşya geri zıplamasın); sonraki belge güncel hâli getirir.
           // v92 — birlikte tasarım: yetkili/sahip başkasının değişikliğini canlı görür.
           // Kendi bekleyen değişikliğin varsa uygulanmaz (kaydın gidince eşitlenir).
           // v101.1: duvar, zemin ve kapı AYRI AYRI — sadece sunucuda gerçekten değişen
