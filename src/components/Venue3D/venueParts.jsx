@@ -9,7 +9,7 @@ import { useDailyActions } from '../../hooks/useDailyActions';
 import { useInventory } from '../../hooks/useInventory';
 import { usePlayer } from '../../hooks/usePlayer';
 import { usePoliticsState } from '../../hooks/usePolitics'; // v136
-import { prayAtMosque, buyFromGazinoBar, leaveOnNumaraTable, buyFromBufe, sellContrabandAtPark } from '../../services/gameActions';
+import { prayAtMosque, buyFromGazinoBar, leaveOnNumaraTable, buyFromBufe, sellContrabandAtPark, buyFromVendor } from '../../services/gameActions';
 import SimpleActionScreen from '../SimpleActionScreen/SimpleActionScreen';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import ImamBooklet from '../ImamBooklet/ImamBooklet';
@@ -29,7 +29,8 @@ import GarageScreen from '../GarageScreen/GarageScreen';
 import ShadyDealPanel from '../ShadyDeal/ShadyDealPanel';
 import SaleToast from '../ShadyDeal/SaleToast';
 import HeldIcon from '../HouseScreen/HeldIcon';
-import { camiiDynamicNpcs } from '../../../functions/venueLayouts.js';
+import { camiiDynamicNpcs, VENDORS, VENDOR_COST } from '../../../functions/venueLayouts.js';
+import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import '../../styles/bizui.css';
 
 // =============================================================================
@@ -569,6 +570,191 @@ export function BelediyePart({ panel, setPanel, walk }) {
       {panel === 'secim' && (
         <Suspense fallback={null}>
           <PoliticsScreen onClose={() => setPanel(null)} />
+        </Suspense>
+      )}
+    </>
+  );
+}
+
+// ── SEYYAR SATICILAR (v145) ──────────────────────────────────────────────────
+// Kokoreççi / Simitçi / Dönerci / Köfteci — açık hava 3D mekân.
+//   • Sol üst: şüphe (parktaki gibi).
+//   • Sağ üst: "🛒 Seyyar satıcı" → Alışveriş yap · Haraç kes (bugün yapıldıysa → Menü).
+//   • Arabaya yaklaşınca: Alışveriş yap · Haraç kes · Menü (bugün yapıldıysa sadece Menü).
+//   • Satıcıya dokununca: yanına yürür, aynı seçenekler.
+//   • Alışveriş: 1.000 altın, ürün ele gelir, −5 şüphe (günde 1). Menü: serbest.
+//   Gelirin tamamı devlete (Ticaret Bakanlığı) — sunucu: buyFromVendor.
+function VendorChoice({ cfg, busy, err, onBuy, onHarac, onMenu, onClose }) {
+  return (
+    <Sheet title={`${cfg.icon} ${cfg.title}`} onClose={onClose}>
+      <div className="v3-vendor-acts">
+        <button className="v3-vendor-act buy" disabled={busy} onClick={onBuy}>
+          <HeldIcon product={cfg.product} size={44} />
+          <b>{busy ? 'Alınıyor…' : 'Alışveriş yap'}</b>
+          <em>
+            <span className="gold-coin-icon" style={{ width: 12, height: 12 }} /> {fmt(VENDOR_COST)} · 🕵️ −5
+          </em>
+        </button>
+        <button className="v3-vendor-act harac" disabled={busy} onClick={onHarac}>
+          <span className="v3-vendor-ico">💰</span>
+          <b>Haraç kes</b>
+          <em>soygun</em>
+        </button>
+      </div>
+      {onMenu && (
+        <button className="v3-btn v3-vendor-menu" onClick={onMenu}>
+          🧾 Menü
+        </button>
+      )}
+      {err && <p className="ws-error">{err}</p>}
+    </Sheet>
+  );
+}
+
+export function VendorPart({ venue, panel, setPanel, flash, walk, engineRef, onOpenHeist, hideActRef }) {
+  const { actions } = useDailyActions();
+  const vendorId = venue.vendor;
+  const v = VENDORS[vendorId];
+  const cfg = { icon: venue.icon, title: venue.name, product: v?.product };
+  const done = Boolean(actions?.vendorPurchases?.[vendorId]) || Boolean(actions?.heist?.[vendorId]);
+  const [busy, setBusy] = useState(null);
+  const [err, setErr] = useState(null);
+  const stationId = Object.keys(venue.stations || {})[0] || null;
+
+  // bugün alışveriş / haraç yapıldıysa arabadaki butonlardan sadece Menü kalır
+  const doneRef = useRef(done);
+  useEffect(() => {
+    doneRef.current = done;
+  }, [done]);
+  useEffect(() => {
+    if (!hideActRef) return undefined;
+    hideActRef.current = (act) => doneRef.current && (act === 'buy' || act === 'harac');
+    return () => {
+      hideActRef.current = null;
+    };
+  }, [hideActRef]);
+
+  const approach = () => {
+    try {
+      if (stationId) engineRef?.current?.approach?.(stationId);
+    } catch {
+      /* yürüme olmasa da panel açılır */
+    }
+  };
+
+  const buyDaily = async () => {
+    if (busy) return;
+    setBusy('daily');
+    setErr(null);
+    try {
+      await buyFromVendor(vendorId);
+      const label = HOUSE_PRODUCTS[v.product]?.label || 'Ürün';
+      flash?.(`${label} elinde (2 dk) · −${fmt(VENDOR_COST)} · 🕵️ −5`);
+      setPanel(null);
+    } catch (e) {
+      setErr(e?.message || 'Alışveriş yapılamadı.');
+      setPanel('choose');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const buyItem = async (id, price) => {
+    if (busy) return;
+    setBusy(id);
+    setErr(null);
+    try {
+      await buyFromVendor(vendorId, id);
+      flash?.(`${HOUSE_PRODUCTS[id]?.label || 'Ürün'} elinde (2 dk) · −${fmt(price)}`);
+      setPanel(null);
+    } catch (e) {
+      setErr(e?.message || 'Satın alma başarısız.');
+    } finally {
+      setBusy(null);
+    }
+  };
+  const harac = () => {
+    setPanel(null);
+    onOpenHeist?.(vendorId);
+  };
+
+  // istasyon / NPC butonlarından gelen paneller
+  useEffect(() => {
+    if (panel === 'vendor') setPanel(done ? 'menu' : 'choose3');
+    else if (panel === 'buy') {
+      if (done) setPanel('menu');
+      else {
+        setPanel(null);
+        buyDaily();
+      }
+    } else if (panel === 'harac') {
+      if (done) setPanel('menu');
+      else harac();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panel, done]);
+
+  if (!v) return null;
+  const menu = Object.entries(v.menu || {});
+  return (
+    <>
+      <Menu show={walk}>
+        <SuspicionBadge />
+      </Menu>
+      {walk && !panel && (
+        <div className="hb-topbtns">
+          <button
+            className="hb-topbtn"
+            onClick={() => {
+              setErr(null);
+              approach();
+              setPanel(done ? 'menu' : 'choose');
+            }}
+          >
+            {done ? '🧾 Menü' : '🛒 Seyyar satıcı'}
+          </button>
+        </div>
+      )}
+      {(panel === 'choose' || panel === 'choose3') && (
+        <VendorChoice cfg={cfg} busy={busy === 'daily'} err={err} onBuy={buyDaily} onHarac={harac} onMenu={panel === 'choose3' ? () => setPanel('menu') : null} onClose={() => setPanel(null)} />
+      )}
+      {panel === 'menu' && (
+        <Sheet title={`🧾 ${venue.name} · Menü`} onClose={() => setPanel(null)} closeLabel="Kapat">
+          <div className="v3-menu-grid">
+            {menu.map(([id, price]) => (
+              <button key={id} className="v3-item" disabled={Boolean(busy)} onClick={() => buyItem(id, price)}>
+                <HeldIcon product={id} size={40} />
+                <span>{HOUSE_PRODUCTS[id]?.label || id}</span>
+                <em>
+                  <span className="gold-coin-icon" style={{ width: 11, height: 11 }} /> {fmt(price)}
+                </em>
+              </button>
+            ))}
+          </div>
+          {err && <p className="ws-error">{err}</p>}
+        </Sheet>
+      )}
+    </>
+  );
+}
+
+// ── POLİS TEŞKİLATI (v146) ──────────────────────────────────────────────────
+// Sağ üstte "🚓 Polis Teşkilatı" → sohbet · savaş · operasyon · teşkilat (Savaş ile açılır).
+const OrgPanelSheet = lazy(() => import('../Gangs/OrgPanelSheet'));
+export function TeskilatPart({ walk, panel, setPanel }) {
+  const { user } = useAuth();
+  if (!user) return null;
+  return (
+    <>
+      {walk && !panel && (
+        <div className="hb-topbtns">
+          <button className="hb-topbtn" onClick={() => setPanel('teskilat')}>
+            🚓 Polis Teşkilatı
+          </button>
+        </div>
+      )}
+      {panel === 'teskilat' && (
+        <Suspense fallback={null}>
+          <OrgPanelSheet org="intel" onClose={() => setPanel(null)} />
         </Suspense>
       )}
     </>

@@ -66,7 +66,7 @@ export default function GuestVenueScreen({ venueKey = null, houseId = null, onEx
     if (import.meta.env?.DEV) window.__guestEngine = eng; // sadece geliştirme/önizleme
     if (v) {
       eng.setVenueStations(v.stations || {});
-      if (v.outdoor) eng.setOutdoor(true);
+      if (v.outdoor) eng.setOutdoor(true, v.sky || null);
     }
     eng.setMode('walk');
     eng.setView('3d');

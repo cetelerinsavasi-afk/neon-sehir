@@ -4,6 +4,7 @@ import { labelTexture, cityTexture, viewTexture, WINDOW_VIEWS, FLOORS as SURF_FL
 import { ITEM_PRICES, HOUSE_TAKEABLES, FLOOR_TILE_KEYS, WALL_PANEL_KEYS, CEIL_TILE_KEYS, CEIL_TILE } from '../../../functions/houseCatalogData.js';
 import { v92CatalogEntries, V92_CATEGORIES, BOSSTABLE_TINTS, V92_TINTS, marketShelfV92 } from './houseCatalogV92';
 import { v135CatalogEntries, V135_TINTS } from './houseCatalogV135';
+import { v145CatalogEntries, V145_TINTS } from './houseCatalogV145'; // v145 — seyyar satıcılar
 import { petCatalogEntries, PET_CATEGORIES, PET_TINTS, PETSHOP_TINTS } from './houseCatalogPets'; // v137
 
 // =============================================================================
@@ -167,6 +168,7 @@ export const TINTS = {
 TINTS.bosstable = BOSSTABLE_TINTS; // v92 — Patron Masası renkleri
 Object.assign(TINTS, V92_TINTS); // v100 — şezlong, şemsiye, park çöp kutusu…
 Object.assign(TINTS, V135_TINTS); // v135 — tuval desenleri, konteyner, tır
+Object.assign(TINTS, V145_TINTS); // v145 — plastik masa / tabure
 Object.assign(TINTS, PET_TINTS, PETSHOP_TINTS); // v137 — hayvan renkleri, petshop
 // v100 — Kafe masası: masa (c) + sandalyeler (s). İlk 6 = eski görünüm (ahşap masa, siyah sandalye)
 const CAFE_CHAIRS = [
@@ -3338,6 +3340,8 @@ export const CATALOG = [
   ...v92CatalogEntries({ neonBuild }),
   // v135 — haber stüdyosu, resim atölyesi, liman & depo (houseCatalogV135.js)
   ...v135CatalogEntries(),
+  // v145 — seyyar satıcı arabaları, plastik masa/tabure, korkuluk, neon tabelalar, mekân yol/deniz şeridi (houseCatalogV145.js)
+  ...v145CatalogEntries({ neonBuild }),
   // v137 — Hayvanlar (pati platformu + gezen hayvan) · Petshop (houseCatalogPets.js)
   ...petCatalogEntries(),
   // v92 — zemin parçaları ve duvar panelleri (yan yana döşenir)

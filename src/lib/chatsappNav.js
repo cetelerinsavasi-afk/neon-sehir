@@ -10,6 +10,15 @@ export function openDmWith(uid, name = null, avatar = null) {
   window.dispatchEvent(new CustomEvent(OPEN_DM_EVENT, { detail: pending }));
 }
 
+// v146 — şu an açık olan özel sohbet (üst bildirim şeridi o kişi için çıkmasın)
+let openDmUid = null;
+export function setOpenDm(uid) {
+  openDmUid = uid || null;
+}
+export function isDmOpen(uid) {
+  return Boolean(uid) && openDmUid === uid;
+}
+
 export function takePendingDm() {
   const p = pending;
   pending = null;

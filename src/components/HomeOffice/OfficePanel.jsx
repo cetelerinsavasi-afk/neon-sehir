@@ -15,6 +15,8 @@ import {
   minuteBandOf,
   houseKind,
 } from '../../../functions/officeData.js';
+import { HqInvites } from '../HouseScreen/HqPanels'; // v146
+import { houseAction } from '../../services/gameActions';
 import './HomeOffice.css';
 
 // =============================================================================
@@ -27,7 +29,23 @@ const KIND_LABEL = { urun: '🛍️ Ürün satışı', bagis: '🤲 Bağış', d
 
 // v102 — ofiste ⚙️ Ayarlar doğrudan bu paneli açar: ad + simge, fiyatlar, rapor,
 // en altta İşletmeler (ofisi işletmeye dönüştürmek için).
-export default function OfficePanel({ houseId, houseDoc, onClose, flash, onRename, onOpenBiz }) {
+// v146 — karargah raporu (officeDaily belgesi sadece oyuncu sahibine açık → sunucudan)
+function useHqReport(houseId, on) {
+  const [rep, setRep] = useState({ today: null, yesterday: null });
+  useEffect(() => {
+    if (!on) return undefined;
+    let alive = true;
+    houseAction({ op: 'hqReport', houseId })
+      .then((r) => alive && setRep({ today: r.data?.today || null, yesterday: r.data?.yesterday || null }))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [houseId, on]);
+  return rep;
+}
+
+export default function OfficePanel({ houseId, houseDoc, onClose, flash, onRename, onOpenBiz, hq = false }) {
   const [tab, setTab] = useState('items');
   const [open, setOpen] = useState(null);
   const [emojiOpen, setEmojiOpen] = useState(false);
@@ -37,7 +55,9 @@ export default function OfficePanel({ houseId, houseDoc, onClose, flash, onRenam
   const isBiz = Boolean(houseDoc?.biz?.type);
   const keys = Object.keys(OFFICE_FURN).filter((k) => owned.includes(k));
   const emoji = houseDoc?.office?.emoji || '🏢';
-  const { today, yesterday } = useOfficeDaily(houseId, tab === 'report');
+  const ownRep = useOfficeDaily(houseId, !hq && tab === 'report');
+  const hqRep = useHqReport(houseId, hq && tab === 'report');
+  const { today, yesterday } = hq ? hqRep : ownRep;
   const halt = (e) => e.stopPropagation();
   const [name, setName] = useState(houseDoc?.name || '');
   const [nameBusy, setNameBusy] = useState(false);
@@ -66,13 +86,15 @@ export default function OfficePanel({ houseId, houseDoc, onClose, flash, onRenam
     <div className="hs-modal-bg" onClick={onClose} onPointerDown={halt}>
       <div className="hs-modal of-panel" onClick={halt}>
         <div className="hs-modal-head">
-          <b>{kind === 'ofis' && !isBiz ? `${emoji} Ofis Ayarları` : '💰 Ücretli Ürünler'}</b>
+          <b>{hq ? '🏴 Karargah Ayarları' : kind === 'ofis' && !isBiz ? `${emoji} Ofis Ayarları` : '💰 Ücretli Ürünler'}</b>
           <button className="hs-x" onClick={onClose}>
             ✕
           </button>
         </div>
         <div className="of-status">
-          {isBiz ? (
+          {hq ? (
+            <span>Ücretli ürünler isteğe bağlı; gelir vergisiz çete kasasına girer.</span>
+          ) : isBiz ? (
             <span>Kazanç işletme kasasından ayrı tutulur.</span>
           ) : kind === 'ofis' ? (
             <>
@@ -94,12 +116,19 @@ export default function OfficePanel({ houseId, houseDoc, onClose, flash, onRenam
           <button className={tab === 'items' ? 'on' : ''} onClick={() => setTab('items')}>
             🏷️ Fiyatlar
           </button>
+          {hq && (
+            <button className={tab === 'invite' ? 'on' : ''} onClick={() => setTab('invite')}>
+              📨 Davet
+            </button>
+          )}
           <button className={tab === 'report' ? 'on' : ''} onClick={() => setTab('report')}>
             📊 Rapor
           </button>
         </div>
+        {tab === 'invite' && hq && <HqInvites houseId={houseId} houseDoc={houseDoc} flash={flash} />}
         {tab === 'items' && (
           <div className="of-list">
+            {hq && keys.length === 0 && <p className="of-hint">Karargaha ürün satılabilen mobilya (ör. buzdolabı, kafe tezgâhı) koyunca burada ücretli yapabilirsin.</p>}
             {keys.map((k) => (
               <OfficeRow key={k} k={k} houseId={houseId} houseDoc={houseDoc} on={active.includes(k)} open={open === k} onToggle={() => setOpen((o) => (o === k ? null : k))} flash={flash} />
             ))}
@@ -111,7 +140,7 @@ export default function OfficePanel({ houseId, houseDoc, onClose, flash, onRenam
             <ReportCard label="Dün" d={yesterday} />
           </div>
         )}
-        {!isBiz && onOpenBiz && (
+        {!isBiz && !hq && onOpenBiz && (
           <button className="hs-btn ghost wide hb-open-list of-biz-btn" onClick={onOpenBiz}>
             🏪 İşletmeler
           </button>
@@ -270,7 +299,7 @@ function OfficeRow({ k, houseId, houseDoc, on, open, onToggle, flash }) {
 function ReportCard({ label, d }) {
   const revenue = Number(d?.revenue || 0);
   const tax = Number(d?.tax || 0);
-  const customers = Object.keys(d?.cust || {}).length;
+  const customers = typeof d?.cust === 'number' ? d.cust : Object.keys(d?.cust || {}).length;
   const products = Object.entries(d?.products || {}).sort((a, b) => b[1] - a[1]);
   return (
     <div className="of-report">

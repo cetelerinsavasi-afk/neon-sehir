@@ -386,6 +386,25 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/housePresence/$(request.auth.uid))
         && get(/databases/$(database)/documents/housePresence/$(request.auth.uid)).data.houseId == houseId;
     }
+    // v146 — polis teşkilatı: polisin konum kaydı takma kimlikle (housePresence/pa_{rosterId});
+    // eşleme presenceAlias/{takma} = { uid } sadece sunucuda (istemci okuyamaz)
+    function ownsAlias(alias) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/presenceAlias/$(alias))
+        && get(/databases/$(database)/documents/presenceAlias/$(alias)).data.uid == request.auth.uid;
+    }
+    function inHouseByAlias(houseId) {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/presenceAliasOf/$(request.auth.uid))
+        && exists(/databases/$(database)/documents/housePresence/$(get(/databases/$(database)/documents/presenceAliasOf/$(request.auth.uid)).data.alias))
+        && get(/databases/$(database)/documents/housePresence/$(get(/databases/$(database)/documents/presenceAliasOf/$(request.auth.uid)).data.alias)).data.houseId == houseId;
+    }
+    match /presenceAlias/{alias} {
+      allow read, write: if false;
+    }
+    match /presenceAliasOf/{uid} {
+      allow read, write: if false;
+    }
     match /houses/{houseId} {
       allow read: if isSignedIn();
       allow write: if false;
@@ -394,6 +413,7 @@ service cloud.firestore {
         allow read: if isSignedIn()
           && (get(/databases/$(database)/documents/houses/$(houseId)).data.ownerUid == request.auth.uid
             || inHouse(houseId)
+            || (houseId == 'game_teskilat' && inHouseByAlias(houseId))
             || (exists(/databases/$(database)/documents/streamHouses/$(houseId))
               && get(/databases/$(database)/documents/streamHouses/$(houseId)).data.beatMs > request.time.toMillis() - 120000));
         allow write: if false;
@@ -604,7 +624,7 @@ service cloud.firestore {
     match /housePresence/{uid} {
       allow read: if isSignedIn();
       allow create: if false;
-      allow update: if isSelf(uid)
+      allow update: if (isSelf(uid) || (uid.matches('pa_.*') && ownsAlias(uid)))
         && validHousePresence()
         && request.resource.data.houseId == resource.data.houseId
         && request.resource.data.avatar == resource.data.avatar
@@ -612,7 +632,7 @@ service cloud.firestore {
         && (request.resource.data.get('holding', null) == resource.data.get('holding', null)
           || request.resource.data.get('holding', null) == null)
         && request.resource.data.get('lastChatMs', 0) == resource.data.get('lastChatMs', 0);
-      allow delete: if isSelf(uid);
+      allow delete: if isSelf(uid) || (uid.matches('pa_.*') && ownsAlias(uid));
     }
 
     // usernames/{lowercaseName} — benzersiz oyun içi isim rezervasyonu.

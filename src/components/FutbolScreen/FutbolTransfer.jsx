@@ -17,6 +17,8 @@ import { useProList } from '../../hooks/useFutbolPro';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import ConfirmModal from '../ConfirmModal/ConfirmModal';
 import { groupFutbolPlayersByPositionOrdered } from './futbolPositionOrder';
+import { useBelediyeRates } from '../../hooks/useBelediyeRates';
+import { transferTax } from '../../../functions/tax.js';
 import './FutbolTransfer.css';
 import './FutbolTakimim.css';
 
@@ -37,6 +39,7 @@ export default function FutbolTransfer({ team, role }) {
   const readOnly = role === 'owner' && Boolean(team.managerUid);
   const { user } = useAuth();
   const { player } = usePlayer();
+  const rates = useBelediyeRates(); // v146: transfer vergisi oranı
   const isAdmin = isAdminUid(user?.uid);
   const { players: myPlayers } = useFutbolTeamPlayers(team.id);
   const [market, setMarket] = useState(null);
@@ -75,7 +78,7 @@ export default function FutbolTransfer({ team, role }) {
     loadMarket();
   }, []);
 
-  const handleBuy = async (playerId, canAfford) => {
+  const handleBuy = async (playerId, canAfford, tax) => {
     if (!canAfford) {
       // Sunucuya hiç gitmeden, yerel olarak 2 saniyeliğine uyarı göster
       // ve sonra otomatik olarak fiyata geri dön.
@@ -88,7 +91,7 @@ export default function FutbolTransfer({ team, role }) {
     setBusyId(playerId);
     setError('');
     try {
-      await buyFutbolPlayer(playerId, team.id);
+      await buyFutbolPlayer(playerId, team.id, tax);
       setBoughtIds((prev) => new Set(prev).add(playerId));
     } catch (err) {
       setError(err?.message || 'Satın alma başarısız.');
@@ -183,6 +186,8 @@ export default function FutbolTransfer({ team, role }) {
   const personalGold = player?.gold || 0;
   const teamSupport = team.transferSupport || 0;
   const availableBudget = isManaged ? teamSupport + (team.treasury || 0) : personalGold + teamSupport;
+  // v146: transfer vergisi — alıcı ilan fiyatının üstüne öder (Kültür ve Spor Bakanlığı)
+  const taxPct = Number(rates?.transfer ?? 5);
 
   return (
     <fieldset className="futbol-transfer" disabled={readOnly}>
@@ -310,8 +315,9 @@ export default function FutbolTransfer({ team, role }) {
           {group.players.map((p) => {
             if (p.__pro) return <ListedProRow key={`pro_${p.id}`} p={p} team={team} readOnly={readOnly} />;
             const price = p.salePrice || 0;
+            const tax = transferTax(price, rates);
             const alreadyBought = boughtIds.has(p.id);
-            const canAfford = availableBudget >= price;
+            const canAfford = availableBudget >= price + tax;
             const showingInsufficient = insufficientId === p.id;
             return (
               <div key={p.id} className={`futbol-transfer-row${(p.injuryDaysLeft || 0) > 0 ? ' injured' : ''}`}>
@@ -329,13 +335,22 @@ export default function FutbolTransfer({ team, role }) {
                 <button
                   className={`futbol-admin-submit${showingInsufficient ? ' futbol-buy-insufficient' : ''}`}
                   disabled={busyId === p.id || alreadyBought}
-                  onClick={() => handleBuy(p.id, canAfford)}
+                  onClick={() => handleBuy(p.id, canAfford, tax)}
                 >
-                  {alreadyBought
-                    ? 'Satın Alındı ✓'
-                    : showingInsufficient
-                      ? 'Altın Yetersiz'
-                      : `${price.toLocaleString('tr-TR')} altın`}
+                  {alreadyBought ? (
+                    'Satın Alındı ✓'
+                  ) : showingInsufficient ? (
+                    'Altın Yetersiz'
+                  ) : (
+                    <>
+                      {(price + tax).toLocaleString('tr-TR')} altın
+                      {tax > 0 && (
+                        <small className="futbol-transfer-tax">
+                          {price.toLocaleString('tr-TR')} + %{taxPct} vergi
+                        </small>
+                      )}
+                    </>
+                  )}
                 </button>
               </div>
             );

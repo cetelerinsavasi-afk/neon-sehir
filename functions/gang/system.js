@@ -187,6 +187,7 @@ export function createGangSystem(deps) {
     giveRespect: membership.giveRespect,
     updateGangProfile: membership.updateGangProfile,
     donate: membership.donate,
+    donateGem: membership.donateGem, // v146
     sendGangChat: membership.sendGangChat,
     sendGlobalChat: membership.sendGlobalChat,
     // kasa

@@ -96,6 +96,8 @@ function HandoverStatus({ h }) {
   );
 }
 
+const GEM_PRESTIGE = 50000; // v146: functions/gang/config.js GEM_DONATION_PRESTIGE ile aynı
+
 function MoneySheet({ kind, d, onClose }) {
   const { path } = useGang();
   const { run, busy } = useGangAction();
@@ -107,11 +109,13 @@ function MoneySheet({ kind, d, onClose }) {
   const { docs: gangs } = useQueryData(kind === 'transfer' ? path('gangs') : null, () => [limit(100)], 'gangs_all');
   const free = d.stateToday ? Number(d.state?.distributableLeft || 0) : 0;
   const n = group === 'rutbeli' ? GANG_RULES.DIST_RANKED_SLOTS : slots;
-  const title = { donate: 'Kasaya bağış', dist: 'Altın dağıt', withdraw: 'Kendi hesabına aktar', transfer: 'Başka çeteye gönder' }[kind];
-  const icon = { donate: '💸', dist: '💰', withdraw: '🏦', transfer: '📤' }[kind];
+  const title = { donate: 'Kasaya bağış', donateGem: 'Kasaya zümrüt bağışı', dist: 'Altın dağıt', withdraw: 'Kendi hesabına aktar', transfer: 'Başka çeteye gönder' }[kind];
+  const icon = { donate: '💸', donateGem: '💎', dist: '💰', withdraw: '🏦', transfer: '📤' }[kind];
+  const gemOn = kind === 'donateGem';
   const submit = async () => {
     let r;
     if (kind === 'donate') r = await run('donate', { amount }, { success: `💸 Bağışlandı · +${fmt(amount * GANG_RULES.DONATION_PRESTIGE_PER_GOLD)} prestij`, withRequestId: true });
+    if (kind === 'donateGem') r = await run('donateGem', { amount }, { success: `💎 Bağışlandı · +${fmt(amount * GEM_PRESTIGE)} prestij`, withRequestId: true });
     if (kind === 'dist') r = await run('createDistribution', { group, perPerson: amount, slots: n }, { success: '💰 Dağıtım açıldı', withRequestId: true });
     if (kind === 'withdraw') r = await run('withdrawToSelf', { amount }, { success: '🏦 Hesabına aktarıldı', withRequestId: true });
     if (kind === 'transfer') r = await run('transferToGang', { targetGangId: target, amount }, { success: target === '__belediye__' ? '🏛️ Belediyeye bağışlandı' : '📤 Gönderildi', withRequestId: true });
@@ -120,7 +124,9 @@ function MoneySheet({ kind, d, onClose }) {
   return (
     <Sheet title={title} icon={icon} onClose={onClose}>
       {kind === 'donate' && amount > 0 && <div className="gx-free-line good">✦ +{fmt(amount * GANG_RULES.DONATION_PRESTIGE_PER_GOLD)}</div>}
-      {kind !== 'donate' && (
+      {gemOn && <p className="dim gx-mini">💎 Çete zümrüdü dağıtılamaz ve geri çekilemez; Mafya Babası ve karargah yetkilileri karargah mobilyası için harcar.</p>}
+      {gemOn && amount > 0 && <div className="gx-free-line good">✦ +{fmt(amount * GEM_PRESTIGE)}</div>}
+      {kind !== 'donate' && !gemOn && (
         <div className="gx-free-line">
           🔓 <b>{fmt(free)}</b>
         </div>
@@ -158,7 +164,7 @@ function MoneySheet({ kind, d, onClose }) {
             ))}
         </div>
       )}
-      <AmountInput value={amount} onChange={setAmount} max={kind === 'dist' ? Math.floor(free / Math.max(1, n)) : kind === 'donate' ? (wallet.gold ?? undefined) : free} />
+      <AmountInput value={amount} onChange={setAmount} quick={gemOn ? [1, 5, 10, 50] : undefined} max={kind === 'dist' ? Math.floor(free / Math.max(1, n)) : kind === 'donate' ? (wallet.gold ?? undefined) : gemOn ? (wallet.emerald ?? undefined) : free} />
       {kind === 'dist' && (
         <div className="gx-free-line">
           = <b>{fmt(amount * n)}</b>
@@ -296,28 +302,38 @@ export default function CetemTab({ d }) {
           )}
         </div>
         <KasaLine state={d.state} isToday={d.stateToday} kasa={d.kasaShown} live={d.kasaLive} />
+        {/* v146 — çete zümrüdü: dağıtılamaz, geri çekilemez; sadece karargah mobilyası */}
+        {d.state && Number(d.state.gem || 0) > 0 && <div className="gx-free-line">💎 Zümrüt <b>{fmt(d.state.gem)}</b> <span className="dim gx-mini">· karargah mobilyası için</span></div>}
         {!d.gang.babaId && <div className="gx-baba-vacant">👑 Mafya Babası koltuğu boş · 00:00'da en yüksek prestijli üye geçer</div>}
         {d.handover && d.handover.fromId === actorId && <HandoverStatus h={d.handover} />}
+        {/* v146: üst satır bağışlar (2), alt satır yönetim (dağıt · kendime · gönder) */}
         <div className="gx-action-grid">
           <Btn small kind="ghost" onClick={() => setMoney('donate')}>
-            💸 Bağış
+            💸 Altın bağışı
           </Btn>
-          {isLead && (
-            <Btn small onClick={() => setMoney('dist')}>
-              💰 Altın dağıt +
-            </Btn>
-          )}
-          {rank === 'baba' && (
-            <Btn small kind="ghost" onClick={() => setMoney('withdraw')}>
-              🏦 Kendime
-            </Btn>
-          )}
-          {isLead && (
-            <Btn small kind="ghost" onClick={() => setMoney('transfer')}>
-              📤 Çeteye gönder
-            </Btn>
-          )}
+          <Btn small kind="ghost" onClick={() => setMoney('donateGem')}>
+            💎 Zümrüt bağışı
+          </Btn>
         </div>
+        {(isLead || rank === 'baba') && (
+          <div className="gx-action-row">
+            {isLead && (
+              <Btn small onClick={() => setMoney('dist')}>
+                💰 Dağıt
+              </Btn>
+            )}
+            {rank === 'baba' && (
+              <Btn small kind="ghost" onClick={() => setMoney('withdraw')}>
+                🏦 Kendime
+              </Btn>
+            )}
+            {isLead && (
+              <Btn small kind="ghost" onClick={() => setMoney('transfer')}>
+                📤 Çeteye
+              </Btn>
+            )}
+          </div>
+        )}
       </Card>
 
       {rank === 'sagkol' && (

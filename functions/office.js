@@ -20,6 +20,7 @@ import { midnightDayKey } from './businessCatalogData.js';
 import { HOUSE_PRODUCTS, HOUSE_TAKEABLES } from './houseCatalogData.js';
 import { bizTax, taxLedgerWrite } from './tax.js';
 import { goldTag } from './moneyLog.js';
+import { createHq, isHqHouse } from './hq.js'; // v146 karargah: ücretli ürün geliri vergisiz çete kasasına
 import {
   OFFICE_FURN,
   OFFICE_BANDS,
@@ -49,6 +50,7 @@ export function createOffice({ db, FieldValue, HttpsError, splitIncomeForDebt, n
   };
   const houseRef = (id) => db.collection('houses').doc(id);
   const userRef = (uid) => db.collection('users').doc(uid);
+  const hq = createHq({ db, FieldValue, HttpsError, now });
   const spendRef = (houseId, uid, dayKey) => db.collection('officeSpend').doc(`${houseId}_${uid}_${dayKey}`);
   const dailyRef = (houseId, dayKey) => db.collection('officeDaily').doc(`${houseId}_${dayKey}`);
 
@@ -66,14 +68,17 @@ export function createOffice({ db, FieldValue, HttpsError, splitIncomeForDebt, n
   // (okumalar — müşteri, sahip, sayaç — önceden yapılmış olmalı).
   //   kind: 'urun' · 'bagis' · 'dakika'
   function chargeTx(tx, { houseId, h, uid, us, os, amount, kind, product, spent, dayKey, t, tag }) {
-    const tax = bizTax(amount, 'ofis'); // v127: oran Ticaret Bakanlığı (Ofis Kazançları)
+    // v146 — karargah: gelir VERGİSİZ, doğrudan çete kasasına
+    const gangHq = isHqHouse(h);
+    const tax = gangHq ? 0 : bizTax(amount, 'ofis'); // v127: oran Ticaret Bakanlığı (Ofis Kazançları)
     tx.update(userRef(uid), { gold: FieldValue.increment(-amount), goldTag: goldTag(tag || 'ofisAlis') });
     tx.set(spendRef(houseId, uid, dayKey), { houseId, uid, dayKey, amount: FieldValue.increment(amount), updatedAtMs: t }, { merge: true });
-    if (os?.exists) {
+    if (gangHq) tx.set(hq.stateRef(h.hq.worldId, h.hq.gangId), { kasa: FieldValue.increment(amount) }, { merge: true });
+    else if (os?.exists) {
       const { goldDelta, debtDelta } = splitIncomeForDebt(os.data()?.debtToState, amount - tax);
       tx.update(userRef(h.ownerUid), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta), goldTag: goldTag('ofis') });
     }
-    taxLedgerWrite(tx, db, FieldValue, { amount: tax, source: 'ofis', uid: h.ownerUid, atMs: t, ref: houseId, stat: { isl_ofis_ciro: amount, isl_ofis_n: 1 } });
+    if (!gangHq) taxLedgerWrite(tx, db, FieldValue, { amount: tax, source: 'ofis', uid: h.ownerUid, atMs: t, ref: houseId, stat: { isl_ofis_ciro: amount, isl_ofis_n: 1 } });
     const patch = {
       houseId,
       ownerUid: h.ownerUid,
@@ -86,8 +91,8 @@ export function createOffice({ db, FieldValue, HttpsError, splitIncomeForDebt, n
     };
     if (product) patch.products = { [product]: FieldValue.increment(1) };
     tx.set(dailyRef(houseId, dayKey), patch, { merge: true });
-    // tek "yeni satış" SMS'i (okunmamışken güncellenir, yığılmaz)
-    tx.set(userRef(h.ownerUid).collection('messages').doc(`officesale_${houseId}`), {
+    // tek "yeni satış" SMS'i (okunmamışken güncellenir, yığılmaz) — karargahta sahip oyuncu yok
+    if (!gangHq) tx.set(userRef(h.ownerUid).collection('messages').doc(`officesale_${houseId}`), {
       text: `${h.office?.emoji || '🏢'} ${h.name || 'Ofisin'} — ücretli ürünlerinden yeni kazanç var.`,
       createdAt: FieldValue.serverTimestamp(),
       read: false,
@@ -118,7 +123,9 @@ export function createOffice({ db, FieldValue, HttpsError, splitIncomeForDebt, n
       const hs = await tx.get(houseRef(houseId));
       if (!hs.exists) fail('not-found', 'Ev bulunamadı.');
       const h0 = hs.data();
-      if (h0.ownerUid !== uid) fail('permission-denied', 'Bu ev senin değil.');
+      // v146 — karargahta Baba ve yetkililer fiyat belirler
+      if (isHqHouse(h0)) await hq.requireManager(h0, uid, tx);
+      else if (h0.ownerUid !== uid) fail('permission-denied', 'Bu ev senin değil.');
       if (h0.venue) fail('failed-precondition', 'Bu mekânda olmaz.');
       if (isLegacyHomeOffice(h0)) fail('failed-precondition', 'Ofisin yeni sisteme taşınıyor, birazdan tekrar dene.');
       const office = {
@@ -180,6 +187,7 @@ export function createOffice({ db, FieldValue, HttpsError, splitIncomeForDebt, n
       const patch = { office, kind, updatedAtMs: now() };
       // ofisler (işletmeler gibi) herkese açıktır
       if (kind === 'ofis' && (h0.privacy || 'public') !== 'public') patch.privacy = 'public';
+      if (isHqHouse(h0)) patch.kind = 'karargah';
       tx.update(houseRef(houseId), patch);
       result = { ok: true, office, kind, active: activeOfficeKeys(h1) };
     });

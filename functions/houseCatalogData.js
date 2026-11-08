@@ -108,6 +108,10 @@ export const ITEM_PRICES = {
   ps_mama: g(1500), ps_su: g(1000), ps_kumkabi: g(2000), ps_cuval: g(2500), ps_oyuncak: g(1500), ps_tasma: g(3000),
   ps_yatak: g(4000), ps_cark: g(5000), ps_kafes: g(7000), ps_tirmalama: g(9000), ps_kulube: g(12000), ps_kumes: g(15000),
   ps_ahir: g(25000), ps_saray: z(2),
+  // v145 — seyyar satıcılar (arabalar, plastik masa/tabure, korkuluk, neon tabelalar)
+  kokorecarabasi: g(60000), donerarabasi: g(60000), simittezgahi: g(45000), koftearabasi: g(60000),
+  plastikmasa: g(3000), plastiktabure: g(1500), korkuluk: g(8000),
+  neon_kokorec: g(20000), neon_doner: g(20000), neon_simit: g(20000), neon_kofte: g(20000),
   // YAPI
   wall2: g(10000), wall4: g(20000), walldoor: g(30000), glassdiv: g(50000), column: g(100000), podium: z(5), doordeco: g(20000), garagedoor: g(150000),
   // v101 — kapılar
@@ -191,6 +195,10 @@ export const HOUSE_PRODUCTS = {
   // v100 — büfe kulübesi
   tost: { label: 'Tost', emoji: '🥪' },
   sosisli: { label: 'Sosisli', emoji: '🌭' },
+  // v145 — seyyar satıcılar
+  kokorec: { label: 'Kokoreç', emoji: '🌯' },
+  doner: { label: 'Döner', emoji: '🥙' },
+  kofte: { label: 'Köfte Ekmek', emoji: '🍔' },
   tabanca: { label: 'Tabanca', emoji: '🔫' },
   tufek: { label: 'Tüfek', emoji: '🔫' },
   pompali: { label: 'Pompalı', emoji: '🔫' },
@@ -222,6 +230,11 @@ export const HOUSE_TAKEABLES = {
   gunrack: ['tabanca', 'tufek', 'pompali'],
   gunrackg: ['altinTabanca'],
   bufe: ['tost', 'sosisli', 'ayran', 'cay'],
+  // v145 — seyyar satıcı arabaları (oyunun seyyar satıcı mekânlarında ücretli: mekânın menüsünden)
+  kokorecarabasi: ['kokorec', 'ayran'],
+  donerarabasi: ['doner', 'ayran'],
+  simittezgahi: ['simit', 'cay'],
+  koftearabasi: ['kofte', 'ayran'],
 };
 
 // v127 — oyunun mekânlarında (Belediye, Banka, Karakol…) da kullanılan ücretsiz eşyalar:

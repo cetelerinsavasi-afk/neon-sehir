@@ -21,6 +21,7 @@ import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
 import { useFirestoreResume } from './hooks/useFirestoreResume';
 import { regions } from './data/regions';
 import { BIZ_BY_REGION } from '../functions/businessCatalogData.js';
+import { vendorVenueKey } from '../functions/vendorData.js';
 import { IS_ANDROID_APP } from './lib/platform';
 import { quietRestorePlayPurchases } from './lib/playBilling';
 import { exitApp, installBackHandler, rearmBack, useBackClose } from './lib/backStack';
@@ -215,6 +216,7 @@ function GameShell() {
   const [weaponShopOpen, setWeaponShopOpen] = useState(false);
   const [tuningGarageOpen, setTuningGarageOpen] = useState(false);
   const [belediyeOpen, setBelediyeOpen] = useState(false); // v108 — başkanlık makam odası
+  const [vendorRegion, setVendorRegion] = useState(null); // v145 — seyyar satıcı 3D mekânı (regions.js kaydı)
   // v77 performans: kök bileşen sadece HUD alanları değişince yeniden çizilir
   const hudKey = usePlayerSelect(selectHud);
   const [hudSusp, hudRep, hudGold] = hudKey.split('|').map(Number);
@@ -250,6 +252,7 @@ function GameShell() {
   useBackClose(weaponShopOpen, venueClose(setWeaponShopOpen));
   useBackClose(tuningGarageOpen, venueClose(setTuningGarageOpen));
   useBackClose(belediyeOpen, venueClose(setBelediyeOpen));
+  useBackClose(Boolean(vendorRegion), venueClose(() => setVendorRegion(null)));
   useBackClose(raceExpanded, () => setRaceExpanded(false));
   useBackClose(Boolean(activeTableId), () => setActiveTableId(null));
 
@@ -366,6 +369,11 @@ function GameShell() {
       setTuningGarageOpen(true);
       return;
     }
+    // v145 — seyyar satıcılar da 3D mekân (açık hava). Hazırlanamazsa eski panel açılır.
+    if (regionMeta?.screen === 'seyyar-satici' && vendorVenueKey(regionMeta.id)) {
+      setVendorRegion(regionMeta);
+      return;
+    }
     setActiveRegion(regionMeta);
   };
 
@@ -409,7 +417,23 @@ function GameShell() {
     belediye: setBelediyeOpen, // v127
   };
 
+  // v146 — karargah davetinden (ekranı sağlayan yoksa) karargaha geçiş
+  useEffect(() => {
+    const on = (e) => {
+      const id = e?.detail?.houseId;
+      if (typeof id === 'string' && id) setHouseView({ houseId: id });
+    };
+    window.addEventListener('neon-open-house', on);
+    return () => window.removeEventListener('neon-open-house', on);
+  }, []);
+
   const handleVisitVenue = (openKey) => {
+    // v146 — Ziyaret › seyyar satıcı mekânları (vendor:{bölge kimliği})
+    if (String(openKey).startsWith('vendor:')) {
+      const r = regions.find((x) => x.id === String(openKey).slice(7));
+      if (r) openVenueForVisit((on) => setVendorRegion(on ? r : null));
+      return;
+    }
     const fn = VISIT_OPEN_FNS[openKey];
     if (fn) openVenueForVisit(fn);
   };
@@ -448,7 +472,7 @@ function GameShell() {
   regionClickRef.current = handleRegionClick;
   const onRegionClickStable = useCallback((...a) => regionClickRef.current(...a), []);
   const mapCovered = Boolean(
-    watchStreamId || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || heistTarget !== undefined || (effectiveRaceRoomId && raceExpanded)
+    watchStreamId || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || Boolean(vendorRegion) || heistTarget !== undefined || (effectiveRaceRoomId && raceExpanded)
   );
 
   return (
@@ -547,7 +571,7 @@ function GameShell() {
           sol altta aynı boyut/konumda (bkz. OnboardingPanel.css). */}
       {/* v136: sol alt sütun alttan yukarı Görevler → CANLI → 🗳️ Seçim; görünmeyenin
           yeri boş kalmaz (üsttekiler alta kayar). */}
-      <OnboardingPanel gangReminders={gangAlerts?.reminders} slotBottom={leftSlotBottom(0)} onVisibleChange={setObVisible} />
+      <OnboardingPanel gangReminders={gangAlerts?.reminders} gangChans={gangAlerts?.chans} slotBottom={leftSlotBottom(0)} onVisibleChange={setObVisible} />
 
       {/* v80 Yayıncılık — canlı yayın varken Görevler'in tam üstünde (telefonun
           karşısında) 🔴 CANLI; yoksa görünmez. */}
@@ -646,6 +670,25 @@ function GameShell() {
         />
       )}
       {belediyeOpen && !user && <GuestVenue venueKey="belediye" onExit={() => closeVenueMaybeReturnToVisit(setBelediyeOpen)} />}
+
+      {vendorRegion && user && (
+        <VenueHouseScreen
+          key={vendorRegion.id}
+          venue={vendorVenueKey(vendorRegion.id)}
+          onExit={() => closeVenueMaybeReturnToVisit(() => setVendorRegion(null))}
+          onOpenHeist={openHeistScreen}
+          fallback={
+            <VenueFallbackNotice
+              onDone={() => {
+                const r = vendorRegion;
+                setVendorRegion(null);
+                setActiveRegion(r);
+              }}
+            />
+          }
+        />
+      )}
+      {vendorRegion && !user && <GuestVenue key={vendorRegion.id} venueKey={vendorVenueKey(vendorRegion.id)} onExit={() => closeVenueMaybeReturnToVisit(() => setVendorRegion(null))} />}
 
       {mosqueOpen && (
         user ? (

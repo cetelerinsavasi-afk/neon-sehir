@@ -38,6 +38,11 @@ const AV = {
   sekreter: { gender: 'kadin', build: 'zayif', skin: '#e0ac69', hairStyle: 'bun', hairColor: '#3b2a1a', clothing: 'suit', clothColor: '#2b3550', neckAcc: 'none', pantsColor: '#22262f' },
   zabita: { gender: 'erkek', build: 'iri', skin: '#c68863', hairStyle: 'short', hairColor: '#0d0a08', facialHair: 'mustache', clothing: 'police', clothColor: '#24445c', hat: 'policecap', hatColor: '#1b3347', pantsColor: '#1b3347' },
   bufeci: { gender: 'erkek', build: 'standart', skin: '#d9a066', hairStyle: 'short', hairColor: '#3b2a1a', facialHair: 'mustache', clothing: 'tanktop', clothColor: '#ffcf33', neckAcc: 'none', pantsColor: '#2b3550', hat: 'cap', hatColor: '#c4161c' },
+  // v145 — seyyar satıcılar (her biri farklı)
+  kokorecci: { gender: 'erkek', build: 'iri', skin: '#c68642', hairStyle: 'short', hairColor: '#1a120c', facialHair: 'full', clothing: 'tanktop', clothColor: '#f4f1e8', neckAcc: 'chain', pantsColor: '#1f2430', hat: 'bandana', hatColor: '#e8742a' },
+  simitci: { gender: 'erkek', build: 'zayif', skin: '#e0ac69', hairStyle: 'short', hairColor: '#8a8f99', facialHair: 'mustache', clothing: 'vest', clothColor: '#7a4a24', neckAcc: 'scarf', pantsColor: '#3b3f4a', hat: 'beanie', hatColor: '#c62a2f' },
+  donerci: { gender: 'erkek', build: 'standart', skin: '#d9a066', hairStyle: 'slick', hairColor: '#0d0a08', facialHair: 'goatee', clothing: 'jumpsuit', clothColor: '#f2f1ec', neckAcc: 'none', pantsColor: '#f2f1ec', hat: 'cap', hatColor: '#c62a2f' },
+  kofteci: { gender: 'erkek', build: 'iri', skin: '#a86b3c', hairStyle: 'short', hairColor: '#241813', facialHair: 'horseshoe', clothing: 'hawaii', clothColor: '#db2777', neckAcc: 'none', pantsColor: '#1f2430', hat: 'headband', hatColor: '#f4f1e8' },
 };export const NPC_AVATARS = AV; // v100 — evlerdeki eşya NPC'leri (büfeci) de kullanır
 
 
@@ -463,7 +468,299 @@ export const VENUES = {
       { id: 'npc_bufeci', name: 'Büfeci Hasan', x: 6.6, z: -5.92, av: AV.bufeci, station: 'pk_bf', lines: ['Sıcak sosisli, tost var!', 'Çay taze demlendi.', 'Buyur abi, ne vereyim?'] },
     ],
   },
+
+  // ===========================================================================
+  // v146 — POLİS TEŞKİLATI KARARGAHI. Sadece polisler + Belediye Başkanı,
+  // yardımcıları ve Teşkilat Bakanı girer (functions/houses.js canEnter, hq.js).
+  // Polisler kod adıyla ve varsayılan tiple görünür (takma kimlikli konum kaydı);
+  // gerçek komiserler oyunda olduğu için komiser/memur NPC'si YOK — sadece çaycı.
+  // Sağ üstte "🚓 Polis Teşkilatı" → sohbet · savaş · operasyon · teşkilat.
+  // ===========================================================================
+  teskilat: {
+    houseId: 'game_teskilat',
+    name: 'Polis Teşkilatı',
+    icon: '🚓',
+    loc: 'teskilat',
+    light: true,
+    v: 1,
+    wall: 'boya_lacivert',
+    floor: 'karo_mavi',
+    items: [
+      // brifing: operasyon ekranı, kürsü, toplantı masası
+      it('ts_tv', 'tvwall', -2.5, -7),
+      it('ts_kr', 'kursu', -2.5, -4.4),
+      it('ts_tm', 'toplantimasa', -2.5, 0.4),
+      it('ts_by1', 'bayrak', -5.2, -6.4),
+      it('ts_by2', 'bayrak', 0.2, -6.4),
+      it('ts_ar', 'aranan', 2.8, -7),
+      it('ts_map', 'cityframe', -7.2, -7),
+      it('ts_clk', 'clock', 5.4, -7),
+      // operasyon masaları (sağ arka)
+      it('ts_od1', 'officedesk', 3.8, -5.5),
+      it('ts_od2', 'officedesk', 7.3, -5.5),
+      it('ts_fc1', 'filecab', -8.4, -1.4, 2),
+      it('ts_fc2', 'filecab', -8.4, -2.3, 2),
+      it('ts_bk', 'bookshelf', -8.3, -6.4),
+      // cephanelik (sağ duvar)
+      it('ts_gr1', 'gunrack', 9, -2.6, 6),
+      it('ts_gr2', 'gunrack', 9, 0.4, 6),
+      it('ts_sf', 'safe', 8.3, 2.2, 6),
+      // sorgu odası (sol ön)
+      it('ts_w1', 'wall4', -4.4, 5.0, 2),
+      it('ts_w2', 'wall2', -7.9, 3.0),
+      it('ts_it', 'interrog', -6.6, 5.0),
+      it('ts_bl', 'bulb', -6.6, 5.0),
+      // çay köşesi (sağ ön)
+      it('ts_cay', 'caysemaver', 8.0, 6.3, 4),
+      it('ts_wc', 'watercooler', 8.4, 4.4, 6),
+      it('ts_ws', 'waitseats', 1.4, 6.0, 4),
+      it('ts_pl1', 'plantb', 8.3, -3.9),
+      it('ts_pl2', 'plantb', -3.6, 6.4),
+      it('ts_ex', 'extinguisher', -9, 1.6, 2),
+      it('ts_dr', 'doordeco', 5, 7, 4),
+    ],
+    stations: {},
+    npcs: [],
+    bots: [
+      {
+        i: 'ts_bot_cay',
+        x: 7.2,
+        z: 5.6,
+        cfg: { o: 'cayci', g: 'erkek', t: 2, s: '#d9a066', h: '#3b2a1a', md: 'smile', n: 'Çaycı Necmi', l: ['Çaylar taze, operasyon uzun sürer!', '*Tepsiyi masaya bırakır*', 'Kimin ne olduğunu sormam, çayımı veririm.'], mv: 'sabit', w: false },
+      },
+    ],
+  },
+
+  // ===========================================================================
+  // v145 — SEYYAR SATICILAR (açık hava). Haritadaki yerlerine göre: Kokoreççi
+  // gazinonun yanında (neon, otopark), Simitçi sahilde, Dönerci fabrika ile
+  // parkın köşesinde (yaya geçidi), Köfteci limanda (konteynerler, rıhtım).
+  // Arka tarafta yol / deniz şeridi; araba arkada, satıcı arabanın arkasında.
+  // İstasyon (arabanın önü): Alışveriş yap · Haraç kes · Menü (bugün alışveriş
+  // ya da haraç yapıldıysa sadece Menü — VendorPart). vendor: regions.js kimliği.
+  // light: eski 2D konum kaydı (interiorPresence) tutulmaz → ek Firestore yok;
+  // "kaç kişi var" ve canlı oyuncular 3D ev kaydından (housePresence) gelir.
+  // ===========================================================================
+  kokorecci: {
+    houseId: 'game_kokorecci',
+    name: 'Kokoreççi',
+    icon: '🌯',
+    loc: 'kokorecci',
+    vendor: 'seyyar_satici_1',
+    light: true,
+    outdoor: true,
+    sky: '#0b0e24',
+    v: 1,
+    wall: 'neon_sehir',
+    floor: 'kaldirim',
+    items: [
+      it('kk_yol', 'vz_yol', 0, -5.5),
+      it('kk_car1', 'car_sedan', -4.6, -5.6, 2, 2),
+      it('kk_car2', 'car_sport', 7.0, -5.6, 6, 5),
+      it('kk_cn1', 'cone', -1.4, -4.5),
+      it('kk_cn2', 'cone', -0.6, -4.5),
+      it('kk_cart', 'kokorecarabasi', 3, -2.4),
+      it('kk_neon', 'neon_kokorec', 3, -7, 0, 2),
+      it('kk_n2', 'neon2', -9, -1.5, 2),
+      it('kk_n3', 'neon3', 9, -1.5, 6),
+      it('kk_lm1', 'streetlamp', 0.2, -3.6),
+      it('kk_lm2', 'streetlamp', 6.2, -3.6),
+      it('kk_lm3', 'streetlamp', -7.6, -3.6),
+      it('kk_cp', 'copkutusu', 1.2, -3.3),
+      // masalar (sol ön)
+      it('kk_m1', 'plastikmasa', -0.8, 0.6, 0, 0),
+      it('kk_t11', 'plastiktabure', -1.55, 0.6, 0, 1),
+      it('kk_t12', 'plastiktabure', -0.05, 0.6, 0, 1),
+      it('kk_t13', 'plastiktabure', -0.8, 1.35, 0, 1),
+      it('kk_um', 'umbrella', -0.8, 0.6),
+      it('kk_m2', 'plastikmasa', -4.6, 1.2, 0, 0),
+      it('kk_t21', 'plastiktabure', -5.35, 1.2, 0, 1),
+      it('kk_t22', 'plastiktabure', -3.85, 1.2, 0, 1),
+      it('kk_t23', 'plastiktabure', -4.6, 1.95, 0, 1),
+      it('kk_m3', 'plastikmasa', -2.6, 4.0, 0, 0),
+      it('kk_t31', 'plastiktabure', -3.35, 4.0, 0, 1),
+      it('kk_t32', 'plastiktabure', -1.85, 4.0, 0, 1),
+      it('kk_t33', 'plastiktabure', -2.6, 4.75, 0, 1),
+      it('kk_pt1', 'planter', 8.2, 1.4, 6),
+      it('kk_pl1', 'plantb', 8.3, 6.3),
+      it('kk_pl2', 'plantb', -8.3, 6.3),
+    ],
+    stations: {
+      kk_cart: [
+        // motor istasyonları ters sırayla dizer → ekranda: Alışveriş yap · Haraç kes · Menü
+        { act: 'menu', label: '🧾 Menü' },
+        { act: 'harac', label: '💰 Haraç kes' },
+        { act: 'buy', label: '🛍️ Alışveriş yap' },
+      ],
+    },
+    npcs: [
+      { id: 'npc_kokorecci', name: 'Kokoreççi Rıza', x: 3.5, z: -3.3, av: AV.kokorecci, station: 'kk_cart', act: 'vendor', lines: ['Kokoreç var, sıcak sıcak!', 'Yarım mı tam mı abi?', 'Bol baharatlı olsun mu?', 'Yanına ayran da vereyim mi?', 'Gazinodan çıkan buraya uğrar!'] },
+    ],
+  },
+
+  simitci: {
+    houseId: 'game_simitci',
+    name: 'Simitçi',
+    icon: '🥯',
+    loc: 'simitci',
+    vendor: 'seyyar_satici_2',
+    light: true,
+    outdoor: true,
+    v: 1,
+    wall: 'deniz',
+    floor: 'kaldirim',
+    items: [
+      it('sm_deniz', 'vz_deniz', 0, -5.5),
+      ...[-8, -6, -4, -2, 0, 2, 4, 6, 8].map((x, n) => it(`sm_k${n}`, 'korkuluk', x, -3.85)),
+      it('sm_cart', 'simittezgahi', 3, -2.2),
+      it('sm_neon', 'neon_simit', -9, -0.5, 2, 1),
+      it('sm_b1', 'parkbench', -1.4, -2.7, 4),
+      it('sm_b2', 'parkbench', -4.8, -2.7, 4),
+      it('sm_b3', 'parkbench', 7.0, -2.7, 4),
+      it('sm_lm1', 'streetlamp', 0.6, -3.3),
+      it('sm_lm2', 'streetlamp', -6.8, -3.3),
+      it('sm_lm3', 'streetlamp', 5.4, -3.3),
+      it('sm_gv', 'guvercin', 0.6, 0.4),
+      it('sm_cp', 'copkutusu', 6.6, -0.6),
+      it('sm_m1', 'plastikmasa', -5.8, 1.6, 0, 3),
+      it('sm_t11', 'plastiktabure', -6.55, 1.6, 0, 0),
+      it('sm_t12', 'plastiktabure', -5.05, 1.6, 0, 0),
+      it('sm_t13', 'plastiktabure', -5.8, 2.35, 0, 0),
+      it('sm_m2', 'plastikmasa', -2.4, 3.4, 0, 3),
+      it('sm_t21', 'plastiktabure', -3.15, 3.4, 0, 0),
+      it('sm_t22', 'plastiktabure', -1.65, 3.4, 0, 0),
+      it('sm_t23', 'plastiktabure', -2.4, 4.15, 0, 0),
+      it('sm_pt1', 'planter', -8.2, 5.2, 2),
+      it('sm_pt2', 'planter', 8.2, 5.2, 6),
+      it('sm_pl', 'palm', 8.3, 1.8),
+    ],
+    stations: {
+      sm_cart: [
+        // motor istasyonları ters sırayla dizer → ekranda: Alışveriş yap · Haraç kes · Menü
+        { act: 'menu', label: '🧾 Menü' },
+        { act: 'harac', label: '💰 Haraç kes' },
+        { act: 'buy', label: '🛍️ Alışveriş yap' },
+      ],
+    },
+    npcs: [
+      { id: 'npc_simitci', name: 'Simitçi Hüsnü', x: 3.45, z: -3.05, av: AV.simitci, station: 'sm_cart', act: 'vendor', lines: ['Taze simit, sıcak simit!', 'Çayla gider abi!', 'Martılara da bir parça at bakalım.', 'Susamı bol, fırından yeni çıktı.', 'Deniz havası iştah açar.'] },
+    ],
+  },
+
+  donerci: {
+    houseId: 'game_donerci',
+    name: 'Dönerci',
+    icon: '🥙',
+    loc: 'donerci',
+    vendor: 'seyyar_satici_3',
+    light: true,
+    outdoor: true,
+    sky: '#0b0e24',
+    v: 1,
+    wall: 'neon_sehir',
+    floor: 'kaldirim',
+    items: [
+      it('dn_yol', 'vz_yol', 0, -5.5),
+      it('dn_yaya', 'vz_yaya', -1.6, -5.5),
+      it('dn_car1', 'car_classic', -5.6, -5.6, 2, 1),
+      it('dn_cn1', 'cone', 6.0, -4.5),
+      it('dn_cart', 'donerarabasi', 3, -2.4),
+      it('dn_neon', 'neon_doner', 3, -7, 0, 0),
+      it('dn_lm1', 'streetlamp', 0.4, -3.6),
+      it('dn_lm2', 'streetlamp', 6.6, -3.6),
+      it('dn_cp', 'copkutusu', 5.0, -3.3),
+      // park tarafı (sol)
+      it('dn_tr1', 'tree', -8.1, -2.4),
+      it('dn_tr2', 'tree', -8.2, 3.6),
+      it('dn_pb', 'parkbench', -7.7, 0.6, 2),
+      it('dn_pt', 'planter', -5.6, 6.3),
+      // fabrika tarafı (sağ)
+      it('dn_br1', 'barrel', 8.3, -2.6),
+      it('dn_br2', 'barrel', 7.6, -2.9),
+      it('dn_pal', 'pallets', 8.0, 0.4),
+      it('dn_cr', 'crate', 8.2, 1.8),
+      // masalar
+      it('dn_m1', 'plastikmasa', -4.6, 0.6, 0, 1),
+      it('dn_t11', 'plastiktabure', -5.35, 0.6, 0, 0),
+      it('dn_t12', 'plastiktabure', -3.85, 0.6, 0, 0),
+      it('dn_t13', 'plastiktabure', -4.6, 1.35, 0, 0),
+      it('dn_m2', 'plastikmasa', -1.8, 2.8, 0, 1),
+      it('dn_t21', 'plastiktabure', -2.55, 2.8, 0, 0),
+      it('dn_t22', 'plastiktabure', -1.05, 2.8, 0, 0),
+      it('dn_t23', 'plastiktabure', -1.8, 3.55, 0, 0),
+      it('dn_bt', 'bartable', -0.6, -0.4),
+      it('dn_bs1', 'stool', -1.2, 0.0),
+      it('dn_bs2', 'stool', 0.0, 0.0),
+    ],
+    stations: {
+      dn_cart: [
+        // motor istasyonları ters sırayla dizer → ekranda: Alışveriş yap · Haraç kes · Menü
+        { act: 'menu', label: '🧾 Menü' },
+        { act: 'harac', label: '💰 Haraç kes' },
+        { act: 'buy', label: '🛍️ Alışveriş yap' },
+      ],
+    },
+    npcs: [
+      { id: 'npc_donerci', name: 'Dönerci Cemil', x: 3.5, z: -3.3, av: AV.donerci, station: 'dn_cart', act: 'vendor', lines: ['Dürüm mü ekmek arası mı?', 'Döner yeni kesildi, buyur!', 'Acı olsun mu?', 'Fabrikadan çıkan işçiler hep bize gelir.', 'Ayranı soğuk, dolaptan yeni çıktı.'] },
+    ],
+  },
+
+  kofteci: {
+    houseId: 'game_kofteci',
+    name: 'Köfteci',
+    icon: '🍔',
+    loc: 'kofteci',
+    vendor: 'seyyar_satici_4',
+    light: true,
+    outdoor: true,
+    sky: '#0a1426',
+    v: 1,
+    wall: 'gece',
+    floor: 'beton',
+    items: [
+      it('kf_deniz', 'vz_deniz', 0, -5.5),
+      it('kf_bl1', 'bollard', -6.5, -3.7),
+      it('kf_bl2', 'bollard', -0.2, -3.7),
+      it('kf_bl3', 'bollard', 6.8, -3.7),
+      it('kf_cart', 'koftearabasi', 3, -2.2),
+      it('kf_neon', 'neon_kofte', 9, -0.5, 6, 1),
+      it('kf_pl1', 'portlight', -4.2, -3.3),
+      it('kf_pl2', 'portlight', 6.0, -3.3),
+      it('kf_cp', 'copkutusu', 0.9, -3.2),
+      // konteynerler (sol)
+      it('kf_ct1', 'container', -8.1, -0.6, 2, 0),
+      it('kf_ct2', 'container', -6.3, -0.6, 2, 1),
+      it('kf_ct3', 'container', -8.1, 4.6, 2, 3),
+      it('kf_pal', 'pallets', 7.8, 0.6),
+      it('kf_cr', 'crates', 8.2, 2.4),
+      it('kf_br', 'barrel', 8.3, -2.2),
+      // masalar
+      it('kf_m1', 'plastikmasa', -3.4, 0.8, 0, 0),
+      it('kf_t11', 'plastiktabure', -4.15, 0.8, 0, 2),
+      it('kf_t12', 'plastiktabure', -2.65, 0.8, 0, 2),
+      it('kf_t13', 'plastiktabure', -3.4, 1.55, 0, 2),
+      it('kf_m2', 'plastikmasa', -0.6, 2.8, 0, 0),
+      it('kf_t21', 'plastiktabure', -1.35, 2.8, 0, 2),
+      it('kf_t22', 'plastiktabure', 0.15, 2.8, 0, 2),
+      it('kf_t23', 'plastiktabure', -0.6, 3.55, 0, 2),
+    ],
+    stations: {
+      kf_cart: [
+        // motor istasyonları ters sırayla dizer → ekranda: Alışveriş yap · Haraç kes · Menü
+        { act: 'menu', label: '🧾 Menü' },
+        { act: 'harac', label: '💰 Haraç kes' },
+        { act: 'buy', label: '🛍️ Alışveriş yap' },
+      ],
+    },
+    npcs: [
+      { id: 'npc_kofteci', name: 'Köfteci Nuri', x: 3.5, z: -3.05, av: AV.kofteci, station: 'kf_cart', act: 'vendor', lines: ['Köfte ekmek, mangalda!', 'Biberi de közledim, koyayım mı?', 'Liman işçisinin gözdesi buradadır.', 'Közün dumanı kokusu şehri sardı.', 'Bir köfte yemeden gitme!'] },
+    ],
+  },
 };
+
+// v145 — seyyar satıcı verisi (harita kimliği → mekân, ürün, menü) ayrı küçük dosyada:
+// ana pakete (App.jsx) bütün mekân yerleşimleri girmesin.
+export { VENDOR_COST, VENDORS, VENDOR_IDS, vendorVenueKey } from './vendorData.js';
 
 export const VENUE_KEYS = Object.keys(VENUES);
 export const VENUE_BY_HOUSE = Object.fromEntries(Object.entries(VENUES).map(([k, v]) => [v.houseId, { key: k, ...v }]));

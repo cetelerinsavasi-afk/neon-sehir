@@ -238,8 +238,9 @@ export const claimPoliceSalary = () => httpsCallable(functions, 'claimPoliceSala
 export const applyReferralCode = (referralCode) =>
   httpsCallable(functions, 'applyReferralCode')({ referralCode });
 
-export const buyFromVendor = (vendorId) =>
-  httpsCallable(functions, 'buyFromVendor')({ vendorId });
+// v145: itemId verilirse seyyar satıcının menüsünden (ürün ele gelir, günlük sınır yok)
+export const buyFromVendor = (vendorId, itemId) =>
+  httpsCallable(functions, 'buyFromVendor')(itemId ? { vendorId, itemId } : { vendorId });
 
 export const attemptHeist = (target) =>
   httpsCallable(functions, 'attemptHeist')({ target });
@@ -489,8 +490,9 @@ export const cancelFutbolPlayerListing = (playerId) =>
 // oyuncu hem SAHİBİ olduğu hem de MENAJERLİĞİNİ yaptığı takıma sahip
 // olabildiği için "benim takımım" artık tek anlamlı değil — hangi takım
 // için alındığı sunucuya AÇIKÇA teamId ile bildirilir.
-export const buyFutbolPlayer = (playerId, teamId) =>
-  httpsCallable(functions, 'buyFutbolPlayer')({ playerId, teamId });
+// v146: expectTax — ekranda gösterilen transfer vergisi (oran değiştiyse sunucu durdurur)
+export const buyFutbolPlayer = (playerId, teamId, expectTax) =>
+  httpsCallable(functions, 'buyFutbolPlayer')(expectTax == null ? { playerId, teamId } : { playerId, teamId, expectTax });
 
 export const setFutbolTeamLogo = (teamId, shape, pattern, icon, primary, secondary) =>
   httpsCallable(functions, 'setFutbolTeamLogo')({ teamId, shape, pattern, icon, primary, secondary });

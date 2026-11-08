@@ -91,3 +91,13 @@ export async function getDocs(target) {
   const docs = s.docs.map((d) => ({ id: d.id, data: () => d.data() }));
   return { docs, size: docs.length, empty: docs.length === 0, forEach: (fn) => docs.forEach(fn) };
 }
+// v145 önizleme: src/firebase.js'in yeni kurulum çağrıları (çevrimdışı önbellek)
+export function initializeFirestore() {
+  return getFirestore();
+}
+export function persistentLocalCache() {
+  return {};
+}
+export function persistentMultipleTabManager() {
+  return {};
+}

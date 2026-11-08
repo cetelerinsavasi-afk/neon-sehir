@@ -358,6 +358,7 @@
 /* takım tarafı satırlar */
 .fp-prow {
   display: flex;
+  flex-wrap: wrap; /* v145: zam / not formu alt satırda tam genişlik */
   align-items: flex-start;
   gap: 10px;
   padding: 9px;
@@ -695,15 +696,49 @@
   gap: 6px;
   margin-top: 4px;
 }
-.fp-note-form input {
+.fp-row-form.fp-note-form {
+  flex-direction: column;
+}
+.fp-note-form input,
+.fp-note-form textarea {
   flex: 1;
   min-width: 0;
-  padding: 7px 9px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
   border-radius: 8px;
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(0, 0, 0, 0.3);
   color: #fff;
-  font-size: 13px;
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.35;
+  resize: vertical;
+}
+.fp-note-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.fp-note-foot small {
+  opacity: 0.6;
+  font-size: 11px;
+}
+/* v145 — sözleşme satırı: butonlar bilginin altında (bilgi sütunu daralmasın) */
+.fp-prow-c .fp-prow-acts {
+  flex: 0 0 100%;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+/* v145 — sözleşme satırında zam / not formu: satırın tam genişliği */
+.fp-row-form {
+  flex: 0 0 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+.fp-row-form .futbol-admin-submit {
+  white-space: nowrap;
 }
 .fp-dimbtn {
   opacity: 0.5;

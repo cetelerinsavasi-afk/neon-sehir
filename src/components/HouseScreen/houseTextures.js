@@ -714,16 +714,11 @@ WALLS.push(
               }
         });
       });
-      g.font = '900 64px Arial Black, Arial';
-      g.textAlign = 'center';
-      g.shadowBlur = 24;
-      g.shadowColor = '#ff2e5a';
-      g.fillStyle = '#ff2e5a';
-      g.fillText('NEON', w * 0.25, 150);
-      g.shadowColor = '#3df5c4';
-      g.fillStyle = '#3df5c4';
-      g.fillText('ŞEHİR', w * 0.72, 210);
-      g.shadowBlur = 0;
+      // v146: "NEON ŞEHİR" yazısı kaldırıldı (duvarda tekrar tekrar çıkınca saçma duruyordu) — yerine yıldızlar
+      for (let i = 0; i < 70; i++) {
+        g.fillStyle = `rgba(255,255,255,${0.25 + r() * 0.6})`;
+        g.fillRect(r() * w, r() * h * 0.45, 2, 2);
+      }
     } },
   { key: 'uzanan_yol', name: 'Uzanan Yol', swatch: '#7cb85a', ...MURAL,
     draw: (g, w, h, r) => {

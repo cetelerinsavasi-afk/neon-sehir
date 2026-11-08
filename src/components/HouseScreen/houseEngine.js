@@ -3420,13 +3420,14 @@ export function createHouseEngine(
       if (snapshot || spectate) return;
       setTier(Math.max(0, Math.min(PERF_TIERS.length - 1, Math.round(v))), performance.now());
     },
-    setOutdoor(on) {
+    // v145: sky — açık hava gökyüzü rengi (seyyar satıcılar: gece); verilmezse gündüz mavisi
+    setOutdoor(on, sky = null) {
       outdoor = Boolean(on);
       ceiling.visible = !on;
       ceilLights.forEach((o) => {
         if (o.isMesh) o.visible = !on;
       });
-      scene.background = new THREE.Color(on ? '#9fd3ff' : '#07080d');
+      scene.background = new THREE.Color(on ? sky || '#9fd3ff' : '#07080d');
     },
     // v92 Faz 8: oyunun mekânı — istasyon eşyaları (null = normal ev)
     setVenueStations(map) {

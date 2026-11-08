@@ -2,8 +2,11 @@
 // Herkes izleyebilir — çetesi olmayan oyuncu da. Katılma yok. Sunucu (watchWars)
 // gizli bilgileri hiç göndermez: bahis tutarı, tır yükü, haraç/rüşvet tutarı yok.
 // Liste 20 saniyede bir kendiliğinden yenilenir.
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useContext, useEffect, useState } from 'react';
+import { collection, limit, onSnapshot, query, where } from 'firebase/firestore';
+import { db } from '../../firebase';
 import { useGang, useNow } from './GangContext';
+import { HqNavContext } from './hqNav';
 import { Btn, Card, Deadline, Empty, Logo, Sheet } from './ui';
 import { fmt, productOf } from './gangConstants';
 
@@ -96,8 +99,21 @@ export function WatchWarsList({ excludeMine = false }) {
   );
 }
 
+// v146: devam eden savaş yoksa buton hiç görünmez (açılışta bir kez sorulur; sunucu 15 sn önbellekler)
 export function WatchWarsButton() {
+  const { call } = useGang();
   const [open, setOpen] = useState(false);
+  const [count, setCount] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    call('watchWars', {})
+      .then((r) => alive && setCount((r?.wars || []).filter((w) => !w.mine).length))
+      .catch(() => alive && setCount(0));
+    return () => {
+      alive = false;
+    };
+  }, [call]);
+  if (!count) return null;
   return (
     <>
       <Btn block kind="ghost" onClick={() => setOpen(true)}>
@@ -106,6 +122,51 @@ export function WatchWarsButton() {
       {open && (
         <Sheet title="Devam eden savaşlar" icon="👁️" onClose={() => setOpen(false)}>
           <WatchWarsList excludeMine />
+        </Sheet>
+      )}
+    </>
+  );
+}
+
+// v146 — Savaş › Davetler: çetemizi karargahına davet eden çeteler (hiç davet yoksa görünmez)
+export function HqInvitesButton({ gangId }) {
+  const nav = useContext(HqNavContext);
+  const [open, setOpen] = useState(false);
+  const [list, setList] = useState([]);
+  useEffect(() => {
+    if (!gangId) return undefined;
+    return onSnapshot(
+      query(collection(db, 'houses'), where('hqInvites', 'array-contains', gangId), limit(30)),
+      (s) => setList(s.docs.map((d) => ({ id: d.id, name: d.data().ownerName || 'Çete', logo: d.data().ownerAvatar || null }))),
+      () => setList([])
+    );
+  }, [gangId]);
+  if (!list.length) return null;
+  const enter = (id) => {
+    setOpen(false);
+    if (nav?.enterHq) nav.enterHq(id);
+    else window.dispatchEvent(new CustomEvent('neon-open-house', { detail: { houseId: id } }));
+  };
+  return (
+    <>
+      <Btn block kind="ghost" onClick={() => setOpen(true)}>
+        📨 Davetler ({list.length})
+      </Btn>
+      {open && (
+        <Sheet title="Davet edildiğin karargahlar" icon="📨" onClose={() => setOpen(false)}>
+          <div className="gx-stack">
+            {list.map((h) => (
+              <Card key={h.id}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <Logo logo={h.logo} size={34} />
+                  <b style={{ flex: 1 }}>{h.name}</b>
+                  <Btn small onClick={() => enter(h.id)}>
+                    🚪 Gir
+                  </Btn>
+                </div>
+              </Card>
+            ))}
+          </div>
         </Sheet>
       )}
     </>

@@ -21,6 +21,7 @@
 // =============================================================================
 
 import { ITEM_PRICES } from './houseCatalogData.js';
+import { goldTag } from './moneyLog.js';
 
 export const FURN_MAX_OPEN_PER_USER = 40;
 const LISTING_ID_RE = /^[A-Za-z0-9]{1,40}$/;
@@ -69,8 +70,16 @@ export function createFurnMarket({ db, FieldValue, HttpsError, now = () => Date.
     if (Object.keys(best).length) tx.set(marketRef(), { best, updatedAtMs: now() }, { merge: true });
   }
 
+  // v146 — satıcı bir ÇETE olabilir (karargahın yetkilileri çete envanterinden ilan
+  // koyar): actor = { id: 'gang_{gangId}', name: çete adı, gang: { gangId, worldId } }.
+  // Varsayılan: oyuncunun kendisi. Çete ilanının parası çete kasasına (altın / zümrüt).
+  const gangStateRef = (g) => db.doc(`gangWorlds/${g.worldId}/gangs/${g.gangId}/private/state`);
+  const gangChatRef = (g) => db.collection(`gangWorlds/${g.worldId}/gangs/${g.gangId}/chat_genel`);
+  const isGangSeller = (id) => typeof id === 'string' && id.startsWith('gang_');
+
   // Satıcı: envanterdeki 1 adedi ilana koy
-  async function list(uid, p) {
+  async function list(uid, p, actor = null) {
+    const sid = actor?.id || uid;
     const k = String(p.k || '');
     const v = Number(p.v);
     const band = furnPriceBand(k);
@@ -79,9 +88,9 @@ export function createFurnMarket({ db, FieldValue, HttpsError, now = () => Date.
     let result = null;
     await db.runTransaction(async (tx) => {
       const [is, us, mine, open] = await Promise.all([
-        tx.get(invRef(uid)),
-        tx.get(userRef(uid)),
-        tx.get(col().where('sellerUid', '==', uid).where('status', '==', 'open').limit(FURN_MAX_OPEN_PER_USER + 1)),
+        tx.get(invRef(sid)),
+        actor ? Promise.resolve(null) : tx.get(userRef(uid)),
+        tx.get(col().where('sellerUid', '==', sid).where('status', '==', 'open').limit(FURN_MAX_OPEN_PER_USER + 1)),
         readOpen(tx, k),
       ]);
       const inv = is.exists ? is.data() : {};
@@ -91,9 +100,10 @@ export function createFurnMarket({ db, FieldValue, HttpsError, now = () => Date.
       const items = { ...(inv.items || {}) };
       items[k] = have - 1;
       if (items[k] <= 0) delete items[k];
-      tx.set(invRef(uid), { items, walls: inv.walls || [], floors: inv.floors || [], updatedAtMs: now() });
+      tx.set(invRef(sid), { items, walls: inv.walls || [], floors: inv.floors || [], updatedAtMs: now() });
       const ref = col().doc();
-      const row = { sellerUid: uid, sellerName: String(us.data()?.displayName || 'Oyuncu').slice(0, 40), k, t: band.t, v, status: 'open', createdAtMs: now() };
+      const sellerName = actor ? String(actor.name || 'Çete').slice(0, 40) : String(us.data()?.displayName || 'Oyuncu').slice(0, 40);
+      const row = { sellerUid: sid, sellerName, k, t: band.t, v, status: 'open', createdAtMs: now(), ...(actor?.gang ? { gangId: actor.gang.gangId, gangWorld: actor.gang.worldId, listedBy: uid } : {}) };
       tx.set(ref, row);
       writeBest(tx, { [k]: pickBest([...open, { id: ref.id, ...row }]) });
       result = { ok: true, id: ref.id, k, t: band.t, v };
@@ -102,19 +112,20 @@ export function createFurnMarket({ db, FieldValue, HttpsError, now = () => Date.
   }
 
   // Satıcı: ilanı iptal et → eşya envantere döner
-  async function cancel(uid, p) {
+  async function cancel(uid, p, actor = null) {
     const id = String(p.id || '');
+    const sid = actor?.id || uid;
     if (!isListingId(id)) fail('invalid-argument', 'Geçersiz ilan.');
     let result = null;
     await db.runTransaction(async (tx) => {
       const ls = await tx.get(col().doc(id));
       const l = ls.exists ? ls.data() : null;
-      if (!l || l.sellerUid !== uid) fail('not-found', 'İlan bulunamadı.');
+      if (!l || l.sellerUid !== sid) fail('not-found', 'İlan bulunamadı.');
       if (l.status !== 'open') fail('failed-precondition', 'Bu ilan artık açık değil.');
-      const [is, open] = await Promise.all([tx.get(invRef(uid)), readOpen(tx, l.k)]);
+      const [is, open] = await Promise.all([tx.get(invRef(sid)), readOpen(tx, l.k)]);
       const inv = is.exists ? is.data() : {};
       const items = { ...(inv.items || {}), [l.k]: Number(inv.items?.[l.k] || 0) + 1 };
-      tx.set(invRef(uid), { items, walls: inv.walls || [], floors: inv.floors || [], updatedAtMs: now() });
+      tx.set(invRef(sid), { items, walls: inv.walls || [], floors: inv.floors || [], updatedAtMs: now() });
       tx.update(col().doc(id), { status: 'cancelled', cancelledAtMs: now() });
       writeBest(tx, { [l.k]: pickBest(open.filter((x) => x.id !== id)) });
       result = { ok: true, k: l.k };
@@ -137,7 +148,7 @@ export function createFurnMarket({ db, FieldValue, HttpsError, now = () => Date.
     const ks = [...new Set(Object.values(byId).map((l) => l.k))];
     const opens = await Promise.all(ks.map((k) => readOpen(tx, k)));
     const openByK = Object.fromEntries(ks.map((k, i) => [k, opens[i]]));
-    const sellerIds = [...new Set(Object.values(byId).map((l) => l.sellerUid))];
+    const sellerIds = [...new Set(Object.values(byId).map((l) => l.sellerUid))].filter((u) => !isGangSeller(u));
     const sellerSnaps = await Promise.all(sellerIds.map((u) => tx.get(userRef(u))));
     const sellers = Object.fromEntries(sellerIds.map((u, i) => [u, sellerSnaps[i]]));
     return { byId, openByK, sellers };
@@ -156,7 +167,21 @@ export function createFurnMarket({ db, FieldValue, HttpsError, now = () => Date.
       cur[l.t === 'gem' ? 'gem' : 'gold'] += l.v;
       cur.n += 1;
     }
+    const gangOf = {};
+    for (const id of boughtIds) if (pre.byId[id].gangId) gangOf[pre.byId[id].sellerUid] = { gangId: pre.byId[id].gangId, worldId: pre.byId[id].gangWorld };
     for (const [sid, v] of Object.entries(pay)) {
+      // v146: çete ilanı → para çete kasasına (vergisiz), çete sohbetine duyuru
+      if (isGangSeller(sid)) {
+        const g = gangOf[sid];
+        if (!g?.gangId || !g.worldId) continue;
+        const gp = {};
+        if (v.gold) gp.kasa = FieldValue.increment(v.gold);
+        if (v.gem) gp.gem = FieldValue.increment(v.gem);
+        tx.set(gangStateRef(g), gp, { merge: true });
+        const parts = [v.gold ? `${v.gold.toLocaleString('tr-TR')} altın` : '', v.gem ? `${v.gem} zümrüt` : ''].filter(Boolean).join(' + ');
+        tx.set(gangChatRef(g).doc(), { system: true, text: `🛋️ Pazardaki ${v.n > 1 ? `${v.n} çete mobilyası` : 'çete mobilyası'} satıldı: kasaya +${parts}.`, createdAtMs: now() });
+        continue;
+      }
       if (!pre.sellers[sid]?.exists) continue;
       const patch = {};
       if (v.gold) patch.gold = FieldValue.increment(v.gold);
@@ -170,5 +195,46 @@ export function createFurnMarket({ db, FieldValue, HttpsError, now = () => Date.
     writeBest(tx, perK);
   }
 
-  return { list, cancel, readForCheckout, marketOf, writeCheckout };
+  // v146 — Profil › Mobilyalar: pazardan doğrudan ENVANTERE satın al (ev gerekmez)
+  async function buyToInventory(uid, p) {
+    const id = String(p.id || '');
+    if (!isListingId(id)) fail('invalid-argument', 'Geçersiz ilan.');
+    const exp = p.expect || {};
+    let result = null;
+    await db.runTransaction(async (tx) => {
+      const ls = await tx.get(col().doc(id));
+      const l = ls.exists ? ls.data() : null;
+      if (!l || l.status !== 'open') fail('failed-precondition', 'Bu ilan artık yok.');
+      if (l.sellerUid === uid) fail('failed-precondition', 'Kendi ilanını alamazsın.');
+      if ((exp.t && exp.t !== l.t) || (exp.v != null && Number(exp.v) !== l.v)) fail('aborted', 'price-changed');
+      const pre = await readForCheckout(tx, [{ k: l.k, m: id }], uid);
+      if (!pre.byId[id]) fail('failed-precondition', 'Bu ilan artık yok.');
+      const [us, is] = await Promise.all([tx.get(userRef(uid)), tx.get(invRef(uid))]);
+      const u = us.data() || {};
+      if (l.t === 'gem' ? Number(u.emerald || 0) < l.v : Number(u.gold || 0) < l.v) fail('failed-precondition', l.t === 'gem' ? 'Yetersiz zümrüt.' : 'Yetersiz altın.');
+      const inv = is.exists ? is.data() : {};
+      const items = { ...(inv.items || {}), [l.k]: Number(inv.items?.[l.k] || 0) + 1 };
+      tx.update(userRef(uid), l.t === 'gem' ? { emerald: FieldValue.increment(-l.v) } : { gold: FieldValue.increment(-l.v), goldTag: goldTag('mobilya') });
+      tx.set(invRef(uid), { items, walls: inv.walls || [], floors: inv.floors || [], updatedAtMs: now() });
+      writeCheckout(tx, pre, [id], { buyerUid: uid, houseId: null });
+      result = { ok: true, k: l.k, t: l.t, v: l.v };
+    });
+    return result;
+  }
+
+  // v146 — çete kapanınca açık ilanları silinir (eşyalar da yok olur)
+  async function deleteSellerListings(sellerId) {
+    const s = await col().where('sellerUid', '==', sellerId).where('status', '==', 'open').get();
+    if (s.empty) return 0;
+    const ks = [...new Set(s.docs.map((d) => d.data().k))];
+    await db.runTransaction(async (tx) => {
+      const opens = await Promise.all(ks.map((k) => readOpen(tx, k)));
+      const gone = new Set(s.docs.map((d) => d.id));
+      s.docs.forEach((d) => tx.delete(d.ref));
+      writeBest(tx, Object.fromEntries(ks.map((k, i) => [k, pickBest(opens[i].filter((l) => !gone.has(l.id)))])));
+    });
+    return s.size;
+  }
+
+  return { list, cancel, readForCheckout, marketOf, writeCheckout, buyToInventory, deleteSellerListings };
 }

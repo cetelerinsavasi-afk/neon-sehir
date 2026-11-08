@@ -9,6 +9,7 @@ import { useMyFactory } from './useMyFactory';
 import { useMyFutbolTeam } from './useMyFutbolTeam';
 import { currentPrayerWindow } from './useMosqueAttendance';
 import { useBizReminders } from './useBizReminders';
+import { useBelediyeChatUnread } from './useBelediyeChatUnread'; // v146
 import { SAFE_DAILY_LIMIT } from '../components/ShadyDeal/shadyDeal';
 import { ONBOARDING_ORDER, ONBOARDING_TASK_COUNT, onboardingPosOf, onboardingTaskIdAt } from '../../functions/onboardingData.js';
 
@@ -63,9 +64,19 @@ export const ONBOARDING_TASKS = ONBOARDING_ORDER.map((id, i) => ({ step: i + 1, 
  * - Tamamlandıktan sonra: koşulları o an sağlananları gösteren hatırlatıcı
  *   listesi.
  */
-export function useOnboarding(gangReminders = null) {
+export function useOnboarding(gangReminders = null, gangChans = null) {
   const { user } = useAuth();
   const { player, loading: playerLoading } = usePlayer();
+  // v146 — "Belediyede yeni mesajlar var": sadece belediye koltuğu olanlar (kanal başına
+  // tek hafif dinleyici; sohbet açılınca markBelediyeChatSeen → hatırlatma kaybolur)
+  const bdUid = user?.uid || null;
+  const hasSeat = Boolean(player?.belediyeSeat);
+  const bdMine = (m) => Boolean(bdUid) && m.uid === bdUid;
+  const bdGenel = useBelediyeChatUnread(bdUid, 'genel', hasSeat, bdMine);
+  const bdKoord = useBelediyeChatUnread(bdUid, 'koord', hasSeat, bdMine);
+  const gangChat = Boolean(gangChans?.gang?.genel || gangChans?.gang?.yonetim);
+  const intelChat = Boolean(gangChans?.intel?.genel || gangChans?.intel?.yonetim);
+  const belediyeChat = bdGenel || bdKoord;
   const { actions, loading: actionsLoading } = useDailyActions();
   const { vehicles } = useVehicles();
   const { factory, machines } = useMyFactory();
@@ -196,11 +207,15 @@ export function useOnboarding(gangReminders = null) {
     if (gangReminders?.takeMoney) list.push({ id: 'gang-money', emoji: '💰', text: 'Çeteden para al' });
     if (gangReminders?.report) list.push({ id: 'gang-report', emoji: '📡', text: 'İhbar et' });
     if (gangReminders?.leak) list.push({ id: 'gang-leak', emoji: '📦', text: 'İçeriği aç' });
+    // v146: okunmamış sohbetler (sohbet görülünce kaybolur)
+    if (belediyeChat) list.push({ id: 'chat-belediye', emoji: '🏛️', text: 'Belediyede yeni mesajlar var' });
+    if (gangChat) list.push({ id: 'chat-gang', emoji: '💬', text: 'Çetende yeni mesajlar var' });
+    if (intelChat) list.push({ id: 'chat-intel', emoji: '🚔', text: 'Polis teşkilatında yeni mesajlar var' });
 
     list.push(...bizReminders);
 
     return list;
-  }, [player, actions, vehicles, team, futbolRole, employment, employmentMachine, factory, machines, todayKey, win, gangReminders?.joinWar, gangReminders?.takeMoney, gangReminders?.report, gangReminders?.leak, bizReminders]);
+  }, [player, actions, vehicles, team, futbolRole, employment, employmentMachine, factory, machines, todayKey, win, gangReminders?.joinWar, gangReminders?.takeMoney, gangReminders?.report, gangReminders?.leak, bizReminders, belediyeChat, gangChat, intelChat]);
 
   return {
     loading: playerLoading || actionsLoading,

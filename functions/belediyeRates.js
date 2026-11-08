@@ -116,6 +116,9 @@ export const RATE_GROUPS = [
   },
   { m: 'kultur', id: 'sosyal', title: 'Sosyal Medya Vergisi', unit: '%', items: [pct('sosyal', 'Yayın ve Şarkı Gelir Vergisi')] },
   { m: 'kultur', id: 'spor', title: 'Futbolcu ve Menajer Maaş Vergisi', unit: '%', items: [pct('futbolcu', 'Futbolcu'), pct('menajer', 'Menajer')] },
+  // v146 — futbolcu transfer vergisi: ALICI öder (ilan 100.000, %10 → alıcı 110.000 öder, satan 100.000 alır).
+  // Maaşlı (gerçek oyuncu) futbolcular için geçerli değil.
+  { m: 'kultur', id: 'transfer', title: 'Futbolcu Transfer Vergisi', unit: '%', items: [pct('transfer', 'Transfer Vergisi (alıcı öder)', 5, 1, 10)] },
   {
     m: 'kultur',
     id: 'imam',
@@ -254,10 +257,10 @@ export const ratesOfMinistry = (m) => RATE_ITEMS.filter((it) => it.m === m).map(
 export function ministryOfCat(kind, cat) {
   if (kind === 'in') {
     if (/^vergi_(fabrika|makine|maasIsci)/.test(cat)) return 'sanayi';
-    if (/^vergi_(yayin|sanatci|maasFutbolcu|maasMenajer)/.test(cat)) return 'kultur';
+    if (/^vergi_(yayin|sanatci|maasFutbolcu|maasMenajer|transfer)/.test(cat)) return 'kultur'; // v146: transfer
     // güncelleme öncesi birleşik maaş vergisi (işçi + futbolcu + menajer ayrılamaz) → genel
     if (cat === 'vergi_maas') return 'yonetim';
-    if (/^(vergi_|gazino_)/.test(cat)) return 'ticaret';
+    if (/^(vergi_|gazino_|seyyar_)/.test(cat)) return 'ticaret'; // v145: seyyar satıcı gelirleri
     if (/^(soygun_|kacak_|ist_|rusvet_)/.test(cat)) return 'guvenlik';
     return 'yonetim';
   }

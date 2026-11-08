@@ -713,7 +713,7 @@ export function createClock(core, actions) {
     const s = tx ? await tx.get(ref) : await ref.get();
     return Number(s.data()?.lastSeenAtMs || 0);
   }
-  // v125 — 10 gün oyuna girmeme kuralının başlangıcı (ilk çalıştığı an; öncesi sayılmaz)
+  // v125 — oyuna (v145: 20 gün) girmeme kuralının başlangıcı (ilk çalıştığı an; öncesi sayılmaz)
   async function loginRuleFrom(ctx) {
     let fromMs = Number(ctx.world?.gangLoginInactivityFromMs || 0);
     if (!fromMs) {
@@ -751,7 +751,7 @@ export function createClock(core, actions) {
       }
     }
     if (writes > 0) await safe(ctx, `inactive-warn:${gangId}`, () => batch.commit());
-    // v125: 10 gün oyuna girmeyenler (çete aktifliği de 10 günden eskiyse — o zaman okunur)
+    // v125: LOGIN_INACTIVE_DAYS (v145: 20) gün oyuna girmeyenler (çete aktifliği de o kadar günden eskiyse — o zaman okunur)
     const loginFrom = await loginRuleFrom(ctx);
     const loginLimit = GANG.LOGIN_INACTIVE_DAYS * MS_DAY;
     for (const d of snap.docs) {
@@ -775,7 +775,7 @@ export function createClock(core, actions) {
           if (!plan.member) return;
           const last = memberLastActivity(plan.member, baseline, ctx.now);
           if (r.login) {
-            // v125: 10 gün oyuna girmedi (bu arada girdiyse / aktif olduysa atılmaz)
+            // v125: LOGIN_INACTIVE_DAYS gün oyuna girmedi (bu arada girdiyse / aktif olduysa atılmaz)
             const base = Math.max(Number(ctx.world?.gangLoginInactivityFromMs || 0), Number(plan.member.joinedAtMs || 0), last, seenNow);
             if (ctx.now - base < GANG.LOGIN_INACTIVE_DAYS * MS_DAY) return;
             const res = core.applyRemoval(tx, ctx, plan, 'inactive', { notifyText: `⏰ ${GANG.LOGIN_INACTIVE_DAYS} gündür oyuna girmediğin için ${plan.gang?.name || 'çete'} üyeliğin sona erdi.` });
@@ -1789,6 +1789,9 @@ export function createClock(core, actions) {
       });
       if (n) await safe(ctx, `cleanup-votes:${gangId}`, () => batch.commit());
     }
+    // v146 — karargah (houses/hq_{gangId}) mobilyalarıyla, çete envanteri ve pazardaki
+    // çete ilanlarıyla birlikte tamamen silinir. Zümrüt de çeteyle birlikte yok olur.
+    if (!ctx.isTest && core.deps.onGangDissolved) await safe(ctx, `cleanup-hq:${gangId}`, () => core.deps.onGangDissolved(gangId, ctx.worldId));
     await ctx.ref.gang(gangId).update({ cleanupDone: true, memberCount: 0, routeProducts: [] });
     ctx.logs.push({ gang: 'gang_cleanup', world: ctx.worldId, gangId, takedown });
     core.flushLogs(ctx);

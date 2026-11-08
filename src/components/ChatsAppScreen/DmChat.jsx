@@ -6,6 +6,7 @@ import { useSocial, MESSAGE_TTL_MS } from '../../contexts/SocialContext';
 import { useBlocks } from '../../contexts/BlocksContext';
 import { socialAction } from '../../services/gameActions';
 import { isHiddenForMe } from '../../lib/ugcVisibility';
+import { setOpenDm } from '../../lib/chatsappNav';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import PlayerCard from '../PlayerCard/PlayerCard';
 import ActionMenu from '../ActionMenu/ActionMenu';
@@ -87,6 +88,12 @@ export default function DmChat({ target, onBack }) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
+
+  // v146: açık sohbet (üst bildirim şeridi bu kişi için çıkmasın)
+  useEffect(() => {
+    setOpenDm(target.uid);
+    return () => setOpenDm(null);
+  }, [target.uid]);
 
   // Sohbet açıkken gelen mesajlar okundu sayılır
   useEffect(() => {

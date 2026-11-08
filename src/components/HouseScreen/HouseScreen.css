@@ -2009,3 +2009,29 @@
     transform: translateX(-50%) translateY(8px);
   }
 }
+
+/* v146 — evi sat */
+.hs-sell-house {
+  margin-top: 14px;
+  border-color: rgba(255, 90, 110, 0.55) !important;
+  color: #ff8a9a !important;
+}
+.hs-sell-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px;
+  margin: 4px 0 8px;
+}
+.hs-sell-list {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  font-size: 13px;
+  opacity: 0.85;
+  line-height: 1.5;
+}
+.hs-sell-acts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}

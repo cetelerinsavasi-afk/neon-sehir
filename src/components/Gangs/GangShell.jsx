@@ -1,3 +1,5 @@
+// v146: Çeteler ekranı = sadece liste (alt sekmeler kalktı); paneller karargahın
+// içinde (OrgPanelSheet). Aşağıdaki eski açıklama tarihçe için:
 // Çeteler ekranının iskeleti: altta 5 iç sekme.
 //   Çete:        Çeteler · Sohbet · Savaş · Ticaret · Çetem
 //   Polis Teşkilatı (v109; kodda "intel" — eski İstihbarat):
@@ -6,8 +8,8 @@
 // kilitli). Ekran her zaman "Çeteler" sekmesiyle açılır (v110); listede "Aç"a
 // basınca Savaş sekmesine geçer. Çete ↔ Polis Teşkilatı geçişi
 // "Çeteler" sekmesinden.
-import { useEffect, useRef, useState } from 'react';
-import { useGangAlertsCtx } from './alerts';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
+import { retryImport } from '../../lib/lazyRetry';
 import { useDocData, useGang } from './GangContext';
 import { useGangData, useIntelData } from './data';
 import { Deadline, Gold, Logo, RankBadge } from './ui';
@@ -21,114 +23,58 @@ import TradeTab from './tabs/TradeTab';
 import CetemTab from './tabs/CetemTab';
 import OpsTab from './tabs/OpsTab';
 import IntelTab from './tabs/IntelTab';
-import { WatchWarsList } from './WatchWars';
+import { WatchWarsButton } from './WatchWars';
 import { BiatTag } from './Biat';
-import { useBelediyeChatUnread } from '../../hooks/useBelediyeChatUnread';
 import { usePlayerSelect } from '../../hooks/usePlayer';
 
 const OFFICIAL_TITLES = { bsk: 'Belediye Başkanı', yrd1: 'Belediye Başkan Yardımcısı', yrd2: 'Belediye Başkan Yardımcısı', guv: 'Teşkilat Bakanı' };
 
-const GANG_TABS = [
-  { id: 'ceteler', icon: '🏴', label: 'Çeteler' },
-  { id: 'sohbet', icon: '💬', label: 'Sohbet' },
-  { id: 'savas', icon: '⚔️', label: 'Savaş' },
-  { id: 'ticaret', icon: '🚚', label: 'Ticaret' },
-  { id: 'cetem', icon: '👥', label: 'Çetem' },
-];
-const INTEL_TABS = [
-  { id: 'ceteler', icon: '🏴', label: 'Çeteler' },
-  { id: 'sohbet', icon: '💬', label: 'Sohbet' },
-  { id: 'savas', icon: '⚔️', label: 'Savaş' },
-  { id: 'operasyon', icon: '🎯', label: 'Operasyon' },
-  { id: 'istihbarat', icon: '🚓', label: 'Teşkilat' },
-];
+// v146: alt sekmeler OrgPanelSheet.jsx'e taşındı
 
-export default function GangShell({ membership }) {
-  const ms = membership || {};
-  const inGang = Boolean(ms.gangId);
-  const realIntel = Boolean(ms.intelRosterId);
-  // v136: Belediye Başkanı / yardımcıları / Teşkilat Bakanı — teşkilata YETKİLİ olarak girer
+// v136: Belediye Başkanı / yardımcıları / Teşkilat Bakanı — teşkilata YETKİLİ olarak girer
+export function useOfficialSeat(ms) {
+  const realIntel = Boolean(ms?.intelRosterId);
   const { actorId, world } = useGang();
   const { data: staff } = useDocData(!realIntel && world === 'live' && actorId ? `belediyeStaff/${actorId}` : null);
   const mySeat = usePlayerSelect((p) => p?.belediyeSeat || null); // users.belediyeSeat (yedek)
   const seat = world === 'live' ? (OFFICIAL_TITLES[staff?.seat] ? staff.seat : OFFICIAL_TITLES[mySeat] ? mySeat : null) : null;
-  const official = !realIntel && seat ? { seat, title: OFFICIAL_TITLES[seat] } : null;
-  const inIntel = realIntel || Boolean(official);
-  const [org, setOrg] = useState(inGang || !inIntel ? 'gang' : 'intel');
-  // v110: Çeteler butonuna basınca her zaman 'Çeteler' sekmesi açık gelir
-  const [tab, setTab] = useState('ceteler');
+  return useMemo(() => (!realIntel && seat ? { seat, title: OFFICIAL_TITLES[seat] } : null), [realIntel, seat]);
+}
 
-  // Oyuncu henüz kendisi bir sekme seçmediyse üyelik bilgisi gelince varsayılana
-  // geç (önce çete, çete yoksa İstihbarat; sekme Savaş). Üyelik değişince (katıl/ayrıl/kur)
-  // geçersiz kalan görünümü düzelt.
-  const picked = useRef(false);
-  useEffect(() => {
-    if (!picked.current) {
-      setOrg(inGang || !inIntel ? 'gang' : 'intel');
-      return;
-    }
-    setOrg((o) => (o === 'intel' && !inIntel ? 'gang' : o === 'gang' && !inGang && inIntel ? 'intel' : o));
-  }, [inGang, inIntel]);
-  const member = org === 'intel' ? inIntel : inGang;
-  // Bildirim noktaları: bulunduğun örgütün sekmeleri; diğer örgütte bir şey
-  // varsa "Çeteler" sekmesinde (örgüt değiştirme yeri) nokta.
-  const alerts = useGangAlertsCtx();
-  const cur = alerts ? (org === 'intel' ? alerts.intel : alerts.gang) : {};
-  const other = alerts ? (org === 'intel' ? alerts.gang : alerts.intel) : {};
-  // v127: rütbeli polis — Belediye koordinasyon sohbetinde yeni mesaj → Sohbet noktası
-  const policeRanked = inIntel && ['baskan', 'sef', 'uzman'].includes(ms.intelRank);
-  const bdUnread = useBelediyeChatUnread(actorId, 'koord', policeRanked || Boolean(official), (m) => (official ? m.uid === actorId : m.authorKind === 'polis' && m.rosterId === ms.intelRosterId));
-  const dotOf = (id) =>
-    id === 'ceteler'
-      ? Object.values(other || {}).some(Boolean) && (org === 'intel' ? inGang : inIntel)
-      : Boolean(cur?.[id]) || (id === 'sohbet' && org === 'intel' && bdUnread);
-  const activeTab = member ? tab : tab === 'savas' ? 'savas' : 'ceteler';
+// v146 — "Çeteler" artık alt sekmeler OLMADAN sadece listeyi gösterir. Kendi
+// çetende / teşkilatta "Aç" → karargaha (3D mekân) girilir; panellere oradaki
+// sağ üst butondan ulaşılır. Çetesi olmayan "Devam eden savaşlar"ı listeden izler.
+const GangHq = lazy(retryImport(() => import('./GangHq')));
+const TeskilatHq = lazy(retryImport(() => import('../Venue3D/VenueHouseScreen')));
 
-  const open = (o) => {
-    picked.current = true;
-    setOrg(o);
-    setTab('savas');
-  };
-  const pick = (t) => {
-    picked.current = true;
-    setTab(t);
-  };
-
+export default function GangShell({ membership }) {
+  const ms = membership || {};
+  const official = useOfficialSeat(ms);
+  const [hq, setHq] = useState(null); // null | 'gang' | 'intel'
+  const open = (o) => setHq(o);
+  const close = useCallback(() => setHq(null), []);
   return (
-    <div className="gx-shell">
+    <div className="gx-shell gx-shell-list">
       <div className="gx-shell-body">
-        {org === 'gang' && inGang ? (
-          <GangViews membership={ms} official={official} tab={activeTab} onOpen={open} />
-        ) : org === 'intel' && inIntel ? (
-          <IntelViews membership={ms} official={official} tab={activeTab} onOpen={open} />
-        ) : !member && activeTab === 'savas' ? (
-          // v68: çetesi olmayan oyuncu savaşları izleyebilir (katılamaz)
-          <div className="gx-page">
-            <div className="gx-section-head">
-              <span>👁️ Devam eden savaşlar</span>
-            </div>
-            <WatchWarsList />
-          </div>
-        ) : (
-          <ListTab membership={ms} official={official} onOpen={open} />
-        )}
+        <div className="gx-page gx-watch-row">
+          <WatchWarsButton />
+        </div>
+        <ListTab membership={ms} official={official} onOpen={open} />
       </div>
-      <nav className="gx-subnav" role="tablist">
-        {(org === 'intel' ? INTEL_TABS : GANG_TABS).map((t) => {
-          const locked = !member && t.id !== 'ceteler' && t.id !== 'savas';
-          return (
-            <button key={t.id} role="tab" aria-selected={activeTab === t.id} className={`gx-subnav-btn${activeTab === t.id ? ' active' : ''}${locked ? ' locked' : ''}`} disabled={locked} onClick={() => pick(t.id)}>
-              <span className="gx-subnav-icon" aria-hidden="true">
-                {locked ? '🔒' : t.icon}
-                {!locked && activeTab !== t.id && dotOf(t.id) && <span className="gx-subnav-dot" />}
-              </span>
-              <span className="gx-subnav-label">{t.label}</span>
-            </button>
-          );
-        })}
-      </nav>
+      {hq && (
+        <Suspense fallback={<div className="gx-loading gx-hq-loading">Karargaha giriliyor…</div>}>
+          {hq === 'gang' ? <GangHq gangId={ms.gangId} onExit={close} /> : <TeskilatHq venue="teskilat" onExit={close} fallback={<HqFail onDone={close} />} />}
+        </Suspense>
+      )}
     </div>
   );
+}
+
+function HqFail({ onDone }) {
+  useEffect(() => {
+    onDone?.();
+  }, [onDone]);
+  return null;
 }
 
 // v39: adına oylama sürerken yetkiler en alt rütbeye iner — neden butonların kapalı olduğunu göster
@@ -172,7 +118,7 @@ function OrgHeader({ logo, name, rank, prestige, kasa, kasaMidnight = false, int
   );
 }
 
-function GangViews({ membership, official = null, tab, onOpen }) {
+export function GangViews({ membership, official = null, tab, onOpen }) {
   const d = useGangData(membership);
   if (tab === 'ceteler') return <ListTab membership={membership} official={official} onOpen={onOpen} />;
   if (!d.gang) return <div className="gx-loading">Yükleniyor…</div>;
@@ -197,7 +143,7 @@ function GangViews({ membership, official = null, tab, onOpen }) {
   );
 }
 
-function IntelViews({ membership, official = null, tab, onOpen }) {
+export function IntelViews({ membership, official = null, tab, onOpen }) {
   const d = useIntelData(membership, { official });
   const rates = useBelediyeRates(); // v127: polis maaşları Teşkilat Bakanlığı'nın
   if (tab === 'ceteler') return <ListTab membership={membership} official={official} onOpen={onOpen} />;

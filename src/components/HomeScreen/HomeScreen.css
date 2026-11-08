@@ -272,3 +272,46 @@
   background: rgba(255, 46, 140, 0.08);
   border: 1px solid rgba(255, 46, 140, 0.25);
 }
+
+/* v146 — Aksesuarlar · Günlük Rapor · Mobilyalar: yan yana kare butonlar */
+.home-sq-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  width: 100%;
+  max-width: 340px;
+  margin-top: 6px;
+}
+.home-sq {
+  aspect-ratio: 1 / 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 14px;
+  border: 1px solid #ffffff2a;
+  color: #e8ecf8;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-align: center;
+  cursor: pointer;
+}
+.home-sq span {
+  font-size: 26px;
+  line-height: 1;
+}
+.home-sq-acc {
+  border-color: #ff2e88;
+  background: linear-gradient(160deg, rgba(255, 46, 136, 0.2), rgba(34, 211, 238, 0.1));
+}
+.home-sq-report {
+  border-color: #22d3ee;
+  background: linear-gradient(160deg, rgba(34, 211, 238, 0.18), rgba(57, 255, 136, 0.1));
+}
+.home-sq-furn {
+  border-color: #ffd23f;
+  background: linear-gradient(160deg, rgba(255, 210, 63, 0.18), rgba(255, 122, 26, 0.1));
+}

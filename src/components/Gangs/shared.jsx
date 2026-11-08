@@ -41,8 +41,8 @@ export function useMyWallet() {
   const { player } = usePlayer();
   const { data: persona } = useDocData(isTest ? path(`players/${actorId}`) : null);
   return isTest
-    ? { gold: persona?.gold, reputation: persona?.reputation, power: persona?.power, avatar: null }
-    : { gold: player?.gold, reputation: player?.reputation, power: null, avatar: player?.avatar || null };
+    ? { gold: persona?.gold, emerald: persona?.emerald, reputation: persona?.reputation, power: persona?.power, avatar: null }
+    : { gold: player?.gold, emerald: player?.emerald, reputation: player?.reputation, power: null, avatar: player?.avatar || null };
 }
 
 // Futbol kartı tarzı üye kartı. İstihbaratta avatar yerine "?" + kod adı.

@@ -106,9 +106,10 @@ const LEGACY_HO = ['mescit', 'sinema', 'studyo'];
 export const isLegacyHomeOffice = (h) => LEGACY_HO.includes(h?.biz?.type || h?.bizType);
 export const ownedItemCount = (h) => (h?.items || []).filter((it) => it?.p === 1).length;
 
-// Sınıf: 'isletme' · 'ofis' · 'ev' · 'depo'
+// Sınıf: 'karargah' · 'isletme' · 'ofis' · 'ev' · 'depo'
 export function houseKind(h) {
   if (!h) return 'depo';
+  if (h.hq?.gangId) return 'karargah'; // v146 — çete karargahı (işletmeye / ofise dönmez)
   if (isLegacyHomeOffice(h)) return 'ofis'; // v100 göçü bitene kadar
   if (h.biz?.type || h.bizType) return 'isletme';
   if (activeOfficeKeys(h).length > 0) return 'ofis';

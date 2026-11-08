@@ -91,6 +91,7 @@ export default function HouseHub({ onClose, initialHouseId = null }) {
             if (note) setMsg({ ok: false, text: note });
             if (initialHouseId) onClose();
           }}
+          onSwitchHouse={(id) => setHouseId(id)} // v146: karargahtan davetli karargaha geçiş
         />
       </Suspense>
       </ChunkBoundary>

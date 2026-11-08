@@ -6,7 +6,7 @@
 // (bkz. system.js ensureLiveWorld). Secret gerekmez.
 import { createGangSystem } from './system.js';
 
-export function createGangFunctions({ onCall, onSchedule, HttpsError, db, FieldValue, getMaxWeaponPower, hasWeapon, splitIncomeForDebt, catalogs, lifeDays, weaponLifeDays, onGangJoined, onGangMarketBought, assertCanSpeak, depo, belediyeRef }) {
+export function createGangFunctions({ onCall, onSchedule, HttpsError, db, FieldValue, getMaxWeaponPower, hasWeapon, splitIncomeForDebt, catalogs, lifeDays, weaponLifeDays, onGangJoined, onGangMarketBought, assertCanSpeak, depo, belediyeRef, onGangDissolved }) {
   const system = createGangSystem({
     db,
     FieldValue,
@@ -24,6 +24,7 @@ export function createGangFunctions({ onCall, onSchedule, HttpsError, db, FieldV
     assertCanSpeak, // UGC D1 (isteğe bağlı; testlerde tanımsız)
     depo, // v124: çete deposundan depoya satış (functions/depo.js)
     belediyeRef, // v127: { current } — functions/belediye.js (maaşlar, kasa, bağış)
+    onGangDissolved, // v146: karargahı sil (functions/hq.js)
   });
 
   const gangAction = onCall({ timeoutSeconds: 60 }, (request) => system.handleAction(request));

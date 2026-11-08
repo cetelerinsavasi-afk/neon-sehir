@@ -43,6 +43,7 @@ import { VENUES, VENUE_OWNER, camiiDynamicNpcs } from './venueLayouts.js';
 import { doorOf, doorSpawn, settleDoor } from './houseDoor.js';
 import { MATERIAL_HOLDER_BIZ, readHoldings, readMaterialInv, closeBlockMaterials } from './materials.js';
 import { createFurnMarket } from './furnMarket.js';
+import { createHq, isHqHouse, TESKILAT_HOUSE } from './hq.js'; // v146 karargahlar + polis teşkilatı
 import { cleanBotConfig, BOT_ITEM_KEY, botAvatar, botDefaults, botLabel, botAllowedLines } from './botData.js';
 import { cleanPetConfig, isAnimalKey, ANIMAL_BY_KEY, MAX_ROOM_PETS, petLines, petName, petTintOf } from './animalData.js';
 
@@ -149,6 +150,20 @@ const ownsSurface = (inv, type, key) => FREE_SURFACES[type].includes(key) || (in
 // deps: { db, FieldValue, HttpsError, requireAuth, onCall, isAdmin, assertCanSpeak, isFriend, now? }
 export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, isAdmin, assertCanSpeak, isFriend, now = () => Date.now(), bizHooks = {}, visits = null, officeMigrate = null }) {
   const furn = createFurnMarket({ db, FieldValue, HttpsError, now }); // v132 mobilya pazarı
+  const hq = createHq({ db, FieldValue, HttpsError, now, isAdmin }); // v146
+  // v146 — polis teşkilatında polisin konum kaydı takma kimlikle (pa_{rosterId}) tutulur
+  const aliasOfRef = (uid) => db.collection('presenceAliasOf').doc(uid);
+  const aliasRef = (alias) => db.collection('presenceAlias').doc(alias);
+  async function presenceIdFor(uid, houseId) {
+    if (houseId !== TESKILAT_HOUSE) return uid;
+    const a = await aliasOfRef(uid).get();
+    return a.exists && a.data().houseId === houseId && a.data().alias ? a.data().alias : uid;
+  }
+  // v146 — karargah yöneticisi (Baba / yetkili) tasarım yetkilisi gibi davranır
+  async function hqManagerOf(h, uid) {
+    if (!isHqHouse(h)) return false;
+    return hq.isManager(await hq.hqRole(h, uid));
+  }
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
   };
@@ -179,7 +194,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     return h;
   }
   async function presentIn(uid, houseId) {
-    const p = await presenceRef(uid).get();
+    const p = await presenceRef(await presenceIdFor(uid, houseId)).get();
     const d = p.exists ? p.data() : null;
     if (!d || d.houseId !== houseId) return null;
     const at = d.updatedAt?.toMillis?.() ?? Number(d.updatedAt || 0);
@@ -242,6 +257,10 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     const t = now();
     const kickedUntil = Number(h.kicked?.[uid] || 0);
     if (kickedUntil > t) return { ok: false, msg: `Bu evden çıkarıldın. ${Math.ceil((kickedUntil - t) / 60000)} dk sonra tekrar deneyebilirsin.` };
+    // v146 — karargah: sadece çetenin üyeleri ve davet edilen çetelerin üyeleri
+    if (isHqHouse(h)) return (await hq.hqRole(h, uid)) ? { ok: true } : { ok: false, msg: 'Dahil olmadığın çetenin karargahına giremezsin.' };
+    // v146 — polis teşkilatı: polisler + Belediye Başkanı, yardımcıları, Teşkilat Bakanı
+    if (h.venue === 'teskilat') return (await hq.policeIdentity(uid)) ? { ok: true } : { ok: false, msg: 'Polis Teşkilatına sadece polisler girebilir.' };
     if (Number(h.invites?.[uid] || 0) > t) return { ok: true };
     // v77: işletmeler her zaman herkese açıktır
     if (h.biz) return { ok: true };
@@ -272,10 +291,31 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     }
     const user = (await userRef(uid).get()).data() || {};
     const spawn = doorSpawn(h.door, h.items); // v102: ana kapının önünde doğ
-    await presenceRef(uid).set({
+    // v146 — polis teşkilatı: polis kod adı + varsayılan tip + takma kimlik; yetkili adı + makamı
+    let presId = uid;
+    let shownName = nameOf(user);
+    let shownAvatar = user.avatar || null;
+    if (houseId === TESKILAT_HOUSE) {
+      const pid = await hq.policeIdentity(uid);
+      if (pid?.kind === 'polis') {
+        presId = pid.alias;
+        shownName = pid.name;
+        shownAvatar = null;
+        const old = await aliasOfRef(uid).get();
+        const b = db.batch();
+        if (old.exists && old.data().alias && old.data().alias !== presId) b.delete(presenceRef(old.data().alias));
+        b.set(aliasRef(presId), { uid, houseId, atMs: now() });
+        b.set(aliasOfRef(uid), { alias: presId, houseId, atMs: now() });
+        await b.commit();
+      } else if (pid?.kind === 'yetkili') {
+        shownName = `${nameOf(user)} · ${pid.title}`.slice(0, 60);
+      }
+    }
+    const hqRoleNow = isHqHouse(h) ? await hq.hqRole(h, uid) : null;
+    await presenceRef(presId).set({
       houseId,
-      displayName: nameOf(user),
-      avatar: user.avatar || null,
+      displayName: shownName,
+      avatar: shownAvatar,
       x: spawn.x,
       z: spawn.z,
       left: false,
@@ -297,7 +337,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     if (Object.keys(patch).length) await houseRef(houseId).update(patch);
     // v77: ziyaret sayacı (hesap başına günde 1)
     if (!already && visits) await visits.recordHouseVisit(uid, houseId, { ...h, ...patch });
-    return { status: 'ok', houseId, isOwner, name: patch.name || h.name || defaultHouseName(h.ownerName), ownerName: h.ownerName || 'Oyuncu' };
+    return { status: 'ok', houseId, isOwner, name: patch.name || h.name || defaultHouseName(h.ownerName), ownerName: h.ownerName || 'Oyuncu', ...(presId !== uid ? { presenceId: presId } : {}), ...(houseId === TESKILAT_HOUSE ? { selfShown: { name: shownName, avatar: shownAvatar } } : {}), ...(isHqHouse(h) ? { hqRole: hqRoleNow || 'admin' } : {}) };
   }
 
   // ---- kaydet (envanter farkıyla) -------------------------------------------------
@@ -515,13 +555,14 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     // v92 — yetkili arkadaş da kaydedebilir: sahibinin envanterini kullanır, satın
     // alamaz (deneme eşyalar deneme kalır), işletmeyi kapatamaz. Evde olmalı.
     const pre = await loadHouse(houseId);
-    const asEditor = pre.ownerUid !== uid && isEditorOf(pre, uid);
+    const hqMgr = await hqManagerOf(pre, uid); // v146
+    const asEditor = pre.ownerUid !== uid && (isEditorOf(pre, uid) || hqMgr);
     if (asEditor && !(await presentIn(uid, houseId))) fail('failed-precondition', 'Tasarlamak için evde olmalısın.');
     await db.runTransaction(async (tx) => {
       const hs = await tx.get(houseRef(houseId));
       if (!hs.exists) fail('not-found', 'Ev bulunamadı.');
       const h = hs.data();
-      const editor = h.ownerUid !== uid && isEditorOf(h, uid);
+      const editor = h.ownerUid !== uid && (isEditorOf(h, uid) || hqMgr);
       if (h.ownerUid !== uid && !editor) fail('permission-denied', 'Bu ev senin değil.');
       const invUid = h.ownerUid;
       const is = await tx.get(invRef(invUid));
@@ -592,16 +633,24 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     const design = clean(p.design);
     let result = null;
     const pre = await loadHouse(houseId);
-    const asEditor = pre.ownerUid !== uid && isEditorOf(pre, uid);
+    const hqMgr = await hqManagerOf(pre, uid); // v146: karargahta Baba / yetkili çete kasasından alır
+    const asEditor = pre.ownerUid !== uid && (isEditorOf(pre, uid) || hqMgr);
     if (asEditor && !(await presentIn(uid, houseId))) fail('failed-precondition', 'Satın almak için mekânda olmalısın.');
     await db.runTransaction(async (tx) => {
       const hs = await tx.get(houseRef(houseId));
       if (!hs.exists) fail('not-found', 'Ev bulunamadı.');
       const h = hs.data();
-      const editor = h.ownerUid !== uid && isEditorOf(h, uid);
+      const isHq = isHqHouse(h) && hqMgr;
+      const editor = h.ownerUid !== uid && (isEditorOf(h, uid) || hqMgr);
       if (h.ownerUid !== uid && !editor) fail('permission-denied', 'Bu ev senin değil.');
       const owner = h.ownerUid;
-      const [is, us, fs] = await Promise.all([tx.get(invRef(owner)), editor ? Promise.resolve(null) : tx.get(userRef(uid)), editor ? tx.get(fundRef(houseId)) : Promise.resolve(null)]);
+      const gsRef = isHq ? hq.stateRef(h.hq.worldId, h.hq.gangId) : null;
+      const [is, us, fs, buyerSnap] = await Promise.all([
+        tx.get(invRef(owner)),
+        editor ? Promise.resolve(null) : tx.get(userRef(uid)),
+        editor ? tx.get(isHq ? gsRef : fundRef(houseId)) : Promise.resolve(null),
+        isHq ? tx.get(userRef(uid)) : Promise.resolve(null),
+      ]);
       const inv = is.exists ? is.data() : {};
       const pre = await furn.readForCheckout(tx, design.items, editor ? owner : uid);
       const q = quoteOf(h, design, inv, pre);
@@ -609,9 +658,9 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       if (Number(exp.gold) !== q.gold || Number(exp.gem) !== q.gem) fail('aborted', 'Sepet tutarı değişti, lütfen tekrar kontrol et.');
       if (q.gold === 0 && q.gem === 0) fail('failed-precondition', 'Sepetin boş.');
       const src = editor ? fs.data() || {} : us.data() || {};
-      const gold = Number(editor ? src.gold || 0 : src.gold || 0);
+      const gold = Number(isHq ? src.kasa || 0 : editor ? src.gold || 0 : src.gold || 0);
       const emerald = Number(editor ? src.gem || 0 : src.emerald || 0);
-      const where = editor ? 'Mobilya kasasında yeterli' : 'Yetersiz';
+      const where = isHq ? 'Çete kasasında yeterli' : editor ? 'Mobilya kasasında yeterli' : 'Yetersiz';
       if (gold < q.gold) fail('failed-precondition', editor ? `${where} altın yok (${gold.toLocaleString('tr-TR')} / ${q.gold.toLocaleString('tr-TR')}).` : `Yetersiz altın (${gold.toLocaleString('tr-TR')} / ${q.gold.toLocaleString('tr-TR')}).`);
       if (emerald < q.gem) fail('failed-precondition', editor ? `${where} zümrüt yok (${emerald} / ${q.gem}).` : `Yetersiz zümrüt (${emerald} / ${q.gem}).`);
       // v132: ilanı kapanmış pazar eşyaları odadan kalkar; alınanların ilan işareti silinir
@@ -630,7 +679,16 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       });
       const wall = design.wall || h.wall || FREE_SURFACES.wall[0];
       const floor = design.floor || h.floor || FREE_SURFACES.floor[0];
-      if (editor) {
+      if (isHq) {
+        // v146 — çete kasası: altın + zümrüt. Gece belirlenen dağıtılabilir pay kasadan büyük kalmasın.
+        const left = Math.max(0, gold - q.gold);
+        const gp = { kasa: FieldValue.increment(-q.gold), gem: FieldValue.increment(-q.gem) };
+        if (Number(src.distributableLeft || 0) > left) gp.distributableLeft = left;
+        tx.update(gsRef, gp);
+        const who = String(buyerSnap?.data()?.displayName || 'Bir yetkili').slice(0, 40);
+        const parts = [q.gold ? `${q.gold.toLocaleString('tr-TR')} altın` : '', q.gem ? `${q.gem} zümrüt` : ''].filter(Boolean).join(' + ');
+        tx.set(db.collection(`gangWorlds/${h.hq.worldId}/gangs/${h.hq.gangId}/chat_genel`).doc(), { system: true, text: `🛋️ ${who} karargah için kasadan ${parts} harcayarak mobilya aldı.`, createdAtMs: now() });
+      } else if (editor) {
         tx.set(fundRef(houseId), { ownerUid: owner, gold: FieldValue.increment(-q.gold), gem: FieldValue.increment(-q.gem), updatedAtMs: now(), lastBuyBy: uid }, { merge: true });
       } else {
         const userPatch = {};
@@ -657,6 +715,62 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     const pre = await db.runTransaction((tx) => furn.readForCheckout(tx, design.items, uid)); // v132 (salt okuma)
     const q = quoteOf(h, design, is.exists ? is.data() : {}, pre);
     return { gold: q.gold, gem: q.gem, lines: q.lines };
+  }
+
+  // ---- v146: evi sat (sadece düz ev / depo) ------------------------------------------------
+  // Alış fiyatı (HOUSE_PRICE) geri verilir; satın alınmış mobilyalar sahibinin envanterine
+  // döner (deneme eşyalar düşer), mobilya kasası sahibine döner, içeridekiler çıkar, ev ve
+  // sohbeti silinir. İşletme, ofis, karargah ve oyunun mekânları satılamaz.
+  async function sellHouse(uid, p) {
+    const houseId = String(p.houseId || '');
+    if (p.confirm !== true) fail('invalid-argument', 'Onay gerekli.');
+    const pre = await loadOwnedHouse(uid, houseId);
+    const blocked = (h) => h.venue || isHqHouse(h) || h.biz?.type || h.bizType || !['ev', 'depo'].includes(houseKind(h));
+    if (blocked(pre)) fail('failed-precondition', 'Sadece ev satılabilir (işletme / ofis / karargah satılamaz).');
+    const st = await db.collection('streamHouses').doc(houseId).get();
+    if (st.exists && Number(st.data().beatMs || 0) > now() - 120_000) fail('failed-precondition', 'Evde canlı yayın sürerken satılamaz.');
+    let result = null;
+    await db.runTransaction(async (tx) => {
+      const hs = await tx.get(houseRef(houseId));
+      if (!hs.exists) fail('not-found', 'Ev bulunamadı.');
+      const h = hs.data();
+      if (h.ownerUid !== uid) fail('permission-denied', 'Bu ev senin değil.');
+      if (blocked(h)) fail('failed-precondition', 'Sadece ev satılabilir (işletme / ofis / karargah satılamaz).');
+      const [is, fs, pres] = await Promise.all([tx.get(invRef(uid)), tx.get(fundRef(houseId)), tx.get(db.collection('housePresence').where('houseId', '==', houseId).limit(100))]);
+      const inv = is.exists ? is.data() : {};
+      const owned = countOwned(h.items);
+      const items = { ...(inv.items || {}) };
+      let n = 0;
+      for (const [k, c] of Object.entries(owned)) {
+        items[k] = Number(items[k] || 0) + c;
+        n += c;
+      }
+      const fund = fs.exists ? fs.data() : {};
+      const fGold = Math.max(0, Math.floor(Number(fund.gold || 0)));
+      const fGem = Math.max(0, Math.floor(Number(fund.gem || 0)));
+      tx.set(invRef(uid), { items, walls: inv.walls || [], floors: inv.floors || [], updatedAtMs: now() });
+      const up = { gold: FieldValue.increment(HOUSE_PRICE + fGold), goldTag: goldTag('evSatis'), houseCount: FieldValue.increment(-1) };
+      if (fGem) up.emerald = FieldValue.increment(fGem);
+      tx.update(userRef(uid), up);
+      if (fs.exists) tx.delete(fundRef(houseId));
+      pres.docs.forEach((d) => tx.delete(d.ref));
+      tx.delete(houseRef(houseId));
+      tx.set(userRef(uid).collection('messages').doc(), {
+        text: `🏠 "${h.name || 'Evin'}" satıldı: +${HOUSE_PRICE.toLocaleString('tr-TR')} altın.${n ? ` ${n} mobilya envanterine döndü.` : ''}${fGold || fGem ? ' Mobilya kasası da sana döndü.' : ''}`,
+        createdAt: FieldValue.serverTimestamp(),
+        read: false,
+        type: 'houseSold',
+      });
+      result = { ok: true, gold: HOUSE_PRICE, furniture: n, fund: { gold: fGold, gem: fGem } };
+    });
+    // sohbet alt koleksiyonu (en fazla ~220 mesaj tutulur)
+    const chat = await houseRef(houseId).collection('chat').limit(400).get();
+    if (!chat.empty) {
+      const b = db.batch();
+      chat.docs.forEach((d) => b.delete(d.ref));
+      await b.commit().catch(() => {});
+    }
+    return result;
   }
 
   // ---- ayarlar ---------------------------------------------------------------------
@@ -687,6 +801,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     const target = String(p.uid || '');
     if (!isUid(target) || target === uid) fail('invalid-argument', 'Geçersiz oyuncu.');
     const h = await loadHouse(houseId);
+    // v146 — karargaha çete daveti (ayarlar › Davet), teşkilata davet yok
+    if (isHqHouse(h) || houseId === TESKILAT_HOUSE) fail('failed-precondition', 'Buraya arkadaş daveti yapılamaz.');
     const isOwner = h.ownerUid === uid;
     if (!isOwner && !(await presentIn(uid, houseId))) fail('permission-denied', 'Davet için evde olmalısın.');
     if (!(await isFriend(uid, target))) fail('failed-precondition', 'Sadece arkadaşlarını davet edebilirsin.');
@@ -761,6 +877,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       if (text) await assertCanSpeak(uid, text);
       return { ...signed.att, ...(ov.overlay ? { overlay: ov.overlay } : {}) };
     }
+    if (houseId === TESKILAT_HOUSE) fail('failed-precondition', 'Teşkilatta fotoğraf çekilmez.'); // v146: kimlik gizliliği
     const h = await loadHouse(houseId);
     if (!(await presentIn(uid, houseId))) fail('failed-precondition', 'Fotoğraf için evde olmalısın.');
     const cam = camOf(a);
@@ -865,6 +982,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
 
   async function photoShot(uid, p) {
     const houseId = String(p.houseId || '');
+    if (houseId === TESKILAT_HOUSE) fail('failed-precondition', 'Teşkilatta fotoğraf çekilmez.'); // v146
     if (!(await presentIn(uid, houseId))) fail('failed-precondition', 'Fotoğraf için evde olmalısın.');
     const t = now();
     const people = await shotPeople(uid, houseId, p, 0, t);
@@ -980,8 +1098,12 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     const houseId = String(p.houseId || '');
     const target = String(p.uid || '');
     if (!isUid(target) || target === uid) fail('invalid-argument', 'Geçersiz oyuncu.');
-    const h = await loadOwnedHouse(uid, houseId);
-    void h;
+    // v146 — karargahta Baba ve yetkililer çıkarır (Baba çıkarılamaz)
+    const pre = await loadHouse(houseId);
+    if (isHqHouse(pre)) {
+      await hq.requireManager(pre, uid);
+      if ((await hq.hqRole(pre, target)) === 'baba') fail('permission-denied', 'Mafya Babası çıkarılamaz.');
+    } else await loadOwnedHouse(uid, houseId);
     const pres = await presenceRef(target).get();
     const batch = db.batch();
     batch.update(houseRef(houseId), { [`kicked.${target}`]: now() + HOUSE.KICK_MS, [`invites.${target}`]: FieldValue.delete() });
@@ -1002,8 +1124,10 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     const last = Number(pSnap?.data()?.lastChatMs || 0);
     if (now() - last < HOUSE.CHAT_MIN_INTERVAL_MS) fail('resource-exhausted', 'Biraz yavaş 🙂');
     const uSnap = await userRef(uid).get();
-    await houseRef(houseId).collection('chat').doc().set({ uid, name: nameOf(uSnap.data()), text, createdAtMs: now(), createdAt: FieldValue.serverTimestamp() });
-    if (pSnap) await presenceRef(uid).update({ lastChatMs: now() }).catch(() => {});
+    // v146 — polis teşkilatında yazan, konum kaydındaki ad (kod adı / makam) ve takma kimlikle görünür
+    const tesk = houseId === TESKILAT_HOUSE && pSnap;
+    await houseRef(houseId).collection('chat').doc().set({ uid: tesk ? pSnap.id : uid, name: tesk ? String(pSnap.data().displayName || 'Polis') : nameOf(uSnap.data()), text, createdAtMs: now(), createdAt: FieldValue.serverTimestamp() });
+    if (pSnap) await pSnap.ref.update({ lastChatMs: now() }).catch(() => {});
     if (Math.random() < 0.04) {
       const all = await houseRef(houseId).collection('chat').orderBy('createdAtMs', 'desc').limit(HOUSE.CHAT_KEEP + 100).get();
       const extra = all.docs.slice(HOUSE.CHAT_KEEP);
@@ -1105,7 +1229,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     const t = now();
     const batch = db.batch();
     batch.set(heldRef(uid), { itemId: product, venue: 'ev', houseId, untilMs: t + HOUSE.HELD_MS, boughtAtMs: t });
-    batch.update(presenceRef(uid), { holding: product });
+    batch.update(pres.ref, { holding: product });
     await batch.commit();
     return { ok: true, product, label: HOUSE_PRODUCTS[product].label, untilMs: t + HOUSE.HELD_MS };
   }
@@ -1198,10 +1322,11 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
   async function editorInventory(uid, p) {
     const houseId = String(p.houseId || '');
     const h = await loadHouse(houseId);
-    if (!isEditorOf(h, uid)) fail('permission-denied', 'Bu evde tasarım yetkin yok.');
+    const hqMgr = await hqManagerOf(h, uid); // v146
+    if (!isEditorOf(h, uid) && !hqMgr) fail('permission-denied', 'Bu evde tasarım yetkin yok.');
     const s = await invRef(h.ownerUid).get();
     const d = s.exists ? s.data() : {};
-    const f = (await fundRef(houseId).get()).data() || {};
+    const f = hqMgr ? await hq.stateRef(h.hq.worldId, h.hq.gangId).get().then((x) => ({ gold: x.data()?.kasa, gem: x.data()?.gem })) : (await fundRef(houseId).get()).data() || {};
     return { ok: true, items: d.items || {}, walls: d.walls || [], floors: d.floors || [], fund: { gold: Number(f.gold || 0), gem: Number(f.gem || 0) } };
   }
 
@@ -1364,11 +1489,26 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
         return fundMove(uid, p);
       case 'venueEnsure':
         return venueEnsure(p);
+      // v146 — evi sat · karargahlar
+      case 'sellHouse':
+        return sellHouse(uid, p);
+      case 'hqEnsure':
+        return hq.ensure(uid, p);
+      case 'hqInfo':
+        return hq.info(uid, p);
+      case 'hqYetki':
+        return hq.setYetki(uid, p);
+      case 'hqInvite':
+        return hq.setInvite(uid, p);
+      case 'hqReport':
+        return hq.report(uid, p);
+      case 'furnBuy':
+        return furn.buyToInventory(uid, p);
       // v132 — mobilya pazarı
       case 'furnList':
-        return furn.list(uid, p);
+        return furn.list(uid, p, await gangSellerActor(uid, p));
       case 'furnCancel':
-        return furn.cancel(uid, p);
+        return furn.cancel(uid, p, await gangSellerActor(uid, p));
       case 'botSet':
         return botSet(uid, p);
       case 'petSet':
@@ -1378,6 +1518,18 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     }
   });
 
+  // v146 — karargah yetkilisi çete envanterinden ilan koyar / iptal eder (p.hqId)
+  async function gangSellerActor(uid, p) {
+    if (!p.hqId) return null;
+    const h = await hq.loadHq(String(p.hqId));
+    await hq.requireManager(h, uid);
+    return { id: h.ownerUid, name: h.ownerName || 'Çete', gang: { gangId: h.hq.gangId, worldId: h.hq.worldId } };
+  }
+  // v146 — çete kapanınca karargahı (functions/gang clock cleanupGang → index.js)
+  async function dissolveHq(gangId) {
+    return hq.dissolve(gangId, { deleteListings: (sid) => furn.deleteSellerListings(sid) });
+  }
+
   async function expirePresence(maxAgeMs, Timestamp) {
     const cutoff = Timestamp.fromMillis(now() - maxAgeMs);
     const stale = await db.collection('housePresence').where('updatedAt', '<', cutoff).get();
@@ -1385,5 +1537,5 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     return stale.size;
   }
 
-  return { houseAction, expirePresence, quoteOf, buildPhotoAttachment, bizLockState };
+  return { houseAction, expirePresence, quoteOf, buildPhotoAttachment, bizLockState, dissolveHq };
 }

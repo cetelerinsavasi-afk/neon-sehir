@@ -5,7 +5,7 @@ import { useDailyActions } from '../../hooks/useDailyActions';
 import { useOpenHeistPlans } from '../../hooks/useOpenHeistPlans';
 import { useHeistPlanParticipants } from '../../hooks/useHeistPlanParticipants';
 import { useWeapons } from '../../hooks/useWeapons';
-import { useMyActiveHeistPlans } from '../../hooks/useMyActiveHeistPlan';
+import { useMyActiveHeistPlans, noteMyHeistPlan } from '../../hooks/useMyActiveHeistPlan';
 import {
   attemptHeist,
   createHeistPlan,
@@ -159,12 +159,17 @@ function PlanCard({ plan, myUid, onChanged }) {
   const isMember = participants.some((p) => p.uid === myUid);
   const isCreator = plan.creatorUid === myUid;
   const required = HEIST_LABELS[plan.target]?.requiredPower || 0;
+  // v145: ekibinde olduğun plan cihazda hatırlansın (panel açılınca hemen üstte)
+  useEffect(() => {
+    if (isMember) noteMyHeistPlan(plan.id, plan.target, true);
+  }, [isMember, plan.id, plan.target]);
 
-  const run = async (fn) => {
+  const run = async (fn, mine) => {
     setBusy(true);
     setError(null);
     try {
       const res = await fn();
+      if (mine !== undefined) noteMyHeistPlan(plan.id, plan.target, mine);
       onChanged?.(res?.data);
     } catch (err) {
       setError(err.message || 'İşlem başarısız.');
@@ -253,22 +258,22 @@ function PlanCard({ plan, myUid, onChanged }) {
 
       <div className="heist-plan-actions">
         {!isMember && (
-          <button className="heist-plan-btn primary" disabled={busy || participants.length >= 4} onClick={() => run(() => joinHeistPlan(plan.id))}>
+          <button className="heist-plan-btn primary" disabled={busy || participants.length >= 4} onClick={() => run(() => joinHeistPlan(plan.id), true)}>
             {participants.length >= 4 ? 'Dolu' : '🤝 Katıl'}
           </button>
         )}
         {isMember && !isCreator && (
-          <button className="heist-plan-btn" disabled={busy} onClick={() => run(() => leaveHeistPlan(plan.id))}>
+          <button className="heist-plan-btn" disabled={busy} onClick={() => run(() => leaveHeistPlan(plan.id), false)}>
             Ayrıl
           </button>
         )}
         {isCreator && (
-          <button className="heist-plan-btn primary" disabled={busy || totalPower < required} onClick={() => run(() => executeHeistPlan(plan.id))}>
+          <button className="heist-plan-btn primary" disabled={busy || totalPower < required} onClick={() => run(() => executeHeistPlan(plan.id), false)}>
             {totalPower < required ? 'Güç yetersiz' : '💰 Başlat'}
           </button>
         )}
         {isCreator && (
-          <button className="heist-plan-btn danger" disabled={busy} onClick={() => run(() => cancelHeistPlan(plan.id))}>
+          <button className="heist-plan-btn danger" disabled={busy} onClick={() => run(() => cancelHeistPlan(plan.id), false)}>
             Planı sil
           </button>
         )}
@@ -334,7 +339,8 @@ export default function HeistPanel({ target }) {
     setBusy(true);
     setError(null);
     try {
-      await createHeistPlan(target);
+      const res = await createHeistPlan(target);
+      if (res?.data?.planId) noteMyHeistPlan(res.data.planId, target, true);
     } catch (err) {
       setError(err.message || 'Plan oluşturulamadı.');
     } finally {
@@ -343,8 +349,10 @@ export default function HeistPanel({ target }) {
   };
 
   // ekibinde olduğum plan en üstte
+  // v145: kurduğum plan hemen (belge alanından), katıldığım plan cihazdaki listeden
   const myPlanIds = new Set(myActivePlans.map((p) => p.planId));
-  const sortedPlans = [...plans].sort((a, b) => Number(myPlanIds.has(b.id)) - Number(myPlanIds.has(a.id)));
+  const isMine = (p) => p.creatorUid === user.uid || myPlanIds.has(p.id);
+  const sortedPlans = [...plans].sort((a, b) => Number(isMine(b)) - Number(isMine(a)));
   const pw = Math.min(100, meta.requiredPower > 0 ? (myPower / meta.requiredPower) * 100 : 0);
   return (
     <div className="heist-panel">

@@ -13,6 +13,7 @@ import { houseAction, giftHeldItem, createSixtagramPost } from '../../services/g
 import { createHouseEngine, EMOTES, CART_MAX, lowerPerfAfterContextLoss } from './houseEngine';
 import ItemThumb from './ItemThumb';
 import { MarketShelf, SellSheet, useFurnBest, useListingWatch } from './FurnMarket'; // v132 mobilya pazarı
+import { HqLayer, HqYetkiPanel } from './HqPanels'; // v146 çete karargahı
 import { useHouseBots } from './houseBots'; // v132 botlar
 import { BotWaiterButton, BotEditor } from './BotUi';
 import { useHousePets } from './housePets'; // v137 ev hayvanları
@@ -21,7 +22,7 @@ import { isAnimalKey } from '../../../functions/animalData.js';
 import { furnPriceBand } from '../../../functions/furnMarket.js';
 import { CATALOG, CATALOG_MAP, CATEGORIES, TINTS } from './houseCatalog';
 import { FLOORS, WALLS } from './houseTextures';
-import { FREE_SURFACES, HOUSE_PRODUCTS, SURFACE_KEYS } from '../../../functions/houseCatalogData.js';
+import { FREE_SURFACES, HOUSE_PRICE, HOUSE_PRODUCTS, SURFACE_KEYS } from '../../../functions/houseCatalogData.js';
 import { TRACKS, playTrack, stopMusic, unlockAudio, setVolume, getVolume } from './houseAudio';
 import ArcadeHub from '../Arcade/ArcadeHub';
 import PhoneScreen from '../Phone/PhoneScreen';
@@ -198,7 +199,7 @@ const ownedCount = (items) => {
   return m;
 };
 
-export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
+export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHouse }) {
   if (import.meta.env?.DEV) window.__hsRenders = (window.__hsRenders || 0) + 1; // önizleme: çizim sayacı
   const { user } = useAuth();
   const { player } = usePlayer();
@@ -230,7 +231,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const [info, setInfo] = useState(null);
   const [entered, setEntered] = useState(false); // sunucu girişi onayladı mı (v77: sahne öncesinden kurulur)
   // v138 — "kaç kişi var": sunucu girişi onaylayınca RTDB'de bu evde sayılırım (bkz. lib/occupancy.js)
-  useOccEnter('house', occKey.house(houseId), Boolean(user) && entered);
+  useOccEnter('house', occKey.house(houseId), Boolean(user) && entered && !info?.presenceId); // v146: takma kimlikte sayılmaz (kimlik gizli)
   const [mode, setMode] = useState('walk');
   const [view, setView] = useState('3d');
   const [freeCam, setFreeCam] = useState(false); // v92 — 2D'de kamera serbest mi
@@ -300,11 +301,18 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const stopStreamRef = useRef(null); // v80: yayını kapat (evden çıkarken)
   const leavingRef = useRef(false);
   const enteredRef = useRef(false);
+  // v146 — polis teşkilatında konum kaydı takma kimlikle (sunucu verir: enter → presenceId)
+  const presIdRef = useRef(null);
   const lastEmoteRef = useRef({ emote: null, ts: 0 });
   const waiterLeaveRef = useRef(null); // v92 — çıkarken garsonluğu bırak
   const isOwner = !!info?.isOwner;
+  // v146 — çete karargahı: Baba + yetkililer tasarlar (çete envanteri, çete kasası); polis teşkilatı
+  const isHq = String(houseId || '').startsWith('hq_');
+  const hqRole = info?.hqRole || null;
+  const hqManager = isHq && (hqRole === 'baba' || hqRole === 'yetkili');
+  const isTeskilat = houseId === 'game_teskilat';
   // v92 — tasarım yetkisi verilmiş arkadaş (sahibin envanteriyle döşer, satın alamaz)
-  const isEditor = !isOwner && Boolean(user?.uid && houseDoc?.editors?.[user.uid] === true);
+  const isEditor = !isOwner && (Boolean(user?.uid && houseDoc?.editors?.[user.uid] === true) || hqManager);
   const canDesign = isOwner || isEditor;
   const canDesignRef = useRef(canDesign);
   canDesignRef.current = canDesign;
@@ -341,7 +349,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
       waiterLeaveRef.current?.();
       stopMusic();
       stopStreamRef.current?.('left');
-      if (user) deleteDoc(doc(db, 'housePresence', user.uid)).catch(() => {});
+      if (user) deleteDoc(doc(db, 'housePresence', presIdRef.current || user.uid)).catch(() => {});
       onExit?.(note);
     },
     [onExit, user]
@@ -389,9 +397,11 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
       .then((res) => {
         if (cancelled) return;
         const d = res.data || {};
+        presIdRef.current = d.presenceId || null; // v146
         enteredRef.current = true;
         setEntered(true);
-        setInfo((cur) => (cur && cur.isOwner === !!d.isOwner ? { ...cur, name: d.name, ownerName: d.ownerName } : { houseId, isOwner: !!d.isOwner, name: d.name, ownerName: d.ownerName }));
+        const extra = { presenceId: d.presenceId || null, hqRole: d.hqRole || null, selfShown: d.selfShown || null };
+        setInfo((cur) => (cur && cur.isOwner === !!d.isOwner ? { ...cur, name: d.name, ownerName: d.ownerName, ...extra } : { houseId, isOwner: !!d.isOwner, name: d.name, ownerName: d.ownerName, ...extra }));
         setPhase('ready');
       })
       .catch((err) => {
@@ -456,7 +466,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     if (phase !== 'ready' || !info || !mountRef.current) return undefined;
     const eng = createHouseEngine(mountRef.current, {
       canEdit: info.isOwner || canDesignRef.current,
-      selfUid: user.uid,
+      selfUid: info.presenceId || user.uid,
       onSelectionChange: setSel,
       onInteractChange: setInteract,
       onPlayerTap: (uid) => {
@@ -490,7 +500,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     if (import.meta.env?.DEV) window.__houseEngine = eng; // sadece geliştirme/önizleme
     if (venue) {
       eng.setVenueStations(venue.stations);
-      if (venue.outdoor) eng.setOutdoor(true);
+      if (venue.outdoor) eng.setOutdoor(true, venue.sky || null);
     }
     eng.setMode(mode);
     eng.setView(view);
@@ -512,15 +522,18 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   useEffect(
     () => () => {
       stopMusic();
-      if (user && enteredRef.current) deleteDoc(doc(db, 'housePresence', user.uid)).catch(() => {});
+      if (user && enteredRef.current) deleteDoc(doc(db, 'housePresence', presIdRef.current || user.uid)).catch(() => {});
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
 
   useEffect(() => {
-    engineRef.current?.setSelf({ uid: user?.uid, name: player?.displayName || 'Sen', avatar: player?.avatar || null });
-  }, [player?.displayName, player?.avatar, user, phase, engineKey]);
+    // v146: teşkilatta kendini de sunucunun gösterdiği kimlikle (kod adı + varsayılan tip) gör
+    const shown = info?.selfShown;
+    if (shown) engineRef.current?.setSelf({ uid: info.presenceId || user?.uid, name: shown.name || 'Ajan', avatar: shown.avatar || null });
+    else engineRef.current?.setSelf({ uid: user?.uid, name: player?.displayName || 'Sen', avatar: player?.avatar || null });
+  }, [player?.displayName, player?.avatar, user, phase, engineKey, info?.selfShown, info?.presenceId]);
 
   // v92 — market arabası: motora ve (diğerleri görsün diye) konum kaydına.
   // Ayrı yazılır: kurallar henüz yüklenmemişse sadece bu yazma reddedilir.
@@ -528,7 +541,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     engineRef.current?.setSelfCart(myCart);
     if (!user || phase !== 'ready' || !enteredRef.current) return undefined;
     const t = setTimeout(() => {
-      setDoc(doc(db, 'housePresence', user.uid), { cart: myCart }, { merge: true }).catch(() => {});
+      setDoc(doc(db, 'housePresence', presIdRef.current || user.uid), { cart: myCart }, { merge: true }).catch(() => {});
     }, 250);
     return () => clearTimeout(t);
   }, [myCart, user, phase, engineKey]);
@@ -537,7 +550,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     engineRef.current?.setSelfHolding(held?.itemId || null);
     // süresi dolan ürünü konum kaydından da temizle (başkaları görmesin)
     if (!held && user && phase === 'ready' && enteredRef.current) {
-      setDoc(doc(db, 'housePresence', user.uid), { holding: null }, { merge: true }).catch(() => {});
+      setDoc(doc(db, 'housePresence', presIdRef.current || user.uid), { holding: null }, { merge: true }).catch(() => {});
     }
   }, [held, user, phase, engineKey]);
 
@@ -634,25 +647,29 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     let alive = true;
     const t = setTimeout(() => {
       houseAction({ op: 'editInv', houseId })
-        .then((r) => alive && setInv({ items: r.data?.items || {}, walls: r.data?.walls || [], floors: r.data?.floors || [] }))
+        .then((r) => {
+          if (!alive) return;
+          setInv({ items: r.data?.items || {}, walls: r.data?.walls || [], floors: r.data?.floors || [] });
+          if (isHq && r.data?.fund) setFund({ gold: Number(r.data.fund.gold || 0), gem: Number(r.data.fund.gem || 0) }); // v146: çete kasası
+        })
         .catch(() => {});
     }, 300);
     return () => {
       alive = false;
       clearTimeout(t);
     };
-  }, [phase, isEditor, mode, houseId, houseUpdatedAt]);
+  }, [phase, isEditor, mode, houseId, houseUpdatedAt, isHq]);
 
   // v127 — mobilya kasası (sahip koyar, yetkili tasarımcı harcar): sahip + yetkili okur
   const [fund, setFund] = useState({ gold: 0, gem: 0 });
   useEffect(() => {
-    if (phase !== 'ready' || !canDesign || houseDoc?.venue) return undefined;
+    if (phase !== 'ready' || !canDesign || houseDoc?.venue || isHq) return undefined; // v146: karargahta kasa = çete kasası (editInv)
     return onSnapshot(
       doc(db, 'houseFunds', houseId),
       (s) => setFund({ gold: Number(s.data()?.gold || 0), gem: Number(s.data()?.gem || 0) }),
       () => {}
     );
-  }, [phase, canDesign, houseId, houseDoc?.venue]);
+  }, [phase, canDesign, houseId, houseDoc?.venue, isHq]);
 
   // envanter (sadece sahibi)
   useEffect(() => {
@@ -722,12 +739,12 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     [pushOthers]
   );
   useEffect(() => {
-    if (phase !== 'ready') return undefined;
+    if (phase !== 'ready' || info?.presenceId) return undefined; // v146: takma kimlikte canlı (RTDB) konum yok
     return watchLive(`house/${houseId}`, (m) => {
       liveMapRef.current = m;
       pushOthers();
     });
-  }, [phase, houseId, engineKey, pushOthers]);
+  }, [phase, houseId, engineKey, pushOthers, info?.presenceId]);
   useEffect(() => {
     if (phase !== 'ready') return undefined;
     const q = query(collection(db, 'housePresence'), where('houseId', '==', houseId), limit(40));
@@ -735,17 +752,18 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
       q,
       (snap) => {
         // bayatlık sunucu saatine göre (cihaz saati yanlış olan oyuncu kimseyi görmüyordu)
-        const now = presenceNow(snap, user.uid);
+        const selfId = presIdRef.current || user.uid; // v146
+        const now = presenceNow(snap, selfId);
         const list = [];
         let meThere = false;
         snap.forEach((d) => {
           const p = d.data();
           const ms = p.updatedAt?.toMillis?.() ?? now;
-          if (d.id === user.uid) meThere = true;
-          if (now - ms > PRESENCE_STALE_MS && d.id !== user.uid) return;
-          list.push({ uid: d.id, ...p, holdingVisible: p.holding || null });
+          if (d.id === selfId) meThere = true;
+          if (now - ms > PRESENCE_STALE_MS && d.id !== selfId) return;
+          list.push({ uid: d.id, ...p, holdingVisible: p.holding || null, anon: d.id.startsWith('pa_') });
         });
-        fsOthersRef.current = list.filter((p) => p.uid !== user.uid);
+        fsOthersRef.current = list.filter((p) => p.uid !== selfId);
         pushOthers();
         // v77 performans: konumlar 3D motora doğrudan gider; ekranı (React) sadece
         // kişi listesi/isim/avatar/eldeki ürün değişince yeniden çiz
@@ -798,9 +816,9 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
       const pos = { x: st.x, z: st.z, left: st.left, seat: st.seat, emote: em.emote, emoteTs: em.ts };
       const writeFs = () => {
         lastFsAt = now;
-        setDoc(doc(db, 'housePresence', user.uid), { ...pos, updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
+        setDoc(doc(db, 'housePresence', presIdRef.current || user.uid), { ...pos, updatedAt: serverTimestamp() }, { merge: true }).catch(() => {});
       };
-      if (liveReady()) {
+      if (liveReady() && !presIdRef.current) {
         // v79 — maliyet + akıcılık: yürürken konum RTDB'ye ~0,35 sn'de bir (ucuz,
         // hızlı); Firestore'a sadece oturma/hareket değişince, durunca ve 15 sn'de
         // bir nabız (sunucunun "içeride mi" kontrolleri ve fotoğraf için).
@@ -828,7 +846,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     }, 120);
     return () => {
       clearInterval(iv);
-      liveRemove(room, user.uid);
+      if (!presIdRef.current) liveRemove(room, user.uid);
     };
   }, [phase, user?.uid, entered, houseId]);
 
@@ -1131,7 +1149,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     try {
       eng.deleteSelected();
       await flushSave();
-      await enqueue(() => houseAction({ op: 'furnList', k, v }));
+      await enqueue(() => houseAction({ op: 'furnList', k, v, ...(isHq ? { hqId: houseId } : {}) })); // v146: karargahta çete envanterinden
       setSellAsk(null);
       flash(`🏷️ ${CATALOG_MAP[k]?.name || 'Mobilya'} pazarda satışta.`);
     } catch (err) {
@@ -1232,7 +1250,8 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
       setDesign(eng.getDesign());
       setSaveState('saved');
       setPanel(null);
-      flash(res.data?.fromFund ? `🎉 ${res.data?.count || ''} ürün mobilya kasasından alındı (${houseDoc?.ownerName || 'sahibine'} ait).` : `🎉 ${res.data?.count || ''} ürün senin! Güle güle kullan.`);
+      flash(isHq ? `🎉 ${res.data?.count || ''} ürün çete kasasından alındı (çeteye ait).` : res.data?.fromFund ? `🎉 ${res.data?.count || ''} ürün mobilya kasasından alındı (${houseDoc?.ownerName || 'sahibine'} ait).` : `🎉 ${res.data?.count || ''} ürün senin! Güle güle kullan.`);
+      if (isHq) setFund((f) => ({ gold: Math.max(0, f.gold - Number(res.data?.gold || 0)), gem: Math.max(0, f.gem - Number(res.data?.gem || 0)) }));
     } catch (err) {
       // v77: sepette gerekli bir işletme mobilyası eksikse (ör. geri alma ile kaldırıldı)
       flash(parseBizError(err) ? '🔒 🏪' : err?.message || 'Satın alınamadı.');
@@ -1256,6 +1275,24 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
     // Tür her açılışta yeniden hesaplanır: ev → ofis olunca bir sonraki açılışta değişir.
     if (isOwner && !houseDoc?.biz?.type && houseKind(houseDoc) === 'ofis') setPanel('office');
     else setPanel('settings');
+  };
+  // v146 — evi sat
+  const [sellHouseAsk, setSellHouseAsk] = useState(false);
+  const sellOwnedN = (houseDoc?.items || []).filter((it) => it.p === 1).length;
+  const sellTrialN = (houseDoc?.items || []).filter((it) => it.p !== 1).length;
+  const sellHouse = async () => {
+    setBusy(true);
+    try {
+      await flushSave().catch(() => {});
+      const r = await houseAction({ op: 'sellHouse', houseId, confirm: true });
+      leavingRef.current = true;
+      setSellHouseAsk(false);
+      exit(`🏷️ Satıldı: +${Number(r.data?.gold || HOUSE_PRICE).toLocaleString('tr-TR')} altın · ${r.data?.furniture || 0} mobilya envanterine döndü.`);
+    } catch (err) {
+      flash(err?.message || 'Satılamadı.');
+    } finally {
+      setBusy(false);
+    }
   };
   const renameOffice = async (name) => {
     try {
@@ -1421,7 +1458,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
   const toggleNoStream = async (v = !noStream) => {
     setNoStream(v);
     try {
-      await setDoc(doc(db, 'housePresence', user.uid), { noStream: v }, { merge: true });
+      await setDoc(doc(db, 'housePresence', presIdRef.current || user.uid), { noStream: v }, { merge: true });
       flash(v ? '🙈 Yayınlarda görünmüyorsun.' : '👀 Kameranın gördüğü yerde yayında görünürsün.');
     } catch {
       setNoStream(!v);
@@ -1771,7 +1808,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
           <div className="hs-top">
             <button className="hs-icon-btn" onClick={() => exit()} title="Evden çık">✕</button>
             <div className="hs-title">
-              <b>{venue ? venue.icon : bizType ? BIZ_TYPES[bizType].icon : kind === 'ofis' ? houseDoc?.office?.emoji || '🏢' : kind === 'depo' ? '📦' : '🏠'} {venue ? venue.name : houseName}</b>
+              <b>{venue ? venue.icon : bizType ? BIZ_TYPES[bizType].icon : kind === 'ofis' ? houseDoc?.office?.emoji || '🏢' : kind === 'depo' ? '📦' : isHq ? '🏴' : '🏠'} {venue ? venue.name : houseName}</b>
               <span>
                 {online.length} kişi {venue || bizType ? 'burada' : 'evde'}
                 {canDesign && mode === 'build' && (
@@ -1805,6 +1842,9 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
             )}
             {isOwner && (
               <button className={`hs-icon-btn${intentReady ? ' cue-pulse' : ''}${houseDoc?.bizShortagePending ? ' hb-dot' : ''}`} onClick={openSettings} title="Ayarlar">⚙️</button>
+            )}
+            {hqManager && (
+              <button className="hs-icon-btn" onClick={() => setPanel('office')} title="Karargah ayarları">⚙️</button>
             )}
           </div>
           {/* v92 — GÖZ: satın alınmamış (deneme) eşyaları gerçek haliyle gör (sadece sen; Tasarla'da) */}
@@ -1997,7 +2037,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
           {canDesign && mode === 'build' && !houseDoc?.venue && (
             <div className="hs-cartbar">
               <div className="hs-balance">
-                <span>{isEditor ? '🏦 Mobilya kasası' : 'Bakiye'}</span>
+                <span>{isHq ? '🏴 Çete kasası' : isEditor ? '🏦 Mobilya kasası' : 'Bakiye'}</span>
                 <Money gold={payGold} gem={payGem} small />
                 {payGem === 0 && <PriceTag price={{ t: 'gem', v: 0 }} small />}
               </div>
@@ -2015,7 +2055,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
           )}
 
           {isEditor && mode === 'build' && (
-            <div className="hs-editor-note">🛠️ Tasarım yetkin var · alışveriş <b>{houseDoc?.ownerName || 'ev sahibinin'}</b> mobilya kasasından yapılır, eşyalar ona aittir.</div>
+            <div className="hs-editor-note">{isHq ? <>🏴 Karargah yetkilisisin · alışveriş <b>çete kasasından</b> (altın + zümrüt) yapılır, eşyalar çeteye aittir.</> : <>🛠️ Tasarım yetkin var · alışveriş <b>{houseDoc?.ownerName || 'ev sahibinin'}</b> mobilya kasasından yapılır, eşyalar ona aittir.</>}</div>
           )}
 
           {/* v137.1: "Nasıl tasarlanır?" açıklaması kaldırıldı */}
@@ -2067,7 +2107,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                   <button className="hs-bot-edit" onClick={() => setPetEdit({ i: sel.i, k: sel.k, c: sel.c || 0 })}>✏️ Düzenle</button>
                 )}
                 {/* v132 — pazara koy (sadece sahibi; fiyatı yarısı – 1 birim altı) */}
-                {isOwner && sel.p === 1 && furnPriceBand(sel.k) && !venue && (
+                {(isOwner || hqManager) && sel.p === 1 && furnPriceBand(sel.k) && !venue && (
                   <button className="hs-sell-btn" onClick={() => setSellAsk({ k: sel.k })}>🏷️ Sat</button>
                 )}
               </div>
@@ -2080,9 +2120,14 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
               <div className="hs-shelf-main-tabs">
                 <button className={tab === 'magaza' ? 'on' : ''} onClick={() => { setTab('magaza'); setShelfOpen(true); }}>🏬 Mağaza</button>
                 <button className={tab === 'envanter' ? 'on' : ''} onClick={() => { setTab('envanter'); setShelfOpen(true); }}>
-                  📦 {isOwner ? 'Envanter' : 'Sahibin envanteri'}{invList.length > 0 && <i>{invList.reduce((a, x) => a + x.n, 0)}</i>}
+                  📦 {isOwner ? 'Envanter' : isHq ? 'Çete envanteri' : 'Sahibin envanteri'}{invList.length > 0 && <i>{invList.reduce((a, x) => a + x.n, 0)}</i>}
                 </button>
                 <button className={tab === 'pazar' ? 'on' : ''} onClick={() => { setTab('pazar'); setShelfOpen(true); setLayer(null); }}>🛒 Pazar</button>
+                {isHq && hqManager && (
+                  <button className="hs-undo hs-perm-btn" onClick={() => setPanel('hqYetki')} title="Karargah yetkilileri ve çete kasası">
+                    ＋
+                  </button>
+                )}
                 {isOwner && (
                   <button className={`hs-undo hs-perm-btn${Object.keys(houseDoc?.editors || {}).length ? ' has' : ''}`} onClick={() => setPanel('editors')} title="Arkadaşlarına tasarım yetkisi ver">
                     ＋
@@ -2152,7 +2197,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                   )}
                 </>
               )}
-              {shelfOpen && tab === 'pazar' && <MarketShelf uid={user?.uid} best={furnBest} Price={PriceTag} onPlace={placeFromMarket} flash={flash} />}
+              {shelfOpen && tab === 'pazar' && <MarketShelf uid={isHq ? houseDoc?.ownerUid : user?.uid} hqId={isHq ? houseId : null} best={furnBest} Price={PriceTag} onPlace={placeFromMarket} flash={flash} />}
               {shelfOpen && tab === 'envanter' && (
                 <div className="hs-shelf-items">
                   {invList.length === 0 && !isOwner && <p className="hs-dim hs-inv-empty">Ev sahibinin envanteri boş. Mağazadan deneme eşya koyabilirsin; satın almayı sahibi yapar.</p>}
@@ -2196,7 +2241,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
               </button>
               <button className="hs-side-btn" onClick={() => { setPhoneApp('chatsapp'); setPanel('phone'); }} title="ChatsApp">💬</button>
               <button className="hs-side-btn" onClick={() => { setPhoneApp(null); setPanel('phone'); }} title="Telefon">📱</button>
-              <button className="hs-side-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>
+              {!isTeskilat && <button className="hs-side-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>}
             </div>
           )}
 
@@ -2208,6 +2253,8 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                 <div className="hs-trial-note">🛒 Deneme ürünü — ev sahibi satın alınca kullanılabilir</div>
               ) : (
                 interact.actions.map((a) => {
+                  // v145 — mekân parçası bazı istasyon butonlarını gizleyebilir (seyyar satıcı: bugün alışveriş / haraç yapıldıysa sadece Menü)
+                  if (venue && a.kind === 'panel' && String(a.panel || '').startsWith('v:') && venueApiRef.current?.hideAct?.(String(a.panel).slice(2))) return null;
                   // v77: internet kafede cihaz: doluluk (👤 n/kapasite) + dakika ücreti
                   if (bizType === 'internet' && !isOwner && a.panel === 'arcade' && a.deviceId) {
                     const occ = deviceOcc(a.deviceId);
@@ -2310,7 +2357,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
           <div className={`hs-chat${mode === 'build' ? ' build' : ''}${chatExpanded ? ' expanded' : ''}`}>
             <div className="hs-chat-feed" onClick={() => setChatExpanded((v) => !v)}>
               {(chatExpanded ? liveMessages : liveMessages.slice(-4)).map((m) => (
-                <div key={m.id} className={`hs-msg${m.uid === user.uid ? ' me' : ''}`}>
+                <div key={m.id} className={`hs-msg${m.uid === user.uid || (info?.presenceId && m.uid === info.presenceId) ? ' me' : ''}`}>
                   <b>{m.name}:</b> {m.text}
                 </div>
               ))}
@@ -2379,10 +2426,10 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                   <button className="hs-x" onClick={() => setPanel(null)}>✕</button>
                 </div>
                 {online.map((o) => {
-                  const me = o.uid === user.uid;
+                  const me = o.uid === user.uid || (info?.presenceId && o.uid === info.presenceId);
                   return (
                     <div key={o.uid} className="hs-person">
-                      <button className="hs-person-main" onClick={() => !me && setCardTarget(o.uid)}>
+                      <button className="hs-person-main" onClick={() => !me && !o.anon && !isTeskilat && setCardTarget(o.uid)}>
                         <AvatarSvg avatar={o.avatar} size={30} rounded />
                         <span className="hs-person-name">
                           {o.displayName || 'Oyuncu'}
@@ -2391,14 +2438,14 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                         </span>
                         {o.holding && <HeldIcon product={o.holding} size={18} />}
                       </button>
-                      {!me && myHolding && !o.holding && !isBlocked(o.uid) && <button onClick={() => giftTo(o)}>🎁 Ismarla</button>}
-                      {!me && isOwner && <button className="ghost" onClick={() => kick(o)}>Çıkar</button>}
+                      {!me && !isTeskilat && myHolding && !o.holding && !isBlocked(o.uid) && <button onClick={() => giftTo(o)}>🎁 Ismarla</button>}
+                      {!me && (isOwner || hqManager) && <button className="ghost" onClick={() => kick(o)}>Çıkar</button>}
                     </div>
                   );
                 })}
-                <div className="hs-list-title">Arkadaşlarını davet et</div>
-                {(social.friends || []).length === 0 && <p className="hs-dim">Arkadaş listen boş. ChatsApp'tan arkadaş ekleyebilirsin.</p>}
-                {(social.friends || [])
+                {!isHq && !isTeskilat && <div className="hs-list-title">Arkadaşlarını davet et</div>}
+                {!isHq && !isTeskilat && (social.friends || []).length === 0 && <p className="hs-dim">Arkadaş listen boş. ChatsApp'tan arkadaş ekleyebilirsin.</p>}
+                {(isHq || isTeskilat ? [] : social.friends || [])
                   .filter((f) => !online.some((o) => o.uid === f.uid))
                   .slice(0, 40)
                   .map((f) => (
@@ -2459,12 +2506,44 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist }) {
                     💰 Ücretli Ürünler{kind === 'ofis' ? ` · ${houseDoc?.office?.emoji || '🏢'} ofis` : ''}
                   </button>
                 )}
+                {/* v146 — düz ev / depo satılabilir: alış fiyatı geri, mobilyalar envantere */}
+                {isOwner && !bizType && !houseDoc?.venue && !isHq && (kind === 'ev' || kind === 'depo') && (
+                  <button className="hs-btn ghost wide hs-sell-house" disabled={busy} onClick={() => setSellHouseAsk(true)}>
+                    🏷️ Sat
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+          {sellHouseAsk && (
+            <div className="hs-modal-bg" onClick={() => !busy && setSellHouseAsk(false)}>
+              <div className="hs-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="hs-modal-head">
+                  <b>🏷️ {kind === 'depo' ? 'Depoyu' : 'Evi'} sat</b>
+                  <button className="hs-x" onClick={() => setSellHouseAsk(false)}>✕</button>
+                </div>
+                <p className="hs-sell-line">
+                  <b>{houseDoc?.name || 'Evin'}</b> <span className="gold-coin-icon" style={{ width: 13, height: 13 }} /> <b>{HOUSE_PRICE.toLocaleString('tr-TR')}</b> altına satılacak.
+                </p>
+                <ul className="hs-sell-list">
+                  <li>🛋️ İçindeki {sellOwnedN} mobilya envanterine döner{sellTrialN ? ` (${sellTrialN} deneme eşya düşer)` : ''}.</li>
+                  {(fund.gold > 0 || fund.gem > 0) && <li>🏦 Mobilya kasası sana döner.</li>}
+                  <li>🚪 İçerideki herkes çıkar, ev ve sohbeti silinir. Geri alınamaz.</li>
+                </ul>
+                <div className="hs-sell-acts">
+                  <button className="hs-btn ghost" disabled={busy} onClick={() => setSellHouseAsk(false)}>Vazgeç</button>
+                  <button className="hs-btn gold" disabled={busy} onClick={sellHouse}>{busy ? 'Satılıyor…' : 'Onayla, sat'}</button>
+                </div>
               </div>
             </div>
           )}
 
           {/* v77 — İŞLETMELER · v93 HOME OFİSLER (aynı panel, farklı türler) */}
           {panel === 'office' && isOwner && <OfficePanel houseId={houseId} houseDoc={houseDoc} onClose={() => setPanel(null)} flash={flash} onRename={renameOffice} onOpenBiz={() => setPanel('biz')} />}
+          {/* v146 — karargah ayarları (Fiyatlar · Davet · Rapor) ve yetkililer */}
+          {panel === 'office' && hqManager && <OfficePanel houseId={houseId} houseDoc={houseDoc} onClose={() => setPanel(null)} flash={flash} hq />}
+          {panel === 'hqYetki' && hqManager && <HqYetkiPanel houseId={houseId} role={hqRole} onClose={() => setPanel(null)} flash={flash} />}
+          {isHq && houseDoc && mode === 'walk' && <HqLayer role={hqRole} hidden={Boolean(panel)} onSwitchHouse={onSwitchHouse} />}
           {panel === 'biz' && (
             <BizListPanel
               keys={BIZ_TYPE_KEYS}

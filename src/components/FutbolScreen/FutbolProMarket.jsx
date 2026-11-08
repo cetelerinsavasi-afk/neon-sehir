@@ -68,7 +68,7 @@ export function ProContracts({ team, readOnly }) {
           const band = proSalaryBand(c.power);
           const canRaise = Number(c.salary) < band.max;
           return (
-            <div key={c.id} className="fp-prow">
+            <div key={c.id} className="fp-prow fp-prow-c">
               <span className="fp-prow-pos" title={pos.name}>
                 {pos.icon}
               </span>
@@ -82,9 +82,69 @@ export function ProContracts({ team, readOnly }) {
                 {c.noteFromPlayer?.text && <span className="fp-note in">✉️ {c.noteFromPlayer.text}</span>}
                 {c.noteFromTeam?.text && <span className="fp-note out">↩ Sen: {c.noteFromTeam.text}</span>}
                 {rowMsg?.id === c.id && <span className={`fp-msg${rowMsg.ok ? ' ok' : ''}`}>{rowMsg.text}</span>}
-                {noteFor === c.id && (
-                  <div className="fp-note-form">
-                    <input value={noteText} maxLength={140} placeholder="Kısa not…" onChange={(e) => setNoteText(e.target.value)} aria-label="Not" />
+                {c.raiseRequest && !readOnly && (
+                  <span className="fp-pending">
+                    💸 Zam isteği: {fmt(c.raiseRequest.salary)}
+                    <button className="fp-mini" disabled={Boolean(busy)} onClick={() => run(`rr_${c.id}`, { op: 'raiseRespond', uid: c.realUid, accept: false })}>
+                      ✕
+                    </button>
+                    <button className="fp-mini ok" disabled={Boolean(busy)} onClick={() => run(`ra_${c.id}`, { op: 'raiseRespond', uid: c.realUid, accept: true }, 'Zam onaylandı.')}>
+                      ✓
+                    </button>
+                  </span>
+                )}
+              </div>
+              <div className="fp-prow-acts">
+                <button
+                  className={`futbol-admin-reset${canRaise && !readOnly ? '' : ' fp-dimbtn'}`}
+                  onClick={() => {
+                    // v102: basınca neden olmadığı söylenir (tavan / menajer)
+                    if (readOnly) return setRowMsg({ id: c.id, text: MANAGED_TXT });
+                    if (!canRaise) return setRowMsg({ id: c.id, text: `Maaş bu güçteki tavanda (${fmt(band.max)}/gün); daha fazla zam yapılamaz.` });
+                    setRowMsg(null);
+                    setNoteFor(null);
+                    setRaiseFor(raiseFor === c.id ? null : c.id);
+                    setRaise(Math.min(band.max, Number(c.salary) + 1000));
+                  }}
+                >
+                  💸 Zam
+                </button>
+                <button
+                  className={`futbol-admin-reset${readOnly ? ' fp-dimbtn' : ''}`}
+                  onClick={() => {
+                    if (readOnly) return setRowMsg({ id: c.id, text: MANAGED_TXT });
+                    setRowMsg(null);
+                    setRaiseFor(null);
+                    setNoteFor(noteFor === c.id ? null : c.id);
+                    setNoteText('');
+                  }}
+                >
+                  ✉️ Not
+                </button>
+                <ConfirmButton className="futbol-admin-reset fp-danger" danger title={`${c.name} ile sözleşme feshedilsin mi?`} lines={["Bugün 19:00'da maaşı ödenip takımdan ayrılır."]} confirmLabel="Feshet" disabled={readOnly || Boolean(busy) || Boolean(c.pendingEnd || c.pendingTransfer)} onConfirm={() => run(`t_${c.id}`, { op: 'terminate', uid: c.realUid }, `${c.name} bugün 19:00'da takımdan ayrılacak.`)}>
+                  ✂️ Feshet
+                </ConfirmButton>
+              </div>
+              {/* v145: zam ve not formları satırın tam genişliğinde (dar sütuna sığmıyordu) */}
+              {raiseFor === c.id && (
+                <div className="fp-row-form fp-raise">
+                  <QuantityStepper value={raise} onChange={(v) => setRaise(Math.max(Number(c.salary) + 1, Math.min(band.max, v)))} min={Number(c.salary) + 1} max={band.max} step={100} steps={SALARY_STEPS} />
+                  <button
+                    className="futbol-admin-submit fp-wide"
+                    disabled={Boolean(busy)}
+                    onClick={async () => {
+                      if (await run(`rs_${c.id}`, { op: 'raiseSet', uid: c.realUid, salary: raise }, 'Maaş artırıldı.')) setRaiseFor(null);
+                    }}
+                  >
+                    💸 Maaşı {fmt(raise)}/gün yap
+                  </button>
+                </div>
+              )}
+              {noteFor === c.id && (
+                <div className="fp-row-form fp-note-form">
+                  <textarea value={noteText} maxLength={140} rows={3} placeholder="Kısa not…" onChange={(e) => setNoteText(e.target.value)} aria-label="Not" />
+                  <div className="fp-note-foot">
+                    <small>{noteText.length}/140</small>
                     <button
                       className="futbol-admin-submit"
                       disabled={Boolean(busy) || !noteText.trim()}
@@ -98,62 +158,8 @@ export function ProContracts({ team, readOnly }) {
                       Gönder
                     </button>
                   </div>
-                )}
-                {c.raiseRequest && !readOnly && (
-                  <span className="fp-pending">
-                    💸 Zam isteği: {fmt(c.raiseRequest.salary)}
-                    <button className="fp-mini" disabled={Boolean(busy)} onClick={() => run(`rr_${c.id}`, { op: 'raiseRespond', uid: c.realUid, accept: false })}>
-                      ✕
-                    </button>
-                    <button className="fp-mini ok" disabled={Boolean(busy)} onClick={() => run(`ra_${c.id}`, { op: 'raiseRespond', uid: c.realUid, accept: true }, 'Zam onaylandı.')}>
-                      ✓
-                    </button>
-                  </span>
-                )}
-                {raiseFor === c.id && (
-                  <div className="fp-raise">
-                    <QuantityStepper value={raise} onChange={(v) => setRaise(Math.max(Number(c.salary) + 1, Math.min(band.max, v)))} min={Number(c.salary) + 1} max={band.max} step={100} steps={SALARY_STEPS} />
-                    <button
-                      className="futbol-admin-submit fp-wide"
-                      disabled={Boolean(busy)}
-                      onClick={async () => {
-                        if (await run(`rs_${c.id}`, { op: 'raiseSet', uid: c.realUid, salary: raise }, 'Maaş artırıldı.')) setRaiseFor(null);
-                      }}
-                    >
-                      💸 {fmt(raise)}/gün yap
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="fp-prow-acts">
-                <button
-                  className={`futbol-admin-reset${canRaise && !readOnly ? '' : ' fp-dimbtn'}`}
-                  onClick={() => {
-                    // v102: basınca neden olmadığı söylenir (tavan / menajer)
-                    if (readOnly) return setRowMsg({ id: c.id, text: MANAGED_TXT });
-                    if (!canRaise) return setRowMsg({ id: c.id, text: `Maaş bu güçteki tavanda (${fmt(band.max)}/gün); daha fazla zam yapılamaz.` });
-                    setRowMsg(null);
-                    setRaiseFor(raiseFor === c.id ? null : c.id);
-                    setRaise(Math.min(band.max, Number(c.salary) + 1000));
-                  }}
-                >
-                  💸 Zam
-                </button>
-                <button
-                  className={`futbol-admin-reset${readOnly ? ' fp-dimbtn' : ''}`}
-                  onClick={() => {
-                    if (readOnly) return setRowMsg({ id: c.id, text: MANAGED_TXT });
-                    setRowMsg(null);
-                    setNoteFor(noteFor === c.id ? null : c.id);
-                    setNoteText('');
-                  }}
-                >
-                  ✉️ Not
-                </button>
-                <ConfirmButton className="futbol-admin-reset fp-danger" danger title={`${c.name} ile sözleşme feshedilsin mi?`} lines={["Bugün 19:00'da maaşı ödenip takımdan ayrılır."]} confirmLabel="Feshet" disabled={readOnly || Boolean(busy) || Boolean(c.pendingEnd || c.pendingTransfer)} onConfirm={() => run(`t_${c.id}`, { op: 'terminate', uid: c.realUid }, `${c.name} bugün 19:00'da takımdan ayrılacak.`)}>
-                  ✂️ Feshet
-                </ConfirmButton>
-              </div>
+                </div>
+              )}
             </div>
           );
         })}

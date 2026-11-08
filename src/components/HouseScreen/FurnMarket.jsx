@@ -62,7 +62,7 @@ function useMyListings(uid, enabled) {
   return rows;
 }
 
-export function MarketShelf({ uid, best, Price, onPlace, flash }) {
+export function MarketShelf({ uid, hqId = null, best, Price, onPlace, flash }) {
   const mine = useMyListings(uid, true);
   const [cat, setCat] = useState('mine');
   const [busy, setBusy] = useState(null);
@@ -88,7 +88,7 @@ export function MarketShelf({ uid, best, Price, onPlace, flash }) {
   const cancel = async (l) => {
     setBusy(l.id);
     try {
-      await houseAction({ op: 'furnCancel', id: l.id });
+      await houseAction({ op: 'furnCancel', id: l.id, ...(hqId ? { hqId } : {}) }); // v146: karargahta çete ilanı
       flash?.(`📦 ${CATALOG_MAP[l.k]?.name || 'Mobilya'} envanterine döndü.`);
     } catch (err) {
       flash?.(err?.message || 'İptal edilemedi.');

@@ -4,7 +4,7 @@ import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { enterInterior, enterPark, recordVenueVisit } from '../../services/gameActions';
 import { venueTo2d } from '../../../functions/venueLayouts.js';
-import { CamiiPart, BankaPart, GazinoPart, KarakolPart, GaleriPart, SilahPart, ModifiyePart, ParkPart, BelediyePart } from './venueParts';
+import { CamiiPart, BankaPart, GazinoPart, KarakolPart, GaleriPart, SilahPart, ModifiyePart, ParkPart, BelediyePart, VendorPart, TeskilatPart } from './venueParts';
 import '../../styles/worldScreenChrome.css';
 import './Venue3D.css';
 import { occEnter, occKey } from '../../lib/occupancy';
@@ -31,6 +31,12 @@ const PARTS = {
   modifiye_garaji: ModifiyePart,
   park: ParkPart,
   belediye: BelediyePart,
+  // v145 — seyyar satıcılar (functions/venueLayouts.js VENDORS)
+  kokorecci: VendorPart,
+  simitci: VendorPart,
+  donerci: VendorPart,
+  kofteci: VendorPart,
+  teskilat: TeskilatPart, // v146
 };
 
 // motorun konuşma balonu süresi (houseEngine say: 9 sn) + iki konuşma arası sessizlik
@@ -53,6 +59,7 @@ export default function VenueLayer({ venue, engineRef, interact, mode, onNpcs, a
   const [dynNpcs, setDynNpcs] = useState([]); // imam, dilenciler (gerçek oyuncular NPC olarak)
   const pendingRef = useRef(null); // NPC'ye dokunulunca: varınca açılacak istasyon
   const sayHookRef = useRef(null); // parçanın konuşma satırı ezmesi (ör. banka sıra çağrısı)
+  const hideActRef = useRef(null); // v145: parça bazı istasyon butonlarını gizleyebilir (seyyar: bugün yapıldıysa sadece Menü)
   const Part = PARTS[venue.key];
 
   const npcs = useMemo(() => [...(venue.npcs || []), ...dynNpcs], [venue.npcs, dynNpcs]);
@@ -63,8 +70,11 @@ export default function VenueLayer({ venue, engineRef, interact, mode, onNpcs, a
   }, [npcs, onNpcs]);
 
   // --- eski konum kaydı (sunucu kontrolleri için) — giriş + 30 sn nabız + çıkışta sil
+  // v145: "light" mekânlarda (seyyar satıcılar) tutulmaz — sunucu kontrolü yok,
+  // canlı oyuncular / kişi sayısı zaten 3D ev kaydından (ek Firestore yazması olmasın)
+  const lightVenue = Boolean(venue.light);
   useEffect(() => {
-    if (!user) return undefined;
+    if (!user || lightVenue) return undefined;
     const coll = venue.loc === 'park' ? 'parkPresence' : 'interiorPresence';
     let alive = true;
     let ready = false;
@@ -92,7 +102,7 @@ export default function VenueLayer({ venue, engineRef, interact, mode, onNpcs, a
       leaveOcc();
       deleteDoc(doc(db, coll, user.uid)).catch(() => {});
     };
-  }, [user, venue.loc, engineRef]);
+  }, [user, venue.loc, engineRef, lightVenue]);
 
   // --- NPC'ler sırayla konuşur. v127: bir balon (9 sn) bitmeden yenisi gelmez —
   // aynı anda tek NPC konuşur, araya kısa bir sessizlik girer.
@@ -131,6 +141,7 @@ export default function VenueLayer({ venue, engineRef, interact, mode, onNpcs, a
     if (!apiRef) return undefined;
     apiRef.current = {
       open: (act) => setPanel(act),
+      hideAct: (act) => Boolean(hideActRef.current?.(act)),
       npcTap: (uid) => {
         const n = npcsRef.current.find((x) => x.id === uid);
         if (!n) return false;
@@ -160,6 +171,7 @@ export default function VenueLayer({ venue, engineRef, interact, mode, onNpcs, a
       setPanel={setPanel}
       setDynNpcs={setDynNpcs}
       sayHookRef={sayHookRef}
+      hideActRef={hideActRef}
       engineRef={engineRef}
       onOpenHeist={onOpenHeist}
       flash={flash}

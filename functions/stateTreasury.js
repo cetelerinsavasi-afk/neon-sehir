@@ -27,6 +27,7 @@
 //   gazino_*   — v126: oyunun gazinosunun kârı (slot · piyango · rulet · 10 Numara),
 //                gece 00:00'da yeni güne yazılır (functions/gameCasinoVault.js)
 //   ist_*      — istihbaratın kazandığı her şey (savaş, bahis, rüşvet, çökertme…)
+//   seyyar_satis — v145: seyyar satıcılardan alışverişin tamamı (günlük alışveriş + menü)
 //
 // YAZMA: gün + parça (shard) belgelerine artırma — stateLedger/{gün}_s{0..N}.
 // Aynı belgeye çok oyuncu aynı anda yazmasın diye 16 parça; okuma tarafı
@@ -69,6 +70,7 @@ export const STATE_IN = {
   // v127 — Belediye: maaş vergisi işe göre, işletme vergisi türe göre ayrı kalem
   vergi_maasIsci: 'Vergi · Fabrika işçisi maaşları',
   vergi_maasFutbolcu: 'Vergi · Futbolcu maaşları',
+  vergi_transfer: 'Vergi · Futbolcu transferleri', // v146 — alıcı öder (Kültür ve Spor)
   vergi_maasMenajer: 'Vergi · Menajer maaşları',
   vergi_isl_silahci: 'Vergi · İşletme · Silahçı',
   vergi_isl_modifiye: 'Vergi · İşletme · Modifiye',
@@ -83,6 +85,7 @@ export const STATE_IN = {
   vergi_isl_gazino: 'Vergi · İşletme · Kumarhane',
   vergi_sifirSilah: 'Vergi · Sıfır silah satış kârı', // v130
   vergi_sifirAraba: 'Vergi · Sıfır araba satış kârı', // v130
+  seyyar_satis: 'Seyyar satıcı satışları', // v145 — Ticaret Bakanlığı
   bagis: 'Belediyeye bağışlar',
   adaylik: 'Belediye başkanlığı adaylık ücretleri', // v136
   borc_acik: 'Kasa açığının borca çevrilmesi (tek seferlik)',

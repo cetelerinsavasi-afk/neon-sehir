@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useVehicles } from '../../hooks/useVehicles';
@@ -16,13 +16,17 @@ import DeleteAccountRequest from '../DeleteAccountRequest/DeleteAccountRequest';
 import BlockedPlayersList from '../BlockedPlayersList/BlockedPlayersList';
 import AdminPanelEntry from '../AdminPanel/AdminPanelEntry';
 import LegalLinks from '../LegalLinks/LegalLinks';
+import { retryImport } from '../../lib/lazyRetry';
 import './HomeScreen.css';
+
+// v146 — Profil › Mobilyalar (3D katalog / three.js ana pakete girmesin diye ayrı parça)
+const FurnitureScreen = lazy(retryImport(() => import('../Furniture/FurnitureScreen')));
 
 function weaponImage(catalogId) {
   return weaponCatalog.find((w) => w.id === catalogId)?.image;
 }
 
-function ProfileHeader({ player, onEditAvatar, onAccessories, onReport }) {
+function ProfileHeader({ player, onEditAvatar, onAccessories, onReport, onFurniture }) {
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -84,14 +88,21 @@ function ProfileHeader({ player, onEditAvatar, onAccessories, onReport }) {
       <button className="home-btn" onClick={onEditAvatar}>
         🎭 Avatarımı Düzenle
       </button>
-      {/* v78 — evcil hayvan & aksesuar mağazası */}
-      <button className="home-btn home-btn-acc" onClick={onAccessories}>
-        🐾 Aksesuarlar
-      </button>
-      {/* v92 — günlük para raporu */}
-      <button className="home-btn home-btn-report" onClick={onReport}>
-        📊 Günlük Rapor
-      </button>
+      {/* v146 — yan yana kare butonlar: Aksesuarlar (v78) · Günlük Rapor (v92) · Mobilyalar */}
+      <div className="home-sq-row">
+        <button className="home-sq home-sq-acc" onClick={onAccessories}>
+          <span>🐾</span>
+          Aksesuarlar
+        </button>
+        <button className="home-sq home-sq-report" onClick={onReport}>
+          <span>📊</span>
+          Günlük Rapor
+        </button>
+        <button className="home-sq home-sq-furn" onClick={onFurniture}>
+          <span>🛋️</span>
+          Mobilyalar
+        </button>
+      </div>
     </div>
   );
 }
@@ -127,6 +138,7 @@ export default function HomeScreen() {
   const [editingAvatar, setEditingAvatar] = useState(false);
   const [accShop, setAccShop] = useState(false);
   const [report, setReport] = useState(false);
+  const [furn, setFurn] = useState(false); // v146
 
   if (!user) {
     return <SignInPrompt message="Evine girmek için giriş yapmalısın." />;
@@ -141,6 +153,13 @@ export default function HomeScreen() {
   if (report) {
     return <DailyReport onBack={() => setReport(false)} />;
   }
+  if (furn) {
+    return (
+      <Suspense fallback={<div className="app-lazy-fallback" aria-busy="true"><span /></div>}>
+        <FurnitureScreen onBack={() => setFurn(false)} />
+      </Suspense>
+    );
+  }
 
   // v77: vitrindeki (dükkândaki) ürünler kilitli — soluk ve 🔒 ile gösterilir
   const myVehicles = vehicles.filter((v) => !v.listed || v.shopHouseId);
@@ -148,7 +167,7 @@ export default function HomeScreen() {
 
   return (
     <div className="home-screen">
-      <ProfileHeader player={player} onEditAvatar={() => setEditingAvatar(true)} onAccessories={() => setAccShop(true)} onReport={() => setReport(true)} />
+      <ProfileHeader player={player} onEditAvatar={() => setEditingAvatar(true)} onAccessories={() => setAccShop(true)} onReport={() => setReport(true)} onFurniture={() => setFurn(true)} />
 
       {/* UGC D3: yalnızca yetkililere görünür */}
       <AdminPanelEntry uid={user.uid} player={player} />

@@ -25,6 +25,7 @@ function groupOf(kind, cat) {
     if (cat === 'vergi_yayin' || cat === 'vergi_sanatci') return ['kultur', 'Sosyal medya vergisi'];
     if (cat === 'vergi_maasFutbolcu') return ['kultur', 'Futbolcu maaş vergisi'];
     if (cat === 'vergi_maasMenajer') return ['kultur', 'Menajer maaş vergisi'];
+    if (cat === 'vergi_transfer') return ['kultur', 'Futbolcu transfer vergisi']; // v146
     if (cat === 'vergi_ofis') return ['ticaret', 'İşletme vergisi · Ofis'];
     if (cat === 'vergi_gazino' || cat === 'vergi_gazinoCekim') return ['ticaret', 'İşletme vergisi · Kumarhane'];
     if (cat.startsWith('vergi_isl_')) return ['ticaret', `İşletme vergisi · ${BIZ[cat.slice(10)] || cat.slice(10)}`];

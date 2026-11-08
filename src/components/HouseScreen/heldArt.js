@@ -807,6 +807,114 @@ ART.oralet = (g) => {
 };
 ART.altinTabanca = (g) => gun(g, { body: '#d4a62a', grip: '#8a6a12', accent: '#fff1a8' });
 
+// v145 — seyyar satıcılar: yarım ekmek arası kokoreç / köfte, kâğıda sarılı döner
+function halfBread(g, filling, extras) {
+  g.save();
+  g.translate(64, 68);
+  g.rotate(-0.22);
+  // alt ekmek
+  rr(g, -54, -4, 108, 34, 16);
+  fillOut(g, lin(g, 0, -4, 0, 30, [[0, '#f3c27e'], [1, '#c8873e']]));
+  // iç malzeme
+  filling(g);
+  // üst ekmek (arkaya açılmış kabuk)
+  g.beginPath();
+  g.moveTo(-52, -6);
+  g.quadraticCurveTo(-46, -40, 0, -42);
+  g.quadraticCurveTo(46, -40, 52, -6);
+  g.quadraticCurveTo(0, -16, -52, -6);
+  g.closePath();
+  fillOut(g, lin(g, 0, -42, 0, -6, [[0, '#e9a85a'], [1, '#f6d9a2']]));
+  g.strokeStyle = 'rgba(150,90,30,0.6)';
+  g.lineWidth = 2.5;
+  [-26, 0, 26].forEach((x) => {
+    g.beginPath();
+    g.moveTo(x - 8, -32);
+    g.lineTo(x + 8, -26);
+    g.stroke();
+  });
+  if (extras) extras(g);
+  g.restore();
+}
+ART.kokorec = (g) =>
+  halfBread(g, (x) => {
+    // doğranmış kokoreç (kahverengi parçalar) + pul biber
+    for (let i = 0; i < 12; i++) {
+      const px = -44 + (i % 6) * 17 + (i > 5 ? 8 : 0);
+      const py = -10 + (i > 5 ? 6 : 0);
+      rr(x, px, py, 14, 10, 3);
+      fillOut(x, i % 3 ? '#7a4320' : '#5a2f14', 2);
+    }
+    x.fillStyle = '#d32f2f';
+    for (let i = 0; i < 14; i++) x.fillRect(-46 + i * 7, -8 + (i % 3) * 4, 3, 2);
+    x.fillStyle = '#4d7c0f';
+    for (let i = 0; i < 8; i++) x.fillRect(-40 + i * 11, -4 + (i % 2) * 5, 3, 2);
+  });
+ART.kofte = (g) =>
+  halfBread(
+    g,
+    (x) => {
+      // marul + köfteler
+      x.beginPath();
+      x.moveTo(-50, -2);
+      for (let k = -50; k <= 50; k += 10) x.lineTo(k, k % 20 === 0 ? -12 : -4);
+      x.lineTo(50, 2);
+      x.closePath();
+      fillOut(x, '#5fae3d', 2);
+      [-34, -11, 12, 35].forEach((px) => {
+        x.beginPath();
+        x.ellipse(px, -6, 12, 8, 0, 0, Math.PI * 2);
+        fillOut(x, '#5b3317', 2.5);
+        x.strokeStyle = 'rgba(30,15,5,0.7)';
+        x.lineWidth = 2;
+        x.beginPath();
+        x.moveTo(px - 7, -9);
+        x.lineTo(px + 7, -9);
+        x.stroke();
+      });
+    },
+    (x) => {
+      // yanında közlenmiş biber
+      x.save();
+      x.translate(30, 24);
+      x.rotate(0.5);
+      x.beginPath();
+      x.ellipse(0, 0, 22, 6, 0, 0, Math.PI * 2);
+      fillOut(x, '#3f8f3a', 2.5);
+      x.restore();
+    }
+  );
+ART.doner = (g) => {
+  // kâğıda sarılı ekmek arası döner
+  g.save();
+  g.translate(64, 66);
+  g.rotate(0.3);
+  rr(g, -26, -52, 52, 106, 22);
+  fillOut(g, lin(g, -26, 0, 26, 0, [[0, '#e7b06a'], [1, '#f6d7a0']]));
+  // et dilimleri ve domates/soğan
+  g.beginPath();
+  g.ellipse(0, -46, 23, 10, 0, 0, Math.PI * 2);
+  fillOut(g, '#8a4b22', 2.5);
+  [[-12, -50, '#6b3818'], [0, -54, '#a0582a'], [12, -48, '#6b3818'], [-4, -44, '#e53935'], [10, -42, '#f4f1e6'], [-14, -42, '#4caf50']].forEach(([x, y, c]) => {
+    g.beginPath();
+    g.arc(x, y, 5, 0, Math.PI * 2);
+    g.fillStyle = c;
+    g.fill();
+  });
+  // kâğıt
+  g.beginPath();
+  g.moveTo(-27, 2);
+  g.lineTo(27, -10);
+  g.lineTo(27, 42);
+  g.quadraticCurveTo(0, 62, -27, 42);
+  g.closePath();
+  fillOut(g, '#ffffff');
+  g.fillStyle = '#c62a2f';
+  g.fillRect(-27, 12, 54, 6);
+  g.fillRect(-27, 24, 54, 3);
+  g.restore();
+};
+
 // Ürünün 128×128 tuvali (önbellekli)
 // v132.1 — bankadan alınan sıra numarası: elde beyaz kâğıt, üstünde numara
 function drawQueueTicket(g, num) {

@@ -15,7 +15,7 @@ import { createSocial } from './social.js';
 import { createDeletionRequests } from './deletionRequests.js';
 import { createHouses } from './houses.js';
 import { createBusiness } from './business.js';
-import { newSaleTax, resaleTax, factoryTax, factoryTaxRate, taxLedgerWrite, taxStatWrite, splitSalaryTax, splitLotteryTax, machineTax, loadRates, ratesFor, pctText, lotteryTaxRate } from './tax.js';
+import { newSaleTax, resaleTax, factoryTax, factoryTaxRate, taxLedgerWrite, taxStatWrite, splitSalaryTax, splitLotteryTax, machineTax, loadRates, ratesFor, pctText, lotteryTaxRate, transferTax } from './tax.js';
 import { createBelediye } from './belediye.js'; // v127
 import { createPolitics } from './politics.js'; // v136 seçim sistemi
 import { rateFrac } from './belediyeRates.js'; // v127
@@ -70,6 +70,7 @@ import { createSixtagramSocial } from './sixtagramSocial.js';
 import { simulAct, simulAutoStand, simulDeal, simulState, dealerMove } from './onNumara.js';
 import { isMsgId, nextReaction, replyQuoteOf } from './chatExtras.js';
 import { VENUES } from './venueLayouts.js';
+import { VENDORS, VENDOR_COST as VENDOR_DAILY_COST } from './vendorData.js';
 import { goldTag, recordGoldChange, cleanupMoneyLog, realizeSale, realizeBankWithdraw } from './moneyLog.js';
 import { stateWrite, statWrite, closeStateDays, readStateReport } from './stateTreasury.js';
 import { policeBustSplit, heistStateEntries, heistStat, crimeLockedBySuspicion, CRIME_LOCK_TEXT, CRIME_LOCK_TEAM_TEXT, BELEDIYE_CRIME_TEXT, BELEDIYE_CRIME_TEAM_TEXT } from './policeRules.js';
@@ -5991,54 +5992,88 @@ export const claimPoliceSalary = onCall(async (request) => {
 // (Kokoreçci, Simitçi, Dönerci, Köfteci birbirinden bağımsız), 1000 altın,
 // şüphe -5, saygınlık artışı kademeli (0-49 → +3, 50+ → +1 —
 // bkz. reputationGainFor).
+// v145:
+//   • Seyyar satıcılar 3D mekân (functions/venueLayouts.js VENDORS). Alışveriş
+//     satıcının ürününü ELE verir (kokoreç, simit, döner, köfte — 2 dk,
+//     ısmarlanabilir; heldItems venue:'ev' + mekânın evi).
+//   • itemId gelirse MENÜ alışverişi: günlük sınır / şüphe / saygınlık yok,
+//     sadece ürün ele gelir (VENDORS[..].menu fiyatı).
+//   • Seyyar satıcı gelirlerinin tamamı devlete (Ticaret Bakanlığı ·
+//     stateLedger in.seyyar_satis; analiz: stat sy_* ).
+//   • vendorId artık listeyle doğrulanır (eskiden her metin kabul ediliyordu).
 // ---------------------------------------------------------------------------
-const VENDOR_COST = 1000;
-// Not: Tüm seyyar satıcılarda alışveriş artık aynı fiyat (1000 altın),
-// bu yüzden özel bir eşleme gerekmiyor — VENDOR_COSTS boş bırakıldı,
-// vendorCostFor() her zaman VENDOR_COST'a döner.
-const VENDOR_COSTS = {};
-function vendorCostFor(vendorId) {
-  return VENDOR_COSTS[vendorId] ?? VENDOR_COST;
-}
+const VENDOR_COST = VENDOR_DAILY_COST;
+const VENDOR_STAT_KEY = { seyyar_satici_1: 'kk', seyyar_satici_2: 'sm', seyyar_satici_3: 'dn', seyyar_satici_4: 'kf' };
 
 export const buyFromVendor = onCall(async (request) => {
   const uid = requireAuth(request);
   const { vendorId } = request.data || {};
-  if (!vendorId) {
+  const vendor = typeof vendorId === 'string' && Object.prototype.hasOwnProperty.call(VENDORS, vendorId) ? VENDORS[vendorId] : null;
+  if (!vendor) {
     throw new HttpsError('invalid-argument', 'Geçersiz satıcı.');
   }
+  const rawItem = request.data?.itemId;
+  const isMenu = rawItem !== undefined && rawItem !== null && rawItem !== '';
+  const itemId = isMenu ? String(rawItem) : vendor.product;
+  const price = isMenu ? (Object.prototype.hasOwnProperty.call(vendor.menu, itemId) ? Number(vendor.menu[itemId]) : 0) : VENDOR_COST;
+  if (!(price > 0)) {
+    throw new HttpsError('invalid-argument', 'Geçersiz ürün.');
+  }
+  const houseId = VENUES[vendor.venue]?.houseId || null;
   const dateKey = istanbulDateKey();
   const userRef = db.collection('users').doc(uid);
   const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
+  const heldRef = db.collection('heldItems').doc(uid);
+  const presRef = db.collection('housePresence').doc(uid);
+  const t = Date.now();
+  const sk = VENDOR_STAT_KEY[vendorId] || 'x';
 
   await db.runTransaction(async (tx) => {
-    const [userSnap, dailySnap] = await Promise.all([tx.get(userRef), tx.get(dailyRef)]);
+    const [userSnap, dailySnap, presSnap] = await Promise.all([tx.get(userRef), isMenu ? Promise.resolve(null) : tx.get(dailyRef), tx.get(presRef)]);
     const user = userSnap.data();
-    const daily = dailySnap.data();
-    if (daily?.vendorPurchases?.[vendorId]) {
-      throw new HttpsError('failed-precondition', 'Bu satıcıdan bugün zaten alışveriş yaptın.');
+    if (!isMenu) {
+      const daily = dailySnap?.data();
+      if (daily?.vendorPurchases?.[vendorId]) {
+        throw new HttpsError('failed-precondition', 'Bu satıcıdan bugün zaten alışveriş yaptın.');
+      }
+      if (daily?.heist?.[vendorId]) {
+        throw new HttpsError(
+          'failed-precondition',
+          'Bu satıcıdan bugün haraç kestin, aynı gün alışveriş yapamazsın.'
+        );
+      }
     }
-    if (daily?.heist?.[vendorId]) {
-      throw new HttpsError(
-        'failed-precondition',
-        'Bu satıcıdan bugün haraç kestin, aynı gün alışveriş yapamazsın.'
-      );
-    }
-    if (!user || (user.gold || 0) < vendorCostFor(vendorId)) {
+    if (!user || (user.gold || 0) < price) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
-    tx.update(userRef, {
-      gold: admin.firestore.FieldValue.increment(-vendorCostFor(vendorId)), goldTag: goldTag('seyyar'),
-      suspicion: clampSuspicion((user.suspicion || 0) - 5),
-      reputation: nextReputationAfterGain(user.reputation),
+    if (isMenu) {
+      tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-price), goldTag: goldTag('seyyar') });
+    } else {
+      tx.update(userRef, {
+        gold: admin.firestore.FieldValue.increment(-price), goldTag: goldTag('seyyar'),
+        suspicion: clampSuspicion((user.suspicion || 0) - 5),
+        reputation: nextReputationAfterGain(user.reputation),
+      });
+      tx.set(dailyRef, { vendorPurchases: { [vendorId]: true } }, { merge: true });
+    }
+    // ürün ele (yeni ürün eldekinin yerini alır; süre baştan)
+    tx.set(heldRef, { itemId, venue: 'ev', houseId, untilMs: t + HELD_ITEM_MS, boughtAtMs: t });
+    if (houseId && presSnap.exists && presSnap.data().houseId === houseId) tx.update(presRef, { holding: itemId });
+    // v145: seyyar satıcı geliri devlete (Ticaret Bakanlığı)
+    stateWrite(tx, db, admin.firestore.FieldValue, {
+      kind: 'in',
+      cat: 'seyyar_satis',
+      amount: price,
+      atMs: t,
+      dayKey: dateKey,
+      stat: { sy_n: 1, [`sy_${sk}_n`]: 1, [`sy_${sk}_ciro`]: price, ...(isMenu ? { sy_menu_n: 1 } : { sy_gun_n: 1 }) },
     });
-    tx.set(dailyRef, { vendorPurchases: { [vendorId]: true } }, { merge: true });
   });
 
   // Onboarding görev 7 — "bi seyyar satıcıyla alışveriş yap".
-  await advanceOnboardingStep(uid, 7);
+  if (!isMenu) await advanceOnboardingStep(uid, 7);
 
-  return { ok: true };
+  return { ok: true, itemId, price, untilMs: t + HELD_ITEM_MS, menu: isMenu };
 });
 
 // ---------------------------------------------------------------------------
@@ -17958,13 +17993,21 @@ export const buyFutbolPlayer = onCall(async (request) => {
   if (player.teamId === teamId) throw new HttpsError('failed-precondition', 'Bu oyuncu zaten senin takımında.');
 
   const price = player.salePrice || 0;
+  // v146 — transfer vergisi (Kültür ve Spor Bakanlığı): ALICI ilan fiyatının üstüne öder,
+  // satan tarafa ilan fiyatı gider. İstemci gördüğü vergiyi gönderir; oran değiştiyse işlem durur.
+  const tax = transferTax(price);
+  const expectTax = request.data?.expectTax;
+  if (expectTax !== undefined && expectTax !== null && Number(expectTax) !== tax) {
+    throw new HttpsError('failed-precondition', `Transfer vergisi değişti (şu an ${tax.toLocaleString('tr-TR')} altın). Tekrar dene.`);
+  }
+  const total = price + tax;
   const userRef = db.collection('users').doc(uid);
   const userSnap = await userRef.get();
   const personalGold = userSnap.data()?.gold || 0;
 
   // Bölüm 2/6 — harcama önce transfer desteğinden, kalanı role göre
-  // (OWNER_ACTIVE → kişisel altın, MANAGED → kasa) düşer.
-  const spendPlan = computeFutbolSpendPlan(team, personalGold, price);
+  // (OWNER_ACTIVE → kişisel altın, MANAGED → kasa) düşer. v146: vergi dahil.
+  const spendPlan = computeFutbolSpendPlan(team, personalGold, total);
   if (!spendPlan.ok) {
     throw new HttpsError(
       'failed-precondition',
@@ -18015,6 +18058,8 @@ export const buyFutbolPlayer = onCall(async (request) => {
     batch.update(userRef, { gold: admin.firestore.FieldValue.increment(-spendPlan.fromPersonal), goldTag: goldTag('futbol') });
   }
   futbolMarkControllerActive(teamRef, team, batch);
+  // v146: transfer vergisi devlete (Kültür ve Spor · vergi_transfer)
+  taxLedgerWrite(batch, db, admin.firestore.FieldValue, { amount: tax, source: 'transfer', uid, ref: playerId, stat: { tr_n: 1, tr_ciro: price } });
   if (player.saleSource === 'manual' && player.sellerUid) {
     // v94.1 BUG DÜZELTMESİ: satış parası ilanı açan kişiye (menajer de olabilir)
     // DEĞİL, satan TAKIMA gider — anında satışla (instantSellFutbolPlayer) aynı kural:
@@ -18062,7 +18107,7 @@ export const buyFutbolPlayer = onCall(async (request) => {
     );
   }
   await batch.commit();
-  return { ok: true, price };
+  return { ok: true, price, tax };
 });
 
 // futbolTransferMarketHourlyMaintenance — SAATTE BİR çalışan TEK görev
@@ -22674,6 +22719,8 @@ const gangFunctions = createGangFunctions({
   // v124: çete deposundaki yasaklı maddeyi bir depoya sat (gang/actions/trade.js sellToDepo)
   depo: { readDepotForSale: depo.readDepotForSale, writeDepotSale: depo.writeDepotSale },
   belediyeRef, // v127: polis maaşları / operasyon ücreti / çete bağışı belediye kasasından
+  // v146 — çete kapanınca karargah (mobilyalar, envanter, pazar ilanları) tamamen silinir
+  onGangDissolved: (gangId) => houses.dissolveHq(gangId),
 });
 export const gangAction = gangFunctions.gangAction;
 export const gangClock = gangFunctions.gangClock;

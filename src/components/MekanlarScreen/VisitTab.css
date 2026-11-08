@@ -82,3 +82,11 @@
   font-size: 12px;
   cursor: pointer;
 }
+
+/* v146 — girilemeyen karargah */
+.visit-card.locked {
+  opacity: 0.55;
+}
+.visit-lock-note {
+  color: #ffcf5a;
+}

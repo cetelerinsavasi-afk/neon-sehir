@@ -125,7 +125,10 @@ export const TAX_SOURCES = {
   gazinoCekim: 'Gazino kasasından çekim', // v124 Faz 6 — oyuncu gazinosu makine kasası
   makine: 'Fabrika makinesi alımı', // v125
   sifir: 'Sıfır silah / araba satış kârı', // v130
+  transfer: 'Futbolcu transferi (alıcı öder)', // v146
 };
+// v146 — futbolcu transfer vergisi: alıcı ilan fiyatının üstüne öder
+export const transferTax = (price, rates = ratesFor()) => Math.max(0, Math.round(Math.max(0, Number(price) || 0) * rateFrac(rates, 'transfer')));
 
 // v127: devlet defterinde kalem — maaş vergisi işe göre, işletme vergisi türe göre
 function stateCatOf(source, uid, ref, bizType) {

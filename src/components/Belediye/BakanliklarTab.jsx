@@ -108,6 +108,13 @@ function Ticaret({ r, c, rates }) {
     ['sfg_araba', 'Oyunun galerisi', 'sfAraba'],
   ].map(([k, name, rid]) => ({ key: k, name, n: nf(st[`${k}_n`]), ciro: nf(st[`${k}_ciro`]), kar: nf(st[`${k}_kar`]), rate: pctOf(rates, rid), tax: nf(st[`${k}_vergi`]) }));
   const sfTax = (c.in.vergi_sifirSilah || 0) + (c.in.vergi_sifirAraba || 0);
+  // v145 — seyyar satıcı gelirleri (tamamı devlete): satıcı başına adet / tutar
+  const sy = [
+    ['kk', '🌯 Kokoreççi'],
+    ['sm', '🥯 Simitçi'],
+    ['dn', '🥙 Dönerci'],
+    ['kf', '🍔 Köfteci'],
+  ].map(([k, name]) => ({ key: k, name, n: nf(st[`sy_${k}_n`]), ciro: nf(st[`sy_${k}_ciro`]) }));
   return (
     <>
       <Kpis
@@ -116,6 +123,7 @@ function Ticaret({ r, c, rates }) {
           { label: 'Oyunun gazinosu', value: nf(gzTotal), sub: 'kârın tamamı devlete' },
           { label: 'Sıfır satış vergisi', value: nf(sfTax), sub: 'kârdan' },
           { label: 'Piyango vergisi', value: nf(c.in.vergi_piyango), sub: st.pi_bilet ? `${nf(st.pi_bilet)} bilet · ödül ${nf(st.pi_odul)}` : null },
+          { label: 'Seyyar satıcılar', value: nf(c.in.seyyar_satis), sub: st.sy_n ? `${nf(st.sy_n)} satış · tamamı devlete` : 'tamamı devlete' },
         ]}
       />
       {rows.length > 0 && (
@@ -142,6 +150,20 @@ function Ticaret({ r, c, rates }) {
         rows={gz}
         foot={{ name: 'Toplam', v: nf(gzTotal) }}
       />
+      {sy.some((x) => x.n !== '0') && (
+        <>
+          <h4 className="bd-h">Seyyar satıcılar</h4>
+          <Table
+            cols={[
+              { k: 'name', label: 'Satıcı' },
+              { k: 'n', label: 'Satış', num: true },
+              { k: 'ciro', label: 'Devlete giden', num: true },
+            ]}
+            rows={sy}
+            foot={{ name: 'Toplam', n: nf(st.sy_n), ciro: nf(c.in.seyyar_satis) }}
+          />
+        </>
+      )}
       <h4 className="bd-h">Sıfır satışlar</h4>
       <Table
         cols={[
@@ -300,6 +322,7 @@ function Kultur({ r, c, rates }) {
           { label: 'Şarkı', value: nf(st.sosyal_sarki), sub: `vergi ${nf(c.in.vergi_sanatci)}` },
           { label: 'Futbolcu maaşı', value: nf(st.fut_brut), sub: `vergi ${nf(c.in.vergi_maasFutbolcu)} · ${pctOf(rates, 'futbolcu')}` },
           { label: 'Menajer maaşı', value: nf(st.men_brut), sub: `vergi ${nf(c.in.vergi_maasMenajer)} · ${pctOf(rates, 'menajer')}` },
+          { label: 'Transferler', value: nf(st.tr_ciro), sub: `${st.tr_n ? `${nf(st.tr_n)} transfer · ` : ''}vergi ${nf(c.in.vergi_transfer)} · ${pctOf(rates, 'transfer')}` }, // v146
         ]}
       />
       {cr.length > 0 && (

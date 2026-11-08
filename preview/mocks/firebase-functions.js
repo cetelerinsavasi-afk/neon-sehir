@@ -66,6 +66,7 @@ export function httpsCallable(functions, name) {
         return { data: { ok: true } };
       }
       if (name === 'streamAction') return { data: await stream.action(PREVIEW_UID, data) };
+      if (name === 'buyFromVendor' && window.__buyFromVendor) return { data: await window.__buyFromVendor(data) }; // v145 önizleme
       if (name === 'houseAction') return { data: await houses.houseAction(request) };
       if (name === 'shopAction') return { data: await shop.shopAction(request) };
       if (name === 'recordVenueVisit') return { data: await visits.recordVenueVisit(PREVIEW_UID, data) };

@@ -9,7 +9,7 @@
 //  - Gelen bahis/ittifak teklifleri (Baba/Sağ Kol karar, Kıdemli/Tetikçi öneri)
 //  - Oylamalar, ardından dağıtım "Al" butonları
 import { CoupPanel } from '../../Politics/Coup'; // v136 darbe paneli (Polis Teşkilatı)
-import { WatchWarsButton } from '../WatchWars';
+import { HqInvitesButton, WatchWarsButton } from '../WatchWars';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { limit, orderBy } from 'firebase/firestore';
 import { fmtClock, fmtCountdown, fmtDateTime, istDateKey, istHour, istMidnight, nextWindowStart, useDocData, useGang, useGangAction, useNow, slotIdOf, useQueryData } from '../GangContext';
@@ -1287,6 +1287,8 @@ export default function WarsTab({ org, d }) {
 
       <ClaimList dists={d.dists} rank={d.rank} isIntel={isIntel} myKey={isIntel ? d.rid : actorId} joinedAtMs={isIntel ? d.me?.joinedAtMs : d.me?.joinedAtMs} />
 
+      {/* v146: davet edildiğimiz karargahlar (yoksa görünmez) — hemen altında devam eden savaşlar (yoksa görünmez) */}
+      {!isIntel && <HqInvitesButton gangId={gangId} />}
       {/* v68: bize ait olmayan savaşları izle */}
       <WatchWarsButton />
 

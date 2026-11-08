@@ -275,6 +275,36 @@ export function createMembershipActions(core, intelHelpers) {
     });
   }
 
+  // v146 — Zümrüt bağışı: zümrüt → çete kasası (private/state.gem). Zümrüt dağıtılamaz,
+  // geri çekilemez; sadece karargah mobilyası için harcanır. 1 zümrüt = 50.000 prestij.
+  async function donateGem(ctx, data) {
+    const amount = posInt(data.amount);
+    if (amount < 1) fail('invalid-argument', 'En az 1 zümrüt bağışlayabilirsin.');
+    if (amount > 100000) fail('invalid-argument', 'Geçersiz miktar.');
+    return core.db.runTransaction(async (tx) => {
+      const guard = await requestGuard(tx, ctx, data.requestId);
+      if (guard.done) return guard.result;
+      const membership = await readMembership(tx, ctx, ctx.actorId);
+      const gangId = requireGangMember(membership);
+      const wRef = core.walletRef(ctx, ctx.actorId);
+      const [wSnap, memberSnap, stateSnap] = await Promise.all([tx.get(wRef), tx.get(ctx.ref.member(gangId, ctx.actorId)), tx.get(ctx.ref.gangState(gangId))]);
+      if (!wSnap.exists) fail('failed-precondition', 'Oyuncu bulunamadı.');
+      if (!memberSnap.exists || !stateSnap.exists) fail('failed-precondition', 'Çete bulunamadı.');
+      const have = Number(wSnap.data().emerald || 0);
+      if (have < amount) fail('failed-precondition', 'Yeterli zümrütün yok.');
+      const prestige = Math.floor(amount * GANG.GEM_DONATION_PRESTIGE);
+      tx.update(wRef, { emerald: FV.increment(-amount) });
+      tx.update(ctx.ref.gangState(gangId), { gem: FV.increment(amount) });
+      tx.update(ctx.ref.member(gangId, ctx.actorId), { prestige: FV.increment(prestige) });
+      ledger(tx, ctx, { type: 'gang_gem_donation', amount, from: { kind: 'player', id: ctx.actorId }, to: { kind: 'gang', id: gangId }, before: have, currency: 'gem' });
+      core.announce(tx, ctx, gangId, '💎', `${memberSnap.data().name} kasaya ${amount.toLocaleString('tr-TR')} zümrüt bağışladı.`);
+      ctx.logs.push({ gang: 'prestige', world: ctx.worldId, event: 'gem_donation', gangId, memberId: ctx.actorId, amount: prestige });
+      const result = { donated: amount, prestige, gem: true };
+      guard.save(result);
+      return result;
+    });
+  }
+
   // ---------------------------------------------------------------------------
   // Sohbet — çete kanalları: genel (tüm üyeler) · yonetim (7 rütbeli).
   // Ayrıca TÜM ÇETELERİN rütbelilerinin yazdığı, tüm çete üyelerinin okuduğu
@@ -407,5 +437,5 @@ export function createMembershipActions(core, intelHelpers) {
     });
   }
 
-  return { offerHandover, respondHandover, cancelHandover, createGang, joinGang, leaveGang, kickMember, giveRespect, updateGangProfile, donate, sendGangChat, sendGlobalChat, validLogo, RANK_LABELS, rankLevel };
+  return { offerHandover, respondHandover, cancelHandover, createGang, joinGang, leaveGang, kickMember, giveRespect, updateGangProfile, donate, donateGem, sendGangChat, sendGlobalChat, validLogo, RANK_LABELS, rankLevel };
 }

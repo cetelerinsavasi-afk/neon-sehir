@@ -454,3 +454,39 @@
   font-size: 12px;
   color: var(--neon-cyan, #19e8ff);
 }
+
+/* v146 — çete karargahı */
+.hb-topbtn.hq-guest {
+  display: inline-block;
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #d6dbe6;
+}
+.hq-kasa {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border-radius: 12px;
+  background: rgba(255, 210, 63, 0.08);
+  border: 1px solid rgba(255, 210, 63, 0.3);
+}
+.hq-kasa span {
+  flex: 1;
+  opacity: 0.8;
+}
+.hq-kasa b {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.hq-logo {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex: 0 0 auto;
+}

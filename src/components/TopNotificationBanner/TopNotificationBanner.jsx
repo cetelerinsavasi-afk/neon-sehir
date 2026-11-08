@@ -3,6 +3,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useMessages } from '../../hooks/useMessages';
 import { useGlobalChat } from '../../hooks/useGlobalChat';
 import { useBlocks } from '../../contexts/BlocksContext';
+import { useSocial } from '../../contexts/SocialContext';
+import { isDmOpen, openDmWith } from '../../lib/chatsappNav';
 import './TopNotificationBanner.css';
 
 // TopNotificationBanner — SMS'e ya da ChatsApp'a yeni bir mesaj
@@ -62,6 +64,30 @@ export default function TopNotificationBanner({ onOpenPhone }) {
     }
   }, [chatMessages, user, isBlocked]);
 
+  // v146 — özel mesajlar (ChatsApp DM) da üstten bildirim olarak gelir. Mevcut
+  // dinleyici (SocialContext dmChats) kullanılır; ilk görüntü "yeni" sayılmaz.
+  const { chats, ready: socialReady } = useSocial();
+  const dmSeenRef = useRef(undefined); // chatId → lastAtMs
+  useEffect(() => {
+    const uid = user?.uid ?? null;
+    if (!socialReady) return; // ilk gerçek liste gelmeden "yeni" sayma
+    if (dmSeenRef.current === undefined || dmSeenRef.current.uid !== uid) {
+      dmSeenRef.current = { uid, since: Date.now() - 5000, map: new Map((chats || []).map((c) => [c.id, Number(c.lastAtMs || 0)])) };
+      return;
+    }
+    const seen = dmSeenRef.current.map;
+    let fresh = null;
+    for (const c of chats || []) {
+      const at = Number(c.lastAtMs || 0);
+      const prev = seen.get(c.id);
+      seen.set(c.id, at);
+      if ((prev !== undefined && at <= prev) || at <= dmSeenRef.current.since) continue; // oturumdan önceki mesajlar yeni sayılmaz
+      if (!uid || c.lastSenderUid === uid || !(c.myUnread > 0) || isBlocked(c.otherUid) || isDmOpen(c.otherUid)) continue;
+      if (!fresh || at > Number(fresh.lastAtMs || 0)) fresh = c;
+    }
+    if (fresh) setToast({ type: 'dm', uid: fresh.otherUid, name: fresh.otherName, avatar: fresh.otherAvatar, text: `${fresh.otherName || 'Arkadaşın'}: ${fresh.lastText || 'Yeni mesaj'}` });
+  }, [chats, user, isBlocked, socialReady]);
+
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 4500);
@@ -75,10 +101,11 @@ export default function TopNotificationBanner({ onOpenPhone }) {
       className="top-notif-banner"
       onClick={() => {
         setToast(null);
-        onOpenPhone(toast.type);
+        if (toast.type === 'dm') openDmWith(toast.uid, toast.name, toast.avatar);
+        else onOpenPhone(toast.type);
       }}
     >
-      <span className="top-notif-icon">{toast.type === 'sms' ? '✉️' : '💬'}</span>
+      <span className="top-notif-icon">{toast.type === 'sms' ? '✉️' : toast.type === 'dm' ? '📩' : '💬'}</span>
       <span className="top-notif-text">{toast.text}</span>
     </button>
   );

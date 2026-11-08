@@ -33,6 +33,7 @@ export const GANG = {
 
   // --- Prestij kaynakları ---
   DONATION_PRESTIGE_PER_GOLD: 5, // ONAYLI: 1 altın bağış = 5 prestij
+  GEM_DONATION_PRESTIGE: 50000, // v146: 1 zümrüt bağış = 50.000 prestij
   // v38: dilimler 8'e çıktığı için savaş prestiji hasarın YARISI (500.000 hasar → 250.000 prestij)
   WAR_PRESTIGE_PER_POWER: 0.5,
   WITHDRAW_PRESTIGE_PER_GOLD: 5, // ONAYLI: Baba kendi hesabına aldığı her altın için 5 prestij kaybeder
@@ -115,9 +116,9 @@ export const GANG = {
   // --- Aktiflik (ONAYLI: 30 gün hiçbir savaşa katılmayan atılır; Baba dahil) ---
   INACTIVE_WARN_DAYS: 29,
   INACTIVE_REMOVE_DAYS: 30,
-  // v125: 10 gün OYUNA GİRMEYEN üye de çeteden çıkarılır (polislikteki kuralla aynı;
-  // kural ilk çalıştığı andan itibaren sayılır — gangLoginInactivityFromMs)
-  LOGIN_INACTIVE_DAYS: 10,
+  // v125: OYUNA GİRMEYEN üye de çeteden çıkarılır (kural ilk çalıştığı andan
+  // itibaren sayılır — gangLoginInactivityFromMs). v145: 10 → 20 gün.
+  LOGIN_INACTIVE_DAYS: 20,
 
   // --- Oylama (ONAYLI) ---
   DEVIRME_MIN_RATIO: 0.51, // >= %51

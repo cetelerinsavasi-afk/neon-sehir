@@ -138,3 +138,12 @@
 .futbol-transfer-row.injured {
   border-color: rgba(255, 95, 109, 0.4);
 }
+/* v146 — transfer vergisi: buton altında "fiyat + %N vergi" */
+.futbol-transfer-tax {
+  display: block;
+  font-size: 10px;
+  opacity: 0.7;
+  font-weight: 400;
+  margin-top: 2px;
+  white-space: nowrap;
+}
