@@ -2035,3 +2035,13 @@
   grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
+
+/* v147 — giriş kapısında "Şehre çık" (alt orta, sohbetin üstü) */
+.hs-cityexit {
+  position: absolute;
+  left: 50%;
+  bottom: calc(118px + var(--hs-safe-b));
+  transform: translateX(-50%);
+  z-index: 11;
+  animation: hs-pop 0.15s ease-out;
+}

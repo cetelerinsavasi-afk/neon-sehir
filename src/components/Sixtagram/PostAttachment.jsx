@@ -26,6 +26,7 @@ import { vehicleRaceLine } from '../RaceTrackScreen/CarStats';
 
 // v66 — ev fotoğrafı: three.js'i ana pakete sokmamak için tembel yüklenir.
 const HousePhoto = lazy(() => import('../HouseScreen/HousePhoto'));
+const CityPhoto = lazy(() => import('../City/CityPhoto')); // v147
 
 // Tüm parkPhoto kartları arasında paylaşılan avatar görsel önbelleği —
 // aynı avatarı tekrar tekrar SVG'den <img>'e çevirmemek için (bkz.
@@ -554,6 +555,23 @@ export default function PostAttachment({ attachment, post = null }) {
         </div>
         {attachment.atelier && <p className="post-att-parkphoto-names">🎨 {attachment.atelier}</p>}
         {post && attachment.houseId && <PostTipBar post={post} label="Ressama destek" />}
+      </div>
+    );
+  }
+
+  // v147 — gezilebilir şehirde çekilen fotoğraf
+  if (attachment.type === 'cityPhoto') {
+    const names = (attachment.people || []).map((p) => p.n || 'Oyuncu');
+    return (
+      <div className="post-att post-att-parkphoto">
+        <div className="post-att-parkphoto-frame post-att-housephoto">
+          <Suspense fallback={<div className="post-att-housephoto-empty">Fotoğraf yükleniyor…</div>}>
+            <CityPhoto attachment={attachment} />
+          </Suspense>
+        </div>
+        <p className="post-att-parkphoto-names">
+          📷 {names.length ? `${names.join(' · ')} · ` : ''}🌆 Neon Şehir
+        </p>
       </div>
     );
   }

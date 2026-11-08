@@ -112,6 +112,8 @@ export function createVoteActions(core) {
       tx.update(ctx.ref.member(gangId, tId), { underVoteUntilMs: Math.max(Number(target.underVoteUntilMs || 0), endsAtMs) });
       const label = type === 'devirme' ? 'Devirme' : type === 'ayaklanma' ? 'Ayaklanma' : 'Çıkarma';
       for (const id of voterIds) if (id !== ctx.actorId) core.notify(tx, ctx, id, `🗳️ ${label} oylaması başladı (${gang.name}). 00:00'a kadar oyunu kullan.`, 'vote');
+      // v147: oylamayı kimin başlattığı çete sohbetinde görünsün
+      core.announce(tx, ctx, gangId, '🗳️', `${me.name || 'Bir üye'}, ${target.name || 'bir üye'} için ${label.toLocaleLowerCase('tr-TR')} oylaması başlattı.`);
       ctx.logs.push({ gang: 'vote_started', world: ctx.worldId, gangId, type });
       return { voteId: voteRef.id };
     });

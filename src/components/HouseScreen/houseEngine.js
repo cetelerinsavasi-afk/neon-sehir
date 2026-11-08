@@ -332,7 +332,7 @@ const PET_CV = 256;
 const PET_PX = 140; // canvas'ta hayvan boyu
 const PET_OX = 110;
 const PET_OY = 220;
-class PetFollower {
+export class PetFollower { // v147: şehir de kullanır
   constructor(scene, pet) {
     this.scene = scene;
     this.id = pet.id;
@@ -444,7 +444,7 @@ class PetFollower {
 // düzlem; doku ~20 fps yeniden çizilir (drawFireAura, SVG ölçüsünün yarısı).
 const FIRE_CW = 160;
 const FIRE_CH = 290;
-class FireAuraFx {
+export class FireAuraFx { // v147: şehir de kullanır
   constructor(parent) {
     this.cv = document.createElement('canvas');
     this.cv.width = FIRE_CW;
@@ -3635,6 +3635,10 @@ export function createHouseEngine(
     },
     emote(kind) {
       self.fig?.playEmote(kind);
+    },
+    // v147 — giriş kapısının önü (mekândan şehre çıkış butonu için)
+    getEntrance() {
+      return entrance ? { x: entrance.wx, z: entrance.wz } : null;
     },
     getSelfState() {
       return {

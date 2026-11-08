@@ -698,6 +698,8 @@ export const houseAction = (payload) =>
     if (HOUSE_LIST_OPS.has(payload?.op)) invalidateCachedQueries('houses:');
     return r;
   });
+// v147 — Gezilebilir şehir (functions/cityPhoto.js): op 'photoShot' → imzalı fotoğraf karesi
+export const cityAction = (payload) => httpsCallable(functions, 'cityAction')(payload).then((r) => r.data);
 export const recordVenueVisit = (venue) => httpsCallable(functions, 'recordVenueVisit')({ venue });
 
 // v66 — Zümrüt Mağazası: zümrüt karşılığı altın paketi

@@ -26,6 +26,16 @@
 // =============================================================================
 
 export const TESKILAT_HOUSE = 'game_teskilat';
+// v147 — teşkilatta polislerin hepsi aynı polis tipinde görünür (tanınmasınlar diye)
+export const POLICE_AVATAR = Object.freeze({
+  gender: 'erkek', build: 'standart', skin: '#c68863', eyeColor: '#3b2a1a', faceShape: 'oval', background: '#080b13',
+  hairStyle: 'short', hairColor: '#2b2118', eyebrowShape: 'straight', eyeShape: 'almond', eyelash: 'none',
+  noseShape: 'small', mouthShape: 'neutral', lipColor: '#a85a52', facialHair: 'none',
+  faceAcc: 'sunglasses', earring: 'yok', tattoo: 'yok',
+  clothing: 'police', clothColor: '#1d3557', neckAcc: 'none',
+  hat: 'policecap', hatColor: '#1d3557', heldItem: 'yok',
+  pantsColor: '#14263f', shoeColor: '#0d0d0d', shoeStyle: 'bot',
+});
 export const HQ_PREFIX = 'hq_';
 export const hqHouseId = (gangId) => `${HQ_PREFIX}${gangId}`;
 export const gangOwnerKey = (gangId) => `gang_${gangId}`;

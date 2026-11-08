@@ -43,7 +43,7 @@ import { VENUES, VENUE_OWNER, camiiDynamicNpcs } from './venueLayouts.js';
 import { doorOf, doorSpawn, settleDoor } from './houseDoor.js';
 import { MATERIAL_HOLDER_BIZ, readHoldings, readMaterialInv, closeBlockMaterials } from './materials.js';
 import { createFurnMarket } from './furnMarket.js';
-import { createHq, isHqHouse, TESKILAT_HOUSE } from './hq.js'; // v146 karargahlar + polis teşkilatı
+import { createHq, isHqHouse, TESKILAT_HOUSE, POLICE_AVATAR } from './hq.js'; // v146 karargahlar + polis teşkilatı
 import { cleanBotConfig, BOT_ITEM_KEY, botAvatar, botDefaults, botLabel, botAllowedLines } from './botData.js';
 import { cleanPetConfig, isAnimalKey, ANIMAL_BY_KEY, MAX_ROOM_PETS, petLines, petName, petTintOf } from './animalData.js';
 
@@ -300,7 +300,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       if (pid?.kind === 'polis') {
         presId = pid.alias;
         shownName = pid.name;
-        shownAvatar = null;
+        shownAvatar = { ...POLICE_AVATAR };
         const old = await aliasOfRef(uid).get();
         const b = db.batch();
         if (old.exists && old.data().alias && old.data().alias !== presId) b.delete(presenceRef(old.data().alias));

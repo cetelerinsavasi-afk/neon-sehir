@@ -10,6 +10,7 @@ import { patchSixtagramFeedPost } from '../../hooks/useSixtagramFeed';
 import { flushStoryViews, isStorySeen, markStorySeen, useSixtagramPublicProfile } from '../../hooks/useSixtagramSocial';
 
 const HousePhoto = lazy(() => import('../HouseScreen/HousePhoto'));
+const CityPhoto = lazy(() => import('../City/CityPhoto')); // v147
 
 // =============================================================================
 // v135 — Sixtagram hikâyeleri (mekânda çekilen fotoğraflar).
@@ -82,10 +83,10 @@ export function StoryRow({ groups, myUid, onOpen }) {
 function StoryContent({ post, onReady }) {
   const att = post.attachment;
   useEffect(() => {
-    if (att?.type !== 'housePhoto') onReady?.();
+    if (att?.type !== 'housePhoto' && att?.type !== 'cityPhoto') onReady?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [post.id]);
-  if (att?.type === 'housePhoto') {
+  if (att?.type === 'housePhoto' || att?.type === 'cityPhoto') {
     return (
       <div className="six-sv-photo">
         <Suspense fallback={<div className="six-sv-wait">📸</div>}>
@@ -125,7 +126,7 @@ function HousePhotoReady({ attachment, onReady }) {
   }, []);
   return (
     <div ref={ref} className="six-sv-hp">
-      <HousePhoto attachment={attachment} />
+      {attachment.type === 'cityPhoto' ? <CityPhoto attachment={attachment} /> : <HousePhoto attachment={attachment} />}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { onCall as onCallRaw, onRequest as onRequestRaw, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule as onScheduleRaw } from 'firebase-functions/v2/scheduler';
-import { onDocumentCreated, onDocumentDeleted, onDocumentUpdated } from 'firebase-functions/v2/firestore';
+import { onDocumentCreated, onDocumentDeleted, onDocumentUpdated, onDocumentWritten } from 'firebase-functions/v2/firestore';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { defineSecret } from 'firebase-functions/params';
 import admin from 'firebase-admin';
@@ -14,6 +14,7 @@ import { createPlayerCard } from './playerCard.js';
 import { createSocial } from './social.js';
 import { createDeletionRequests } from './deletionRequests.js';
 import { createHouses } from './houses.js';
+import { createCityPhoto, cityRtdbUrl } from './cityPhoto.js'; // v147 şehir fotoğrafı
 import { createBusiness } from './business.js';
 import { newSaleTax, resaleTax, factoryTax, factoryTaxRate, taxLedgerWrite, taxStatWrite, splitSalaryTax, splitLotteryTax, machineTax, loadRates, ratesFor, pctText, lotteryTaxRate, transferTax } from './tax.js';
 import { createBelediye } from './belediye.js'; // v127
@@ -335,6 +336,23 @@ const houses = createHouses({
   },
 });
 export const houseAction = houses.houseAction;
+
+// v147 — Gezilebilir şehir: fotoğraf (çekim anı RTDB ile doğrulanıp imzalanır; Firestore'a yazılmaz)
+let cityDbP = null;
+const cityDb = () => (cityDbP ||= import('firebase-admin/database').then(({ getDatabase }) => getDatabase(admin.app(), cityRtdbUrl())));
+const cityPhoto = createCityPhoto({
+  db,
+  rtdb: cityDb,
+  HttpsError,
+  assertCanSpeak: (uid, content) => moderation.assertCanSpeak(uid, content),
+  isProduct: (k) => Object.prototype.hasOwnProperty.call(HOUSE_PRODUCTS, k),
+});
+export const cityAction = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const p = request.data || {};
+  if (p.op === 'photoShot') return cityPhoto.photoShot(uid, p);
+  throw new HttpsError('invalid-argument', 'Geçersiz işlem.');
+});
 
 // v77 — İşletmeler: günlük rapor + dünkü kazanca göre sıralama. Saatlik
 // çalışır ama her tür/gün için yalnızca bir kez yazar (businessRollups bayrağı):
@@ -21744,6 +21762,8 @@ async function buildSixtagramAttachment(uid, attachment) {
 
   // v66: 3D ev fotoğrafı (functions/houses.js)
   if (type === 'housePhoto') return houses.buildPhotoAttachment(uid, attachment);
+  // v147: şehir fotoğrafı (functions/cityPhoto.js)
+  if (type === 'cityPhoto') return cityPhoto.buildAttachment(uid, attachment);
 
   // v82: YAYIN RAPORU — sadece kendi bitmiş yayınının; sayılar sunucudaki yayın
   // kaydından okunur (istemciden alınmaz, kimse sahte rapor paylaşamaz)
@@ -22390,7 +22410,7 @@ async function buildSixtagramAttachment(uid, attachment) {
   throw new HttpsError('invalid-argument', 'Geçersiz ek türü.');
 }
 
-const STORY_TYPES = ['housePhoto', 'parkPhoto', 'interiorPhoto'];
+const STORY_TYPES = ['housePhoto', 'parkPhoto', 'interiorPhoto', 'cityPhoto'];
 // createSixtagramPost — yeni bir gönderi paylaşır. `text` ve/veya
 // `attachment` verilebilir, ikisi de boşsa reddedilir.
 export const createSixtagramPost = onCall(async (request) => {
@@ -22961,3 +22981,23 @@ export const cronTick = onScheduleRaw(
     if (r.failed || r.ms > 60_000) console.log(JSON.stringify({ cronTick: r }));
   }
 );
+
+// ---------------------------------------------------------------------------
+// v147 — Gezilebilir şehir: susturma aynası. Şehir sohbeti Realtime Database'de
+// (Firestore maliyeti yok); RTDB kuralları susturulan oyuncunun yazmasını
+// mutes/{uid} = bitiş zamanı (ms) üzerinden engeller. Bu tetik sadece bir
+// oyuncu susturulunca / ceza kalkınca çalışır (çok seyrek → maliyet ≈ 0).
+// ---------------------------------------------------------------------------
+export const cityMuteMirror = onDocumentWritten('mutes/{uid}', async (event) => {
+  const uid = event.params.uid;
+  const after = event.data?.after?.exists ? event.data.after.data() : null;
+  const until = Number(after?.untilMs) || 0;
+  try {
+    const ref = (await cityDb()).ref(`mutes/${uid}`);
+    if (until > Date.now()) await ref.set(until);
+    else await ref.remove();
+  } catch (err) {
+    console.error('cityMuteMirror', err);
+  }
+});
+

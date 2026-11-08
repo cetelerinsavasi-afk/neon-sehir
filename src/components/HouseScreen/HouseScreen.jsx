@@ -537,7 +537,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
   );
 
   useEffect(() => {
-    // v146: teşkilatta kendini de sunucunun gösterdiği kimlikle (kod adı + varsayılan tip) gör
+    // v146/v147: teşkilatta kendini de sunucunun gösterdiği kimlikle (kod adı + polis tipi) gör
     const shown = info?.selfShown;
     if (shown) engineRef.current?.setSelf({ uid: info.presenceId || user?.uid, name: shown.name || 'Ajan', avatar: shown.avatar || null });
     else engineRef.current?.setSelf({ uid: user?.uid, name: player?.displayName || 'Sen', avatar: player?.avatar || null });
@@ -1336,6 +1336,42 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
   }, [bizType, venue, engineKey, phase]);
   // v100 — ofis: ücretli mobilyalar (bağış kutusu / mikser eylemleri HomeOfficeLayer'da)
   const kind = houseKind(houseDoc);
+  // v147 — mekândan şehre çıkış: giriş kapısının önünde "🌆 Şehre çık" → büyük
+  // şehirde o mekânın kapısında doğulur. Çete karargahı / Teşkilat'ın şehirde yeri yok.
+  const cityRegion = useMemo(() => {
+    if (!user || isHq || isTeskilat) return null;
+    if (venue) {
+      const VK = { camii: 'camii', banka: 'banka', karakol: 'karakol', belediye: 'belediye', gazino: 'casino', araba_galerisi: 'araba_galerisi', silah_magazasi: 'silah_magazasi', modifiye_garaji: 'modifiye_garaji', park: 'park', kokorecci: 'kokorecci', simitci: 'simitci', donerci: 'donerci', kofteci: 'kofteci' };
+      return VK[venue.key] || null;
+    }
+    if (!houseDoc) return null;
+    if (bizType) {
+      const reg = BIZ_TYPES[bizType]?.region;
+      return reg && !String(reg).startsWith('ho_') ? reg : 'ev';
+    }
+    if (kind === 'depo') return 'liman_depo';
+    return 'ev';
+  }, [user, isHq, isTeskilat, venue, houseDoc, bizType, kind]);
+  const [atCityDoor, setAtCityDoor] = useState(false);
+  useEffect(() => {
+    if (!cityRegion || phase !== 'ready' || mode !== 'walk') {
+      setAtCityDoor(false);
+      return undefined;
+    }
+    const iv = setInterval(() => {
+      const e = engineRef.current;
+      const d = e?.getEntrance?.();
+      const me = e?.getSelfState?.();
+      setAtCityDoor(Boolean(d && me && Math.hypot(d.x - me.x, d.z - me.z) < 2.0));
+    }, 300);
+    return () => clearInterval(iv);
+  }, [cityRegion, phase, mode]);
+  const goCity = () => {
+    const region = cityRegion;
+    exit();
+    // önce mekân kapansın, sonra şehir açılsın (App tüm üst ekranları kapatır)
+    setTimeout(() => window.dispatchEvent(new CustomEvent('neon-city-exit', { detail: { region } })), 0);
+  };
   const officeOwnedKeys = ownedOfficeKeys(houseDoc);
   const paidPriceOf = (product) => (!isOwner && !venue && houseDoc ? officePriceOf(houseDoc, product) : 0);
   // v92 — garson (cafe/bar)
@@ -2258,6 +2294,9 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
           )}
 
           {/* GEZ: etkileşim butonları */}
+          {mode === 'walk' && atCityDoor && (
+            <button className="hs-act take hs-cityexit" onClick={goCity}>🌆 Şehre çık</button>
+          )}
           {mode === 'walk' && interact && (
             <div className="hs-actions">
               <div className="hs-actions-title">{interact.name}</div>

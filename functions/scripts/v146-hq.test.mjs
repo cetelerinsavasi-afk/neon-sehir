@@ -144,7 +144,10 @@ test('v146 polis teşkilatı: polis kod adı + varsayılan tip + takma kimlik; y
   assert.equal(h.G('housePresence/ajan'), undefined, 'uid ile konum kaydı YOK');
   const p = h.G('housePresence/pa_r77');
   assert.equal(p.displayName, 'Kartal-7');
-  assert.equal(p.avatar, null);
+  // v147: herkes aynı polis tipinde (gerçek avatar sızmaz)
+  assert.equal(p.avatar.clothing, 'police');
+  assert.equal(p.avatar.hat, 'policecap');
+  assert.notEqual(p.avatar.skin, '#000');
   assert.equal(h.G('presenceAlias/pa_r77').uid, 'ajan');
   // sohbet de takma kimlik + kod adıyla
   h.S('housePresence/pa_r77', { ...p, updatedAt: h.fresh() });

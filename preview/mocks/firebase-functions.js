@@ -4,6 +4,32 @@ import { sanitizeDrawing } from '../../functions/drawingData.js';
 import { buildSongAttachment, buildNewsInterviewAttachment, buildPaintingAttachment } from '../../functions/homeOffice.js';
 import { nextReaction, replyQuoteOf } from '../../functions/chatExtras.js';
 import { normalizeRouletteBets, roulettePayout, ROULETTE_ORDER, rollSlotReels, slotOutcome, SLOT_GAME_COST } from '../../functions/casinoRules.js';
+import { createCityPhoto } from '../../functions/cityPhoto.js';
+import { HOUSE_PRODUCTS } from '../../functions/houseCatalogData.js';
+import * as mockRtdb from './firebase-database.js';
+// v147 önizleme: şehir fotoğrafı (gerçek functions/cityPhoto.js + RTDB taklidi)
+const cityPhoto = createCityPhoto({
+  db: { collection: (c) => fakeDb.collection(c), getAll: (...refs) => Promise.all(refs.map((r) => r.get())) },
+  rtdb: async () => ({
+    ref: (path) => ({
+      get: () =>
+        new Promise((res) => {
+          const off = mockRtdb.onValue(mockRtdb.ref(null, path), (snap) => {
+            res({ val: () => snap.val() });
+            setTimeout(() => off(), 0);
+          });
+        }),
+    }),
+  }),
+  HttpsError: class extends Error {
+    constructor(code, msg) {
+      super(msg);
+      this.code = code;
+    }
+  },
+  assertCanSpeak: async () => {},
+  isProduct: (k) => Object.prototype.hasOwnProperty.call(HOUSE_PRODUCTS, k),
+});
 export function getFunctions() {
   return {};
 }
@@ -68,6 +94,7 @@ export function httpsCallable(functions, name) {
       if (name === 'streamAction') return { data: await stream.action(PREVIEW_UID, data) };
       if (name === 'buyFromVendor' && window.__buyFromVendor) return { data: await window.__buyFromVendor(data) }; // v145 önizleme
       if (name === 'houseAction') return { data: await houses.houseAction(request) };
+      if (name === 'cityAction' && data?.op === 'photoShot') return { data: await cityPhoto.photoShot(request.auth.uid, data) };
       if (name === 'shopAction') return { data: await shop.shopAction(request) };
       if (name === 'recordVenueVisit') return { data: await visits.recordVenueVisit(PREVIEW_UID, data) };
       if (name === 'futbolProAction') return { data: await futbolPro.action(PREVIEW_UID, data) };
@@ -133,7 +160,8 @@ export function httpsCallable(functions, name) {
           attachment = r;
         }
         if (data.attachment?.type === 'housePhoto') attachment = await houses.buildPhotoAttachment(request.auth.uid, data.attachment);
-        const story = attachment?.type === 'housePhoto' && !attachment.sq;
+        if (data.attachment?.type === 'cityPhoto') attachment = await cityPhoto.buildAttachment(request.auth.uid, data.attachment);
+        const story = ['housePhoto', 'cityPhoto'].includes(attachment?.type) && !attachment.sq;
         if (data.attachment?.type === 'song') {
           const r = await buildSongAttachment(fakeDb, request.auth.uid, data.attachment);
           if (r.error) throw Object.assign(new Error(r.error), { code: 'invalid-argument' });

@@ -3,12 +3,26 @@
 const KEY = 'rtdb-mock';
 const bc = new BroadcastChannel('rtdb-mock');
 const listeners = new Set();
+// v147: her yol ayrı anahtar (rtdb:yol) → iki sekme aynı anda yazınca birbirini ezmesin
+const PFX = 'rtdb:';
 const load = () => {
+  const root = {};
   try {
-    return JSON.parse(localStorage.getItem(KEY) || '{}');
+    const legacy = JSON.parse(localStorage.getItem(KEY) || '{}');
+    Object.assign(root, legacy);
   } catch {
-    return {};
+    /* yoksay */
   }
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (!k || !k.startsWith(PFX)) continue;
+    try {
+      setAt(root, k.slice(PFX.length), JSON.parse(localStorage.getItem(k)));
+    } catch {
+      /* yoksay */
+    }
+  }
+  return root;
 };
 const parts = (p) => String(p).split('/').filter(Boolean);
 function getAt(root, p) {
@@ -40,9 +54,27 @@ const resolveTs = (v) => {
   return v;
 };
 function write(fn) {
-  const root = load();
+  // fn eski API'yle kökü değiştirir; değişen yaprakları ayrı anahtarlara yaz
+  const before = load();
+  const root = JSON.parse(JSON.stringify(before));
   fn(root);
-  localStorage.setItem(KEY, JSON.stringify(root));
+  const flat = (o, pre, out) => {
+    if (o && typeof o === 'object' && !Array.isArray(o)) {
+      const ks = Object.keys(o);
+      if (!ks.length && pre) out[pre] = null;
+      ks.forEach((k) => flat(o[k], pre ? `${pre}/${k}` : k, out));
+    } else out[pre] = o;
+    return out;
+  };
+  const a = flat(before, '', {});
+  const b = flat(root, '', {});
+  Object.keys(b).forEach((k) => {
+    if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) localStorage.setItem(PFX + k, JSON.stringify(b[k]));
+  });
+  Object.keys(a).forEach((k) => {
+    if (!(k in b)) localStorage.removeItem(PFX + k);
+  });
+  localStorage.removeItem(KEY);
   bc.postMessage('x');
   notify();
 }
@@ -51,6 +83,13 @@ function notify() {
   listeners.forEach((l) => l.check(root));
 }
 bc.onmessage = () => notify();
+// v147: başka sekmenin yazdığı veri bu sekmeye ulaşınca (storage olayı) da kontrol et
+let stTimer = 0;
+addEventListener('storage', (e) => {
+  if (e.key && !e.key.startsWith(PFX) && e.key !== KEY) return;
+  clearTimeout(stTimer);
+  stTimer = setTimeout(notify, 30);
+});
 
 let seq = 0;
 export function getDatabase() {

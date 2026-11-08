@@ -73,6 +73,7 @@ const WeaponShopWorldScreen = lazyScreen(() => import('./components/WeaponShopWo
 const TuningGarageWorldScreen = lazyScreen(() => import('./components/TuningGarageWorldScreen/TuningGarageWorldScreen'));
 // v134 — misafir (giriş yapmamış) oyuncu oyunun mekânlarını yeni 3D hâliyle gezer
 const GuestVenue = lazyScreen(() => import('./components/Guest/GuestVenue'));
+const CityScreen = lazyScreen(() => import('./components/City/CityScreen')); // v147 — gezilebilir şehir
 
 function prefetchScreens() {
   let i = 0;
@@ -218,6 +219,7 @@ function GameShell() {
   const [tuningGarageOpen, setTuningGarageOpen] = useState(false);
   const [belediyeOpen, setBelediyeOpen] = useState(false); // v108 — başkanlık makam odası
   const [vendorRegion, setVendorRegion] = useState(null); // v145 — seyyar satıcı 3D mekânı (regions.js kaydı)
+  const [city, setCity] = useState(null); // v147 — gezilebilir şehir: { spawn, k }
   // v77 performans: kök bileşen sadece HUD alanları değişince yeniden çizilir
   const hudKey = usePlayerSelect(selectHud);
   const [hudSusp, hudRep, hudGold] = hudKey.split('|').map(Number);
@@ -324,7 +326,9 @@ function GameShell() {
       return;
     }
     if (regionMeta?.screen === 'park') {
-      setParkOpen(true);
+      // v147 — park artık büyük şehrin içinde: oraya ışınlan (misafir eski parkı gezer)
+      if (user) openCity('park');
+      else setParkOpen(true);
       return;
     }
     // Banka artık Park gibi girilebilir bir mekan (bkz. madde 2-4) —
@@ -373,11 +377,39 @@ function GameShell() {
     }
     // v145 — seyyar satıcılar da 3D mekân (açık hava). Hazırlanamazsa eski panel açılır.
     if (regionMeta?.screen === 'seyyar-satici' && vendorVenueKey(regionMeta.id)) {
-      setVendorRegion(regionMeta);
+      // v147 — seyyar satıcılar şehirde sokakta duruyor: yanına ışınlan
+      if (user) openCity(vendorVenueKey(regionMeta.id));
+      else setVendorRegion(regionMeta);
       return;
     }
     setActiveRegion(regionMeta);
   };
+
+  // v147 — şehre giriş: üstte açık ne varsa kapanır (mekân, liste, ev…), şehir açılır
+  const closeAllForCity = () => {
+    [setParkOpen, setBankOpen, setKarakolOpen, setMosqueOpen, setCasinoOpen, setDealershipOpen, setWeaponShopOpen, setTuningGarageOpen, setBelediyeOpen, setTeskilatOpen, setFutbolOpen, setGangsOpen, setProfileOpen, setPhoneOpen].forEach((f) => f(false));
+    setVendorRegion(null);
+    setHouseView(null);
+    setBusinessView(null);
+    setActiveRegion(null);
+    setHeistTarget(undefined);
+    setVisitReturnPending(false);
+  };
+  function openCity(spawn) {
+    closeAllForCity();
+    setCity({ spawn: spawn || 'ev', k: Date.now() });
+  }
+  const openCityRef = useRef(openCity);
+  openCityRef.current = openCity;
+  // mekânın içinde giriş kapısındaki "Şehre çık" (HouseScreen) → o mekânın kapısında doğ
+  useEffect(() => {
+    const on = (e) => {
+      const r = e?.detail?.region;
+      if (typeof r === 'string' && r) openCityRef.current(r);
+    };
+    window.addEventListener('neon-city-exit', on);
+    return () => window.removeEventListener('neon-city-exit', on);
+  }, []);
 
   const openHeistScreen = (target) => {
     setActiveRegion(null);
@@ -475,7 +507,7 @@ function GameShell() {
   regionClickRef.current = handleRegionClick;
   const onRegionClickStable = useCallback((...a) => regionClickRef.current(...a), []);
   const mapCovered = Boolean(
-    watchStreamId || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || teskilatOpen || Boolean(vendorRegion) || heistTarget !== undefined || (effectiveRaceRoomId && raceExpanded)
+    watchStreamId || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || teskilatOpen || Boolean(vendorRegion) || Boolean(city) || heistTarget !== undefined || (effectiveRaceRoomId && raceExpanded)
   );
 
   return (
@@ -526,6 +558,13 @@ function GameShell() {
         gangsBadge={gangAlerts.any}
         onProfileClick={() => setProfileOpen(true)}
       />
+
+      {/* v147 — Şehre gir: telefonun üstünde; evin önünde doğulur */}
+      {user && (
+        <button className="map-city-btn" onClick={() => openCity('ev')} aria-label="Şehre gir" title="Şehre gir">
+          🌆
+        </button>
+      )}
 
       {/* Telefon kısayolu — ChatsApp butonunun TAM üstünde, aynı boyutta. */}
       <button
@@ -739,6 +778,24 @@ function GameShell() {
         ) : (
         <GuestVenue venueKey="modifiye_garaji" onExit={() => closeVenueMaybeReturnToVisit(setTuningGarageOpen)} />
         )
+      )}
+
+      {city && user && (
+        <CityScreen
+          key={city.k}
+          spawn={city.spawn}
+          onClose={() => setCity(null)}
+          onEnterRegion={(rid) => {
+            // kapıdan içeri: şehir kapanır (araba kalkar), mekân/liste mevcut yoldan açılır
+            setCity(null);
+            const r = regions.find((x) => x.id === rid);
+            if (r) handleRegionClick(r.id, r);
+          }}
+          onOpenHeist={(t) => {
+            setCity(null);
+            openHeistScreen(t);
+          }}
+        />
       )}
 
       {heistTarget !== undefined && (

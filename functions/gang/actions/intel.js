@@ -937,6 +937,8 @@ export function createIntelActions(core) {
       tx.set(lockRef, { voteId: vRef.id, endsAtMs });
       // v39: hedef oylama bitene kadar Muhbir yetkisinde
       tx.update(ctx.ref.roster(targetRosterId), { underVoteUntilMs: Math.max(Number(target.data().underVoteUntilMs || 0), endsAtMs) });
+      // v147: oylamayı kimin başlattığı teşkilat sohbetinde görünsün
+      announceIntel(tx, ctx, '🗳️', `${me.data().codeName || 'Bir polis'}, ${target.data().codeName || 'bir polis'} için çıkarma oylaması başlattı.`);
       return { voteId: vRef.id };
     });
   }

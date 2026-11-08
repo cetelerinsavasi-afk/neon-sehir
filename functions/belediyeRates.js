@@ -118,7 +118,7 @@ export const RATE_GROUPS = [
   { m: 'kultur', id: 'spor', title: 'Futbolcu ve Menajer Maaş Vergisi', unit: '%', items: [pct('futbolcu', 'Futbolcu'), pct('menajer', 'Menajer')] },
   // v146 — futbolcu transfer vergisi: ALICI öder (ilan 100.000, %10 → alıcı 110.000 öder, satan 100.000 alır).
   // Maaşlı (gerçek oyuncu) futbolcular için geçerli değil.
-  { m: 'kultur', id: 'transfer', title: 'Futbolcu Transfer Vergisi', unit: '%', items: [pct('transfer', 'Transfer Vergisi (alıcı öder)', 5, 1, 10)] },
+  { m: 'kultur', id: 'transfer', title: 'Futbolcu Transfer Vergisi', unit: '%', items: [pct('transfer', 'Transfer Vergisi', 5, 1, 10)] },
   {
     m: 'kultur',
     id: 'imam',
