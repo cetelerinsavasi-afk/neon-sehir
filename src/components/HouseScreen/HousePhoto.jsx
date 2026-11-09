@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { getCachedPhoto, putCachedPhoto, photoKey, whenVisible } from '../../lib/photoCache';
-import { createHouseEngine } from './houseEngine';
+import { getCachedPhoto, putCachedPhoto, photoKey, whenVisible, runPhotoJob, onPhotoQueueIdle, IS_MOBILE_DEVICE } from '../../lib/photoCache';
+import { createHouseEngine, releaseSharedRenderer } from './houseEngine';
+
+// v149: telefonda fotoğraf kuyruğu boşalınca ekran dışı çizicinin grafik bağlamı bırakılır
+if (IS_MOBILE_DEVICE) onPhotoQueueIdle(() => releaseSharedRenderer('snap'));
 import { drawPhotoOverlay, ensureOverlayFonts, PHOTO_ASPECT } from '../../../functions/photoOverlay.js';
 
 // =============================================================================
@@ -30,7 +33,6 @@ function housePhotoAspect(att) {
   const a = Number(att?.cam?.a);
   return Number.isFinite(a) && a > 0 ? Math.max(0.4, Math.min(2.5, a)) : 1;
 }
-let queue = Promise.resolve();
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 // v135 — fotoğrafın üstüne yazı + çizim katmanı
@@ -60,9 +62,8 @@ export function renderHousePhotoUrl(att) {
 
 function renderHousePhoto(att, key) {
   if (cache.has(key)) return cache.get(key);
-  const job = (queue = queue
-    .catch(() => {})
-    .then(async () => {
+  // v149: şehir fotoğraflarıyla ORTAK kuyruk (aynı anda tek ekran dışı 3D sahne)
+  const job = runPhotoJob('house', async () => {
       // v72 — kare her zaman KARE, ama çekim anındaki açıyla: dikey çekimde
       // yatay görüş açısı korunur (üstten/alttan kırpılır), yatay çekimde
       // dikey açı korunur (yanlardan kırpılır).
@@ -101,7 +102,7 @@ function renderHousePhoto(att, key) {
         }
         host.remove();
       }
-    }));
+    });
   cache.set(key, job);
   job.catch(() => cache.delete(key));
   if (cache.size > 40) cache.delete(cache.keys().next().value);

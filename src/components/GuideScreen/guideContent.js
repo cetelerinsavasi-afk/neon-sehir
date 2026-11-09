@@ -565,13 +565,6 @@ export const CATS = [
         L('💰', 'Bağışlar cebine akar. Devlet payını alır.'),
         L('🚪', 'Koltuktan kalktığın an perde kapanır.'),
       ] },
-    { type: 'lines', title: 'Yayında Maç',
-      kicker: 'Saat 18:00. Herkes tribüne.',
-      lines: [
-        L('⚽', '18:00–19:00 arası sol altta “Maç” belirir. Yayının köşeye çekilir, Maçlar açılır.'),
-        L('💬', 'Yazdıkların yayın sohbetine gider. Maç sohbetini okursun ama yazamazsın.'),
-        L('🏆', 'En çok bağış yapanlar listesi büyür: günlük tavana ulaşan her bağışçı bir sıra açar, en fazla 10.'),
-      ] },
     { type: 'lines', title: 'Mahremiyet',
       kicker: 'Kameraya girmek de bir seçim.',
       lines: [

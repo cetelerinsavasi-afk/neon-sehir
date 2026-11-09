@@ -122,3 +122,68 @@ export function whenVisible(el, cb) {
   io.observe(el);
   return () => io.disconnect();
 }
+
+// =============================================================================
+// v149 — "Sixtagram'a girince oyun yenileniyor": akıştaki ev ve şehir fotoğrafları
+// ayrı kuyruklarda çiziliyordu → telefonda aynı anda iki ekran dışı 3D sahne (ev +
+// tüm şehir) ve ikinci bir grafik bağlamı açık kalıyordu; bellek taşınca tarayıcı /
+// uygulama sayfayı yeniden yüklüyordu (giriş ekranı). Artık:
+//   • ev + şehir fotoğrafları TEK ortak kuyrukta, aynı anda tek 3D sahne,
+//   • bir tür başlamadan önce diğer türün bekleyen ekran dışı motoru kapatılır.
+// =============================================================================
+let photoQueue = Promise.resolve();
+const releasers = new Map(); // tür → ekran dışı motoru kapatan fonksiyon
+export function registerPhotoReleaser(kind, fn) {
+  releasers.set(kind, fn);
+}
+let pending = 0;
+let idleTimer = 0;
+const idleHooks = new Set();
+// kuyruk boşalıp bir süre boş kalınca (telefonda grafik bağlamını bırakmak için)
+export function onPhotoQueueIdle(fn) {
+  idleHooks.add(fn);
+  return () => idleHooks.delete(fn);
+}
+export function runPhotoJob(kind, fn) {
+  pending += 1;
+  clearTimeout(idleTimer);
+  const done = () => {
+    pending -= 1;
+    if (pending > 0) return;
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => {
+      if (pending > 0) return;
+      // önce bekleyen ekran dışı motorlar, sonra grafik bağlamı (sıra önemli)
+      releasers.forEach((rel) => {
+        try {
+          rel();
+        } catch {
+          /* yoksay */
+        }
+      });
+      idleHooks.forEach((h) => {
+        try {
+          h();
+        } catch {
+          /* yoksay */
+        }
+      });
+    }, 4000);
+  };
+  const job = (photoQueue = photoQueue
+    .catch(() => {})
+    .then(() => {
+      releasers.forEach((rel, k) => {
+        if (k === kind) return;
+        try {
+          rel();
+        } catch {
+          /* yoksay */
+        }
+      });
+      return fn();
+    }));
+  job.then(done, done);
+  return job;
+}
+export const IS_MOBILE_DEVICE = typeof navigator !== 'undefined' && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent || '');

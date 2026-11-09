@@ -66,7 +66,6 @@ import '../Workshop/Workshop.css';
 import './HouseScreen.css';
 import { streamAction } from '../../services/gameActions';
 import { StreamStartSheet, StreamHostPanel, StreamSummary, StreamPlaySheet } from '../Stream/StreamHost';
-import StreamMatchView from '../Stream/StreamMatchView';
 import VenueLayer from '../Venue3D/VenueLayer';
 import { VENUE_BY_HOUSE, NPC_AVATARS } from '../../../functions/venueLayouts.js';
 import { streamBroadcast, clearGameFrame, closeStreamChannel, streamPose, useLiveStreams, useStreamDoc, watchViewers } from '../Stream/streamShared';
@@ -237,7 +236,6 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
   const [mode, setMode] = useState('walk');
   const [view, setView] = useState('3d');
   const [freeCam, setFreeCam] = useState(false); // v92 — 2D'de kamera serbest mi
-  const [streamMatch, setStreamMatch] = useState(false); // v92 — yayında maç izleme
   const [sel, setSel] = useState(null);
   const [interact, setInteract] = useState(null);
   const [tab, setTab] = useState('magaza');
@@ -270,7 +268,6 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
   const [streamAsk, setStreamAsk] = useState(null); // { chairId, pcId } → "Yayın aç" paneli
   const [myStream, setMyStream] = useState(null); // { id, chairId, pcId }
   // v92: yayın bitince maç ekranı da kapanır (sonraki yayında kendiliğinden açılmasın)
-  if (!myStream && streamMatch) setStreamMatch(false);
   const [streamBusy, setStreamBusy] = useState(false);
   const [streamSum, setStreamSum] = useState(null); // { summary, reason, cost }
   const [playAsk, setPlayAsk] = useState(false); // v81: yayında "Oyun oyna" seçimi
@@ -1108,12 +1105,12 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
     setCat(k);
     setLayer(layerOfCat(k));
   };
-  // v77: 3 görünüm sırayla — 3D (varsayılan) → 2D (kuş bakışı) → Göz (karakterin gözünden)
+  // v77: görünümler — 3D (varsayılan) ↔ 2D (kuş bakışı)
+  // v149: mekânlardaki "Göz" (karakterin gözünden) görünümü kaldırıldı
   const toggleView = () => {
-    const v = view === '3d' ? '2d' : view === '2d' ? 'fp' : '3d';
+    const v = view === '3d' ? '2d' : '3d';
     setView(v);
     engineRef.current?.setView(v);
-    if (v === 'fp') flash('👁️ Göz görüşü: etrafa bakmak için ekranı kaydır, yürümek için yere dokun.');
     if (v === '2d') flash('🗺️ 2D: kaydırarak gez, iki parmakla istediğin yere yakınlaş / çevir.');
   };
 
@@ -1874,7 +1871,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
             )}
             {mode === 'walk' && (
               <button className="hs-view-btn" onClick={toggleView} title="Görünümü değiştir">
-                {view === '3d' ? '3D' : view === '2d' ? '2D' : '👁️ Göz'}
+                {view === '2d' ? '2D' : '3D'}
               </button>
             )}
             {mode === 'walk' && view === '2d' && freeCam && (
@@ -2711,11 +2708,9 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
               onStopRequest={stopStream}
               onEnded={endStreamLocal}
               onPlay={() => setPlayAsk(true)}
-              onMatch={() => setStreamMatch(true)}
-              compact={panel === 'arcade' || raceUp || streamMatch}
+              compact={panel === 'arcade' || raceUp}
             />
           )}
-          {myStream && streamMatch && <StreamMatchView streamId={myStream.id} onClose={() => setStreamMatch(false)} />}
           {myStream && playAsk && <StreamPlaySheet onArcade={playArcade} onRace={playRace} onCasino={playCasino} onClose={() => setPlayAsk(false)} />}
           {panel === 'streamCasino' && myStream && (
             <StreamCasinoSheet onClose={() => setPanel(null)} onEnterTable={(tableId) => window.dispatchEvent(new CustomEvent('ns:open-table', { detail: tableId }))} />

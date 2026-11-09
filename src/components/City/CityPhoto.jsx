@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { getCachedPhoto, putCachedPhoto, photoKey, whenVisible } from '../../lib/photoCache';
+import { getCachedPhoto, putCachedPhoto, photoKey, whenVisible, runPhotoJob, registerPhotoReleaser, IS_MOBILE_DEVICE } from '../../lib/photoCache';
+import { releaseSharedRenderer } from '../HouseScreen/houseEngine';
 import { createCityEngine } from './cityEngine.js';
 import { getLiveCityEngine, onLiveCityChange } from './cityPhotoHub.js';
 import { drawPhotoOverlay, ensureOverlayFonts, PHOTO_ASPECT } from '../../../functions/photoOverlay.js';
@@ -13,13 +14,13 @@ import { drawPhotoOverlay, ensureOverlayFonts, PHOTO_ASPECT } from '../../../fun
 //   • Kareler sırayla üretilir ve önbelleğe alınır.
 // =============================================================================
 const cache = new Map();
-let queue = Promise.resolve();
 let off = null;
 let offHost = null;
 let idleT = 0;
 
 function release() {
   clearTimeout(idleT);
+  const had = Boolean(off);
   try {
     off?.dispose();
   } catch {
@@ -28,9 +29,16 @@ function release() {
   offHost?.remove();
   off = null;
   offHost = null;
+  // v149: telefonda fotoğraf çizicisinin grafik bağlamı da bırakılır (bellek)
+  if (had && IS_MOBILE_DEVICE) releaseSharedRenderer('snap');
 }
+// v149: ev fotoğrafı çizilmeden önce ekran dışı şehir motoru kapatılır (aynı anda tek sahne)
+registerPhotoReleaser('city', release);
+// v149: telefonda boşta kalan motor hemen kapanır (45 sn tüm şehri bellekte tutmak çökme sebebiydi)
+const IDLE_MS = IS_MOBILE_DEVICE ? 2500 : 45_000;
 onLiveCityChange((e) => {
-  if (e) release(); // şehre girildi: ekran dışı motor gereksiz
+  // şehre girildi: ekran dışı motor gereksiz (v149: kuyrukta — o an çizilen fotoğraf bozulmasın)
+  if (e && off) runPhotoJob('city-release', release);
 });
 function engine() {
   const live = getLiveCityEngine();
@@ -82,9 +90,7 @@ function withOverlay(url, overlay, w, h) {
 
 function render(att, key) {
   if (key && cache.has(key)) return cache.get(key);
-  const job = (queue = queue
-    .catch(() => {})
-    .then(async () => {
+  const job = runPhotoJob('city', async () => {
       const a = aspectOf(att);
       const vert = Boolean(att.vert) && !att.sq;
       const w = 540;
@@ -100,10 +106,11 @@ function render(att, key) {
       } finally {
         if (eng === off) {
           clearTimeout(idleT);
-          idleT = setTimeout(release, 45_000);
+          // kapatma da kuyruğa girer: başka bir fotoğraf çizilirken motor elden alınmaz
+          idleT = setTimeout(() => runPhotoJob('city-release', release), IDLE_MS);
         }
       }
-    }));
+    });
   if (key) {
     cache.set(key, job);
     job.catch(() => cache.delete(key));

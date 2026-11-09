@@ -9,7 +9,7 @@
 // (bugünkü 3D mekânlardakiyle aynı çağrılar → ek maliyet yok).
 // Garaj (kendi arabaların) sadece "Arabalarım" açılınca okunur.
 // =============================================================================
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useDailyActions } from '../../hooks/useDailyActions';
@@ -30,6 +30,9 @@ import HeldIcon from '../HouseScreen/HeldIcon';
 import PhoneScreen from '../Phone/PhoneScreen';
 import PlayerCard from '../PlayerCard/PlayerCard';
 import ReportBlockSheet from '../ReportBlockSheet/ReportBlockSheet';
+import GuestSignInSheet from '../Guest/GuestSignInSheet';
+import { useStadiumMatches } from '../../hooks/useStadiumMatches';
+import { liveState } from './stadiumMatch.js';
 import ShadyDealPanel from '../ShadyDeal/ShadyDealPanel';
 import SaleToast from '../ShadyDeal/SaleToast';
 import { EMOTES } from '../HouseScreen/houseEngine';
@@ -46,6 +49,8 @@ import '../../styles/bizui.css';
 import './City.css';
 
 const fmt = (n) => Number(n || 0).toLocaleString('tr-TR');
+// v149 — stadyumun içindeyken sağ üstteki "Futbol" düğmesiyle açılan panel
+const FutbolFullScreen = lazy(() => import('../FutbolScreen/FutbolFullScreen'));
 const VENDOR_BY_VENUE = Object.fromEntries(Object.entries(VENDORS).map(([id, v]) => [v.venue, { id, ...v }]));
 const BUFE_MENU = [
   { id: 'sosisli', price: 200 },
@@ -153,7 +158,14 @@ function GarageSheet({ onPick, onClose, onGallery }) {
 }
 
 export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpenHeist }) {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
+  // v149 — misafir (giriş yapmamış) da şehri gezer: yürür, oturur, mekân kapılarından girer.
+  // Ağ (diğer oyuncular / sohbet) yok, alışveriş · araba · fotoğraf giriş ister.
+  const guest = !user && !authLoading;
+  const [askSignIn, setAskSignIn] = useState(false);
+  useEffect(() => {
+    if (user) setAskSignIn(false);
+  }, [user]);
   const { player } = usePlayer();
   const { actions: daily } = useDailyActions();
   const { inventory } = useInventory();
@@ -175,6 +187,17 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
   const [run, setRun] = useState(false);
   const [muted, setMuted] = useState(true);
   const [mapOpen, setMapOpen] = useState(false);
+  const [carCam, setCarCam] = useState('out'); // v149 — araba içi kamera
+  // v149 — stadyum: içindeyken Futbol düğmesi, maç saatinde maç seçici (her cihazda ayrı)
+  const [inStadium, setInStadium] = useState(false);
+  const [matchIdx, setMatchIdx] = useState(0);
+  const [, setScoreTick] = useState(0);
+  const toggleCarCam = () => {
+    const m = carCam === 'in' ? 'out' : 'in';
+    setCarCam(m);
+    engineRef.current?.setCarCam(m);
+    if (m === 'in') flash('🎥 Araba içi · etrafa bakmak için ekranı kaydır');
+  };
   // v147.1 performans: konum 10 Hz gelir ama ekran (React) sadece görünen şey değişince
   // yeniden çizilir; mini harita doğrudan tuvale çizilir.
   const hudRef = useRef({ x: 0, z: 0, yaw: 0 });
@@ -213,9 +236,10 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
   const avatar = player?.avatar || null;
   const myName = player?.displayName || user?.displayName || 'Oyuncu';
   const startRef = useRef({ avatar, myName, spawn });
-  const uid = user?.uid || null;
+  const uid = user?.uid || (guest ? '__guest__' : null);
   useEffect(() => {
     if (!uid) return undefined;
+    const isGuest = uid === '__guest__';
     let eng = null;
     let net = null;
     let tickT = 0;
@@ -249,6 +273,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
         onInteract: (z) => setZone(z),
         onTick: (s) => {
           hudRef.current = s;
+          setInStadium((v) => (v === (s.area === 'stadyum') ? v : s.area === 'stadyum'));
           drawMiniRef.current?.();
           setHud((h) => {
             const d = s.drive;
@@ -264,6 +289,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
             lastCrash = Date.now();
             flash('💥');
           }
+          if (e.type === 'stadiumGoal' && e.inside) flash(`⚽ GOOOL! ${e.name}${e.scorer ? ` · ${e.scorer}` : ''} · ${e.home} ${e.hs}-${e.as} ${e.away}`);
           if (e.type === 'rideLost') {
             netRef.current?.releaseSeat();
             flash('🚗 Araba gitti');
@@ -275,6 +301,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
       engineRef.current = eng;
       setLiveCityEngine(eng); // v147: Sixtagram'daki şehir fotoğrafları bu motorla çizilir
       if (import.meta.env?.DEV) window.__cityEng = eng;
+      if (isGuest) return; // misafir: ağ yok (Realtime Database girişli okunur)
       net = createCityNet({
         uid,
         name: st.myName,
@@ -314,6 +341,11 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
     };
   }, [uid, flash, gen]); // sadece kullanıcı değişince / grafik yeniden kurulunca (user nesnesi yenilenince şehir baştan kurulmasın)
 
+  // motor yeniden kurulursa kamera tercihi korunur
+  useEffect(() => {
+    if (ready) engineRef.current?.setCarCam(carCam);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready]);
   // avatar sonradan değişirse (giyinme vb.)
   useEffect(() => {
     if (!ready || !avatar) return;
@@ -337,7 +369,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
       if (document.hidden) {
         e.pause();
         e.hidden(true);
-      } else if (!panel || (panel.kind !== 'phone' && panel.kind !== 'map')) {
+      } else if (!panel || (panel.kind !== 'phone' && panel.kind !== 'map' && panel.kind !== 'futbol')) {
         e.resume();
         e.hidden(false);
       }
@@ -349,9 +381,32 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
   useEffect(() => {
     const e = engineRef.current;
     if (!e || !ready) return;
-    if (panel?.kind === 'phone') e.pause();
+    if (panel?.kind === 'phone' || panel?.kind === 'futbol') e.pause();
     else e.resume();
   }, [panel, ready]);
+
+  // --- v149 STADYUM: sponsor panoları, maç seçici, saha kilidi ---------------------------
+  const { sponsors, matches, matchHour } = useStadiumMatches(inStadium && Boolean(user));
+  useEffect(() => {
+    if (ready) engineRef.current?.setStadiumSponsors(sponsors);
+  }, [ready, sponsors]);
+  const curMatch = matches.length ? matches[((matchIdx % matches.length) + matches.length) % matches.length] : null;
+  useEffect(() => {
+    if (ready) engineRef.current?.setStadiumMatch(curMatch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, curMatch?.id]);
+  // maç saatinde (maç varsa) sahaya girilmez
+  const pitchLocked = matchHour && matches.length > 0;
+  useEffect(() => {
+    if (ready) engineRef.current?.setPitchLock(pitchLocked);
+  }, [ready, pitchLocked]);
+  // seçicideki skor / dakika
+  useEffect(() => {
+    if (!inStadium || !curMatch) return undefined;
+    const iv = setInterval(() => setScoreTick((n) => n + 1), 4000);
+    return () => clearInterval(iv);
+  }, [inStadium, curMatch]);
+  const curLive = curMatch ? liveState(curMatch) : null;
   // kişi sayısı (yakındakiler) — 2 sn'de bir motorun haritasından
   useEffect(() => {
     if (!ready) return undefined;
@@ -658,7 +713,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
   let actions = null;
   if (zone && !driving && !riding) {
     const list = [];
-    if (zone.kind === 'door') list.push({ label: zone.label || `${zone.title.split(' ')[0]} İçeri gir`, cls: 'take', on: () => onEnterRegion?.(zone.region) });
+    if (zone.kind === 'door') list.push({ label: zone.label || `${zone.title.split(' ')[0]} İçeri gir`, cls: 'take', free: true, on: () => onEnterRegion?.(zone.region) });
     if (zone.kind === 'vendor') {
       const v = vendorOf(zone);
       if (!vendorDone(v)) {
@@ -669,7 +724,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
     }
     if (zone.kind === 'park' && zone.act === 'bufe') list.push({ label: '🌭 Büfe', on: () => setPanel({ kind: 'bufe' }) });
     if (zone.kind === 'park' && zone.act === 'npc') list.push({ label: '🕶️ Şüpheli adam', on: () => setPanel({ kind: 'shady' }) });
-    if (zone.kind === 'pist') list.push({ label: '🏁 Yarış Pisti', cls: 'take', on: () => onEnterRegion?.('yaris_pisti') });
+    if (zone.kind === 'pist') list.push({ label: '🏁 Yarış Pisti', cls: 'take', free: true, on: () => onEnterRegion?.('yaris_pisti') });
     if (zone.kind === 'atm') list.push({ label: '🏧 Banka', cls: 'take', on: () => setPanel({ kind: 'phone', app: 'banka' }) });
     if (zone.kind === 'car') {
       list.push({ label: '🚗 Bin', cls: 'take', on: () => engineRef.current.enterCar() });
@@ -677,9 +732,11 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
       list.push({ label: '🅿️ Kaldır', on: () => engineRef.current.removeMyCar() });
     }
     if (zone.kind === 'ride') list.push({ label: '🚗 Yolcu ol', cls: 'take', on: () => rideIn(zone) });
-    if (zone.kind === 'seat') list.push({ label: '🪑 Otur', cls: 'take', on: () => engineRef.current.sit(zone.seat) });
-    if (zone.seatNear) list.push({ label: '🪑 Otur', cls: '', on: () => engineRef.current.sit(zone.seatNear) });
-    if (zone.kind === 'seated') list.push({ label: '🧍 Kalk', on: () => engineRef.current.stand() });
+    if (zone.kind === 'seat') list.push({ label: '🪑 Otur', cls: 'take', free: true, on: () => engineRef.current.sit(zone.seat) });
+    if (zone.seatNear) list.push({ label: '🪑 Otur', cls: '', free: true, on: () => engineRef.current.sit(zone.seatNear) });
+    if (zone.kind === 'seated') list.push({ label: '🧍 Kalk', free: true, on: () => engineRef.current.stand() });
+    // misafir: gezmek serbest, işlem yapmak giriş ister
+    if (guest) list.forEach((a) => !a.free && (a.on = () => setAskSignIn(true)));
     actions = { title: zone.title, list };
   }
 
@@ -706,15 +763,44 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
         <>
           <div className="hs-top">
             <button className="hs-icon-btn" onClick={() => onClose?.()} title="Ana sayfa">✕</button>
+            {inStadium && curMatch ? (
+            <div className="cs-match-pick">
+              <button onClick={() => setMatchIdx((i) => i - 1)} disabled={matches.length < 2} aria-label="Önceki maç">‹</button>
+              <div className="cs-match-mid">
+                <b>
+                  <i style={{ background: curMatch.homeColor }} />
+                  {curMatch.homeName} <em>vs</em> {curMatch.awayName}
+                  <i style={{ background: curMatch.awayColor }} />
+                </b>
+                <small>
+                  {curMatch.kind === 'kupa' ? '🏆 Kupa · ' : ''}
+                  {curLive?.phase === 'live' && !curLive.isOver
+                    ? `${curLive.homeScore}-${curLive.awayScore} · ${Math.min(90, Math.floor(curLive.elapsedMinute) + 1)}'`
+                    : curLive?.phase === 'live'
+                      ? `${curLive.homeScore}-${curLive.awayScore} · Maç sonu`
+                      : 'Başlıyor…'}
+                  {matches.length > 1 ? ` · ${(((matchIdx % matches.length) + matches.length) % matches.length) + 1}/${matches.length}` : ''}
+                </small>
+              </div>
+              <button onClick={() => setMatchIdx((i) => i + 1)} disabled={matches.length < 2} aria-label="Sonraki maç">›</button>
+            </div>
+            ) : (
             <div className="hs-title">
               <b>{zoneName}</b>
               <span>
-                {offline ? '⚠️ çevrimdışı' : `${online + 1} kişi yakında`}
+                {guest ? '👀 Misafir · gezinti' : offline ? '⚠️ çevrimdışı' : `${online + 1} kişi yakında`}
               </span>
             </div>
+            )}
             <button className="hs-view-btn" onClick={toggleView} title="Görünüm">{view === '3d' ? '3D' : '2D'}</button>
+            {inStadium && (
+              <button className="hs-view-btn cs-futbol-btn" onClick={() => setPanel({ kind: 'futbol' })} title="Futbol">
+                ⚽ Futbol
+              </button>
+            )}
           </div>
-          {!driving && (
+
+          {!driving && !guest && (
             <div className="v3-menu">
               <div className={`v3-badge v3-sus ${susCls}`}>🕵️ Şüphe <b>%{sus}</b></div>
               <div className="v3-badge cs-gold"><span className="gold-coin-icon" style={{ width: 13, height: 13 }} /> <b>{fmt(gold)}</b></div>
@@ -735,11 +821,11 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
                 ))}
               </div>
             )}
-            {!driving && !riding && <button className="hs-side-btn cs-carbtn" onClick={() => setPanel({ kind: 'garage' })} title="Arabalarım">🚗</button>}
+            {!driving && !riding && <button className="hs-side-btn cs-carbtn" onClick={() => (guest ? setAskSignIn(true) : setPanel({ kind: 'garage' }))} title="Arabalarım">🚗</button>}
             {!driving && !riding && <button className={`hs-side-btn${run ? ' on' : ''}`} onClick={() => { setRun(!run); engineRef.current.setRun(!run); }} title="Koş">{run ? '🏃' : '🚶'}</button>}
-            <button className="hs-side-btn" onClick={() => setPanel({ kind: 'phone', app: 'chatsapp' })} title="ChatsApp">💬</button>
-            <button className="hs-side-btn" onClick={() => setPanel({ kind: 'phone', app: null })} title="Telefon">📱</button>
-            <button className="hs-side-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>
+            {!guest && <button className="hs-side-btn" onClick={() => setPanel({ kind: 'phone', app: 'chatsapp' })} title="ChatsApp">💬</button>}
+            {!guest && <button className="hs-side-btn" onClick={() => setPanel({ kind: 'phone', app: null })} title="Telefon">📱</button>}
+            <button className="hs-side-btn" onClick={() => (guest ? setAskSignIn(true) : openCamera())} title="Fotoğraf çek">📷</button>
           </div>
           {actions && actions.list.length > 0 && (
             <div className="hs-actions">
@@ -751,6 +837,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
           )}
           {riding && (
             <div className="hs-actions">
+              <button className="hs-act" onClick={toggleCarCam}>{carCam === 'in' ? '🚗 Dış kamera' : '🎥 İç kamera'}</button>
               <button className="hs-act" onClick={rideOut}>🚪 İn</button>
             </div>
           )}
@@ -758,6 +845,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
             <div className="cs-drive">
               <div className="cs-drive-top">
                 <button className="hs-act" onClick={() => engineRef.current.exitCar()}>🚪 İn</button>
+                <button className="cs-round sm" onClick={toggleCarCam} title={carCam === 'in' ? 'Dış kamera' : 'İç kamera'}>{carCam === 'in' ? '🚗' : '🎥'}</button>
                 <button className="cs-round sm" onClick={() => { const m = !muted; setMuted(m); engineRef.current.setMuted(m); }}>{muted ? '🔇' : '🔊'}</button>
               </div>
               <div className="cs-steer">
@@ -773,7 +861,14 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
               </div>
             </div>
           )}
-          {!driving && (
+          {!driving && guest && (
+            <div className="hs-chat">
+              <div className="hs-chat-feed">
+                <div className="hs-msg dim" onClick={() => setAskSignIn(true)}>👋 Diğer oyuncuları görmek ve sohbet etmek için giriş yap</div>
+              </div>
+            </div>
+          )}
+          {!driving && !guest && (
             <div className="hs-chat">
               <div className="hs-chat-feed">
                 {msgs.slice(-3).map((m) => (
@@ -839,6 +934,13 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
       )}
       <SaleToast result={sellResult} onClose={() => setSellResult(null)} />
       {panel?.kind === 'phone' && <PhoneScreen onClose={() => setPanel(null)} initialApp={panel.app} />}
+      {panel?.kind === 'futbol' && (
+        <div className="cs-futbol-layer">
+          <Suspense fallback={<div className="hs-loading cs-loading"><div className="hs-spinner" /></div>}>
+            <FutbolFullScreen onClose={() => setPanel(null)} />
+          </Suspense>
+        </div>
+      )}
       {panel?.kind === 'camera' && cameraShot && (
         <PhotoStoryEditor img={cameraShot.img || null} loading={!cameraShot.img && !cameraShot.error} error={cameraShot.error || null} busy={camBusy} onShare={shareCamera} onClose={closeCamera} />
       )}
@@ -859,6 +961,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
           onClose={() => setReport(null)}
         />
       )}
+      {askSignIn && <GuestSignInSheet onClose={() => setAskSignIn(false)} message="Misafir olarak şehri gezebilirsin — bunu yapmak için giriş yapmalısın." />}
       {mapOpen && (
         <div className="cs-bigmap" onClick={() => setMapOpen(false)}>
           <div className="cs-bigmap-head" onClick={(e) => e.stopPropagation()}>

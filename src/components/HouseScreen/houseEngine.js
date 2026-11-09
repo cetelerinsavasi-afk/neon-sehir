@@ -245,6 +245,27 @@ export function getSharedRenderer(kind = 'main') {
   return { renderer: r, env: shared[`${kind}Env`] };
 }
 
+// v149 — ekran dışı fotoğraf çizicisini (ör. 'snap') tamamen bırak: telefonda Sixtagram
+// fotoğrafları çizildikten sonra ikinci grafik bağlamı bellekte kalmasın.
+export function releaseSharedRenderer(kind) {
+  const r = shared[kind];
+  if (!r) return;
+  shared[kind] = null;
+  try {
+    shared[`${kind}Env`]?.dispose?.();
+  } catch {
+    /* yoksay */
+  }
+  shared[`${kind}Env`] = null;
+  try {
+    r.dispose();
+    r.forceContextLoss?.();
+  } catch {
+    /* bağlam zaten yok */
+  }
+  r.domElement?.remove?.();
+}
+
 // --- Avatar dokuları ---------------------------------------------------------
 const avatarTexCache = new Map();
 function avatarTextures(avatar) {

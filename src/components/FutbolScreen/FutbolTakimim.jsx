@@ -44,7 +44,6 @@ const MY_TEAM_TABS = [
   { id: 'transfer', label: 'Transfer' },
   { id: 'altyapi', label: 'Antrenman' },
   { id: 'doktor', label: 'Doktor' },
-  { id: 'forma', label: 'Forma' },
   { id: 'stadyum', label: 'Stadyum' },
   { id: 'sponsor', label: 'Sponsor' },
   { id: 'menajer', label: 'Menajer' },
@@ -119,7 +118,6 @@ function TeamTabsPanel({ team, role, tab, setTab }) {
       {tab === 'transfer' && <FutbolTransfer team={team} role={role} />}
       {tab === 'altyapi' && <FutbolAltyapi team={team} role={role} />}
       {tab === 'doktor' && <FutbolDoktor team={team} role={role} />}
-      {tab === 'forma' && <FutbolLogoEditor team={team} role={role} />}
       {tab === 'stadyum' && <FutbolStadyum team={team} role={role} />}
       {tab === 'sponsor' && <FutbolSponsor team={team} role={role} />}
       {tab === 'menajer' && <FutbolMenajer team={team} role={role} />}
@@ -207,6 +205,8 @@ function MyTeamOverview({ team, role }) {
   const [showSellPanel, setShowSellPanel] = useState(false);
   const [listPrice, setListPrice] = useState(0);
   const [confirmInstantSell, setConfirmInstantSell] = useState(false);
+  // v149 — "Forma" sekmesi kalktı: takım adının yanındaki kalem forma panelini açar
+  const [formaOpen, setFormaOpen] = useState(false);
   const isOwner = role === 'owner';
   // KULLANICI REVİZESİ: takım kasası/transfer desteği SADECE gerçekten
   // canlı olduğu durumlarda gösterilsin — menajerli (role: 'manager') ya da
@@ -287,7 +287,12 @@ function MyTeamOverview({ team, role }) {
       <div className="futbol-my-team-header">
         <FutbolCrest logo={team.logo} initials={initialsFromName(team.name)} size={56} />
         <div>
-          <p className="futbol-my-team-name">{team.name}</p>
+          <p className="futbol-my-team-name">
+            {team.name}
+            <button type="button" className="futbol-forma-pen" onClick={() => setFormaOpen(true)} aria-label="Forma ve arma">
+              ✏️
+            </button>
+          </p>
           <p className="futbol-buy-meta">
             {team.tier}. Lig · {(team.fans || 0).toLocaleString('tr-TR')} taraftar ·{' '}
             {(team.stadiumCapacity || 2500).toLocaleString('tr-TR')} kapasiteli stadyum
@@ -408,6 +413,21 @@ function MyTeamOverview({ team, role }) {
           onConfirm={runInstantSell}
           onCancel={() => setConfirmInstantSell(false)}
         />
+      )}
+      {formaOpen && (
+        <div className="futbol-forma-sheet-bg" onClick={() => setFormaOpen(false)}>
+          <div className="futbol-forma-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="futbol-forma-sheet-head">
+              <b>🎨 Forma · Arma</b>
+              <button type="button" className="futbol-fullscreen-close" onClick={() => setFormaOpen(false)} aria-label="Kapat">
+                ✕
+              </button>
+            </div>
+            <div className="futbol-forma-sheet-body">
+              <FutbolLogoEditor team={team} role={role} />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

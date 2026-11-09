@@ -305,9 +305,10 @@ function GameShell() {
       setHouseView({ houseId: null });
       return;
     }
-    // Stadyum → doğrudan Futbol paneli (alttaki Futbol butonu kaldırıldı).
+    // v149 — Stadyum artık park gibi haritaya gömülü: futbol paneli açılmaz, şehirde
+    // stadyumun girişine ışınlanılır. Futbol paneli stadyumun içindeki "⚽ Futbol" düğmesinde.
     if (regionMeta?.screen === 'futbol') {
-      setFutbolOpen(true);
+      openCity('stadyum');
       return;
     }
     // v77: işletme türleri (Spor Salonu, Cafe, Bar, İnternet Kafe, Silah
@@ -329,9 +330,9 @@ function GameShell() {
       return;
     }
     if (regionMeta?.screen === 'park') {
-      // v147 — park artık büyük şehrin içinde: oraya ışınlan (misafir eski parkı gezer)
-      if (user) openCity('park');
-      else setParkOpen(true);
+      // v147 — park artık büyük şehrin içinde: oraya ışınlan
+      // v149: misafir de (şehri salt gezinti modunda) aynı yere ışınlanır
+      openCity('park');
       return;
     }
     // Banka artık Park gibi girilebilir bir mekan (bkz. madde 2-4) —
@@ -381,8 +382,7 @@ function GameShell() {
     // v145 — seyyar satıcılar da 3D mekân (açık hava). Hazırlanamazsa eski panel açılır.
     if (regionMeta?.screen === 'seyyar-satici' && vendorVenueKey(regionMeta.id)) {
       // v147 — seyyar satıcılar şehirde sokakta duruyor: yanına ışınlan
-      if (user) openCity(vendorVenueKey(regionMeta.id));
-      else setVendorRegion(regionMeta);
+      openCity(vendorVenueKey(regionMeta.id)); // v149: misafir de
       return;
     }
     setActiveRegion(regionMeta);
@@ -516,9 +516,9 @@ function GameShell() {
     watchStreamId || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || teskilatOpen || vendorRegion || heistTarget !== undefined || activeRegion || comingSoon || raceLobbyMode || activeTableId || effectiveRaceRoomId
   );
   useEffect(() => {
-    if (!cityReturn || city || somethingOpen || !user) return;
+    if (!cityReturn || city || somethingOpen) return;
     openCityRef.current(cityReturn);
-  }, [cityReturn, city, somethingOpen, user]);
+  }, [cityReturn, city, somethingOpen]);
   const mapCovered = Boolean(
     watchStreamId || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || teskilatOpen || Boolean(vendorRegion) || Boolean(city) || heistTarget !== undefined || (effectiveRaceRoomId && raceExpanded)
   );
@@ -573,9 +573,8 @@ function GameShell() {
       />
 
       {/* v147 — Şehre gir: telefonun üstünde; evin önünde doğulur */}
-      {user && (
-        <CityPegman onTap={() => openCity('ev')} onDrop={(pt) => openCity(pt)} />
-      )}
+      {/* v149: misafir de şehre girer (gezinti modu) */}
+      <CityPegman onTap={() => openCity('ev')} onDrop={(pt) => openCity(pt)} />
 
       {/* Telefon kısayolu — ChatsApp butonunun TAM üstünde, aynı boyutta. */}
       <button
@@ -791,7 +790,7 @@ function GameShell() {
         )
       )}
 
-      {city && user && (
+      {city && (
         <CityScreen
           key={city.k}
           spawn={city.spawn}

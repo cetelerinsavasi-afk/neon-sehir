@@ -10,3 +10,5 @@ export function onAuthStateChanged(auth, cb) {
 }
 export async function signInWithPopup() {}
 export async function signOut() {}
+// v148 — Android WebView yerel Google girişi (önizlemede etkisiz)
+export async function signInWithCredential() {}

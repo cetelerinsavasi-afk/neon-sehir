@@ -132,33 +132,49 @@ function HousePhotoReady({ attachment, onReady }) {
 }
 
 // v136 — izlenecek sıra açılışta bir kez kurulur:
-//   • izlenmemiş (ya da kendi) hikâyeden açılınca: sadece izlenmemiş hikâyeler; bitince kapanır
+//   • izlenmemiş (ya da kendi) hikâyeden açılınca: izlenmemiş hikâyesi olanlar; bitince kapanır
 //   • izlenmiş birine basınca: o kişinin tüm hikâyeleri, sonra sıradaki izlenmiş kişiler
+// v149 — her kişinin TÜM hikâyeleri sırada durur (çubuklar tam), ama izleme o kişinin
+//   ilk İZLENMEMİŞ hikâyesinden başlar (3 hikâyeden 2'sine bakıp çıktıysan 3.'den devam).
+//   Kendi hikâyelerin de: yeni attığına henüz bakmadıysan oradan açılır.
+const firstUnseen = (g, myUid) => {
+  const i = g.posts.findIndex((p) => !isStorySeen(p, myUid));
+  return i < 0 ? 0 : i;
+};
 function buildQueue(groups, start, myUid) {
   const g0 = groups[start];
   if (!g0) return [];
-  const unseenOf = (g) => g.posts.filter((p) => !isStorySeen(p, myUid));
+  const withStart = (g) => ({ ...g, startPi: firstUnseen(g, myUid) });
+  const hasUnseen = (g) => g.posts.some((p) => !isStorySeen(p, myUid));
   const own = g0.uid === myUid;
-  if (!own && g0.seen) return groups.slice(start).filter((g) => g.uid !== myUid).map((g) => ({ ...g, posts: g.posts }));
-  const first = { ...g0, posts: own ? g0.posts : unseenOf(g0) };
+  if (!own && g0.seen) return groups.slice(start).filter((g) => g.uid !== myUid).map(withStart);
   const rest = groups
     .slice(start + 1)
-    .filter((g) => g.uid !== myUid)
-    .map((g) => ({ ...g, posts: unseenOf(g) }))
-    .filter((g) => g.posts.length);
-  return [first, ...rest].filter((g) => g.posts.length);
+    .filter((g) => g.uid !== myUid && hasUnseen(g))
+    .map(withStart);
+  return [withStart(g0), ...rest].filter((g) => g.posts.length);
 }
 
 export function StoryViewer({ groups: allGroups, start, startPi = null, myUid, onClose, onOpenProfile }) {
   const [groups] = useState(() => {
-    const q = buildQueue(allGroups, start, myUid);
     // gönderi avatarından belirli bir hikâyeyle açıldıysa (startPi) o kişinin tamamı
-    if (startPi != null && allGroups[start]) return [allGroups[start]];
-    return q.length ? q : allGroups[start] ? [allGroups[start]] : [];
+    if (startPi != null && allGroups[start]) return [{ ...allGroups[start], startPi }];
+    const q = buildQueue(allGroups, start, myUid);
+    return q.length ? q : allGroups[start] ? [{ ...allGroups[start], startPi: 0 }] : [];
   });
   const [gi, setGi] = useState(0);
   const g = groups[gi];
-  const [pi, setPi] = useState(() => startPi || 0);
+  const [pi, setPi] = useState(() => groups[0]?.startPi || 0);
+  // v149: her kişide en son nerede kalındı (geri dönünce oradan devam, ilk hikâyeden değil)
+  const lastPi = useRef({});
+  const toGroup = (ng, dir) => {
+    lastPi.current[gi] = pi;
+    setSlide(dir > 0 ? 'in-r' : 'in-l');
+    setGi(ng);
+    const saved = lastPi.current[ng];
+    const len = groups[ng]?.posts.length || 1;
+    setPi(Math.min(len - 1, Math.max(0, saved ?? groups[ng]?.startPi ?? 0)));
+  };
   const [ready, setReady] = useState(false);
   const [paused, setPaused] = useState(false);
   const [askDel, setAskDel] = useState(false);
@@ -186,19 +202,13 @@ export function StoryViewer({ groups: allGroups, start, startPi = null, myUid, o
 
   const next = () => {
     if (pi < posts.length - 1) setPi(pi + 1);
-    else if (gi < groups.length - 1) {
-      setSlide('in-r');
-      setGi(gi + 1);
-      setPi(0);
-    } else onClose();
+    else if (gi < groups.length - 1) toGroup(gi + 1, 1);
+    else onClose();
   };
   const prev = () => {
     if (pi > 0) setPi(pi - 1);
-    else if (gi > 0) {
-      setSlide('in-l');
-      setGi(gi - 1);
-      setPi(0);
-    } else elapsed.current = 0;
+    else if (gi > 0) toGroup(gi - 1, -1);
+    else elapsed.current = 0;
   };
   // kişiler arası geçiş: sağa/sola kaydır (o kişinin kalan hikâyeleri atlanır) · aşağı kaydır: kapat
   const goGroup = (d) => {
@@ -206,9 +216,7 @@ export function StoryViewer({ groups: allGroups, start, startPi = null, myUid, o
     setDragX(0);
     if (ng < 0) return undefined;
     if (ng >= groups.length) return onClose();
-    setSlide(d > 0 ? 'in-r' : 'in-l');
-    setGi(ng);
-    setPi(0);
+    toGroup(ng, d);
     return undefined;
   };
   const swipe = useRef(null);

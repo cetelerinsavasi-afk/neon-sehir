@@ -351,6 +351,8 @@ export class Kit {
     this.waters = []; // v147.3: su alanları (girilir, batılır)
     this.npcs = [];
     this.seats = []; // oturulabilir noktalar (bank, tabure, kafe sandalyesi, tribün)
+    this.heights = []; // v149: basamaklı zemin (stadyum tribünü) — { o, r, fn(x,z) → y | null }
+    this.areas = []; // v149: adlandırılmış alanlar (elips) — "stadyumun içindeyim" gibi
   }
   add(o, dyn = false) {
     (dyn ? this.dynamic : this.group).add(o);
@@ -427,11 +429,26 @@ export class Kit {
     this.solids.push({ o, x: 0, z: 0, hw, hd });
   }
   // v147.1 — elips engel (stadyum): görünen duvarla birebir, köşesiz
-  ellipse(x, z, rx, rz) {
+  // v149: car → sadece arabalara engel (yayalar içeri girip tribünde gezebilir)
+  ellipse(x, z, rx, rz, { car = false } = {}) {
     const o = new THREE.Object3D();
     o.position.set(x, 0, z);
     this.group.add(o);
-    this.solids.push({ o, x: 0, z: 0, hw: rx, hd: rz, ell: true });
+    this.solids.push({ o, x: 0, z: 0, hw: rx, hd: rz, ell: true, car });
+  }
+  // v149 — yerel zemin yüksekliği: (x, z) kit yerelinde, r yarıçap içinde fn(x, z) → y (null: düz zemin)
+  height(x, z, r, fn) {
+    const o = new THREE.Object3D();
+    o.position.set(x, 0, z);
+    this.group.add(o);
+    this.heights.push({ o, r, fn });
+  }
+  // v149 — adlandırılmış elips alan (ör. 'stadyum')
+  area(x, z, rx, rz, key) {
+    const o = new THREE.Object3D();
+    o.position.set(x, 0, z);
+    this.group.add(o);
+    this.areas.push({ o, rx, rz, key });
   }
   blocker(w, h, d, x, y, z) {
     const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshBasicMaterial({ visible: false }));

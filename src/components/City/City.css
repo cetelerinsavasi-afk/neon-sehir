@@ -92,3 +92,23 @@
 
 /* v147.3: ömrü bitmiş araba */
 .cs-car.dead { opacity: 0.45; filter: grayscale(0.8); cursor: not-allowed; }
+
+/* --- v149 stadyum: Futbol düğmesi + maç seçici --- */
+.cs-futbol-btn { white-space: nowrap; border-color: rgba(57, 255, 136, 0.55) !important; color: #c9ffe0 !important; }
+/* üst çubuğun ortasında (başlığın yerinde): ‹ A vs B › */
+.cs-match-pick {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 3px; padding: 2px;
+  border-radius: 12px; background: rgba(255, 63, 160, 0.1); border: 1px solid rgba(255, 63, 160, 0.45);
+}
+.cs-match-pick > button {
+  flex: none; width: 28px; height: 38px; border: 0; border-radius: 10px; background: rgba(255, 255, 255, 0.08);
+  color: #fff; font-size: 24px; line-height: 1; cursor: pointer;
+}
+.cs-match-pick > button:disabled { opacity: 0.3; }
+.cs-match-pick > button:active:not(:disabled) { transform: scale(0.92); }
+.cs-match-mid { flex: 1; min-width: 0; text-align: center; display: flex; flex-direction: column; gap: 1px; }
+.cs-match-mid b { font-size: 13px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cs-match-mid b em { font-style: normal; color: #ffd23f; margin: 0 3px; font-weight: 800; }
+.cs-match-mid b i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 0 4px; vertical-align: 1px; border: 1px solid rgba(255, 255, 255, 0.6); }
+.cs-match-mid small { font-size: 11px; color: #39ff88; font-weight: 700; }
+.cs-futbol-layer { position: absolute; inset: 0; z-index: 60; }

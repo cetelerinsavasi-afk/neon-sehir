@@ -309,6 +309,9 @@
             "t": {
               ".validate": "newData.isNumber() && newData.val() <= now + 1000"
             },
+            "ct": {
+              ".validate": "newData.isNumber() && newData.val() <= now + 10000 && newData.val() >= now - 60000"
+            },
             "$other": {
               ".validate": false
             }

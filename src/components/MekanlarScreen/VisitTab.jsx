@@ -25,8 +25,9 @@ import './VisitTab.css';
 //   Diğer seçenekler: Oyunun mekânları, her işletme türü, Evler.
 // Ziyaretler sunucuda sayılır (functions/visits.js; gün 00:00'da döner).
 // =============================================================================
+// v149 — park ve seyyar satıcılar artık ayrı bir mekân değil, doğrudan şehir haritasına
+// gömülü → Ziyaret listesinden kaldırıldı (şehirde yürüyerek gidilir)
 const GAME_VENUES = [
-  { key: 'park', region: 'park', openKey: 'park' },
   { key: 'banka', region: 'banka', openKey: 'banka' },
   { key: 'karakol', region: 'karakol', openKey: 'karakol' },
   { key: 'camii', region: 'camii', openKey: 'mosque' },
@@ -35,11 +36,6 @@ const GAME_VENUES = [
   { key: 'silah_magazasi', region: 'silah_magazasi', openKey: 'weaponShop' },
   { key: 'modifiye_garaji', region: 'modifiye_garaji', openKey: 'tuningGarage' },
   { key: 'belediye', region: 'belediye', openKey: 'belediye' }, // v127
-  // v146 — seyyar satıcılar (kişi sayısı 3D konum kaydından: houseId)
-  { key: 'kokorecci', region: 'seyyar_satici_1', openKey: 'vendor:seyyar_satici_1', houseId: 'game_kokorecci' },
-  { key: 'simitci', region: 'seyyar_satici_2', openKey: 'vendor:seyyar_satici_2', houseId: 'game_simitci' },
-  { key: 'donerci', region: 'seyyar_satici_3', openKey: 'vendor:seyyar_satici_3', houseId: 'game_donerci' },
-  { key: 'kofteci', region: 'seyyar_satici_4', openKey: 'vendor:seyyar_satici_4', houseId: 'game_kofteci' },
   // v146.4 — Polis Teşkilatı: sadece polisler + başkan, yardımcıları, teşkilat bakanı (diğerlerine kilitli)
   { key: 'teskilat', icon: '🚓', label: 'Polis Teşkilatı', openKey: 'teskilat', houseId: 'game_teskilat', police: true },
 ];
@@ -126,7 +122,6 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
   // v78 — Evler filtresi: içinde kimse olmasa da girebileceğim tüm evler
   const allHouses = useHouseList({ enabled: Boolean(user) && filter === 'houses' });
   const [showAllHouses, setShowAllHouses] = useState(false);
-  const parkList = usePolledPresence('parkPresence', { max: 200 });
   const interiorList = usePolledPresence('interiorPresence', { max: 400 });
   const yVisits = useYesterdayVisits(Boolean(user) && (filter === 'popular' || filter === 'houses'));
   const biz = useBusinessList(isBiz ? filter : null, { enabled: isBiz, includeGame: true });
@@ -139,12 +134,12 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
   useEffect(() => setLockNote(null), [filter]);
 
   const venuePeople = useMemo(() => {
-    const out = { park: parkList.length };
+    const out = {};
     interiorList.forEach((p) => {
       if (p.locationId) out[p.locationId] = (out[p.locationId] || 0) + 1;
     });
     return out;
-  }, [parkList, interiorList]);
+  }, [interiorList]);
 
   const gameItem = (key, yv = 0) => {
     const g = GAME_BY_KEY[key];

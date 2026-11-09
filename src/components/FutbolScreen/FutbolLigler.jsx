@@ -31,8 +31,8 @@ import FutbolSeasonCelebration from './FutbolSeasonCelebration';
 import MatchChat from './MatchChat';
 import './FutbolLigler.css';
 
+// v149 — "Maçlar" sekmesi kaldırıldı: maçlar artık şehirdeki stadyumdan izleniyor
 const SUB_TABS = [
-  { id: 'maclar', label: 'Maçlar' },
   { id: 'puan', label: 'Puan Tablosu' },
   { id: 'fikstur', label: 'Maç Fikstürü' },
   { id: 'kulupler', label: 'Kulüpler' },
@@ -387,9 +387,9 @@ export default function FutbolLigler({ initialTab = 'puan', chatReadOnly = false
         ))}
       </div>
 
+      {/* v149: sezon kutlaması (eskiden Maçlar sekmesindeydi) puan tablosunun üstünde */}
+      {subTab === 'puan' && seasonState.status === 'CELEBRATION_DAY' && <FutbolSeasonCelebration />}
       {subTab === 'puan' && <StandingsTable teams={teams} onSelectTeam={setSelectedTeamId} />}
-
-      {subTab === 'maclar' && seasonState.status === 'CELEBRATION_DAY' && <FutbolSeasonCelebration />}
 
       {/* KULLANICI İSTEĞİ: "bugün kupa maçı varsa maçlar sekmesinde kupa
           maçları gözüksün" — eskiden burada sadece "Kupa sekmesine bak"

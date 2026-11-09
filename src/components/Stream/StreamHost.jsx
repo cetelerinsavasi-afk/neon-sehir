@@ -5,8 +5,6 @@ import { streamAction, createSixtagramPost } from '../../services/gameActions';
 import { createPortal } from 'react-dom';
 import { fmtDur, fmtN, publishThumb, useStreamChat, useStreamGameHealth, watchViewers, DONATION_DAILY_CAP } from './streamShared';
 import { topDonorsShown } from '../../../functions/stream.js';
-import { useFutbolSeasonState } from '../../hooks/useFutbolSeasonState';
-import { isFutbolLineupLockedIstanbul } from '../../lib/istanbulTime';
 import '../../styles/worldScreenChrome.css';
 import './Stream.css';
 
@@ -65,10 +63,9 @@ const HIDDEN_STOP_MS = 20_000; // v81: uygulama/sekme arka planda bu kadar kalı
 // yayıncıda hem izleyicilerde). Sağ altta 🎮 Oyun oyna (oyun salonu / yarış).
 // compact: oyun açıkken arayüz gizlenir ama nabız/izleyici takibi sürer.
 // =============================================================================
-export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopRequest, stopping, statsRef, onPlay, onMatch, compact = false, roomChat = [] }) {
+export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopRequest, stopping, statsRef, onPlay, compact = false, roomChat = [] }) {
   const { user } = useAuth();
   const { isBlocked } = useBlocks();
-  const { state: seasonState } = useFutbolSeasonState();
   const streamId = stream?.id;
   const chat = useStreamChat(streamId, 60);
   const [viewers, setViewers] = useState(0);
@@ -317,13 +314,7 @@ export function StreamHostPanel({ stream, pose, engineRef, onEnded, onStopReques
       )}
 
       <div className="st-hostfs-bottom">
-        {/* v92 — maç saatinde (18:00–19:00, kutlama günü hariç) yayındayken maç izle */}
-        {onMatch && isFutbolLineupLockedIstanbul(now) && seasonState.status !== 'CELEBRATION_DAY' && (
-          <button className="st-match-btn" onClick={onMatch} aria-label="Maçları izle">
-            <span>⚽</span>
-            <small>Maç</small>
-          </button>
-        )}
+        {/* v149: yayında maç izleme kaldırıldı — maçlar artık stadyumdan izleniyor */}
         <div className={`st-hostfs-chat${chatOpen ? ' open' : ''}`} onClick={() => setChatOpen((v) => !v)}>
           {chatOpen && (
             <div className="st-hostfs-chat-head">

@@ -533,3 +533,50 @@
   font-size: 16px;
   line-height: 1;
 }
+
+/* v149 — takım adının yanındaki kalem → forma paneli */
+.futbol-forma-pen {
+  margin-left: 8px;
+  padding: 2px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 14px;
+  line-height: 1.4;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.futbol-forma-pen:active {
+  transform: scale(0.94);
+}
+.futbol-forma-sheet-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+.futbol-forma-sheet {
+  width: 100%;
+  max-width: 560px;
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  background: #12141c;
+  border-radius: 18px 18px 0 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  overflow: hidden;
+}
+.futbol-forma-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.futbol-forma-sheet-body {
+  overflow-y: auto;
+  padding: 6px 4px 16px;
+}

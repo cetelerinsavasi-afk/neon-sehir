@@ -121,7 +121,7 @@ export default function GuestVenueScreen({ venueKey = null, houseId = null, onEx
     setAsk(true);
   };
   const toggleView = () => {
-    const nv = view === '3d' ? '2d' : view === '2d' ? 'fp' : '3d';
+    const nv = view === '3d' ? '2d' : '3d'; // v149: "Göz" görünümü kaldırıldı
     setView(nv);
     engRef.current?.setView(nv);
   };
@@ -160,7 +160,7 @@ export default function GuestVenueScreen({ venueKey = null, houseId = null, onEx
               <span>{design.sub ? `Sahibi: ${design.sub}` : '👀 Misafir olarak geziyorsun'}</span>
             </div>
             <button className="hs-view-btn" onClick={toggleView} title="Görünümü değiştir">
-              {view === '3d' ? '3D' : view === '2d' ? '2D' : '👁️ Göz'}
+              {view === '2d' ? '2D' : '3D'}
             </button>
             <button className="gv-login-btn" onClick={() => setAsk(true)}>
               🔑 Giriş yap
