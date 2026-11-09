@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { MAP_SIZE, homeMapping } from './cityMapMath.js';
+import { regions } from '../../data/regions';
+import { vendorVenueKey } from '../../../functions/vendorData.js';
 import './CityPegman.css';
 
 // =============================================================================
@@ -19,7 +21,17 @@ function dropPoint(cx, cy) {
   const u = ((cx - r.left) / r.width) * MAP_SIZE;
   const v = ((cy - r.top) / r.height) * MAP_SIZE;
   const [x, z] = homeMapping().toWorld(u, v);
-  return Number.isFinite(x) && Number.isFinite(z) ? { x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10 } : null;
+  if (!Number.isFinite(x) || !Number.isFinite(z)) return null;
+  // v147.4: mavi hedef bir binanın / satıcının üstündeyse tam o mekânın kapısında doğ
+  // (harita resmi perspektifli; binanın üstüne bırakınca 3D'de aynı binaya varılsın).
+  // Park / pist gibi açık alanlarda ise tam bırakılan noktaya.
+  let region = null;
+  const el = document.elementFromPoint(cx, cy)?.closest?.('[data-region-idx]');
+  if (el) {
+    const r = regions[Number(el.dataset.regionIdx)];
+    if (r && r.id !== 'park' && r.id !== 'yaris_pisti') region = vendorVenueKey(r.id) || r.id;
+  }
+  return { x: Math.round(x * 10) / 10, z: Math.round(z * 10) / 10, ...(region ? { region } : {}) };
 }
 
 export default function CityPegman({ onTap, onDrop }) {

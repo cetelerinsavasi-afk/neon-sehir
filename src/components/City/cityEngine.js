@@ -336,51 +336,194 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   container.appendChild(layer);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#0a0c1e');
-  scene.fog = new THREE.Fog('#141032', 70, 300);
+  scene.background = new THREE.Color('#0b1838');
+  // v147.4: sis ufuk rengiyle aynı ve daha seyrek (eskiden karanlık, kasvetli)
+  scene.fog = new THREE.Fog('#3a3560', 90, 320);
   const env = shared.env;
   scene.environment = env;
   scene.environmentIntensity = 0.22;
 
-  // gökyüzü kubbesi (gece, mor ufuk — haritadaki gibi)
-  {
+  // --- v147.4 GÖKYÜZÜ ---------------------------------------------------------------
+  // Kubbe kameraya bağlı, her zaman çizim mesafesinin içinde (eskiden görüş mesafesi
+  // kısalınca kubbe kesiliyor, gökyüzü tek renk kalıyordu). Gece mavisi tepe, şehir
+  // ışığıyla aydınlanan ufuk, ince bulutlar, ay + hale, yıldızlar ve uzakta devam eden
+  // şehir silueti (şehir ufka kadar sürüyor hissi; bina değil, tek doku).
+  const skyG = new THREE.Group();
+  skyG.renderOrder = -10;
+  scene.add(skyG);
+  // v147.4 — GÜNÜN SAATİNE GÖRE GÖKYÜZÜ (cihaz saati): 10–17 gündüz · 17–22 gün batımı ·
+  // 22–05 gece · 05–10 gün doğumu. Işık, sis, güneş/ay, yıldızlar ve lambalar da değişir.
+  const TOD = {
+    day: { sky: [[0, '#1c58b0'], [0.28, '#2f77cf'], [0.42, '#559ae0'], [0.48, '#8dbdea'], [0.5, '#b5d3ee'], [0.53, '#9fb7cc'], [1, '#6d7a86']], cloud: [255, 255, 255], cloudA: 0.14, fog: '#93b4dc', bg: '#3f80d0', hemi: ['#d0e0ff', '#5e5246', 0.85], sun: ['#fff1d6', 1.7], lo: [-35, 80, 25], env: 0.5, fogK: 1.5, exp: 1.0, lamps: 0, stars: 0, disc: 'sun', discDir: [-0.35, 0.72, -0.6], band: 0.55 },
+    sunset: { sky: [[0, '#1d2a5c'], [0.25, '#3b3f7e'], [0.4, '#8a5a8e'], [0.47, '#e0785e'], [0.5, '#ffb15a'], [0.53, '#a85c5e'], [1, '#3a2a3a']], cloud: [255, 150, 120], cloudA: 0.2, fog: '#9a6a78', bg: '#5a4a80', hemi: ['#ffc4a8', '#4a3430', 1.0], sun: ['#ffae72', 1.5], lo: [-80, 18, -40], env: 0.45, exp: 1.05, lamps: 0.75, stars: 0.15, disc: 'sun', discDir: [-0.7, 0.08, -0.7], band: 0.9 },
+    night: { sky: [[0, '#050a1c'], [0.22, '#0b1838'], [0.38, '#1a2a5a'], [0.46, '#3d3f78'], [0.495, '#8a5a7e'], [0.5, '#b5737a'], [0.53, '#5b4a7c'], [1, '#1c1830']], cloud: [150, 140, 200], cloudA: 0.1, fog: '#3a3560', bg: '#0b1838', hemi: ['#a3b0ff', '#3a2e28', 0.85], sun: ['#b9c6ff', 0.85], lo: [30, 70, 18], env: 0.22, exp: 1.05, lamps: 1, stars: 1, disc: 'moon', discDir: [-0.42, 0.62, -0.66], band: 1 },
+    sunrise: { sky: [[0, '#3a5ea8'], [0.3, '#6f8ccc'], [0.42, '#c7a6c8'], [0.48, '#ffc7a0'], [0.5, '#ffe0b0'], [0.53, '#b8a6b8'], [1, '#55506a']], cloud: [255, 200, 190], cloudA: 0.2, fog: '#c9b6c4', bg: '#8aa0d0', hemi: ['#ffe0d0', '#5a4a44', 1.05], sun: ['#ffd2a0', 1.7], lo: [80, 22, 30], env: 0.5, exp: 1.0, lamps: 0.35, stars: 0, disc: 'sun', discDir: [0.75, 0.12, 0.62], band: 0.75 },
+  };
+  const todOf = (d = new Date()) => {
+    const h = d.getHours();
+    if (h >= 10 && h < 17) return 'day';
+    if (h >= 17 && h < 22) return 'sunset';
+    if (h >= 22 || h < 5) return 'night';
+    return 'sunrise';
+  };
+  const skyTexCache = new Map();
+  function skyTex(key) {
+    if (skyTexCache.has(key)) return skyTexCache.get(key);
+    const P = TOD[key];
+    const W = 1024;
+    const H = 512;
     const c = document.createElement('canvas');
-    c.width = 4;
-    c.height = 256;
+    c.width = W;
+    c.height = H;
     const g = c.getContext('2d');
-    const gr = g.createLinearGradient(0, 0, 0, 256);
-    gr.addColorStop(0, '#04050d');
-    gr.addColorStop(0.55, '#0b0e24');
-    gr.addColorStop(0.8, '#2a1748');
-    gr.addColorStop(1, '#3a1633');
+    // uv.y: 0 = alt kutup, 0.5 = ufuk, 1 = tepe → tuvalde y=0 tepe, y=H/2 ufuk
+    const gr = g.createLinearGradient(0, 0, 0, H);
+    P.sky.forEach(([o, col]) => gr.addColorStop(o, col));
     g.fillStyle = gr;
-    g.fillRect(0, 0, 4, 256);
+    g.fillRect(0, 0, W, H);
+    // bulutlar: yumuşak lekeler (gece altları şehir ışığıyla aydınlanır)
+    let q = 97;
+    const r = () => ((q = (q * 16807) % 2147483647) - 1) / 2147483646;
+    const [cr, cg, cb] = P.cloud;
+    for (let i = 0; i < 220; i++) {
+      const y = H * (0.18 + r() * 0.3);
+      const x = r() * W;
+      const rw = 30 + r() * 110;
+      const rh = rw * (0.18 + r() * 0.2);
+      const low = (y - H * 0.18) / (H * 0.3);
+      for (const dx of [0, -W, W]) {
+        const rg = g.createRadialGradient(x + dx, y, 0, x + dx, y, rw);
+        const a = (0.4 + r() * 0.6) * P.cloudA * (0.6 + low * 0.6);
+        rg.addColorStop(0, `rgba(${cr},${cg},${cb},${a})`);
+        rg.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+        g.save();
+        g.translate(x + dx, y);
+        g.scale(1, rh / rw);
+        g.translate(-(x + dx), -y);
+        g.fillStyle = rg;
+        g.fillRect(x + dx - rw, y - rw, rw * 2, rw * 2);
+        g.restore();
+      }
+    }
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
-    const sky = new THREE.Mesh(new THREE.SphereGeometry(480, 32, 16), new THREE.MeshBasicMaterial({ map: t, side: THREE.BackSide, fog: false, depthWrite: false }));
-    sky.renderOrder = -10;
-    scene.add(sky);
-    // yıldızlar
-    const sp = new Float32Array(900 * 3);
-    for (let i = 0; i < 900; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const e = 0.15 + Math.random() * 1.3;
-      sp[i * 3] = Math.cos(a) * Math.cos(e) * 460;
-      sp[i * 3 + 1] = Math.sin(e) * 460;
-      sp[i * 3 + 2] = Math.sin(a) * Math.cos(e) * 460;
+    skyTexCache.set(key, t);
+    return t;
+  }
+  let q0 = 41;
+  const skyRnd = () => ((q0 = (q0 * 16807) % 2147483647) - 1) / 2147483646;
+  let dome = null;
+  let stars = null;
+  let moonS = null;
+  let band = null;
+  const discTex = {};
+  {
+    const r = skyRnd;
+    dome = new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), new THREE.MeshBasicMaterial({ map: skyTex('night'), side: THREE.BackSide, fog: false, depthWrite: false, depthTest: false, toneMapped: false }));
+    dome.renderOrder = -10;
+    skyG.add(dome);
+    // yıldızlar (sadece yukarıda, ufka yaklaştıkça sönük)
+    const N = 1200;
+    const sp = new Float32Array(N * 3);
+    const sc = new Float32Array(N * 3);
+    for (let i = 0; i < N; i++) {
+      const a = r() * Math.PI * 2;
+      const e = 0.12 + Math.pow(r(), 0.7) * 1.45;
+      sp[i * 3] = Math.cos(a) * Math.cos(e) * 0.97;
+      sp[i * 3 + 1] = Math.sin(e) * 0.97;
+      sp[i * 3 + 2] = Math.sin(a) * Math.cos(e) * 0.97;
+      const k = Math.min(1, (e - 0.12) / 0.5) * (0.4 + r() * 0.6);
+      sc[i * 3] = 0.8 * k + 0.2 * k * r();
+      sc[i * 3 + 1] = 0.85 * k;
+      sc[i * 3 + 2] = k;
     }
     const sg = new THREE.BufferGeometry();
     sg.setAttribute('position', new THREE.BufferAttribute(sp, 3));
-    scene.add(new THREE.Points(sg, new THREE.PointsMaterial({ color: '#cfd8ff', size: 1.4, sizeAttenuation: false, fog: false, transparent: true, opacity: 0.8 })));
-    const moon = new THREE.Mesh(new THREE.SphereGeometry(10, 24, 16), new THREE.MeshBasicMaterial({ color: '#fff1d6', fog: false }));
-    moon.position.set(-180, 260, -300);
-    scene.add(moon);
+    sg.setAttribute('color', new THREE.BufferAttribute(sc, 3));
+    stars = new THREE.Points(sg, new THREE.PointsMaterial({ size: 1.6, sizeAttenuation: false, fog: false, vertexColors: true, transparent: true, depthWrite: false, depthTest: false }));
+    stars.renderOrder = -9;
+    skyG.add(stars);
+    // ay + hale
+    const halo = document.createElement('canvas');
+    halo.width = halo.height = 128;
+    const hg = halo.getContext('2d');
+    const hr = hg.createRadialGradient(64, 64, 0, 64, 64, 64);
+    hr.addColorStop(0, 'rgba(255,246,225,1)');
+    hr.addColorStop(0.16, 'rgba(255,240,210,1)');
+    hr.addColorStop(0.2, 'rgba(210,215,255,0.35)');
+    hr.addColorStop(0.5, 'rgba(150,160,230,0.1)');
+    hr.addColorStop(1, 'rgba(120,130,220,0)');
+    hg.fillStyle = hr;
+    hg.fillRect(0, 0, 128, 128);
+    const ht = new THREE.CanvasTexture(halo);
+    ht.colorSpace = THREE.SRGBColorSpace;
+    discTex.moon = ht;
+    // güneş: sıcak, geniş hale
+    const sunC = document.createElement('canvas');
+    sunC.width = sunC.height = 128;
+    const sg2 = sunC.getContext('2d');
+    const sr = sg2.createRadialGradient(64, 64, 0, 64, 64, 64);
+    sr.addColorStop(0, 'rgba(255,255,245,1)');
+    sr.addColorStop(0.12, 'rgba(255,250,225,1)');
+    sr.addColorStop(0.2, 'rgba(255,220,160,0.55)');
+    sr.addColorStop(0.5, 'rgba(255,190,120,0.15)');
+    sr.addColorStop(1, 'rgba(255,170,100,0)');
+    sg2.fillStyle = sr;
+    sg2.fillRect(0, 0, 128, 128);
+    discTex.sun = new THREE.CanvasTexture(sunC);
+    discTex.sun.colorSpace = THREE.SRGBColorSpace;
+    moonS = new THREE.Sprite(new THREE.SpriteMaterial({ map: ht, fog: false, depthWrite: false, depthTest: false, transparent: true }));
+    moonS.position.set(-0.42, 0.62, -0.66).normalize().multiplyScalar(0.95);
+    moonS.scale.setScalar(0.22);
+    moonS.renderOrder = -8;
+    skyG.add(moonS);
+    // uzak şehir silueti (ufkun hemen üstü; ışıklı pencereler)
+    const SW = 2048;
+    const SH = 128;
+    const sc2 = document.createElement('canvas');
+    sc2.width = SW;
+    sc2.height = SH;
+    const s2 = sc2.getContext('2d');
+    let x = 0;
+    while (x < SW) {
+      const bw = 14 + r() * 46;
+      const bh = 18 + r() * (r() < 0.15 ? 105 : 60);
+      s2.fillStyle = `rgb(${18 + r() * 10},${16 + r() * 10},${34 + r() * 16})`;
+      s2.fillRect(x, SH - bh, bw, bh);
+      for (let wy = SH - bh + 4; wy < SH - 3; wy += 5) {
+        for (let wx = x + 3; wx < x + bw - 3; wx += 4) {
+          if (r() < 0.22) {
+            s2.fillStyle = r() < 0.7 ? 'rgba(255,214,140,0.85)' : 'rgba(150,220,255,0.8)';
+            s2.fillRect(wx, wy, 1.5, 2);
+          }
+        }
+      }
+      if (r() < 0.08) {
+        s2.fillStyle = 'rgba(255,60,80,0.9)';
+        s2.fillRect(x + bw / 2 - 1, SH - bh - 3, 2, 2);
+      }
+      x += bw + r() * 3;
+    }
+    const st = new THREE.CanvasTexture(sc2);
+    st.colorSpace = THREE.SRGBColorSpace;
+    st.wrapS = THREE.RepeatWrapping;
+    st.repeat.set(2, 1);
+    band = new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.11, 64, 1, true), new THREE.MeshBasicMaterial({ map: st, side: THREE.BackSide, fog: false, transparent: true, depthWrite: false, depthTest: false }));
+    band.position.y = 0.055 - 0.004;
+    band.renderOrder = -7;
+    skyG.add(band);
+  }
+  // kubbe her karede kameranın etrafında, çizim mesafesinin içinde
+  function placeSky(cam = camera) {
+    skyG.position.set(cam.position.x, 0, cam.position.z);
+    skyG.scale.setScalar(Math.max(60, cam.far * 0.9));
+    skyG.updateMatrixWorld(true);
   }
 
   const camera = new THREE.PerspectiveCamera(60, 1, IS_MOBILE ? 0.3 : 0.15, 900);
   camera.rotation.order = 'YXZ';
 
-  const hemi = new THREE.HemisphereLight('#8f9cff', '#2a211c', 0.72);
+  const hemi = new THREE.HemisphereLight('#a3b0ff', '#3a2e28', 0.85);
   scene.add(hemi);
   const moonL = new THREE.DirectionalLight('#b9c6ff', 0.85);
   moonL.castShadow = true;
@@ -398,6 +541,40 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     scene.add(l);
     pool.push(l);
   }
+  // --- günün saati uygula ---------------------------------------------------------------
+  let tod = null;
+  let fogK = 1; // gündüz sis daha uzakta (berrak hava)
+  let lightsReady = false; // ışık listesi şehir kurulunca hazır
+  let lampMul = 1;
+  let sunLo = TOD.night.lo;
+  function applyTod(key) {
+    if (!TOD[key] || key === tod) return;
+    tod = key;
+    const P = TOD[key];
+    dome.material.map = skyTex(key);
+    dome.material.needsUpdate = true;
+    scene.background.set(P.bg);
+    scene.fog.color.set(P.fog);
+    hemi.color.set(P.hemi[0]);
+    hemi.groundColor.set(P.hemi[1]);
+    hemi.intensity = P.hemi[2];
+    moonL.color.set(P.sun[0]);
+    moonL.intensity = P.sun[1];
+    sunLo = P.lo;
+    scene.environmentIntensity = P.env;
+    fogK = P.fogK || 1; // cull() 0,2 sn içinde sisi günceller
+    renderer.toneMappingExposure = P.exp;
+    lampMul = P.lamps;
+    stars.visible = P.stars > 0;
+    stars.material.opacity = P.stars;
+    moonS.material.map = discTex[P.disc];
+    moonS.material.needsUpdate = true;
+    moonS.position.set(...P.discDir).normalize().multiplyScalar(0.95);
+    moonS.scale.setScalar(P.disc === 'sun' ? 0.3 : 0.22);
+    band.material.opacity = P.band;
+    if (lightsReady) updateLights(true);
+  }
+  applyTod(todOf());
 
   // --- şehri kur ---------------------------------------------------------------
   const city = buildCity();
@@ -728,6 +905,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   const REGION_LOT = { camii: 'camii', karakol: 'karakol', banka: 'banka', spor_salonu: 'spor', belediye: 'belediye', silah_magazasi: 'silah', araba_galerisi: 'galeri', fabrika: 'fabrika', internet_kafe: 'netkafe', modifiye_garaji: 'modifiye', casino: 'casino', park: 'park', bar: 'bar', cafe: 'cafe', yaris_pisti: 'pist', stadyum: 'stadyum', ev: 'ev', liman_depo: 'liman' };
   function spawnPoint(key) {
     // v147.3: ana sayfada haritaya bırakılan nokta { x, z }
+    if (key && typeof key === 'object' && key.region && (REGION_LOT[key.region] || zones.some((z) => z.kind === 'vendor' && z.vendor === key.region))) return spawnPoint(key.region);
     if (key && typeof key === 'object' && Number.isFinite(key.x) && Number.isFinite(key.z)) {
       return { x: clamp(key.x, BOUNDS.x0 + 2, BOUNDS.x1 - 2), z: clamp(key.z, BOUNDS.z0 + 2, Math.min(BOUNDS.z1 - 2, COAST_Z + 1)), yaw: Math.PI };
     }
@@ -743,7 +921,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     }
     const dz = zones.find((z) => z.kind === 'door' && z.type === lt) || (lt === 'pist' ? zones.find((z) => z.kind === 'pist') : null);
     // v147.3: kapının önünde, yüz YOLA dönük (kamera arkada, binanın tarafında)
-    if (dz) return { x: dz.x + Math.sin(dz.out) * 1.6, z: dz.z + Math.cos(dz.out) * 1.6, yaw: dz.out + Math.PI };
+    // kapıdan biraz uzakta + kamera yukarıdan (kamera binaya çarpıp avatarın dibine girmesin)
+    if (dz) return { x: dz.x + Math.sin(dz.out) * 3.4, z: dz.z + Math.cos(dz.out) * 3.4, yaw: dz.out + Math.PI, pitch: 0.62 };
     const l = city.lots.find((q) => q.type === lt) || city.lots.find((q) => q.type === 'ev');
     return { x: l.mx, z: l.mz + l.bd / 2 + 1.6, yaw: Math.PI };
   }
@@ -765,7 +944,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       }
     }
   }
-  const self = { x: sp0f.x, z: sp0f.z, camYaw: sp0.yaw, camPitch: 0.32, camDist: 6.2, target: null, path: null, run: false, ride: null };
+  const self = { x: sp0f.x, z: sp0f.z, camYaw: sp0.yaw, camPitch: sp0.pitch ?? 0.32, camDist: 6.2, target: null, path: null, run: false, ride: null };
   let lastEmote = { e: null, et: 0 };
   const me = new Fig(scene, layer, { id: 'self', name, avatar, isSelf: true });
   me.x = self.x;
@@ -1630,6 +1809,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   let paused = false;
   let first = true;
   let lightT = 0;
+  let todT = 30;
   let zoneKey = '';
   let tickT = 0;
   let npcTalkT = 3;
@@ -1809,7 +1989,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       }
       pl.position.set(n.L.x, n.L.y, n.L.z);
       pl.color.copy(n.L.color);
-      pl.intensity = n.L.intensity * 1.15;
+      pl.intensity = n.L.intensity * 1.15 * lampMul;
       pl.distance = n.L.distance * 1.2;
     });
     void force;
@@ -1919,7 +2099,12 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       lightT = 0.25;
       updateLights();
     }
-    moonL.position.set(self.x + 30, 70, self.z + 18);
+    moonL.position.set(self.x + sunLo[0], sunLo[1], self.z + sunLo[2]);
+    todT -= dt;
+    if (todT <= 0) {
+      todT = 30;
+      applyTod(todOf());
+    }
     moonL.target.position.set(self.x, 0, self.z);
     placeCamera(dt);
     // etkileşim bölgesi
@@ -1989,6 +2174,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       camera.aspect = w / Math.max(1, h);
       camera.updateProjectionMatrix();
     }
+    placeSky();
     renderer.render(scene, camera);
     // etiketler
     const figs = [me, ...npcs];
@@ -2024,8 +2210,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const cx0 = view2d() ? camTarget.x : self.x;
     const cz0 = view2d() ? camTarget.z : self.z;
     for (const c of cullItems) c.o.visible = Math.hypot(c.x - cx0, c.z - cz0) - c.r < view;
-    scene.fog.near = view * 0.45;
-    scene.fog.far = view + 15;
+    scene.fog.near = Math.min(view * 0.6 * fogK, view);
+    scene.fog.far = view + 20;
     if (Math.abs(camera.far - (view + 60)) > 1) {
       camera.far = view + 60;
       camera.updateProjectionMatrix();
@@ -2101,6 +2287,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     render();
     first = false;
   }
+  lightsReady = true;
   if (!snapshot) applyTier();
   updateLights(true);
   // ilk kare (doku/gölgelendirici derlemesi) sonra hazır
@@ -2151,7 +2338,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       if (!c.v.root.visible || Math.hypot(c.x - self.x, c.z - self.z) > VIS_DIST) return;
       cars.push({ o: uid, v: c.id, x: r2(c.x), z: r2(c.z), y: r2(c.y), r: r3(c.yaw), st: r2(c.steer || 0) });
     });
-    return { cam, people, cars: cars.slice(0, 8) };
+    return { cam, people, cars: cars.slice(0, 8), tod };
   }
   function drawShotLabels(ctx, W, H, s, list) {
     const font = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
@@ -2325,7 +2512,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       camera.updateProjectionMatrix();
       save.fog = fogSave;
       updateLights(true, fp.x, fp.z);
-      moonL.position.set(fp.x + 30, 70, fp.z + 18);
+      // fotoğraf çekildiği saatin ışığıyla
+      const todSave = tod;
+      if (att.tod && TOD[att.tod]) applyTod(att.tod);
+      save.tod = todSave;
+      moonL.position.set(fp.x + sunLo[0], sunLo[1], fp.z + sunLo[2]);
       moonL.target.position.set(fp.x, 0, fp.z);
       moonL.target.updateMatrixWorld();
       const now = performance.now();
@@ -2371,6 +2562,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         n.update(0, camera, now);
         labels.push({ f: n, says: [] });
       });
+      placeSky();
       renderer.render(scene, camera);
       const c2 = document.createElement('canvas');
       c2.width = w;
@@ -2401,6 +2593,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       camera.updateProjectionMatrix();
       camera.userData.billboardYaw = save.bb;
       camera.userData.billboardEl = save.bbe;
+      if (save.tod && save.tod !== tod) applyTod(save.tod);
       moonL.position.copy(save.moon);
       moonL.target.position.copy(save.moonT);
       moonL.target.updateMatrixWorld();
@@ -2522,6 +2715,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     upsertCar,
     removeCar,
     debugRemote: (id) => ({ car: rcars.get(id) && { x: rcars.get(id).x, z: rcars.get(id).z }, fig: remotes.get(id) && { x: remotes.get(id).fig.x, z: remotes.get(id).fig.z } }),
+    setTod: (k) => applyTod(k),
+    look(yaw, pitch) {
+      if (yaw != null) self.camYaw = yaw;
+      if (pitch != null) self.camPitch = pitch;
+    },
     remoteCount: () => [...remotes.values()].filter((r) => (r.d ?? 999) < VIS_DIST).length,
     playerSay(uid, text) {
       remotes.get(uid)?.fig.say(text);
@@ -2567,6 +2765,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       const p = spawnPoint(key);
       api.teleport(p.x, p.z);
       self.camYaw = p.yaw;
+      if (p.pitch != null) self.camPitch = p.pitch;
     },
     hidden(on) {
       if (on) sound.idle(false);

@@ -114,9 +114,9 @@ export function buildPark(kit, lot) {
   kit.item('kaydirak', px - 2, 5, 2, 0);
   kit.item('salincak', px + 2, 1.5, 0, 0);
   kit.item('parkbench', px - 3.8, -3.2, 0, 0);
-  // şüpheli adam — v147.3: gür ağaçların arasında (sol üst köşe, yollardan uzak)
-  const sx = -w / 2 + 4.2;
-  const sz = d / 2 - 4.2;
+  // şüpheli adam — v147.4: fıskiye meydanının hemen arkasındaki gür ağaçlıkta
+  const sx = 12.5;
+  const sz = d / 2 - 3.6;
   kit.item('copkutusu', sx + 1.1, sz + 0.6, 0, 0);
   const sup = V.npcs.find((n) => n.id === 'npc_supheli');
   kit.npcs.push({ ...sup, x: sx, z: sz });
@@ -126,8 +126,8 @@ export function buildPark(kit, lot) {
     const rr = 2.6 + (i % 3) * 0.9;
     const tx = sx + Math.cos(a) * rr;
     const tz = sz + Math.sin(a) * rr;
-    if (Math.abs(tx - sx - 0.4) < 1.3 && tz < sz) continue; // yanına giden boşluk
-    if (tx < -w / 2 + 0.9 || tz > d / 2 - 0.9 || Math.abs(tx - gaps[0]) < 1.8) continue;
+    if (Math.abs(tx - sx - 0.4) < 1.3 && tz < sz) continue; // meydandan yanına giden boşluk
+    if (tz > d / 2 - 0.9 || tz < 6.2 || gaps.some((gp) => Math.abs(tx - gp) < 1.8)) continue;
     kit.item(i % 4 ? 'tree' : 'plantb', tx, tz, i, 0, { scale: 1.3 + (i % 3) * 0.25, solid: i % 4 !== 0 });
   }
   // doğma noktası: 4 banklı fıskiye meydanı (aşağıda) — parka tıklayınca orada doğulur

@@ -205,7 +205,9 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
       picked[i].a = u.avatar || null;
     });
 
-    const att = { type: 'cityPhoto', cam, people: picked, cars, vert: true };
+    // v147.4: çekildiği saatin gökyüzü (gündüz / gün batımı / gece / gün doğumu)
+    const tod = ['day', 'sunset', 'night', 'sunrise'].includes(p?.tod) ? p.tod : null;
+    const att = { type: 'cityPhoto', cam, people: picked, cars, vert: true, ...(tod ? { tod } : {}) };
     const body = JSON.stringify({ uid, at: t, att });
     if (body.length > 120_000) fail('resource-exhausted', 'Fotoğraf çok kalabalık.');
     return { shot: body, sig: await sign(body), att };
