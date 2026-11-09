@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react';
+import { copyText as clipboardOrNative } from '../../lib/nativeBridge';
 
 // Uzun basma (mobil) + sağ tık (masaüstü). Kaydırma ya da parmak hareketi
 // iptal eder; kısa dokunuş normal davranışı bozmaz.
@@ -43,9 +44,11 @@ export function useLongPress(onLongPress, { ms = 450 } = {}) {
 }
 
 // Metni panoya kopyala (eski tarayıcılar için yedekli)
+// v148: navigator.clipboard başarısızsa Android WebView'da native pano denenir
+// (tarayıcıda/TWA'da clipboardOrNative = navigator.clipboard.writeText).
 export async function copyText(text) {
   try {
-    await navigator.clipboard.writeText(text);
+    await clipboardOrNative(text);
     return true;
   } catch {
     try {

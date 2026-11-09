@@ -23,7 +23,7 @@ import { regions } from './data/regions';
 import { BIZ_BY_REGION } from '../functions/businessCatalogData.js';
 import { vendorVenueKey, VENDORS } from '../functions/vendorData.js';
 import CityPegman from './components/City/CityPegman'; // v147.3 — sürükle-bırak ile şehre gir
-import { IS_ANDROID_APP } from './lib/platform';
+import { IS_ANDROID_APP, IS_ANDROID_WEBVIEW } from './lib/platform';
 import { quietRestorePlayPurchases } from './lib/playBilling';
 import { exitApp, installBackHandler, rearmBack, useBackClose } from './lib/backStack';
 import ConfirmModal from './components/ConfirmModal/ConfirmModal';
@@ -140,7 +140,8 @@ function GameShell() {
   // kesildi, uygulama kapandı) satın almalar uygulama açılınca ve öne
   // gelince sessizce tamamlanır. Zümrüt yüklenince oyuncuya SMS de gider.
   useEffect(() => {
-    if (!IS_ANDROID_APP || !user) return undefined;
+    // v148: WebView kabuğunda Play Faturalandırma (Digital Goods API) yok — hiçbir şey yapma.
+    if (!IS_ANDROID_APP || IS_ANDROID_WEBVIEW || !user) return undefined;
     const t = setTimeout(() => quietRestorePlayPurchases(), 4000);
     const onVis = () => document.visibilityState === 'visible' && quietRestorePlayPurchases();
     document.addEventListener('visibilitychange', onVis);

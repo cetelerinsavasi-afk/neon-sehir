@@ -4,6 +4,7 @@ import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { requestAccountDeletion } from '../../services/gameActions';
+import { copyText } from '../../lib/nativeBridge';
 import '../ConfirmModal/ConfirmModal.css';
 import './DeleteAccountRequest.css';
 
@@ -74,7 +75,7 @@ export default function DeleteAccountRequest() {
 
   const copyUid = async () => {
     try {
-      await navigator.clipboard.writeText(user.uid);
+      await copyText(user.uid); // v148: WebView'da native pano yedeği
       setCopied(true);
     } catch {
       // Pano engelli olabilir — kod ekranda seçilebilir durumda.

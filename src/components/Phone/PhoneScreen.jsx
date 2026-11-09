@@ -16,7 +16,7 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { useUnreadNotifications, markSixtagramSeen } from '../../hooks/useUnreadNotifications';
 import { useSocial } from '../../contexts/SocialContext';
 import { OPEN_DM_EVENT } from '../../lib/chatsappNav';
-import { IS_ANDROID_APP } from '../../lib/platform';
+import { IS_ANDROID_APP, IS_ANDROID_WEBVIEW } from '../../lib/platform';
 import { useBackClose } from '../../lib/backStack';
 import './PhoneScreen.css';
 
@@ -52,8 +52,12 @@ const GOLD_STORE_APP_ID = 'altin-magazasi';
 // alma Google Play Faturalandırma ile yapılıyor (bkz. GoldStoreScreen /
 // lib/playBilling.js). Gerekirse tekrar kapatmak için bu bayrağı false yap.
 const ANDROID_STORE_ENABLED = true;
-const isAppBlocked = (id) => IS_ANDROID_APP && !ANDROID_STORE_ENABLED && id === GOLD_STORE_APP_ID;
-const VISIBLE_EXTRA_APPS = IS_ANDROID_APP && !ANDROID_STORE_ENABLED
+// v148: Yeni Android WebView uygulamasında Digital Goods API yok → bu adımda
+// mağaza SADECE WebView kabuğunda kapalı (native Play Faturalandırma 2. adımda).
+// Eski TWA'da (IS_ANDROID_TWA) ANDROID_STORE_ENABLED davranışı aynen sürer.
+const STORE_BLOCKED = IS_ANDROID_WEBVIEW || (IS_ANDROID_APP && !ANDROID_STORE_ENABLED);
+const isAppBlocked = (id) => STORE_BLOCKED && id === GOLD_STORE_APP_ID;
+const VISIBLE_EXTRA_APPS = STORE_BLOCKED
   ? EXTRA_APPS.filter((app) => app.id !== GOLD_STORE_APP_ID)
   : EXTRA_APPS;
 const DOCK = [

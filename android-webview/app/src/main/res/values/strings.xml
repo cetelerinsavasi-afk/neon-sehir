@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Neon Şehir</string>
+    <string name="offline_title">Bağlantı yok</string>
+    <string name="offline_body">İnternet bağlantını kontrol edip tekrar dene.</string>
+    <string name="offline_crash_body">Oyun beklenmedik şekilde kapandı.</string>
+    <string name="retry">Tekrar dene</string>
+    <string name="downloaded">İndirildi: %1$s</string>
+    <string name="download_failed">Dosya kaydedilemedi.</string>
+    <string name="no_app_to_open">Bu bağlantıyı açacak uygulama bulunamadı.</string>
+</resources>

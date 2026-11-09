@@ -12,7 +12,7 @@
 // Ürün kimlikleri Play Console'daki "Ürün kimliği" ile BİREBİR aynı olmalı
 // (sunucuda: functions/playBilling.js > PLAY_PRODUCT_TO_PACKAGE).
 // =============================================================================
-import { IS_ANDROID_APP } from './platform';
+import { IS_ANDROID_APP, IS_ANDROID_WEBVIEW } from './platform';
 import { verifyPlayPurchase } from '../services/gameActions';
 
 export const PLAY_BILLING_METHOD = 'https://play.google.com/billing';
@@ -29,7 +29,8 @@ let servicePromise = null;
 // Play Faturalandırma bu cihazda kullanılabilir mi? (Android uygulaması +
 // uygulama kabuğu faturalandırma destekli sürüm + Chrome 101+)
 export async function getPlayBillingService() {
-  if (!IS_ANDROID_APP || typeof window === 'undefined' || !('getDigitalGoodsService' in window)) return null;
+  // v148: WebView kabuğunda Digital Goods API yok (native faturalandırma 2. adımda).
+  if (!IS_ANDROID_APP || IS_ANDROID_WEBVIEW || typeof window === 'undefined' || !('getDigitalGoodsService' in window)) return null;
   if (!servicePromise) {
     servicePromise = window.getDigitalGoodsService(PLAY_BILLING_METHOD).catch((err) => {
       console.warn('Play Faturalandırma kullanılamıyor:', err);

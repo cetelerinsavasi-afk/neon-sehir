@@ -8,6 +8,7 @@ import altin30kImage from '../../assets/goldStore/altin30k.jpg';
 import altin100kImage from '../../assets/goldStore/altin100k.jpg';
 import { IS_ANDROID_APP, ANDROID_UPDATE_REQUIRED, PLAY_STORE_URL } from '../../lib/platform';
 import { PLAY_PRODUCTS, getPlayBillingService, getPlayPrices, buyWithPlay, restorePlayPurchases } from '../../lib/playBilling';
+import { copyText } from '../../lib/nativeBridge';
 import './GoldStoreScreen.css';
 
 // v66 — ZÜMRÜT MAĞAZASI (eski Altın Mağazası).
@@ -180,7 +181,7 @@ export default function GoldStoreScreen() {
   const handleCopy = async () => {
     if (!code) return;
     try {
-      await navigator.clipboard.writeText(code);
+      await copyText(code); // v148: WebView'da native pano yedeği
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {

@@ -5,6 +5,8 @@
 // =============================================================================
 import { renderSong } from './songEngine';
 import { songFileName } from '../../functions/homeOfficeData.js';
+import { IS_ANDROID_WEBVIEW } from './platform';
+import { hasNativeBridge, nativeSaveBlob } from './nativeBridge';
 
 const KBPS = 160;
 
@@ -38,6 +40,14 @@ export async function songToMp3Blob(song) {
 export async function downloadSongMp3(song, title) {
   const blob = await songToMp3Blob(song);
   const name = songFileName(title ?? song?.title);
+  // v148: Android WebView'da blob: + download çalışmaz → native köprü dosyayı
+  // İndirilenler klasörüne kaydeder (512 KB'lık parçalarla). Tarayıcıda/TWA'da
+  // aşağıdaki mevcut indirme aynen çalışır.
+  if (IS_ANDROID_WEBVIEW && hasNativeBridge()) {
+    const r = await nativeSaveBlob(blob, name, 'audio/mpeg');
+    if (!r || !r.ok) throw new Error(r?.error || 'Şarkı kaydedilemedi.');
+    return { name: r.name || name, bytes: blob.size };
+  }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

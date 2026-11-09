@@ -3,6 +3,7 @@ import { BIZ_TYPES, BIZ_ITEM_LABELS, ownedCounts, applyBizChoice } from '../../.
 import { ITEM_PRICES } from '../../../functions/houseCatalogData.js';
 import { CATALOG_MAP } from './houseCatalog';
 import ItemThumb from './ItemThumb';
+import { IS_ANDROID_WEBVIEW } from '../../lib/platform';
 import '../../styles/bizui.css';
 import './HouseBusiness.css';
 
@@ -201,7 +202,7 @@ export function FillConfirm({ type, m: baseM, gold = 0, gem = 0, busy, onConfirm
             <span>Cebindeki zümrüt</span>
             <b className={poorGem ? 'bz-bad' : ''}>{fmt(gem)}</b>
           </div>
-          {(poorGold || poorGem) && <p className="bz-warn">{poorGold ? 'Altının yetmiyor. ' : ''}{poorGem ? 'Zümrütün yetmiyor (Telefon › Zümrüt Mağazası).' : ''}</p>}
+          {(poorGold || poorGem) && <p className="bz-warn">{poorGold ? 'Altının yetmiyor. ' : ''}{poorGem ? (IS_ANDROID_WEBVIEW ? 'Zümrütün yetmiyor.' : 'Zümrütün yetmiyor (Telefon › Zümrüt Mağazası).') : ''}</p>}
         </div>
         <div className="bz-btns">
           <button className="bz-btn ghost" disabled={busy} onClick={onCancel}>

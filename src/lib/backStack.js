@@ -11,6 +11,7 @@
 // Web tarayıcısında (sekmede) devre dışıdır — tarayıcının geri tuşu bozulmasın.
 import { useEffect, useRef } from 'react';
 import { IS_ANDROID_APP } from './platform';
+import { nativeExitApp } from './nativeBridge';
 
 function standalone() {
   try {
@@ -91,7 +92,9 @@ export function rearmBack() {
 
 // "Çık": tarayıcı izin verirse pencereyi kapatır; vermezse (TWA'da sayfa kendini
 // kapatamayabilir) kök kayıttayız — bir sonraki geri tuşu uygulamayı kapatır.
+// v148: Android WebView uygulamasında window.close() işe yaramaz → native finish().
 export function exitApp() {
+  if (nativeExitApp()) return;
   try {
     window.close();
   } catch {

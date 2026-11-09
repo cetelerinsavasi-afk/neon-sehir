@@ -12,6 +12,16 @@
 //   3) Aynı sekme oturumunda daha önce 1 veya 2 görülmüş olması
 //      (sessionStorage'daki işaret — sayfa yenilense de TWA'da kalır)
 //
+// v148 — Android WebView kabuğu (android-webview/, versionCode 14+) için ek
+// sinyaller (herhangi biri yeterli):
+//   4) Açılış URL'inde ?src=app
+//   5) navigator.userAgent içinde KENDİ ekimiz "NeonSehirApp/<sürüm>"
+//      (genel "Android"/"wv" ifadeleri ile tespit YAPILMAZ — bkz. aşağısı)
+//   6) window.NeonAndroid köprüsünün varlığı (sadece bizim uygulama ekler)
+// Bu sinyallerden biri varsa IS_ANDROID_WEBVIEW = true; eski TWA sinyalleri
+// (1-3) aynen geçerli ve IS_ANDROID_TWA'yı verir. IS_ANDROID_APP ikisinde de
+// true'dur (Shopier gizleme vb. mevcut mantık WebView'ı da kapsar).
+//
 // Hiçbiri yoksa → WEB. Varsayılan her zaman WEB'dir; herhangi bir hata
 // (sessionStorage erişimi engelli vb.) de WEB sonucunu verir.
 //
@@ -34,7 +44,11 @@ export const PLATFORM_ANDROID = 'android';
 
 const TWA_QUERY_KEY = 'src';
 const TWA_QUERY_VALUE = 'twa';
+const APP_QUERY_VALUE = 'app'; // v148: WebView kabuğunun açılış adresi /?src=app&av=N
+// v148: WebView kabuğu UA'nın sonuna " NeonSehirApp/<versionCode>" ekler.
+const APP_UA_RE = /\bNeonSehirApp\/(\d+)/;
 const SESSION_KEY = 'ns_platform';
+const SHELL_SESSION_KEY = 'ns_shell'; // v148: 'webview' (sadece WebView kabuğunda yazılır)
 // v91: Android uygulama sürümü (açılış adresindeki ?av=N). 1.0.12'den (12)
 // önceki sürümlerin açılış adresinde av yoktur → 0 sayılır.
 const APP_VERSION_QUERY_KEY = 'av';
@@ -46,6 +60,16 @@ const APP_VERSION_SESSION_KEY = 'ns_app_ver';
 export const MIN_ANDROID_APP_VERSION = 12;
 export const PLAY_STORE_URL = 'https://play.google.com/store/apps/details?id=com.cetelerinsavasi.twa';
 
+function uaAppVersion() {
+  try {
+    const m = APP_UA_RE.exec(navigator.userAgent || '');
+    const v = m ? Number(m[1]) : 0;
+    return Number.isInteger(v) && v > 0 ? v : 0;
+  } catch {
+    return 0;
+  }
+}
+
 function captureAppVersion() {
   try {
     const v = Number(new URLSearchParams(window.location.search).get(APP_VERSION_QUERY_KEY));
@@ -54,10 +78,12 @@ function captureAppVersion() {
       return v;
     }
     const s = Number(window.sessionStorage.getItem(APP_VERSION_SESSION_KEY));
-    return Number.isInteger(s) && s > 0 ? s : 0;
+    if (Number.isInteger(s) && s > 0) return s;
   } catch {
-    return 0;
+    // sessionStorage kapalı olabilir — aşağıdaki UA yedeğine düş
   }
+  // v148: WebView kabuğunda sürüm UA ekinden de okunur (yenilemede kaybolmaz).
+  return uaAppVersion();
 }
 // Modül yüklenirken, URL temizlenmeden ÖNCE okunur.
 const CAPTURED_APP_VERSION = typeof window === 'undefined' ? 0 : captureAppVersion();
@@ -71,6 +97,56 @@ function hasTwaQueryParam() {
   try {
     const params = new URLSearchParams(window.location.search);
     return params.get(TWA_QUERY_KEY) === TWA_QUERY_VALUE;
+  } catch {
+    return false;
+  }
+}
+
+function hasAppQueryParam() {
+  try {
+    return new URLSearchParams(window.location.search).get(TWA_QUERY_KEY) === APP_QUERY_VALUE;
+  } catch {
+    return false;
+  }
+}
+
+function hasAppUserAgent() {
+  try {
+    return APP_UA_RE.test(navigator.userAgent || '');
+  } catch {
+    return false;
+  }
+}
+
+function hasNativeBridge() {
+  try {
+    return typeof window.NeonAndroid === 'object' && window.NeonAndroid !== null;
+  } catch {
+    return false;
+  }
+}
+
+function readShellFlag() {
+  try {
+    return window.sessionStorage.getItem(SHELL_SESSION_KEY) === 'webview';
+  } catch {
+    return false;
+  }
+}
+
+// v148: WebView kabuğu mu? (sinyal 4, 5 veya 6; ya da bu sekmede daha önce görüldü)
+function detectWebViewShell() {
+  try {
+    if (typeof window === 'undefined') return false;
+    if (hasAppQueryParam() || hasAppUserAgent() || hasNativeBridge()) {
+      try {
+        window.sessionStorage.setItem(SHELL_SESSION_KEY, 'webview');
+      } catch {
+        /* sessionStorage kapalı — UA/köprü her açılışta zaten var */
+      }
+      return true;
+    }
+    return readShellFlag();
   } catch {
     return false;
   }
@@ -103,14 +179,15 @@ function writeSessionFlag() {
   }
 }
 
-// ?src=twa parametresini adres çubuğundan sessizce siler (sayfa yeniden
+// ?src=twa (v148: veya ?src=app) parametresini adres çubuğundan sessizce siler (sayfa yeniden
 // yüklenmez, geçmişe yeni kayıt eklenmez). Diğer parametreler ve #hash
 // aynen korunur. SADECE Android tespitinden sonra ve parametre gerçekten
 // src=twa ise çalışır — web'de hiçbir zaman çağrılmaz.
 function stripTwaQueryParam() {
   try {
     const url = new URL(window.location.href);
-    if (url.searchParams.get(TWA_QUERY_KEY) !== TWA_QUERY_VALUE) return;
+    const src = url.searchParams.get(TWA_QUERY_KEY);
+    if (src !== TWA_QUERY_VALUE && src !== APP_QUERY_VALUE) return;
     url.searchParams.delete(TWA_QUERY_KEY);
     url.searchParams.delete(APP_VERSION_QUERY_KEY);
     const cleaned = url.pathname + url.search + url.hash;
@@ -121,10 +198,19 @@ function stripTwaQueryParam() {
   }
 }
 
+// Modül yüklenirken, URL temizlenmeden ÖNCE hesaplanır.
+const WEBVIEW_SHELL = detectWebViewShell();
+
 function detectPlatform() {
   try {
     if (typeof window === 'undefined' || typeof document === 'undefined') {
       return PLATFORM_WEB;
+    }
+    // v148: WebView kabuğu — UA eki / köprü her yenilemede zaten var.
+    if (WEBVIEW_SHELL) {
+      writeSessionFlag();
+      stripTwaQueryParam();
+      return PLATFORM_ANDROID;
     }
     // Oturumda işaret olsa bile (örn. TWA yeniden başlatıldı) URL'de
     // parametre kalmasın diye temizlik her Android sonucunda denenir.
@@ -145,6 +231,11 @@ function detectPlatform() {
 
 export const PLATFORM = detectPlatform();
 export const IS_ANDROID_APP = PLATFORM === PLATFORM_ANDROID;
+// v148: Android kabuğunun türü. İkisi aynı anda true olamaz.
+//   IS_ANDROID_WEBVIEW → yeni WebView uygulaması (android-webview/, versionCode 14+)
+//   IS_ANDROID_TWA     → eski Bubblewrap TWA uygulaması (android/, versionCode ≤ 13)
+export const IS_ANDROID_WEBVIEW = IS_ANDROID_APP && WEBVIEW_SHELL;
+export const IS_ANDROID_TWA = IS_ANDROID_APP && !WEBVIEW_SHELL;
 // Android uygulamasının sürüm kodu (0 = bilinmiyor / 1.0.12 öncesi).
 export const ANDROID_APP_VERSION = IS_ANDROID_APP ? CAPTURED_APP_VERSION : 0;
 // Zümrüt mağazası (Google Play ödemesi) için gereken en eski sürümün altında mı?

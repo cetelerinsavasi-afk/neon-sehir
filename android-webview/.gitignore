@@ -1,0 +1,14 @@
+# İmza şifreleri — ASLA commit edilmez
+keystore.properties
+*.keystore
+*.jks
+# Yerel SDK yolu ve derleme çıktıları
+local.properties
+.gradle/
+build/
+app/build/
+*.aab
+*.apk
+*.idsig
+.idea/
+*.iml

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Neon Şehir — Android WebView kabuğu (versionCode 14+).
+  Paket adı build.gradle.kts'teki applicationId'den gelir: com.cetelerinsavasi.twa
+  (eski TWA ile AYNI — Play'de aynı uygulamanın güncellemesi).
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- navigator.vibrate (Chrome/TWA'da çalışıyordu); normal izin, kullanıcıya sorulmaz -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Android 11+ paket görünürlüğü: dış linkleri açacak tarayıcıyı / Play Store'u bulabilmek için -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+        <package android:name="com.android.vending" />
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:hardwareAccelerated="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:usesCleartextTraffic="false"
+        android:enableOnBackInvokedCallback="true"
+        android:theme="@style/Theme.NeonSehir">
+
+        <!--
+          Sınıf adı BİLEREK eski TWA ile aynı (com.cetelerinsavasi.twa.LauncherActivity):
+          güncellemeden sonra ana ekrandaki simge/kısayollar kaybolmaz.
+          singleTask: dışarıdan gelen cetelerinsavasi.com linki ikinci bir oyun açmaz,
+          açık olan oyuna (onNewIntent) gelir.
+        -->
+        <activity
+            android:name=".LauncherActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:alwaysRetainTaskState="true"
+            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|locale|layoutDirection|colorMode|fontWeightAdjustment|grammaticalGender|mcc|mnc|touchscreen"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.NeonSehir.Starting">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!-- Deep link / App Links: public/.well-known/assetlinks.json (değişmedi) -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="cetelerinsavasi.com" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
