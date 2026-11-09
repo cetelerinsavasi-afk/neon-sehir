@@ -59,7 +59,9 @@ export function useMessages({ max = MESSAGES_LIMIT } = {}) {
   return { messages, loading };
 }
 
-const UNREAD_MAX = 99;
+// v147.1 maliyet: rozet en fazla "9+" gösterir → 99 değil 10 okunmamış SMS okunur
+// (SMS'lerini hiç açmayan oyuncu her açılışta 99 belge okuyordu)
+const UNREAD_MAX = 10;
 export function useUnreadSmsCount() {
   const { user } = useAuth();
   const [count, setCount] = useState(0);

@@ -44,6 +44,9 @@ export function tradeBiatList(all) {
   return ok;
 }
 
+// anahtar sırasından bağımsız JSON (Firestore haritaları sıralı döndürür)
+const stableJson = (v) => (v && typeof v === 'object' && !Array.isArray(v) ? `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${stableJson(v[k])}`).join(',')}}` : JSON.stringify(v ?? null));
+
 export async function readBiatLinks(ctx) {
   const snap = await ctx.ref.alliances().where('kind', '==', 'biat').get();
   const links = {};
@@ -618,6 +621,11 @@ export function createWarActions(core) {
         // her zaman shard'lardan (gösterge bozulmuş/eski olsa da doğru toplam)
         const sh = await sumShards(ctx, d.id);
         const { totals, via } = foldBiatTotals(sh.totals, sh.via, links);
+        // v147.1 maliyet: değişmediyse yazma (her yazım savaşı dinleyen çevrimiçi herkese 1 okuma)
+        const disp = w.display || {};
+        const bd = w.biatDisplay || {};
+        const same = (a, b) => Object.keys({ ...a, ...b }).every((k) => (a[k] || 0) === (b[k] || 0));
+        if (same(totals, disp) && same(via, bd) && stableJson(links) === stableJson(w.biatLinks || {})) continue;
         await d.ref.update({ ...biatWarPatch(w, links), display: totals, biatDisplay: via });
       }
     } catch (err) {

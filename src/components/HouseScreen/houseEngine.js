@@ -225,7 +225,8 @@ function envFor(r) {
   pm.dispose();
   return tex;
 }
-function getSharedRenderer(kind = 'main') {
+// v147.1: şehir de aynı ortak çiziciyi kullanır (telefonda tek grafik bağlamı → bellek, çökme yok)
+export function getSharedRenderer(kind = 'main') {
   let r = shared[kind];
   if (r && r.__lost) {
     try {

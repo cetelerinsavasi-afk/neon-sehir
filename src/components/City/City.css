@@ -89,4 +89,3 @@
 
 .cs-garage-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 0; font-size: 34px; }
 .cs-root .hs-msg { cursor: pointer; }
-.cs-root .hs-top .hs-icon-btn:last-child { margin-left: 2px; }

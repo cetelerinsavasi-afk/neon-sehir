@@ -22,7 +22,8 @@ export function useSixtagramNotifications({ unreadOnly = false } = {}) {
       return undefined;
     }
     const col = collection(db, 'users', user.uid, 'sixtagramNotifications');
-    const q = unreadOnly ? query(col, where('read', '==', false), limit(50)) : query(col, orderBy('createdAtMs', 'desc'), limit(50));
+    // v147.1 maliyet: rozet sadece "var mı" (nokta) gösterir → 50 değil 5 okunmamış okunur (engellenenler süzülse de yeter)
+    const q = unreadOnly ? query(col, where('read', '==', false), limit(5)) : query(col, orderBy('createdAtMs', 'desc'), limit(50));
     const unsubscribe = onSnapshot(
       q,
       (snap) => {

@@ -816,7 +816,6 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
     let lastKey = '';
     let lastFsAt = 0;
     let lastLiveAt = 0;
-    let moving = false;
     const iv = setInterval(() => {
       const eng = engineRef.current;
       if (!eng || document.hidden || leavingRef.current) return;
@@ -841,10 +840,10 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
           liveWrite(room, user.uid, pos);
           lastLiveAt = now;
         }
-        const stopped = moving && !changed;
-        // v138 maliyet: nabız 30 → 60 sn; durunca yazım en fazla 15 sn'de bir (konum zaten RTDB'de)
-        if (keyChanged || (stopped && now - lastFsAt >= 15_000) || now - lastFsAt >= 60_000) writeFs();
-        moving = changed && !keyChanged;
+        // v138 maliyet: nabız 30 → 60 sn. v147.1: "durunca" yazımı kaldırıldı — konum zaten
+        // RTDB'de (herkes oradan görür); odadaki her Firestore yazımı odadaki HERKESE okuma
+        // yazıyordu. Firestore'a sadece oturma/hareket değişince + 60 sn nabız.
+        if (keyChanged || now - lastFsAt >= 60_000) writeFs();
         last = sig;
         lastKey = keySig;
         return;

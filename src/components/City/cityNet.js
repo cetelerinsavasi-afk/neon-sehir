@@ -62,14 +62,28 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
   let myRide = null; // { owner, k }
   const armed = new Set();
 
+  // v147.1: tek bir reddedilen/zaman aşımına uğrayan yazım şehri KALICI çevrimdışı
+  // yapmıyor (mobil ağda yazımlar topluca gidince reddedilebiliyordu → oyuncu
+  // diğerlerine görünmez oluyordu). Üst üste 6 hata → kısa ara, 20 sn sonra yeniden dene.
+  let retryT = 0;
   const fail = (err) => {
     const code = String(err?.code || err?.message || '');
-    if (/permission|PERMISSION_DENIED/i.test(code) || ++failures >= 4) {
-      if (!offline) {
-        offline = true;
-        console.warn('Şehir çevrimiçi kapalı (RTDB):', code);
-        onStatus?.('offline');
-      }
+    failures += 1;
+    if (failures >= 6 && !offline) {
+      offline = true;
+      console.warn('Şehir çevrimiçi geçici olarak kapalı (RTDB):', code);
+      onStatus?.('offline');
+      clearTimeout(retryT);
+      retryT = setTimeout(() => {
+        if (dead) return;
+        offline = false;
+        failures = 0;
+        armed.clear();
+        lastSent = null;
+        lastCar = null;
+        onStatus?.('online');
+        setProfile(curName, curAvatar);
+      }, 20_000);
     }
   };
   async function put(path, val) {
@@ -81,7 +95,7 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
         armed.add(path);
         m.onDisconnect(r).remove().catch(() => armed.delete(path));
       }
-      await withTimeout(m.set(r, { ...val, t: m.serverTimestamp() }), 5000);
+      await withTimeout(m.set(r, { ...val, t: m.serverTimestamp() }), 8000);
       failures = 0;
       return true;
     } catch (e) {
@@ -120,12 +134,36 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
   }
 
   // --- profil (ad + avatar) — girişte 1 kez yazılır, diğerleri 1 kez okur ---------
+  let curName = name;
+  let curAvatar = avatar;
   function setProfile(n, a) {
-    put(`city/u/${uid}`, { n: String(n || 'Oyuncu').slice(0, 40), a: JSON.stringify(a || {}).slice(0, 3000) });
+    curName = n;
+    curAvatar = a;
+    // v147.1: avatar JSON'u kesilmez (kesik JSON → başkalarında varsayılan avatar); çok uzunsa aksesuarsız
+    let aj = JSON.stringify(a || {});
+    if (aj.length > 7900) aj = JSON.stringify({ ...(a || {}), acc: undefined });
+    if (aj.length > 7900) aj = '{}';
+    put(`city/u/${uid}`, { n: String(n || 'Oyuncu').slice(0, 40), a: aj });
   }
   function profileOf(id) {
     const p = profiles.get(id);
-    if (p && p !== 'loading') return p;
+    if (p && p !== 'loading' && !(p.retryAt && Date.now() > p.retryAt)) return p;
+    if (p && p !== 'loading' && p.retryAt) {
+      profiles.set(id, 'loading');
+      once(`city/u/${id}`).then((v) => {
+        if (v?.n || v?.a) {
+          let a = null;
+          try {
+            a = v.a ? JSON.parse(v.a) : null;
+          } catch {
+            a = null;
+          }
+          profiles.set(id, { n: v.n || 'Oyuncu', a });
+        } else profiles.set(id, { ...p, retryAt: Date.now() + 8000 });
+        refresh();
+      });
+      return p;
+    }
     if (!p) {
       profiles.set(id, 'loading');
       once(`city/u/${id}`).then((v) => {
@@ -135,7 +173,8 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
         } catch {
           a = null;
         }
-        profiles.set(id, { n: v?.n || 'Oyuncu', a });
+        // profil henüz yazılmamışsa (yeni girdi) birazdan tekrar sorulur
+        profiles.set(id, { n: v?.n || 'Oyuncu', a, ...(v ? {} : { retryAt: Date.now() + 4000 }) });
         refresh();
       });
     }
@@ -220,12 +259,17 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
       shownPlayers.add(id);
       onPlayer?.(id, { ...rec, n: pr.n, a: pr.a });
     });
+    // v147.1: hücre değiştiren / anlık kopan oyuncu hemen silinmez (yanıp sönme yok)
     shownPlayers.forEach((id) => {
-      if (!players.has(id) || !profiles.get(id) || profiles.get(id) === 'loading') {
-        if (!players.has(id)) {
-          shownPlayers.delete(id);
-          onPlayerGone?.(id);
-        }
+      if (players.has(id)) {
+        missP.delete(id);
+        return;
+      }
+      if (!missP.has(id)) missP.set(id, now);
+      else if (now - missP.get(id) > 3500) {
+        missP.delete(id);
+        shownPlayers.delete(id);
+        onPlayerGone?.(id);
       }
     });
     cars.forEach((rec, id) => {
@@ -234,14 +278,22 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
       onCar?.(id, { ...rec, n: pr && pr !== 'loading' ? pr.n : null });
     });
     shownCars.forEach((id) => {
-      if (!cars.has(id)) {
+      if (cars.has(id)) {
+        missC.delete(id);
+        return;
+      }
+      if (!missC.has(id)) missC.set(id, now);
+      else if (now - missC.get(id) > (myRide?.owner === id ? 9000 : 3500)) {
+        missC.delete(id);
         shownCars.delete(id);
         onCarGone?.(id);
       }
     });
   }
   // eskiyen kayıtlar (sekmesi kapanmadan donan telefonlar) 5 sn'de bir temizlenir
-  const sweep = setInterval(refresh, 5000);
+  const missP = new Map();
+  const missC = new Map();
+  const sweep = setInterval(refresh, 1500);
 
   // --- yazma (motor her ~100 ms tick çağırır) --------------------------------------------
   const changed = (a, b) => {
@@ -329,11 +381,38 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
     paths.forEach((p) => drop(p));
     dead = true;
     clearInterval(sweep);
+    clearTimeout(retryT);
+    try {
+      offConn?.();
+    } catch {
+      /* yoksay */
+    }
     [...unsubs.keys()].forEach(unsubscribe);
   }
 
   if (!offline) setProfile(name, avatar);
   else onStatus?.('offline');
+  // v147.1: bağlantı kopup gelince (mobil ağ) sunucu kayıtlarımızı silmiş olur
+  // (onDisconnect) → hemen yeniden yaz + profil
+  let offConn = null;
+  let wasConnected = false;
+  if (!offline) {
+    rt()
+      .then(({ m, db }) => {
+        if (dead) return;
+        offConn = m.onValue(m.ref(db, '.info/connected'), (snap) => {
+          const c = snap.val() === true;
+          if (c && wasConnected === false && armed.size) {
+            armed.clear();
+            lastSent = null;
+            lastCar = null;
+            setProfile(curName, curAvatar);
+          }
+          wasConnected = c;
+        });
+      })
+      .catch(() => {});
+  }
   const api = { tick, say, claimSeat, releaseSeat, setProfile, stop, isOffline: () => offline };
   if (import.meta.env?.DEV) window.__cityNet = { api, dbg: () => ({ offline, failures, myCell, subs: [...subCells], lastSentAt, dead, shown: [...shownPlayers], prof: [...profiles.keys()], unsubs: [...unsubs.keys()], cells: Object.fromEntries([...cellPlayers].map(([c, v]) => [c, Object.keys(v)])) }) };
   return api;

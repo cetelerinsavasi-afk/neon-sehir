@@ -241,7 +241,14 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
   const [run, setRun] = useState(false);
   const [muted, setMuted] = useState(true);
   const [mapOpen, setMapOpen] = useState(false);
-  const [hud, setHud] = useState({ x: 0, z: 0, yaw: 0 });
+  // v147.1 performans: konum 10 Hz gelir ama ekran (React) sadece görünen şey değişince
+  // yeniden çizilir; mini harita doğrudan tuvale çizilir.
+  const hudRef = useRef({ x: 0, z: 0, yaw: 0 });
+  const [hud, setHud] = useState({ driving: false, riding: false, drive: null });
+  const [gen, setGen] = useState(0);
+  const [fatal, setFatal] = useState(false);
+  const drawMiniRef = useRef(null);
+  const [mapTick, setMapTick] = useState(0);
   const [imgOk, setImgOk] = useState(false);
   const [online, setOnline] = useState(0);
   const [offline, setOffline] = useState(false);
@@ -280,14 +287,42 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
     let tickT = 0;
     let lastCrash = 0;
     const st = startRef.current;
-    const t = setTimeout(() => {
+    let tries = 0;
+    let t = 0;
+    const start = () => {
+      // v147.1: grafik kurulamazsa ekran çökmesin (eskiden ana sayfaya atıyordu) — birkaç kez dene
+      try {
+        build();
+      } catch (err) {
+        console.error('Şehir kurulamadı:', err);
+        try {
+          eng?.dispose();
+        } catch {
+          /* yoksay */
+        }
+        eng = null;
+        tries += 1;
+        if (tries < 3) t = setTimeout(start, 700 * tries);
+        else setFatal(true);
+      }
+    };
+    const build = () => {
       eng = createCityEngine(stageRef.current, {
         uid,
         avatar: st.avatar,
         name: st.myName,
         spawn: st.spawn,
         onInteract: (z) => setZone(z),
-        onTick: (s) => setHud(s),
+        onTick: (s) => {
+          hudRef.current = s;
+          drawMiniRef.current?.();
+          setHud((h) => {
+            const d = s.drive;
+            const hd = h.drive;
+            const same = h.driving === Boolean(s.driving) && h.riding === Boolean(s.riding) && (!d ? !hd : hd && hd.name === d.name && hd.gear === d.gear && Math.round(hd.kmh) === Math.round(d.kmh) && Math.abs((hd.ratio || 0) - (d.ratio || 0)) < 0.04);
+            return same ? h : { driving: Boolean(s.driving), riding: Boolean(s.riding), drive: d ? { ...d } : null };
+          });
+        },
         onReady: () => setReady(true),
         onPlayerTap: (id) => setCard(id),
         onEvent: (e) => {
@@ -299,6 +334,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
             netRef.current?.releaseSeat();
             flash('🚗 Araba gitti');
           }
+          // telefon grafik belleğini geri aldıysa şehir sessizce yeniden kurulur
+          if (e.type === 'contextLost') setTimeout(() => setGen((g) => g + 1), 400);
         },
       });
       engineRef.current = eng;
@@ -329,7 +366,9 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
         if (document.hidden) return;
         net.tick(eng.getNetState(), eng.getNetCar());
       }, 100);
-    }, 60);
+    };
+    setReady(false);
+    t = setTimeout(start, 60);
     return () => {
       clearTimeout(t);
       clearInterval(tickT);
@@ -339,7 +378,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
       engineRef.current = null;
       netRef.current = null;
     };
-  }, [uid, flash]); // sadece kullanıcı değişince (user nesnesi yenilenince şehir baştan kurulmasın)
+  }, [uid, flash, gen]); // sadece kullanıcı değişince / grafik yeniden kurulunca (user nesnesi yenilenince şehir baştan kurulmasın)
 
   // avatar sonradan değişirse (giyinme vb.)
   useEffect(() => {
@@ -382,7 +421,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
   // kişi sayısı (yakındakiler) — 2 sn'de bir motorun haritasından
   useEffect(() => {
     if (!ready) return undefined;
-    const iv = setInterval(() => setOnline(namesRef.current.size), 2000);
+    const iv = setInterval(() => setOnline(engineRef.current?.remoteCount?.() || 0), 2000);
     return () => clearInterval(iv);
   }, [ready]);
 
@@ -391,6 +430,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
 
   // --- mini harita (gerçek harita resmi) ------------------------------------------------
   useEffect(() => {
+    drawMiniRef.current = () => {
+    const hud = hudRef.current;
     const c = miniRef.current;
     const img = imgRef.current;
     if (!c || !img || !mapping) return;
@@ -438,11 +479,22 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
     g.fill();
     g.stroke();
     g.restore();
-  }, [hud, mapping, imgOk]);
+    };
+    drawMiniRef.current();
+    return () => {
+      drawMiniRef.current = null;
+    };
+  }, [mapping, imgOk]);
 
   const bigLayout = useRef(null);
   useEffect(() => {
+    if (!mapOpen) return undefined;
+    const iv = setInterval(() => setMapTick((n) => n + 1), 500);
+    return () => clearInterval(iv);
+  }, [mapOpen]);
+  useEffect(() => {
     if (!mapOpen) return;
+    const hud = hudRef.current;
     const c = bigRef.current;
     const img = imgRef.current;
     if (!c || !img || !mapping) return;
@@ -476,7 +528,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
     };
     if (hud.car && !hud.driving) dot(hud.car.x, hud.car.z, '#19e8ff', 10, '🚗');
     dot(hud.x, hud.z, '#ffd23f', 14, '📍');
-  }, [mapOpen, hud, mapping, imgOk]);
+  }, [mapOpen, mapping, imgOk, mapTick]);
   const onBigTap = (e) => {
     const c = bigRef.current;
     const L = bigLayout.current;
@@ -702,16 +754,23 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
   return (
     <div className={`hs-root cs-root${driving ? ' driving' : ''}`}>
       <div className="hs-stage" ref={stageRef} />
-      {!ready && (
+      {!ready && !fatal && (
         <div className="hs-loading cs-loading">
           <div className="hs-spinner" />
           <p>Neon Şehir…</p>
         </div>
       )}
+      {fatal && (
+        <div className="hs-loading cs-loading">
+          <p>Şehir açılamadı</p>
+          <button className="v3-btn primary" onClick={() => { setFatal(false); setGen((g) => g + 1); }}>Tekrar dene</button>
+          <button className="v3-btn" onClick={() => onClose?.()}>Ana sayfa</button>
+        </div>
+      )}
       {ready && (
         <>
           <div className="hs-top">
-            <button className="hs-icon-btn" onClick={() => setMapOpen(true)} title="Şehir haritası">🗺️</button>
+            <button className="hs-icon-btn" onClick={() => onClose?.()} title="Ana sayfa">✕</button>
             <div className="hs-title">
               <b>{zoneName}</b>
               <span>
@@ -719,7 +778,6 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
               </span>
             </div>
             <button className="hs-view-btn" onClick={toggleView} title="Görünüm">{view === '3d' ? '3D' : '2D'}</button>
-            <button className="hs-icon-btn" onClick={() => onClose?.()} title="Ana sayfa">✕</button>
           </div>
           {!driving && (
             <div className="v3-menu">

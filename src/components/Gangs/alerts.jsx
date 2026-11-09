@@ -158,7 +158,9 @@ export function useGangAlerts(uid) {
   const intelApps = useDocs(base && canReviewApps ? `ia_${base}_${rid}_${irank}` : null, () => query(collection(db, `${base}/intel/main/applications`), where('status', '==', 'pending'), limit(1)));
 
   // --- savaşlar ---
-  const pub = useDocs(base ? `pub_${base}` : null, () => query(collection(db, `${base}/wars`), where('visibility', '==', 'public'), where('status', '==', 'active'), limit(20)));
+  // v147.1 maliyet: herkese açık savaşlar sadece çete üyesi / polis için (diğerlerinde kullanılmıyordu;
+  // her savaş güncellemesi çevrimiçi herkese 1 okuma yazıyordu)
+  const pub = useDocs(base && (gangId || rid) ? `pub_${base}` : null, () => query(collection(db, `${base}/wars`), where('visibility', '==', 'public'), where('status', '==', 'active'), limit(20)));
   const mine = useDocs(base && gangId ? `mine_${base}_${gangId}` : null, () => query(collection(db, `${base}/wars`), where('activeGangIds', 'array-contains', gangId), limit(60)));
   const intelWars = useDocs(base && rid ? `iw_${base}` : null, () => query(collection(db, `${base}/wars`), where('intelInvolved', '==', true), where('status', '==', 'active'), limit(60)));
   const slot = useDoc(base && uid ? `${base}/slots/${slotId}` : null);
@@ -181,7 +183,8 @@ export function useGangAlerts(uid) {
   const betRepsAll = useDocs(base && rid ? `br_${base}_${hourKey}` : null, () => query(collection(db, `${base}/betReports`), where('intelDeadlineMs', '>', hourKey), limit(50)));
   const betReps = betRepsAll.filter((r) => now < r.intelDeadlineMs);
   const canReport = Boolean(rid && gangId && atLeast(rank, 'tetikci'));
-  const myTrucks = useDocs(base && canReport ? `mt_${base}_${gangId}` : null, () => query(collection(db, `${base}/trucks`), where('gangId', '==', gangId), limit(50)));
+  // v147.1 maliyet: sadece bugünün tırları (aşağıda zaten departDateKey === today süzülüyor; iki eşitlik → ek indeks gerekmez)
+  const myTrucks = useDocs(base && canReport ? `mt_${base}_${gangId}_${today}` : null, () => query(collection(db, `${base}/trucks`), where('gangId', '==', gangId), where('departDateKey', '==', today), limit(50)));
 
   return useMemo(() => {
     const newer = (m, chan, meKey) => Boolean(m && !m.system && m.createdAtMs > readSeen(uid, w, chan) && m[meKey.field] !== meKey.value);

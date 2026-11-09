@@ -1,9 +1,9 @@
-# Neon Sehir v147 - gezilebilir sehir + sehirde fotograf + atma oylamasi duyurusu + teskilatta polis tipi
+# Neon Sehir v147.2 - gezilebilir sehir (+ hiz, akici oyuncu/araba, cokme duzeltmeleri) + fotograf + Firestore maliyet azaltma + oylama duyurusu + teskilat polis tipi
 #   1) Realtime Database kurallari (sehir: konum, araba, sohbet, koltuk)
 #   2) Sunucu fonksiyonlari (cityAction, cityMuteMirror, createSixtagramPost, houseAction, gangAction - 3 deneme)
 #   3) Arayuz derlemesi (hata varsa push YAPILMAZ)
 #   4) Hepsi basariliysa git commit + push (arayuz)
-#   Cift tikla: deploy-v147.bat   - soru sormaz.
+#   Cift tikla: deploy-v147-2.bat   - soru sormaz.
 
 $ErrorActionPreference = 'Continue'
 Set-Location -Path $PSScriptRoot
@@ -29,7 +29,7 @@ function Yukle($ad, $hedef) {
 $gruplar = @(
   @('veritabani kurallari (sehir)', 'database'),
   @('sehir + fotograf + polis tipi', 'functions:cityAction,functions:cityMuteMirror,functions:createSixtagramPost,functions:houseAction'),
-  @('cete / teskilat oylama duyurusu', 'functions:gangAction')
+  @('cete / teskilat (oylama duyurusu + Pazar savasi)', 'functions:gangAction,functions:gangClock')
 )
 foreach ($g in $gruplar) {
   if (-not (Yukle $g[0] $g[1])) {
@@ -49,15 +49,15 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host ""
 Write-Host "===== git commit + push (arayuz) =====" -ForegroundColor Cyan
-foreach ($f in @('deploy-v146-4.ps1','deploy-v146-4.bat')) {
+foreach ($f in @('deploy-v146-4.ps1','deploy-v146-4.bat','deploy-v147.ps1','deploy-v147.bat')) {
   if (Test-Path $f) { git rm -q -f -- $f 2>$null; if (Test-Path $f) { Remove-Item -Force $f } }
 }
-git add -- functions src preview database.rules.json deploy-v147.ps1 deploy-v147.bat
-git commit -q -m "v147: gezilebilir sehir (yurume, araba, yolculuk, yakin sohbet - RTDB), sehirde fotograf/hikaye, mekandan sehre cikis, oylamayi baslatan sohbette, teskilatta polis tipi, transfer vergisi yazisi" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -m "Claude-Session: https://claude.ai/code/session_0182eo1LEeosPZHtzM4dmgsQ"
+git add -- functions src preview database.rules.json deploy-v147-2.ps1 deploy-v147-2.bat
+git commit -q -m "v147.2: gezilebilir sehir (yurume, araba, yolculuk, yakin sohbet - RTDB) + otomatik grafik ayari, gorus mesafesi, dusuk poligon, ortak grafik baglami, akici oyuncu/araba (tahmin), fotograf/hikaye, mekandan sehre cikis ve geri donus, oylamayi baslatan sohbette, teskilatta polis tipi, Firestore maliyet azaltma" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -m "Claude-Session: https://claude.ai/code/session_0182eo1LEeosPZHtzM4dmgsQ"
 git push
 if ($LASTEXITCODE -ne 0) {
   Write-Host "git push basarisiz. Sunucu guncel ama arayuz eski. Ciktiyi Claude'a gonder." -ForegroundColor Red
   exit 1
 }
 Write-Host ""
-Write-Host "TAMAM: v147 canlida." -ForegroundColor Green
+Write-Host "TAMAM: v147.2 canlida." -ForegroundColor Green

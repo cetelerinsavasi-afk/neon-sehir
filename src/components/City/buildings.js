@@ -914,14 +914,12 @@ export function buildStadyum(kit, lot) {
   kit.mesh(new THREE.PlaneGeometry(6, 3.2), glowMat('#ffe9a8', 0.6), 0, 2.4, gz + 0.62, 0, { cast: false });
   kit.sign('stadgir', 'NEON ARENA', 0.8, 0, 2.4, gz + 0.66, 0, { color: '#1a1a1a', font: '900 100px Arial, sans-serif', light: false });
   kit.pool(0, gz + 3, '#ff3fa0', 12, 0.16, 0.45);
-  // çarpışma: elips yaklaşık (kare halkalar)
+  // çarpışma: v147.1 — görünen duvarla aynı elips (eski kare halkalar duvarın
+  // dışına taşıyordu → stadyumun çevresinde görünmez yerlere çarpılıyordu)
   const ex = R * sx;
   const ez = R * 0.9;
-  for (let i = 0; i < 24; i++) {
-    const a = (i / 24) * PI * 2;
-    kit.solid(Math.sin(a) * ex * 0.82, Math.cos(a) * ez * 0.82, ex * 0.28, ez * 0.28);
-  }
-  kit.solid(0, 0, ex * 0.8, ez * 0.8);
+  kit.ellipse(0, 0, ex + 0.3, ez + 0.3);
+  kit.solid(0, gz, 4.2, 0.8); // giriş kapısı bloğu
   kit.blocker(ex * 1.6, 14, ez * 1.6, 0, 0, 0);
   return { door: { x: 0, z: gz + 1.8 }, mapLabel: { text: 'STADYUM', y: 18, z: 0 } };
 }

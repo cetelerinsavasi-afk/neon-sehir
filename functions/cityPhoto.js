@@ -36,15 +36,11 @@ const num = (v, min, max) => (typeof v === 'number' && Number.isFinite(v) ? Math
 const r2 = (v) => Math.round(v * 100) / 100;
 const r3 = (v) => Math.round(v * 1000) / 1000;
 
+// v147.1: oyunun veritabanı adresi önce (FIREBASE_CONFIG'teki adres europe-west1
+// örneği için yanlış olabiliyordu → kayıtlar bulunamıyor, "şehirde olmalısın" hatası)
+export const CITY_RTDB_DEFAULT = 'https://neon-sehir-default-rtdb.europe-west1.firebasedatabase.app';
 export function cityRtdbUrl() {
-  if (process.env.CITY_RTDB_URL) return process.env.CITY_RTDB_URL;
-  try {
-    const u = JSON.parse(process.env.FIREBASE_CONFIG || '{}').databaseURL;
-    if (u) return u;
-  } catch {
-    /* yoksay */
-  }
-  return 'https://neon-sehir-default-rtdb.europe-west1.firebasedatabase.app';
+  return process.env.CITY_RTDB_URL || CITY_RTDB_DEFAULT;
 }
 
 // Kamera pozu (houses.js camOf ile aynı alanlar)
@@ -127,12 +123,14 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
       rt = await readCells(mx, mz);
     } catch (e) {
       console.error('cityPhotoShot rtdb', e);
-      fail('unavailable', 'Şehir bağlantısı yok, biraz sonra tekrar dene.');
+      rt = { p: new Map(), c: new Map(), m: new Map() };
     }
     const fresh = (rec, ms) => rec && typeof rec.x === 'number' && typeof rec.z === 'number' && t - Number(rec.t || 0) <= ms;
-    const myRec = rt.p.get(uid);
-    if (!fresh(myRec, FRESH_P_MS) || Math.hypot(myRec.x - mx, myRec.z - mz) > NEAR_P) fail('failed-precondition', 'Fotoğraf için şehirde olmalısın.');
     if (Math.hypot(cam.px - mx, cam.pz - mz) > 60) fail('invalid-argument', 'Geçersiz kamera.');
+    // v147.1: kendi kaydın bulunamasa da (bağlantı anlık koptu vb.) fotoğraf çekilir —
+    // sadece sen + doğrulanabilen kişiler/arabalar görünür (başkası sahte kareye giremez)
+    const myRec = rt.p.get(uid);
+    if (!fresh(myRec, FRESH_P_MS) || Math.hypot(myRec.x - mx, myRec.z - mz) > NEAR_P) rt.p.set(uid, { x: mx, z: mz, t });
 
     // arabalar
     const cars = [];
@@ -179,7 +177,7 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
         said,
       });
     }
-    if (!seen.has(uid)) fail('failed-precondition', 'Fotoğraf için şehirde olmalısın.');
+    if (!seen.has(uid)) fail('invalid-argument', 'Fotoğraf çekilemedi, tekrar dene.');
 
     // balonlar: kendi sözün küfür süzgecinden; başkasınınki sadece gerçek son mesajıysa
     for (const q of picked) {

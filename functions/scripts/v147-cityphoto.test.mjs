@@ -82,10 +82,12 @@ test('v147 şehir fotoğrafı: sadece şehirdeki yakın oyuncular, ad/avatar sun
   await assert.rejects(cp.buildAttachment('me', { shot: r.shot.replace('Ali', 'Veli'), sig: r.sig }));
 });
 
-test('v147 şehir fotoğrafı: şehirde değilsen çekemezsin, kendi uygunsuz balonun girmez', async () => {
+test('v147 şehir fotoğrafı: kaydın yoksa sadece sen, kendi uygunsuz balonun girmez', async () => {
   const t = 2_000_000;
   const { cp } = setup({ t, rtdbData: {}, users: { me: { displayName: 'Ben' } } });
-  await assert.rejects(cp.photoShot('me', { cam, people: [{ uid: 'me', x: 10, z: 10 }] }), /şehirde olmalısın/);
+  // v147.1: kaydın yoksa da çekilir (sadece sen)
+  const solo = await cp.photoShot('me', { cam, people: [{ uid: 'me', x: 10, z: 10 }, { uid: 'ali', x: 11, z: 10 }] });
+  assert.deepEqual(solo.att.people.map((p) => p.uid), ['me']);
   const cell = cityCellOf(10, 10);
   const s2 = setup({ t, rtdbData: { city: { p: { [cell]: { me: { x: 10, z: 10, t } } } } }, users: { me: { displayName: 'Ben' } } });
   const r = await s2.cp.photoShot('me', { cam, people: [{ uid: 'me', x: 10, z: 10, says: ['küfür'] }] });

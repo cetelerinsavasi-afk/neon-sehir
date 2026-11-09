@@ -5,6 +5,8 @@
 // Yerel koordinat: bina önü +z, köken parsel merkezi.
 // =============================================================================
 import * as THREE from 'three';
+// v147.1: telefonda doku süzgeci hafif (bellek + hız)
+const ANISO = typeof navigator !== 'undefined' && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent || '') ? 2 : 8;
 import { M, buildItem, itemBoxes, CATALOG_MAP } from '../HouseScreen/houseCatalog.js';
 import { floorDef, wallDef, surfaceTexture } from '../HouseScreen/houseTextures.js';
 
@@ -24,7 +26,7 @@ export function canvasTex(key, w, h, draw, { repeat = true, srgb = true } = {}) 
   t = new THREE.CanvasTexture(c);
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
   if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
-  t.anisotropy = 8;
+  t.anisotropy = ANISO;
   texCache.set(key, t);
   return t;
 }
@@ -154,7 +156,7 @@ export function textCanvasTex(key, text, { font = '900 120px "Arial Black", Aria
     g.fillText(text, tw / 2, h / 2 + 4);
     const t = new THREE.CanvasTexture(c);
     t.colorSpace = THREE.SRGBColorSpace;
-    t.anisotropy = 8;
+    t.anisotropy = ANISO;
     t.userData.aspect = tw / h;
     return t;
   })();
@@ -260,6 +262,73 @@ export function facadeMat(style) {
 // Kit — bir binanın/alanın parçalarını toplar; yerleştirildikten sonra dünya
 // koordinatına çevrilir (çarpışma kutuları, ışıklar, etkileşim noktaları).
 // =============================================================================
+
+// --- v147.1 düşük poligonlu şehir eşyaları ---------------------------------------
+const lowGeo = new Map();
+const LG = (key, mk) => {
+  if (!lowGeo.has(key)) lowGeo.set(key, mk());
+  return lowGeo.get(key);
+};
+let bulbMat = null;
+function lpMesh(g, geo, m, x, y, z, rot, sc) {
+  const o = new THREE.Mesh(geo, m);
+  o.position.set(x, y, z);
+  if (rot) o.rotation.set(rot[0], rot[1], rot[2]);
+  if (sc) o.scale.set(sc[0], sc[1], sc[2]);
+  o.castShadow = true;
+  o.receiveShadow = true;
+  g.add(o);
+  return o;
+}
+const LOW = {
+  streetlamp(g) {
+    const iron = M('#1b1b1d', 0.4, 0.7);
+    lpMesh(g, LG('lamp_base', () => new THREE.CylinderGeometry(0.16, 0.2, 0.2, 8)), iron, 0, 0.1, 0);
+    lpMesh(g, LG('lamp_pole', () => new THREE.CylinderGeometry(0.05, 0.06, 3.0, 6)), iron, 0, 1.6, 0);
+    lpMesh(g, LG('lamp_arm', () => new THREE.BoxGeometry(0.62, 0.05, 0.05)), iron, 0.3, 3.08, 0);
+    lpMesh(g, LG('lamp_head', () => new THREE.CylinderGeometry(0.1, 0.16, 0.22, 8)), iron, 0.6, 2.98, 0);
+    bulbMat ||= new THREE.MeshStandardMaterial({ color: '#fff', emissive: '#ffd9a0', emissiveIntensity: 2 });
+    lpMesh(g, LG('lamp_bulb', () => new THREE.IcosahedronGeometry(0.09, 1)), bulbMat, 0.6, 2.86, 0).castShadow = false;
+    return { light: { x: 0.6, y: 2.7, z: 0, color: '#ffd9a0', intensity: 6, distance: 8 } };
+  },
+  planter(g) {
+    lpMesh(g, LG('pl_pot', () => new THREE.BoxGeometry(1.2, 0.45, 0.4)), M('#3a3d42', 0.6), 0, 0.225, 0);
+    lpMesh(g, LG('pl_green', () => new THREE.IcosahedronGeometry(0.5, 1)), M('#3a7a34', 0.7), 0, 0.52, 0, null, [1.1, 0.28, 0.32]);
+    const cols = ['#ff2d8a', '#ffd23f', '#ffffff', '#b16bff'];
+    for (let i = 0; i < 5; i++) lpMesh(g, LG('pl_fl', () => new THREE.IcosahedronGeometry(0.05, 0)), M(cols[i % 4], 0.5), -0.44 + i * 0.22, 0.64 + (i % 2) * 0.05, 0.02).castShadow = false;
+  },
+  plantb(g) {
+    lpMesh(g, LG('pb_pot', () => new THREE.CylinderGeometry(0.24, 0.18, 0.45, 8)), M('#e8e4dc', 0.4), 0, 0.225, 0);
+    const leaf = M('#2f6b2f', 0.6);
+    const leaf2 = M('#3f8a3a', 0.6);
+    const geo = LG('pb_leaf', () => new THREE.IcosahedronGeometry(0.32, 1));
+    lpMesh(g, geo, leaf, 0, 0.85, 0, null, [1, 0.9, 1]);
+    lpMesh(g, geo, leaf2, 0.12, 1.2, 0.05, null, [0.8, 0.8, 0.8]);
+    lpMesh(g, geo, leaf, -0.1, 1.45, -0.05, null, [0.6, 0.7, 0.6]);
+  },
+  palm(g) {
+    lpMesh(g, LG('pa_pot', () => new THREE.CylinderGeometry(0.3, 0.22, 0.5, 8)), M('#1b1b1d', 0.4), 0, 0.25, 0);
+    lpMesh(g, LG('pa_trunk', () => new THREE.CylinderGeometry(0.045, 0.075, 1.7, 6)), M('#6a4a2a', 0.9), 0, 1.35, 0);
+    const geo = LG('pa_frond', () => new THREE.IcosahedronGeometry(0.45, 0));
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2;
+      const f = lpMesh(g, geo, M(i % 2 ? '#2f6b2f' : '#3a7a34', 0.6), Math.cos(a) * 0.4, 2.15, Math.sin(a) * 0.4, null, [1, 0.05, 0.22]);
+      f.rotation.set(0, -a, -0.45);
+    }
+  },
+  tires(g) {
+    const geo = LG('ti_t', () => new THREE.TorusGeometry(0.26, 0.1, 6, 12));
+    const m = M('#151517', 0.9);
+    for (let i = 0; i < 4; i++) lpMesh(g, geo, m, (i % 2) * 0.03, 0.1 + i * 0.2, 0, [Math.PI / 2, 0, i * 0.3]);
+  },
+};
+function lowItem(k) {
+  const g = new THREE.Group();
+  const ctl = LOW[k](g);
+  if (ctl) g.userData.ctl = ctl;
+  return g;
+}
+
 export class Kit {
   constructor(name) {
     this.group = new THREE.Group();
@@ -312,7 +381,9 @@ export class Kit {
   // Oyunun eşyası — katalogdan birebir
   item(k, x, z, r = 0, ti = 0, { y = 0, solid = true, scale = 1, dyn = false } = {}) {
     const def = CATALOG_MAP[k];
-    const o = buildItem(k, { ti, live: true });
+    // v147.1 performans: şehirde yüzlerce kez geçen eşyaların düşük poligonlu hali
+    // (çiçeklik 7.100 → ~130 üçgen, lamba 1.800 → ~120…); şehir 1,7 M → ~0,4 M üçgen
+    const o = LOW[k] ? lowItem(k) : buildItem(k, { ti, live: true });
     if (!o) {
       console.warn('eşya yok', k);
       return null;
@@ -320,6 +391,7 @@ export class Kit {
     o.position.set(x, y, z);
     o.rotation.y = (r * Math.PI) / 4;
     if (scale !== 1) o.scale.setScalar(scale);
+    o.userData.itemKey = k;
     o.traverse((c) => {
       if (c.isMesh && !c.userData.pickOnly) {
         if (c.castShadow === undefined) c.castShadow = true;
@@ -346,6 +418,13 @@ export class Kit {
     o.rotation.y = ry;
     this.group.add(o);
     this.solids.push({ o, x: 0, z: 0, hw, hd });
+  }
+  // v147.1 — elips engel (stadyum): görünen duvarla birebir, köşesiz
+  ellipse(x, z, rx, rz) {
+    const o = new THREE.Object3D();
+    o.position.set(x, 0, z);
+    this.group.add(o);
+    this.solids.push({ o, x: 0, z: 0, hw: rx, hd: rz, ell: true });
   }
   blocker(w, h, d, x, y, z) {
     const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), new THREE.MeshBasicMaterial({ visible: false }));

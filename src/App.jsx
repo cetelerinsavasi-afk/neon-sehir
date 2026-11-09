@@ -21,7 +21,7 @@ import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
 import { useFirestoreResume } from './hooks/useFirestoreResume';
 import { regions } from './data/regions';
 import { BIZ_BY_REGION } from '../functions/businessCatalogData.js';
-import { vendorVenueKey } from '../functions/vendorData.js';
+import { vendorVenueKey, VENDORS } from '../functions/vendorData.js';
 import { IS_ANDROID_APP } from './lib/platform';
 import { quietRestorePlayPurchases } from './lib/playBilling';
 import { exitApp, installBackHandler, rearmBack, useBackClose } from './lib/backStack';
@@ -220,6 +220,7 @@ function GameShell() {
   const [belediyeOpen, setBelediyeOpen] = useState(false); // v108 — başkanlık makam odası
   const [vendorRegion, setVendorRegion] = useState(null); // v145 — seyyar satıcı 3D mekânı (regions.js kaydı)
   const [city, setCity] = useState(null); // v147 — gezilebilir şehir: { spawn, k }
+  const [cityReturn, setCityReturn] = useState(null); // v147.1 — şehirden açılan liste/mekân kapanınca şehre (o kapıya) dön
   // v77 performans: kök bileşen sadece HUD alanları değişince yeniden çizilir
   const hudKey = usePlayerSelect(selectHud);
   const [hudSusp, hudRep, hudGold] = hudKey.split('|').map(Number);
@@ -397,6 +398,7 @@ function GameShell() {
   };
   function openCity(spawn) {
     closeAllForCity();
+    setCityReturn(null);
     setCity({ spawn: spawn || 'ev', k: Date.now() });
   }
   const openCityRef = useRef(openCity);
@@ -506,6 +508,15 @@ function GameShell() {
   const regionClickRef = useRef(handleRegionClick);
   regionClickRef.current = handleRegionClick;
   const onRegionClickStable = useCallback((...a) => regionClickRef.current(...a), []);
+  // v147.1 — şehirden açılan liste/mekân/soygun ekranı kapanınca (✕) ana sayfa yerine şehre,
+  // girilen kapının önüne dönülür
+  const somethingOpen = Boolean(
+    watchStreamId || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || teskilatOpen || vendorRegion || heistTarget !== undefined || activeRegion || comingSoon || raceLobbyMode || activeTableId || effectiveRaceRoomId
+  );
+  useEffect(() => {
+    if (!cityReturn || city || somethingOpen || !user) return;
+    openCityRef.current(cityReturn);
+  }, [cityReturn, city, somethingOpen, user]);
   const mapCovered = Boolean(
     watchStreamId || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || teskilatOpen || Boolean(vendorRegion) || Boolean(city) || heistTarget !== undefined || (effectiveRaceRoomId && raceExpanded)
   );
@@ -788,11 +799,13 @@ function GameShell() {
           onEnterRegion={(rid) => {
             // kapıdan içeri: şehir kapanır (araba kalkar), mekân/liste mevcut yoldan açılır
             setCity(null);
+            setCityReturn(rid);
             const r = regions.find((x) => x.id === rid);
             if (r) handleRegionClick(r.id, r);
           }}
           onOpenHeist={(t) => {
             setCity(null);
+            setCityReturn(VENDORS[t]?.venue || 'ev');
             openHeistScreen(t);
           }}
         />

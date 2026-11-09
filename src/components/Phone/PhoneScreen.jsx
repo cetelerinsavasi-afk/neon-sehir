@@ -120,7 +120,7 @@ function AppIcon({ app, badge, dot, onOpen }) {
     <button className="phone-app" onClick={() => onOpen(app.id)}>
       <span className={`phone-app-icon tone-${app.tone}`}>
         {app.tone === 'gold' ? <span className="phone-gold-glyph" /> : app.tone === 'emerald' ? <span className="emerald-icon" style={{ width: 30, height: 30 }} /> : <span className="phone-app-glyph">{app.glyph}</span>}
-        {badge > 0 && <span className="phone-app-badge">{badge > 99 ? '99+' : badge}</span>}
+        {badge > 0 && <span className="phone-app-badge">{badge > 9 ? '9+' : badge}</span>}
         {dot && <span className="phone-app-dot" />}
       </span>
       <span className="phone-app-name">{app.note}</span>

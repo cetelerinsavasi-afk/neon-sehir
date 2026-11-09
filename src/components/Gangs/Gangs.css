@@ -1746,7 +1746,8 @@ textarea.gx-input {
 .gx-full-top {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start; /* v147.1: ✕ solda, başlık yanında */
+  gap: 12px;
   padding: calc(10px + env(safe-area-inset-top)) 14px 8px;
   border-bottom: 1px solid #1f2a40;
 }

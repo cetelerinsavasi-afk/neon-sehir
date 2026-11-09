@@ -12,7 +12,7 @@ import { streamPose } from './streamShared';
 // live/house (RTDB, akıcı konum). Kameranın görüş alanına giren herkes görünür;
 // "yayında görünme" diyenler (noStream) ve izleyicinin engelledikleri gizlenir.
 // =============================================================================
-const PRESENCE_STALE_MS = 60_000;
+const PRESENCE_STALE_MS = 90_000; // v147.1: nabız 60 sn — 60 sn eşik duran avatarı kırpıştırıyordu
 
 export default function StreamScene({ houseId, chairId, pcId, bubble = null, className = '' }) {
   const mountRef = useRef(null);

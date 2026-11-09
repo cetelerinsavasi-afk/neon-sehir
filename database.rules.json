@@ -233,7 +233,7 @@
           ".read": "auth != null",
           "$uid": {
             ".write": "auth != null && auth.uid === $uid && $cell.matches(/^[0-9]{1,2}_[0-9]{1,2}$/)",
-            ".validate": "newData.hasChildren(['x','z','t']) && (!data.exists() || newData.child('t').val() >= data.child('t').val() + 150)",
+            ".validate": "newData.hasChildren(['x','z','t'])",
             "x": {
               ".validate": "newData.isNumber() && newData.val() >= -400 && newData.val() <= 400"
             },
@@ -284,7 +284,7 @@
           ".read": "auth != null",
           "$uid": {
             ".write": "auth != null && auth.uid === $uid && $cell.matches(/^[0-9]{1,2}_[0-9]{1,2}$/)",
-            ".validate": "newData.hasChildren(['v','x','z','y','t']) && (!data.exists() || newData.child('t').val() >= data.child('t').val() + 150)",
+            ".validate": "newData.hasChildren(['v','x','z','y','t'])",
             "v": {
               ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 10"
             },
@@ -342,7 +342,7 @@
             ".validate": "newData.isString() && newData.val().length <= 40"
           },
           "a": {
-            ".validate": "newData.isString() && newData.val().length <= 3000"
+            ".validate": "newData.isString() && newData.val().length <= 8000"
           },
           "t": {
             ".validate": "newData.isNumber() && newData.val() <= now + 1000"
