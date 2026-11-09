@@ -35,6 +35,7 @@ import SaleToast from '../ShadyDeal/SaleToast';
 import { EMOTES } from '../HouseScreen/houseEngine';
 import { createCityEngine } from './cityEngine.js';
 import { createCityNet } from './cityNet.js';
+import { MAP_SIZE, buildMapping } from './cityMapMath.js';
 import { setLiveCityEngine } from './cityPhotoHub.js';
 import { renderCityPhotoUrl } from './CityPhoto.jsx';
 import '../HouseScreen/HouseScreen.css';
@@ -55,75 +56,6 @@ const BUFE_MENU = [
   { id: 'latte', price: 500 },
 ];
 const HOLD_MS = 120_000;
-
-// --- gerçek harita resmi ↔ dünya eşlemesi ---------------------------------------
-const MAP_PX = {
-  camii: [180, 400], karakol: [370, 330], banka: [665, 320], galeri: [560, 490], spor: [1030, 420], belediye: [1360, 500],
-  silah: [75, 560], modifiye: [330, 600], fabrika: [800, 620], netkafe: [1050, 710], casino: [130, 750], park: [640, 820],
-  bar: [1240, 850], cafe: [1450, 1020], pist: [400, 980], stadyum: [1050, 1150], ev: [690, 1200], liman: [300, 1230],
-};
-const MAP_SIZE = 1600;
-function solve3(A, b) {
-  const m = A.map((r, i) => [...r, b[i]]);
-  for (let i = 0; i < 3; i++) {
-    let p = i;
-    for (let k = i + 1; k < 3; k++) if (Math.abs(m[k][i]) > Math.abs(m[p][i])) p = k;
-    [m[i], m[p]] = [m[p], m[i]];
-    for (let k = i + 1; k < 3; k++) {
-      const f = m[k][i] / m[i][i];
-      for (let j = i; j < 4; j++) m[k][j] -= f * m[i][j];
-    }
-  }
-  const x = [0, 0, 0];
-  for (let i = 2; i >= 0; i--) {
-    let s = m[i][3];
-    for (let j = i + 1; j < 3; j++) s -= m[i][j] * x[j];
-    x[i] = s / m[i][i];
-  }
-  return x;
-}
-function buildMapping(lots) {
-  const pts = [];
-  lots.forEach((l) => {
-    const px = MAP_PX[l.type];
-    if (px) pts.push({ x: (l.x0 + l.x1) / 2, z: (l.z0 + l.z1) / 2, u: px[0], v: px[1], lot: l });
-  });
-  const A = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
-  const bu = [0, 0, 0];
-  const bv = [0, 0, 0];
-  pts.forEach((p) => {
-    const r = [p.x, p.z, 1];
-    for (let i = 0; i < 3; i++) {
-      for (let j = 0; j < 3; j++) A[i][j] += r[i] * r[j];
-      bu[i] += r[i] * p.u;
-      bv[i] += r[i] * p.v;
-    }
-  });
-  const a = solve3(A, bu);
-  const b = solve3(A, bv);
-  const aff = (x, z) => [a[0] * x + a[1] * z + a[2], b[0] * x + b[1] * z + b[2]];
-  pts.forEach((p) => {
-    const [u, v] = aff(p.x, p.z);
-    p.du = p.u - u;
-    p.dv = p.v - v;
-  });
-  const S2 = 2 * 26 * 26;
-  const toImg = (x, z) => {
-    let [u, v] = aff(x, z);
-    let su = 0;
-    let sv = 0;
-    let sw = 0;
-    pts.forEach((p) => {
-      const w = Math.exp(-((x - p.x) ** 2 + (z - p.z) ** 2) / S2);
-      su += w * p.du;
-      sv += w * p.dv;
-      sw += w;
-    });
-    const k = 1 / Math.max(1, sw);
-    return [u + su * k, v + sv * k];
-  };
-  return { toImg, pts };
-}
 
 function Sheet({ title, onClose, children, closeLabel = 'Uzaklaş' }) {
   return (
@@ -205,11 +137,13 @@ function GarageSheet({ onPick, onClose, onGallery }) {
         {usable.map((v) => {
           const c = vehicleCatalog.find((x) => x.id === v.catalogId);
           if (!c) return null;
+          // v147.3: ömrü bitmiş araba sürülemez
+          const dead = v.lifeDays != null && Number(v.lifeDays) <= 0;
           return (
-            <button key={v.id} className="cs-car" onClick={() => onPick(c, v)}>
+            <button key={v.id} className={`cs-car${dead ? ' dead' : ''}`} disabled={dead} onClick={() => !dead && onPick(c, v)}>
               <img src={c.image} alt="" />
               <b>{v.customName || c.name}</b>
-              <span>👥 {({ 1: 4, 2: 4, 3: 4, 4: 2, 5: 4, 6: 2, 7: 2, 8: 2, 9: 1, 10: 2 })[c.id] || 2}</span>
+              <span>{dead ? '⛔ Ömrü bitti' : `👥 ${({ 1: 4, 2: 4, 3: 4, 4: 2, 5: 4, 6: 2, 7: 2, 8: 2, 9: 1, 10: 2 })[c.id] || 2}`}</span>
             </button>
           );
         })}
@@ -744,6 +678,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
     }
     if (zone.kind === 'ride') list.push({ label: '🚗 Yolcu ol', cls: 'take', on: () => rideIn(zone) });
     if (zone.kind === 'seat') list.push({ label: '🪑 Otur', cls: 'take', on: () => engineRef.current.sit(zone.seat) });
+    if (zone.seatNear) list.push({ label: '🪑 Otur', cls: '', on: () => engineRef.current.sit(zone.seatNear) });
     if (zone.kind === 'seated') list.push({ label: '🧍 Kalk', on: () => engineRef.current.stand() });
     actions = { title: zone.title, list };
   }

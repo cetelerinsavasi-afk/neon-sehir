@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { getCachedPhoto, putCachedPhoto, photoKey, whenVisible } from '../../lib/photoCache';
 import { createHouseEngine } from './houseEngine';
 import { drawPhotoOverlay, ensureOverlayFonts, PHOTO_ASPECT } from '../../../functions/photoOverlay.js';
 
@@ -111,17 +112,31 @@ export default function HousePhoto({ attachment }) {
   const key = JSON.stringify([attachment.houseId, attachment.cam, attachment.vert ? 1 : 0, attachment.sq ? 1 : 0, attachment.overlay ? JSON.stringify(attachment.overlay).length : 0, attachment.people?.length, attachment.design?.items?.length, (attachment.people || []).map((p) => `${p.says?.length || 0}${p.holding || ''}${p.emote?.kind || ''}${p.emote?.at || ''}${p.x},${p.z}`)]);
   const [src, setSrc] = useState(null);
   const [failed, setFailed] = useState(false);
+  const boxRef = useRef(null);
   useEffect(() => {
+    // v147.3: önce cihaz önbelleği (anında, 3D sahne hiç kurulmaz); yoksa ekrana yaklaşınca çiz + kaydet
     let alive = true;
-    renderHousePhoto(attachment, key)
-      .then((u) => alive && setSrc(u))
-      .catch(() => alive && setFailed(true));
+    const pk = photoKey(`h|${JSON.stringify(attachment)}`);
+    let stop = () => {};
+    getCachedPhoto(pk).then((hit) => {
+      if (!alive) return;
+      if (hit) return setSrc(hit);
+      stop = whenVisible(boxRef.current, () => {
+        renderHousePhoto(attachment, key)
+          .then((u) => {
+            putCachedPhoto(pk, u);
+            if (alive) setSrc(u);
+          })
+          .catch(() => alive && setFailed(true));
+      });
+    });
     return () => {
       alive = false;
+      stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   if (failed) return <div className="post-att-housephoto-empty">🏠</div>;
-  if (!src) return <div className="post-att-housephoto-empty">Fotoğraf yükleniyor…</div>;
+  if (!src) return <div ref={boxRef} className="post-att-housephoto-empty">Fotoğraf yükleniyor…</div>;
   return <img className={`post-att-housephoto-img${attachment.vert && !attachment.sq ? ' vert' : ''}`} src={src} alt={attachment.houseName || 'Ev'} />;
 }

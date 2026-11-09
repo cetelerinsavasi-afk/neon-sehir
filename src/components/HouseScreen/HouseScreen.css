@@ -738,6 +738,11 @@
   font-size: 15px;
   margin-bottom: 6px;
 }
+/* v147.3: ✕ en solda, başlık yanında (karargah paneli) */
+.hs-modal-head.xleft {
+  justify-content: flex-start;
+  gap: 10px;
+}
 .hs-dim {
   color: var(--text-dim, #8a93a8);
   font-size: 12px;

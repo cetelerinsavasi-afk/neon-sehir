@@ -1,0 +1,21 @@
+/* v147.3 — "Şehre gir" insanı: sürükleyince havada sallanır */
+.cpm-btn { touch-action: none; user-select: none; -webkit-user-select: none; }
+.cpm-btn .cpm-man { font-size: 26px; line-height: 1; display: inline-block; pointer-events: none; }
+.cpm-btn.dragging .cpm-man { opacity: 0.25; }
+.cpm-drag { position: fixed; z-index: 9999; pointer-events: none; width: 0; height: 0; }
+.cpm-hang {
+  position: absolute; left: 0; bottom: 4px; transform-origin: 50% 0%;
+  font-size: 46px; line-height: 1; translate: -50% 0;
+  filter: drop-shadow(0 6px 6px rgba(0, 0, 0, 0.55));
+  animation: cpm-swing 0.9s ease-in-out infinite;
+}
+@keyframes cpm-swing {
+  0% { rotate: -14deg; }
+  50% { rotate: 14deg; }
+  100% { rotate: -14deg; }
+}
+.cpm-target {
+  position: absolute; left: -12px; top: -6px; width: 24px; height: 12px; border-radius: 50%;
+  background: rgba(255, 70, 90, 0.45); border: 2px solid rgba(255, 70, 90, 0.9);
+}
+.cpm-target.ok { background: rgba(25, 232, 255, 0.35); border-color: #19e8ff; box-shadow: 0 0 12px #19e8ff; }

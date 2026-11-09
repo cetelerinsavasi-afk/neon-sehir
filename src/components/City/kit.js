@@ -316,6 +316,13 @@ const LOW = {
       f.rotation.set(0, -a, -0.45);
     }
   },
+  korkuluk(g) {
+    const c = M('#cfd6de', 0.3, 0.8);
+    const post = LG('kk_post', () => new THREE.CylinderGeometry(0.03, 0.03, 0.95, 5));
+    const rail = LG('kk_rail', () => new THREE.BoxGeometry(2.0, 0.04, 0.04));
+    [-0.98, 0, 0.98].forEach((x) => lpMesh(g, post, c, x, 0.475, 0));
+    [0.9, 0.55, 0.25].forEach((y) => lpMesh(g, rail, c, 0, y, 0).castShadow = false);
+  },
   tires(g) {
     const geo = LG('ti_t', () => new THREE.TorusGeometry(0.26, 0.1, 6, 12));
     const m = M('#151517', 0.9);
@@ -341,7 +348,7 @@ export class Kit {
     this.labels = [];
     this.blockers = []; // kamera engelleri (görünmez kutular)
     this.ticks = []; // { obj, ctl, x, z }
-    this.water = []; // su alanları (yürünmez)
+    this.waters = []; // v147.3: su alanları (girilir, batılır)
     this.npcs = [];
     this.seats = []; // oturulabilir noktalar (bank, tabure, kafe sandalyesi, tribün)
   }
@@ -463,8 +470,12 @@ export class Kit {
     this.group.add(o);
     this.labels.push({ text, o, kind });
   }
-  water(x, z, hw, hd) {
-    this.solid(x, z, hw, hd);
+  // v147.3 — su (elips): yürüyerek girilir, içeri doğru batılır; arabalar giremez
+  water(x, z, rx, rz) {
+    const o = new THREE.Object3D();
+    o.position.set(x, 0, z);
+    this.group.add(o);
+    (this.waters ||= []).push({ o, rx, rz });
   }
   // neon/pano tabela: dikdörtgen düzlem; h = yükseklik (m)
   sign(key, text, h, x, y, z, ry = 0, opts = {}) {

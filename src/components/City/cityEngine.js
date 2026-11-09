@@ -274,7 +274,10 @@ class Fig {
       this.plane.visible = true;
     }
     this.plane.scale.set(this.facingLeft ? -1 : 1, 1, 1);
-    this.plane.position.y = this.sitting ? (this.seatY ?? 0.5) - this.y + 0.04 + AV_WAIST_FROM_TOP - AV_PLANE_H / 2 : AV_PLANE_H / 2 - AV_FEET;
+    // v147.3: suya batma (kıyıdan içeri doğru derinleşir)
+    const sinkT = this.sitting || this.inCar ? 0 : this.sink || 0;
+    this.sinkCur = (this.sinkCur || 0) + (sinkT - (this.sinkCur || 0)) * Math.min(1, dt * 5 || 1);
+    this.plane.position.y = this.sitting ? (this.seatY ?? 0.5) - this.y + 0.04 + AV_WAIST_FROM_TOP - AV_PLANE_H / 2 : AV_PLANE_H / 2 - AV_FEET - this.sinkCur;
     if (this.holding) {
       const side = this.facingLeft ? -1 : 1;
       const bob = Math.sin(now / 480) * 0.02;
@@ -323,6 +326,10 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   if (!snapshot) renderer.__onLost = () => onEvent?.({ type: 'contextLost' });
   const canvas = renderer.domElement;
   canvas.className = 'hs-gl';
+  // v147.3: ortak çizici mekândan gelince tuvalin satır içi boyutu (px) mekânınkiydi → şehir
+  // uzun/ince görünüyordu. Tuval her zaman kabın tamamını kaplar.
+  canvas.style.width = '100%';
+  canvas.style.height = '100%';
   container.appendChild(canvas);
   const layer = document.createElement('div');
   layer.className = 'hs-labels';
@@ -404,6 +411,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   const solids = [];
   const lights = [];
   const zones = [];
+  let waters = [];
   const labels = [];
   const blockers = [];
   const ticks = [];
@@ -432,6 +440,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     k.labels.forEach((L) => {
       const p = L.o.getWorldPosition(new V());
       labels.push({ text: L.text, kind: L.kind, p });
+    });
+    (k.waters || []).forEach((wt) => {
+      const p = wt.o.getWorldPosition(new V());
+      const rot = Math.abs(Math.sin(yawOf(k.group.matrixWorld))) > 0.7;
+      waters.push({ x: p.x, z: p.z, rx: rot ? wt.rz : wt.rx, rz: rot ? wt.rx : wt.rz });
     });
     k.blockers.forEach((b) => {
       b.userData.zone = doorZone;
@@ -496,11 +509,13 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         grid[j * GW + i] = b ? 1 : 0;
       }
     }
-    const SMALL_CATS = new Set(['dis', 'masa', 'oturma', 'dukkan', 'dekor', 'garaj', 'kapi', 'duvar']);
+    // v147.3: arabalar sadece binalara / büyük yapılara çarpar — kaldırımdaki ağaç, lamba,
+    // çit, bank, saksı vb. eşyalar araba için engel değil (kaldırıma çıkılabilir)
     solids.forEach((s) => {
-      if (s.item && (SMALL_CATS.has(s.item) || Math.min(s.hw, s.hd) < 0.6)) return;
+      if (s.item && s.item !== 'araba' && Math.min(s.hw, s.hd) < 1.2) return;
       rasterRect(s);
     });
+    waters.forEach((w) => rasterRect({ x: w.x, z: w.z, hw: w.rx + 0.4, hd: w.rz + 0.4, yaw: 0, ell: true }));
     carGrid.set(grid);
     grid.set(keep);
   }
@@ -556,10 +571,12 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   const blockedAt = (x, z, r = PLAYER_R) => cellBlocked(x - r, z - r) || cellBlocked(x + r, z - r) || cellBlocked(x - r, z + r) || cellBlocked(x + r, z + r) || cellBlocked(x, z);
   function freeNear(x, z) {
     if (!blockedAt(x, z)) return { x, z };
-    for (let rr = 0.5; rr < 14; rr += 0.5) {
-      for (let a = 0; a < 16; a++) {
-        const px = x + Math.cos((a / 16) * Math.PI * 2) * rr;
-        const pz = z + Math.sin((a / 16) * Math.PI * 2) * rr;
+    // v147.3: büyük binanın (stadyum vb.) ortasına bırakılsa da en yakın boş yeri bul
+    for (let rr = 0.5; rr < 70; rr += rr < 14 ? 0.5 : 1) {
+      const n = Math.max(16, Math.round(rr * 2));
+      for (let a = 0; a < n; a++) {
+        const px = x + Math.cos((a / n) * Math.PI * 2) * rr;
+        const pz = z + Math.sin((a / n) * Math.PI * 2) * rr;
         if (!blockedAt(px, pz)) return { x: px, z: pz };
       }
     }
@@ -688,6 +705,19 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
 
   // zemin yüksekliği (kaldırım / rıhtım)
   const blockRects = city.lots.map((l) => ({ x0: l.mx - l.bw / 2, x1: l.mx + l.bw / 2, z0: l.mz - l.bd / 2, z1: l.mz + l.bd / 2 }));
+  // v147.3 — su: kıyıdan içeri doğru batma (mekânlardaki havuzla aynı ölçüler)
+  function sinkAt(x, z) {
+    for (const w of waters) {
+      const nx = (x - w.x) / w.rx;
+      const nz = (z - w.z) / w.rz;
+      const r = Math.hypot(nx, nz);
+      if (r >= 1) continue;
+      const dist = (1 - r) * Math.min(w.rx, w.rz);
+      const t = clamp((dist - 0.3) / 3.3, 0, 1);
+      return 0.55 + (1.2 - 0.55) * t;
+    }
+    return 0;
+  }
   function groundY(x, z) {
     if (z > COAST_Z) return 0.13;
     for (const r of blockRects) if (x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1) return 0.13;
@@ -697,17 +727,44 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   // --- doğma noktası (harita bölgesi → kapı / satıcı / açık alan) ------------------
   const REGION_LOT = { camii: 'camii', karakol: 'karakol', banka: 'banka', spor_salonu: 'spor', belediye: 'belediye', silah_magazasi: 'silah', araba_galerisi: 'galeri', fabrika: 'fabrika', internet_kafe: 'netkafe', modifiye_garaji: 'modifiye', casino: 'casino', park: 'park', bar: 'bar', cafe: 'cafe', yaris_pisti: 'pist', stadyum: 'stadyum', ev: 'ev', liman_depo: 'liman' };
   function spawnPoint(key) {
+    // v147.3: ana sayfada haritaya bırakılan nokta { x, z }
+    if (key && typeof key === 'object' && Number.isFinite(key.x) && Number.isFinite(key.z)) {
+      return { x: clamp(key.x, BOUNDS.x0 + 2, BOUNDS.x1 - 2), z: clamp(key.z, BOUNDS.z0 + 2, Math.min(BOUNDS.z1 - 2, COAST_Z + 1)), yaw: Math.PI };
+    }
     const vz = zones.find((z) => z.kind === 'vendor' && z.vendor === key);
     if (vz) return { x: vz.x + Math.sin(vz.out) * 2.2, z: vz.z + Math.cos(vz.out) * 2.2, yaw: vz.out };
     const lt = REGION_LOT[key] || key;
+    // v147.3: özel doğma noktası (park: 4 banklı fıskiye meydanı) — yüz meydana dönük
+    const sz = zones.find((z) => z.kind === 'spawn' && z.key === lt);
+    if (sz) {
+      const k = city.kits.find((q) => q.zones?.some((zz) => zz.kind === 'spawn' && zz.key === lt));
+      const lp = k ? k.group.localToWorld(new V(sz.lx ?? 0, 0, sz.lz ?? 0)) : { x: sz.x, z: sz.z - 1 };
+      return { x: sz.x, z: sz.z, yaw: Math.atan2(sz.x - lp.x, sz.z - lp.z) };
+    }
     const dz = zones.find((z) => z.kind === 'door' && z.type === lt) || (lt === 'pist' ? zones.find((z) => z.kind === 'pist') : null);
-    if (dz) return { x: dz.x + Math.sin(dz.out) * 1.6, z: dz.z + Math.cos(dz.out) * 1.6, yaw: dz.out };
+    // v147.3: kapının önünde, yüz YOLA dönük (kamera arkada, binanın tarafında)
+    if (dz) return { x: dz.x + Math.sin(dz.out) * 1.6, z: dz.z + Math.cos(dz.out) * 1.6, yaw: dz.out + Math.PI };
     const l = city.lots.find((q) => q.type === lt) || city.lots.find((q) => q.type === 'ev');
-    return { x: l.mx, z: l.mz + l.bd / 2 + 1.6, yaw: 0 };
+    return { x: l.mx, z: l.mz + l.bd / 2 + 1.6, yaw: Math.PI };
   }
   // --- oyuncu --------------------------------------------------------------------
   const sp0 = spawnPoint(spawn);
-  const sp0f = freeNear(sp0.x, sp0.z) || sp0;
+  let sp0f = freeNear(sp0.x, sp0.z) || sp0;
+  // v147.3: haritaya bırakılan nokta suya denk gelirse kıyıda doğ
+  if (sinkAt(sp0f.x, sp0f.z) > 0) {
+    for (let rr = 1; rr < 30; rr += 1) {
+      let hit = null;
+      for (let a = 0; a < 24 && !hit; a++) {
+        const px = sp0f.x + Math.cos((a / 24) * Math.PI * 2) * rr;
+        const pz = sp0f.z + Math.sin((a / 24) * Math.PI * 2) * rr;
+        if (!sinkAt(px, pz) && !blockedAt(px, pz)) hit = { x: px, z: pz };
+      }
+      if (hit) {
+        sp0f = hit;
+        break;
+      }
+    }
+  }
   const self = { x: sp0f.x, z: sp0f.z, camYaw: sp0.yaw, camPitch: 0.32, camDist: 6.2, target: null, path: null, run: false, ride: null };
   let lastEmote = { e: null, et: 0 };
   const me = new Fig(scene, layer, { id: 'self', name, avatar, isSelf: true });
@@ -969,7 +1026,10 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         }
       }
       f.group.visible = show;
-      if (show) f.update(dt, camera, now);
+      if (show) {
+        f.sink = waters.length ? sinkAt(f.x, f.z) : 0;
+        f.update(dt, camera, now);
+      }
       else if (f.pet) {
         f.pet.sprite.visible = false;
         f.pet.leash.visible = false;
@@ -1824,6 +1884,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       n.moving = false;
       n.update(dt, camera, now);
     });
+    me.sink = waters.length ? sinkAt(me.x, me.z) : 0;
     me.update(dt, camera, now);
     updateRemoteCars(dt);
     updateRemotes(dt, now);
@@ -1878,7 +1939,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         bd = d;
       }
     }
-    if (!best && !driving && !self.seat) {
+    if (!driving && !self.seat && !self.ride && (!best || best.kind !== 'car')) {
       let sb = null;
       let sd = 1.25;
       seats.forEach((st) => {
@@ -1889,7 +1950,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
           sb = st;
         }
       });
-      if (sb) best = { id: `seat_${sb.x.toFixed(1)}_${sb.z.toFixed(1)}`, kind: 'seat', title: '🪑 Oturak', seat: sb };
+      // v147.3: başka bir bölgedeyken (ör. seyyar satıcı) yakındaki sandalyeye de oturulabilsin
+      if (sb && !best) best = { id: `seat_${sb.x.toFixed(1)}_${sb.z.toFixed(1)}`, kind: 'seat', title: '🪑 Oturak', seat: sb };
+      else if (sb) best = { ...best, id: `${best.id}+seat_${sb.x.toFixed(1)}_${sb.z.toFixed(1)}`, seatNear: sb };
     }
     if (self.seat) best = { id: 'seated', kind: 'seated', title: '🪑 Oturuyorsun' };
     if (!best && !driving && !self.ride && !self.seat) {
@@ -1921,7 +1984,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   function render() {
     const w = container.clientWidth;
     const h = container.clientHeight;
-    if (canvas.width !== Math.floor(w * renderer.getPixelRatio()) || canvas.height !== Math.floor(h * renderer.getPixelRatio())) {
+    if (canvas.width !== Math.floor(w * renderer.getPixelRatio()) || canvas.height !== Math.floor(h * renderer.getPixelRatio()) || Math.abs(camera.aspect - w / Math.max(1, h)) > 0.001) {
       renderer.setSize(w, h, false);
       camera.aspect = w / Math.max(1, h);
       camera.updateProjectionMatrix();
@@ -2299,6 +2362,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         f.walkT = p.wp ? 0.16 : 0;
         f.emote = p.e && EMOTE_EMOJI[p.e.k] ? { kind: p.e.k, t0: now - (Number(p.e.at) || 0) } : null;
         if (p.h) f.setHolding(p.h);
+        f.sink = waters.length ? sinkAt(f.x, f.z) : 0;
+        f.sinkCur = f.sitting || f.inCar ? 0 : f.sink;
         f.update(0, camera, now);
         labels.push({ f, says: p.says || [], self: i === 0 });
       });

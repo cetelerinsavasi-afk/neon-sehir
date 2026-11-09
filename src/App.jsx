@@ -22,6 +22,7 @@ import { useFirestoreResume } from './hooks/useFirestoreResume';
 import { regions } from './data/regions';
 import { BIZ_BY_REGION } from '../functions/businessCatalogData.js';
 import { vendorVenueKey, VENDORS } from '../functions/vendorData.js';
+import CityPegman from './components/City/CityPegman'; // v147.3 — sürükle-bırak ile şehre gir
 import { IS_ANDROID_APP } from './lib/platform';
 import { quietRestorePlayPurchases } from './lib/playBilling';
 import { exitApp, installBackHandler, rearmBack, useBackClose } from './lib/backStack';
@@ -572,9 +573,7 @@ function GameShell() {
 
       {/* v147 — Şehre gir: telefonun üstünde; evin önünde doğulur */}
       {user && (
-        <button className="map-city-btn" onClick={() => openCity('ev')} aria-label="Şehre gir" title="Şehre gir">
-          🌆
-        </button>
+        <CityPegman onTap={() => openCity('ev')} onDrop={(pt) => openCity(pt)} />
       )}
 
       {/* Telefon kısayolu — ChatsApp butonunun TAM üstünde, aynı boyutta. */}

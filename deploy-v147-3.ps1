@@ -1,9 +1,9 @@
-# Neon Sehir v147.2 - gezilebilir sehir (+ hiz, akici oyuncu/araba, cokme duzeltmeleri) + fotograf + Firestore maliyet azaltma + oylama duyurusu + teskilat polis tipi
+# Neon Sehir v147.3 - gezilebilir sehir (+ hiz, akici oyuncu/araba, cokme duzeltmeleri) + fotograf + Firestore maliyet azaltma + oylama duyurusu + teskilat polis tipi
 #   1) Realtime Database kurallari (sehir: konum, araba, sohbet, koltuk)
 #   2) Sunucu fonksiyonlari (cityAction, cityMuteMirror, createSixtagramPost, houseAction, gangAction - 3 deneme)
 #   3) Arayuz derlemesi (hata varsa push YAPILMAZ)
 #   4) Hepsi basariliysa git commit + push (arayuz)
-#   Cift tikla: deploy-v147-2.bat   - soru sormaz.
+#   Cift tikla: deploy-v147-3.bat   - soru sormaz.
 
 $ErrorActionPreference = 'Continue'
 Set-Location -Path $PSScriptRoot
@@ -49,15 +49,15 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host ""
 Write-Host "===== git commit + push (arayuz) =====" -ForegroundColor Cyan
-foreach ($f in @('deploy-v146-4.ps1','deploy-v146-4.bat','deploy-v147.ps1','deploy-v147.bat')) {
+foreach ($f in @('deploy-v146-4.ps1','deploy-v146-4.bat','deploy-v147.ps1','deploy-v147.bat','deploy-v147-2.ps1','deploy-v147-2.bat')) {
   if (Test-Path $f) { git rm -q -f -- $f 2>$null; if (Test-Path $f) { Remove-Item -Force $f } }
 }
-git add -- functions src preview database.rules.json deploy-v147-2.ps1 deploy-v147-2.bat
-git commit -q -m "v147.2: gezilebilir sehir (yurume, araba, yolculuk, yakin sohbet - RTDB) + otomatik grafik ayari, gorus mesafesi, dusuk poligon, ortak grafik baglami, akici oyuncu/araba (tahmin), fotograf/hikaye, mekandan sehre cikis ve geri donus, oylamayi baslatan sohbette, teskilatta polis tipi, Firestore maliyet azaltma" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -m "Claude-Session: https://claude.ai/code/session_0182eo1LEeosPZHtzM4dmgsQ"
+git add -- functions src preview database.rules.json deploy-v147-3.ps1 deploy-v147-3.bat
+git commit -q -m "v147.3: gezilebilir sehir (yurume, araba, yolculuk, yakin sohbet - RTDB) + otomatik grafik ayari, gorus mesafesi, dusuk poligon, ortak grafik baglami, akici oyuncu/araba (tahmin), fotograf/hikaye, mekandan sehre cikis ve geri donus, oylamayi baslatan sohbette, teskilatta polis tipi, Firestore maliyet azaltma, Sixtagram fotograf onbellegi, haritaya surukle-birak, dis sokak halkasi, park gol duzeni + batma" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -m "Claude-Session: https://claude.ai/code/session_0182eo1LEeosPZHtzM4dmgsQ"
 git push
 if ($LASTEXITCODE -ne 0) {
   Write-Host "git push basarisiz. Sunucu guncel ama arayuz eski. Ciktiyi Claude'a gonder." -ForegroundColor Red
   exit 1
 }
 Write-Host ""
-Write-Host "TAMAM: v147.2 canlida." -ForegroundColor Green
+Write-Host "TAMAM: v147.3 canlida." -ForegroundColor Green

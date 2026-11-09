@@ -39,13 +39,25 @@ export function buildPark(kit, lot) {
     kit.item('planter', x, d / 2 - 0.4, 0, (Math.floor(x) & 1) * 1);
     kit.item('planter', x, -d / 2 + 0.4, 4, 0);
   }
-  // yollar (kaldırım taşı): ortadan boydan boya + girişler
-  kit.floor('kaldirim', w - 2, 2.6, 0, 0, 0.17);
-  gaps.forEach((gx) => kit.floor('kaldirim', 2.6, d, gx, 0, 0.165));
   // gölet (haritadaki parkın ortasındaki su)
   const pondX = -18;
   const rx = 7.5;
   const rz = 6.5;
+  // v147.3: ana yol göletin İÇİNDEN geçmiyor — gölete kadar gelip halka yola bağlanır
+  const pondL = pondX - rx - 1.5;
+  const pondR = pondX + rx + 1.5;
+  const segL = pondL - (-w / 2 + 1);
+  const segR = w / 2 - 1 - pondR;
+  kit.floor('kaldirim', segL, 2.6, -w / 2 + 1 + segL / 2, 0, 0.17);
+  kit.floor('kaldirim', segR, 2.6, pondR + segR / 2, 0, 0.17);
+  const inPond = (x, z, m = 1.6) => ((x - pondX) / (rx + m)) ** 2 + (z / (rz + m)) ** 2 < 1;
+  gaps.forEach((gx) => {
+    if (Math.abs(gx - pondX) < rx + 2) {
+      // göletin üstündeki giriş yolu: göletin kenarında biter
+      kit.floor('kaldirim', 2.6, d / 2 - rz - 1.2, gx, d / 2 - (d / 2 - rz - 1.2) / 2, 0.165);
+      kit.floor('kaldirim', 2.6, d / 2 - rz - 1.2, gx, -d / 2 + (d / 2 - rz - 1.2) / 2, 0.165);
+    } else kit.floor('kaldirim', 2.6, d, gx, 0, 0.165);
+  });
   const pond = new THREE.Mesh(new THREE.CircleGeometry(1, 48), waterMaterial('park', '#1a5b86'));
   pond.scale.set(rx, rz, 1);
   pond.rotation.x = -PI / 2;
@@ -71,17 +83,15 @@ export function buildPark(kit, lot) {
   ringM.position.set(pondX, 0.172, 0);
   ringM.receiveShadow = true;
   kit.add(ringM);
-  for (let i = 0; i < 10; i++) {
-    const a = (i / 10) * PI * 2;
-    kit.solid(pondX + Math.sin(a) * rx * 0.55, Math.cos(a) * rz * 0.55, rx * 0.36, rz * 0.36, 0);
-  }
-  kit.solid(pondX, 0, rx * 0.72, rz * 0.6);
+  // v147.3: gölete girilebilir — içine yürüdükçe batılır (mekânlardaki havuz gibi)
+  kit.water(pondX, 0, rx, rz);
   // gölet köprüsü yerine: yol göleti ikiye ayırmasın → ana yol göletin iki yanından
   kit.item('guvercin', pondX + rx + 2.2, 2.2, 0, 0, { solid: false });
   // fıskiyeli meydan (Neon Park'ın merkezi)
   const fx = 8;
   kit.floor('kaldirim', 11, 11, fx, 0, 0.168);
   kit.item('fiskiye', fx, 0, 0, 0);
+  kit.zone({ x: fx, z: 5.0, r: 0, kind: 'spawn', key: 'park', lx: fx, lz: 0 });
   kit.item('parkbench', fx - 3.6, 0, 2, 0);
   kit.item('parkbench', fx + 3.6, 0, 6, 0);
   kit.item('parkbench', fx, -3.8, 0, 0);
@@ -104,15 +114,26 @@ export function buildPark(kit, lot) {
   kit.item('kaydirak', px - 2, 5, 2, 0);
   kit.item('salincak', px + 2, 1.5, 0, 0);
   kit.item('parkbench', px - 3.8, -3.2, 0, 0);
-  // şüpheli adam (çöp kutusunun yanında, ağaçların gölgesinde)
-  const sx = -w / 2 + 3;
-  kit.item('copkutusu', sx + 0.8, -d / 2 + 2.6, 0, 0);
+  // şüpheli adam — v147.3: gür ağaçların arasında (sol üst köşe, yollardan uzak)
+  const sx = -w / 2 + 4.2;
+  const sz = d / 2 - 4.2;
+  kit.item('copkutusu', sx + 1.1, sz + 0.6, 0, 0);
   const sup = V.npcs.find((n) => n.id === 'npc_supheli');
-  kit.npcs.push({ ...sup, x: sx, z: -d / 2 + 3.2 });
-  kit.zone({ x: sx, z: -d / 2 + 4.6, r: 2.4, kind: 'park', act: 'npc', title: '🕶️ Şüpheli adam', icon: '🕶️' });
+  kit.npcs.push({ ...sup, x: sx, z: sz });
+  kit.zone({ x: sx + 0.4, z: sz - 1.6, r: 2.4, kind: 'park', act: 'npc', title: '🕶️ Şüpheli adam', icon: '🕶️' });
+  for (let i = 0; i < 9; i++) {
+    const a = (i / 9) * PI * 2 + 0.3;
+    const rr = 2.6 + (i % 3) * 0.9;
+    const tx = sx + Math.cos(a) * rr;
+    const tz = sz + Math.sin(a) * rr;
+    if (Math.abs(tx - sx - 0.4) < 1.3 && tz < sz) continue; // yanına giden boşluk
+    if (tx < -w / 2 + 0.9 || tz > d / 2 - 0.9 || Math.abs(tx - gaps[0]) < 1.8) continue;
+    kit.item(i % 4 ? 'tree' : 'plantb', tx, tz, i, 0, { scale: 1.3 + (i % 3) * 0.25, solid: i % 4 !== 0 });
+  }
+  // doğma noktası: 4 banklı fıskiye meydanı (aşağıda) — parka tıklayınca orada doğulur
   // ağaçlar (haritadaki gür park) — yollara ve meydana basmayan noktalar
   const r = (() => { let q = 77; return () => ((q = (q * 16807) % 2147483647) - 1) / 2147483646; })();
-  const onPath = (x, z) => Math.abs(z) < 2.6 || gaps.some((g) => Math.abs(g - x) < 2.6) || (Math.abs(x - fx) < 6.5 && Math.abs(z) < 6.5) || ((x - pondX) / (rx + 2.2)) ** 2 + (z / (rz + 2.2)) ** 2 < 1 || (x > w / 2 - 11 && z > -3) || (x > bx - 3 && x < bx + 6 && z < -d / 2 + 7) || (x < sx + 3 && z < -d / 2 + 6) || (x < -w / 2 + 12 && z > 2);
+  const onPath = (x, z) => Math.abs(z) < 2.6 || gaps.some((g) => Math.abs(g - x) < 2.6) || (Math.abs(x - fx) < 6.5 && Math.abs(z) < 6.5) || ((x - pondX) / (rx + 2.2)) ** 2 + (z / (rz + 2.2)) ** 2 < 1 || (x > w / 2 - 11 && z > -3) || (x > bx - 3 && x < bx + 6 && z < -d / 2 + 7) || Math.hypot(x - sx, z - sz) < 2.2;
   let placed = 0;
   for (let tries = 0; tries < 400 && placed < 34; tries++) {
     const x = -w / 2 + 1.5 + r() * (w - 3);
@@ -129,14 +150,20 @@ export function buildPark(kit, lot) {
     kit.item('plantb', x, z, 0, 0, { scale: 1.3, solid: false });
     placed++;
   }
+  // yol kenarı lamba + banklar — v147.3: göletin içine düşenler konmaz
   for (const x of [-28, -14, 0, 18, 28]) {
-    kit.item('streetlamp', x, 2.0, 4, 0);
-    kit.item('streetlamp', x + 6, -2.0, 0, 0);
+    if (!inPond(x, 2.0)) kit.item('streetlamp', x, 2.0, 4, 0);
+    if (!inPond(x + 6, -2.0)) kit.item('streetlamp', x + 6, -2.0, 0, 0);
   }
   for (const x of [-25, -5, 23]) {
-    kit.item('parkbench', x, 2.3, 4, 0);
-    kit.item('parkbench', x + 2, -2.3, 0, 0);
+    if (!inPond(x, 2.3)) kit.item('parkbench', x, 2.3, 4, 0);
+    if (!inPond(x + 2, -2.3)) kit.item('parkbench', x + 2, -2.3, 0, 0);
   }
+  // göletin kıyısında, halka yolun dışında 2 bank + 2 lamba
+  kit.item('parkbench', pondX, rz + 2.3, 4, 0);
+  kit.item('parkbench', pondX, -rz - 2.3, 0, 0);
+  kit.item('streetlamp', pondX - rx - 2.0, rz * 0.6, 0, 0);
+  kit.item('streetlamp', pondX + rx + 2.0, -rz * 0.6, 4, 0);
   kit.light(pondX, 3, 0, '#9fd6ff', 6, 12);
   kit.light(fx, 3, 0, '#ffe2b0', 6, 12);
   return { mapLabel: { text: 'PARK', y: 6, z: 0, x: pondX }, center: { x: 0, z: 0 } };

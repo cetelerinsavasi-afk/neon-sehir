@@ -1209,6 +1209,7 @@ export function createHouseEngine(
   });
   // v101 — giriş kapısı: yeri (duvar + konum) ve tipi değiştirilebilir (design.door)
   let entrance = null; // { obj, ctl, door, wx, wz }
+  let curEntrance = null;
   const doorMatMat = new THREE.MeshStandardMaterial({ color: '#2a1e18', roughness: 1 });
   owned.push(doorMatMat);
   let entranceSig = '';
@@ -1612,7 +1613,8 @@ export function createHouseEngine(
     updateSelectionVisual();
   }
   function refreshEntrance() {
-    buildEntrance(design.door, resolveEntrance(design.door, design.items).showDef);
+    curEntrance = resolveEntrance(design.door, design.items); // v147.3: kapı eşyası giriş olunca da "Şehre çık"
+    buildEntrance(design.door, curEntrance.showDef);
   }
   function emitDesign() {
     design = { ...design, items: [...objs.values()].map((e) => ({ ...e.data })) };
@@ -3639,6 +3641,8 @@ export function createHouseEngine(
     },
     // v147 — giriş kapısının önü (mekândan şehre çıkış butonu için)
     getEntrance() {
+      // v147.3: giriş bir kapı EŞYASIYSA (oyuncu evleri / ofisler / galeriler) onun yeri
+      if (curEntrance?.kind === 'item' && curEntrance.item) return { x: Number(curEntrance.item.x) || 0, z: Number(curEntrance.item.z) || 0 };
       return entrance ? { x: entrance.wx, z: entrance.wz } : null;
     },
     getSelfState() {

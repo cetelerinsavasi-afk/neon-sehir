@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { getCachedPhoto, putCachedPhoto, photoKey, whenVisible } from '../../lib/photoCache';
 import { createCityEngine } from './cityEngine.js';
 import { getLiveCityEngine, onLiveCityChange } from './cityPhotoHub.js';
 import { drawPhotoOverlay, ensureOverlayFonts, PHOTO_ASPECT } from '../../../functions/photoOverlay.js';
@@ -117,17 +118,31 @@ export default function CityPhoto({ attachment }) {
   const key = JSON.stringify([attachment.cam, attachment.vert ? 1 : 0, attachment.sq ? 1 : 0, attachment.overlay ? JSON.stringify(attachment.overlay).length : 0, (attachment.people || []).map((p) => `${p.uid}${p.x},${p.z}`), (attachment.cars || []).length]);
   const [src, setSrc] = useState(null);
   const [failed, setFailed] = useState(false);
+  const boxRef = useRef(null);
   useEffect(() => {
+    // v147.3: önce cihaz önbelleği (anında, 3D sahne hiç kurulmaz); yoksa ekrana yaklaşınca çiz + kaydet
     let alive = true;
-    render(attachment, key)
-      .then((u) => alive && setSrc(u))
-      .catch(() => alive && setFailed(true));
+    const pk = photoKey(`c|${JSON.stringify(attachment)}`);
+    let stop = () => {};
+    getCachedPhoto(pk).then((hit) => {
+      if (!alive) return;
+      if (hit) return setSrc(hit);
+      stop = whenVisible(boxRef.current, () => {
+        render(attachment, key)
+          .then((u) => {
+            putCachedPhoto(pk, u);
+            if (alive) setSrc(u);
+          })
+          .catch(() => alive && setFailed(true));
+      });
+    });
     return () => {
       alive = false;
+      stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   if (failed) return <div className="post-att-housephoto-empty">🌆</div>;
-  if (!src) return <div className="post-att-housephoto-empty">Fotoğraf yükleniyor…</div>;
+  if (!src) return <div ref={boxRef} className="post-att-housephoto-empty">Fotoğraf yükleniyor…</div>;
   return <img className={`post-att-housephoto-img${attachment.vert && !attachment.sq ? ' vert' : ''}`} src={src} alt="Neon Şehir" />;
 }

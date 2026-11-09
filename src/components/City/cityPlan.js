@@ -10,15 +10,8 @@ import * as B from './buildings.js';
 import * as A from './areas.js';
 import { VENUES } from '../../../functions/venueLayouts.js';
 
-export const P = 40; // blok aralığı
-export const BLOCK = 32; // asfaltın arasındaki blok (kaldırım dahil)
-export const SIDE = 3; // kaldırım genişliği
-export const COLS = 6;
-export const ROWS = 5;
-export const cx = (i) => -100 + P * i;
-export const cz = (j) => -80 + P * j;
-export const COAST_Z = 104; // sahil yolu bitişi → rıhtım/deniz
-export const BOUNDS = { x0: -124, x1: 124, z0: -104, z1: COAST_Z + 19 };
+import { P, BLOCK, SIDE, COLS, ROWS, cx, cz, COAST_Z, BOUNDS, LOTS } from './cityLayout.js';
+export { P, BLOCK, SIDE, COLS, ROWS, cx, cz, COAST_Z, BOUNDS };
 
 // tür → oluşturucu. enter: oyundaki gerçek 3D mekân anahtarı (VenueHouseScreen)
 const T = {
@@ -42,14 +35,6 @@ const T = {
   liman: { build: A.buildLiman, region: 'liman_depo', name: 'Liman & Depo', icon: '⚓' },
 };
 
-// [tür, i0, j0, i1, j1, yön]
-const LOTS = [
-  ['karakol', 1, 0], ['banka', 2, 0], ['spor', 4, 0], ['belediye', 5, 0],
-  ['camii', 0, 1], ['galeri', 1, 1], ['fabrika', 2, 1], ['netkafe', 3, 1], ['bar', 4, 1], ['cafe', 5, 1],
-  ['silah', 0, 2], ['modifiye', 1, 2], ['park', 2, 2, 3, 2], ['stadyum', 4, 2, 5, 3],
-  ['casino', 0, 3, 0, 3, 'e'], ['pist', 1, 3, 2, 3], ['ev', 3, 3],
-  ['liman', 0, 4, 1, 4],
-];
 // Seyyar satıcılar: mekân değil, sokakta (lot yerel koordinatı)
 const VENDORS_AT = [
   { key: 'kokorecci', lot: 'casino', x: -8.5, z: 8.5, r: 0 },
@@ -68,9 +53,9 @@ export function buildCity() {
   kits.push(ground);
 
   // --- asfalt + yol çizgileri ------------------------------------------------
-  const X0 = -150;
-  const X1 = 150;
-  const Z0 = -150;
+  const X0 = -200;
+  const X1 = 200;
+  const Z0 = -190;
   const Z1 = COAST_Z;
   const rep = floorRep('asfalt');
   ground.mesh(planeGeo(X1 - X0, Z1 - Z0, (X1 - X0) / rep, (Z1 - Z0) / rep), floorMat('asfalt'), (X0 + X1) / 2, 0, (Z0 + Z1) / 2, 0, { cast: false, rx: -Math.PI / 2 });
@@ -80,11 +65,13 @@ export function buildCity() {
     for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) used.add(`${i},${j}`);
     return { type, i0, j0, i1, j1, face };
   });
-  for (let i = -1; i <= COLS; i++) {
-    for (let j = -1; j < ROWS; j++) {
+  for (let i = -2; i <= COLS + 1; i++) {
+    for (let j = -2; j < ROWS; j++) {
       if (used.has(`${i},${j}`)) continue;
       const outer = i < 0 || i >= COLS || j < 0;
-      lotDefs.push({ type: i === 2 && j === 4 ? 'plaza' : 'filler', i0: i, j0: j, i1: i, j1: j, face: 's', outer });
+      // en dış halka (yolun öbür yanı): sadece görünen bina cepheleri (girilmez, sınır)
+      const far = i < -1 || i > COLS || j < -1;
+      lotDefs.push({ type: i === 2 && j === 4 ? 'plaza' : 'filler', i0: i, j0: j, i1: i, j1: j, face: 's', outer, far });
     }
   }
 
@@ -109,8 +96,8 @@ export function buildCity() {
   void cellOf;
   const roadsX = []; // yatay yollar (z sabit)
   const roadsZ = []; // dikey yollar (x sabit)
-  for (let k = 0; k <= ROWS; k++) roadsX.push(cz(k) - P / 2);
-  for (let k = 0; k <= COLS; k++) roadsZ.push(cx(k) - P / 2);
+  for (let k = -1; k <= ROWS; k++) roadsX.push(cz(k) - P / 2);
+  for (let k = -1; k <= COLS + 1; k++) roadsZ.push(cx(k) - P / 2);
   const dash = (x, z, alongX) => ground.box(alongX ? 2.2 : 0.16, 0.02, alongX ? 0.16 : 2.2, lineM, x, 0.005, z, { cast: false, receive: true });
   roadsX.forEach((z) => {
     for (let x = X0 + 4; x < X1 - 4; x += 5) if (!covered(x, z) && !nearCross(x, roadsZ)) dash(x, z, true);
@@ -163,7 +150,7 @@ export function buildCity() {
       for (const x of [-9, 9]) kit.item('palm', x, lot.d / 2 - 2, 0, 0);
       kit.item('parkbench', -5, lot.d / 2 - 1.2, 4, 0);
       kit.item('parkbench', 5, lot.d / 2 - 1.2, 4, 0);
-    } else B.buildFiller(kit, lot, n * 31 + l.i0 * 7 + l.j0 * 13, { tall: l.outer ? 1.5 : 1 });
+    } else B.buildFiller(kit, lot, n * 31 + l.i0 * 7 + l.j0 * 13, { tall: l.far ? 1.7 : l.outer ? 1.25 : 1 });
     // kaldırım lambaları + ağaçlar (blok kenarları)
     if (l.type !== 'park') sidewalkProps(kit, lot, n, l);
     const entry = { ...l, kit, info, def, mx, mz, bw, bd, ry, lot };

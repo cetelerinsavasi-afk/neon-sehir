@@ -73,11 +73,11 @@ export function HqYetkiPanel({ houseId, role, onClose, flash }) {
   return (
     <div className="hs-modal-bg" onClick={onClose}>
       <div className="hs-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="hs-modal-head">
-          <b>🏴 Karargah yetkilileri</b>
+        <div className="hs-modal-head xleft">
           <button className="hs-x" onClick={onClose}>
             ✕
           </button>
+          <b>🏴 Karargah yetkilileri</b>
         </div>
         {!info ? (
           <p className="hs-dim">Yükleniyor…</p>
