@@ -773,7 +773,10 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const n = Math.ceil(d / 0.25);
     for (let k = 1; k <= n; k++) {
       const t = k / n;
-      if (blockedAt(ax + (bx - ax) * t, az + (bz - az) * t, 0.3)) return false;
+      const px = ax + (bx - ax) * t;
+      const pz = az + (bz - az) * t;
+      // v147.5: yürüyüşle aynı yarıçap (+pay) — köşeden kesip takılmasın; park etmiş arabam da engel
+      if (blockedAt(px, pz, PLAYER_R + 0.06) || hitsParked(px, pz)) return false;
     }
     return true;
   }
@@ -781,8 +784,60 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     if (lineFree(sx, sz, tx, tz)) return [{ x: tx, z: tz }];
     const toC = (x, z) => [clamp(Math.floor(x - GX0), 0, CW - 1), clamp(Math.floor(z - GZ0), 0, CH - 1)];
     const [si, sj] = toC(sx, sz);
-    let [ti, tj] = toC(tx, tz);
-    if (coarse[tj * CW + ti]) return null;
+    const [ti, tj] = toC(tx, tz);
+    // v147.5: park etmiş arabamı geçici olarak engel say (A* içinden geçip takılmasın)
+    const tmp = [];
+    if (myCar && !driving) {
+      const rr = myCar.v.halfW + 0.28 + 0.4;
+      carCircles(myCar.x, myCar.z, myCar.yaw).forEach(([px, pz]) => {
+        for (let j = Math.floor(pz - rr - GZ0); j <= Math.floor(pz + rr - GZ0); j++) for (let i = Math.floor(px - rr - GX0); i <= Math.floor(px + rr - GX0); i++) {
+          if (i < 0 || j < 0 || i >= CW || j >= CH) continue;
+          const cx0 = GX0 + i + 0.5 - px;
+          const cz0 = GZ0 + j + 0.5 - pz;
+          const m = j * CW + i;
+          if (cx0 * cx0 + cz0 * cz0 < rr * rr && !coarse[m]) {
+            coarse[m] = 1;
+            tmp.push(m);
+          }
+        }
+      });
+    }
+    try {
+      return astar(sx, sz, tx, tz, si, sj, ti, tj);
+    } finally {
+      for (const m of tmp) coarse[m] = 0;
+    }
+  }
+  function astar(sx, sz, tx, tz, si, sj, ti, tj) {
+    // hedef hücre kaba ızgarada doluysa en yakın boş hücreye yönel
+    if (coarse[tj * CW + ti]) {
+      let best = null;
+      for (let rr = 1; rr <= 3 && !best; rr++) {
+        for (let dj = -rr; dj <= rr; dj++) for (let di = -rr; di <= rr; di++) {
+          const ni = ti + di;
+          const nj = tj + dj;
+          if (ni < 0 || nj < 0 || ni >= CW || nj >= CH || coarse[nj * CW + ni]) continue;
+          const d = di * di + dj * dj;
+          if (!best || d < best[2]) best = [ni, nj, d];
+        }
+      }
+      if (!best) return null;
+      [ti, tj] = best;
+    }
+    // başlangıç hücresi doluysa (duvarın dibi) komşu boş hücreden başla
+    if (coarse[sj * CW + si]) {
+      let best = null;
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        const ni = si + di;
+        const nj = sj + dj;
+        if (ni < 0 || nj < 0 || ni >= CW || nj >= CH || coarse[nj * CW + ni]) continue;
+        const cx0 = GX0 + ni + 0.5;
+        const cz0 = GZ0 + nj + 0.5;
+        const d = (cx0 - sx) ** 2 + (cz0 - sz) ** 2;
+        if (!best || d < best[2]) best = [ni, nj, d];
+      }
+      if (best) [si, sj] = best;
+    }
     const N = CW * CH;
     const g = new Float32Array(N).fill(Infinity);
     const from = new Int32Array(N).fill(-1);
@@ -1684,6 +1739,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     if (!p || !p.length) return false;
     self.path = p;
     self.target = p.shift();
+    self.repath = 0;
+    self.stuckT = 0;
     ring.position.set(f.x, groundY(f.x, f.z) + 0.03, f.z);
     ring.visible = true;
     return true;
@@ -1815,6 +1872,69 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   let npcTalkT = 3;
   const camRay = new THREE.Raycaster();
 
+  // v147.5 — akıllı yürüme: önce düz, sonra duvar boyunca kay, olmazsa engelin etrafından dön
+  const canStand = (x, z) => !blockedAt(x, z) && !hitsParked(x, z);
+  function moveSmart(vx, vz, dt) {
+    const ox = self.x;
+    const oz = self.z;
+    const d = Math.hypot(vx, vz);
+    // bir şekilde engelin içinde kaldıysak en yakın boş yere çık
+    if (!canStand(ox, oz)) {
+      const f = freeNear(ox, oz);
+      if (f && Math.hypot(f.x - ox, f.z - oz) < 1.6) {
+        self.x = f.x;
+        self.z = f.z;
+      } else {
+        self.x += vx;
+        self.z += vz;
+      }
+      return d;
+    }
+    if (canStand(ox + vx, oz + vz)) {
+      self.x = ox + vx;
+      self.z = oz + vz;
+      return d;
+    }
+    // eksen eksen kayma
+    let sx = ox;
+    let sz = oz;
+    if (canStand(ox + vx, oz)) sx = ox + vx;
+    if (canStand(sx, oz + vz)) sz = oz + vz;
+    const slid = Math.hypot(sx - ox, sz - oz);
+    if (slid > d * 0.6) {
+      self.x = sx;
+      self.z = sz;
+      return slid;
+    }
+    // köşe/direk: yönü iki yana çevirerek dene; son başarılı tarafı tercih et (titreme olmasın)
+    self.steerT = Math.max(0, (self.steerT || 0) - dt);
+    const pref = self.steerT > 0 ? self.steerSide || 1 : 0;
+    const a0 = Math.atan2(vx, vz);
+    let best = null;
+    for (const da of [0.45, 0.9, 1.35]) {
+      for (const sg of pref ? [pref, -pref] : [1, -1]) {
+        const a = a0 + da * sg;
+        const px = ox + Math.sin(a) * d;
+        const pz = oz + Math.cos(a) * d;
+        if (!canStand(px, pz)) continue;
+        // aynı açıdaysa ileride de açık olan tarafı seç
+        const ahead = canStand(ox + Math.sin(a) * d * 6, oz + Math.cos(a) * d * 6) ? 1 : 0;
+        const sc = Math.cos(da) + ahead * 0.5 + (sg === pref ? 0.2 : 0);
+        if (!best || sc > best.sc) best = { px, pz, sc, sg, da };
+      }
+      if (best) break;
+    }
+    if (best) {
+      self.x = best.px;
+      self.z = best.pz;
+      self.steerSide = best.sg;
+      self.steerT = 0.6;
+      return d * Math.cos(best.da);
+    }
+    self.x = sx;
+    self.z = sz;
+    return slid;
+  }
   function stepWalk(dt) {
     let f = 0;
     let s = 0;
@@ -1862,11 +1982,26 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     }
     const moving = Math.hypot(vx, vz) > 0.0005;
     if (moving) {
-      // eksen eksen kayarak çarpışma
-      const nx = self.x + vx;
-      if (!blockedAt(nx, self.z) && !hitsParked(nx, self.z)) self.x = nx;
-      const nz = self.z + vz;
-      if (!blockedAt(self.x, nz) && !hitsParked(self.x, nz)) self.z = nz;
+      const want = Math.hypot(vx, vz);
+      const got = moveSmart(vx, vz, dt);
+      // v147.5: hedefe giderken takıldıysa yolu baştan hesapla (en kısa yoldan dolaş)
+      if (!manual && self.target) {
+        if (got < want * 0.35) self.stuckT = (self.stuckT || 0) + dt;
+        else self.stuckT = Math.max(0, (self.stuckT || 0) - dt * 2);
+        if (self.stuckT > 0.35) {
+          self.stuckT = 0;
+          const fin = self.path?.length ? self.path[self.path.length - 1] : self.target;
+          const p = (self.repath = (self.repath || 0) + 1) <= 3 ? findPath(self.x, self.z, fin.x, fin.z) : null;
+          if (p && p.length) {
+            self.path = p;
+            self.target = p.shift();
+          } else {
+            self.target = null;
+            self.path = null;
+            ring.visible = false;
+          }
+        }
+      }
       const camRight = new V().setFromMatrixColumn(camera.matrixWorld, 0);
       const sx = vx * camRight.x + vz * camRight.z;
       if (Math.abs(sx) > 0.0008) me.facingLeft = sx < 0;
@@ -2010,7 +2145,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     el.style.transform = `translate(-50%, -100%) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)${extra}`;
   }
 
+  let dbgDt = 0.016;
   function frame(dt) {
+    dbgDt = dt;
     const t = clock.elapsedTime;
     const now = performance.now();
     if (driving && myCar) stepDrive(dt);
@@ -2679,6 +2816,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       first = true;
     },
     walkTo,
+    dbgWalk: () => ({ x: self.x, z: self.z, fx: ring.position.x, fz: ring.position.z, on: ring.visible, rp: self.repath || 0, fps: Math.round(1 / Math.max(0.001, dbgDt)) }),
     callCar,
     enterCar,
     exitCar,

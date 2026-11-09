@@ -9,8 +9,9 @@ export const ROWS = 5;
 export const cx = (i) => -100 + P * i;
 export const cz = (j) => -80 + P * j;
 export const COAST_Z = 104; // sahil yolu bitişi → rıhtım/deniz
-// v147.3: şehrin çevresinde bir sokak daha (dış halka) — sınır artık en dıştaki yolun kenarı
-export const BOUNDS = { x0: -163.5, x1: 163.5, z0: -143.5, z1: COAST_Z + 19 };
+// v147.3: şehrin çevresinde bir sokak daha (dış halka)
+// v147.5: sınır = en dış binaların cephesi (dış kaldırım da sürülebilir; görünmez duvar yok)
+export const BOUNDS = { x0: -167.6, x1: 167.6, z0: -147.6, z1: COAST_Z + 19 };
 
 // [tür, i0, j0, i1, j1, yön]
 export const LOTS = [

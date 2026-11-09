@@ -71,7 +71,17 @@ export function buildCity() {
       const outer = i < 0 || i >= COLS || j < 0;
       // en dış halka (yolun öbür yanı): sadece görünen bina cepheleri (girilmez, sınır)
       const far = i < -1 || i > COLS || j < -1;
-      lotDefs.push({ type: i === 2 && j === 4 ? 'plaza' : 'filler', i0: i, j0: j, i1: i, j1: j, face: 's', outer, far });
+      const d = { type: i === 2 && j === 4 ? 'plaza' : 'filler', i0: i, j0: j, i1: i, j1: j, face: 's', outer, far };
+      // v147.5: en dış halka kesintisiz bina duvarı — aradaki (girilemeyen) ara yolları kapat
+      const gap = (P - BLOCK) / 2;
+      if (far && (i < -1 || i > COLS)) {
+        d.ez0 = gap;
+        d.ez1 = j === ROWS - 1 ? COAST_Z + 3 - (cz(j) + BLOCK / 2) : gap; // sahil yolunu da kapat
+      } else if (far) {
+        d.ex0 = i === -1 ? gap * 2 : gap;
+        d.ex1 = i === COLS ? gap * 2 : gap;
+      }
+      lotDefs.push(d);
     }
   }
 
@@ -86,10 +96,7 @@ export function buildCity() {
   const covered = (x, z) => {
     // bir yol noktası birleşik bir lotun içinde mi?
     return lotDefs.some((l) => {
-      const bx0 = cx(l.i0) - BLOCK / 2;
-      const bx1 = cx(l.i1) + BLOCK / 2;
-      const bz0 = cz(l.j0) - BLOCK / 2;
-      const bz1 = cz(l.j1) + BLOCK / 2;
+      const { bx0, bx1, bz0, bz1 } = lotBox(l);
       return x > bx0 + 0.5 && x < bx1 - 0.5 && z > bz0 + 0.5 && z < bz1 - 0.5;
     });
   };
@@ -123,10 +130,7 @@ export function buildCity() {
   const kRep = floorRep('kaldirim');
   const curbM = M('#8f8a80', 0.85);
   lotDefs.forEach((l, n) => {
-    const bx0 = cx(l.i0) - BLOCK / 2;
-    const bx1 = cx(l.i1) + BLOCK / 2;
-    const bz0 = cz(l.j0) - BLOCK / 2;
-    const bz1 = cz(l.j1) + BLOCK / 2;
+    const { bx0, bx1, bz0, bz1 } = lotBox(l);
     const bw = bx1 - bx0;
     const bd = bz1 - bz0;
     const mx = (bx0 + bx1) / 2;
@@ -191,14 +195,17 @@ export function buildCity() {
   const qx1 = limanLot.mx + limanLot.bw / 2;
   sea.box(X1 - X0, 0.7, 3, M('#6b7078', 0.85), 0, -0.58, COAST_Z + 1.5, { cast: false });
   sea.floor('kaldirim', X1 - X0, 3, 0, COAST_Z + 1.5, 0.125);
+  const EDGE = cx(COLS + 1) - BLOCK / 2; // dış bina duvarı (v147.5)
   for (let x = X0 + 1; x < X1; x += 2) {
     if (x > qx0 - 1 && x < qx1 + 1) continue;
+    if (Math.abs(x) > EDGE - 0.5) continue;
     sea.item('korkuluk', x, COAST_Z + 2.8, 0, 0, { solid: false });
   }
   sea.solid((X0 + qx0) / 2, COAST_Z + 2.9, (qx0 - X0) / 2, 0.2);
   sea.solid((qx1 + X1) / 2, COAST_Z + 2.9, (X1 - qx1) / 2, 0.2);
   for (let x = X0 + 10; x < X1; x += 16) {
     if (x > qx0 - 2 && x < qx1 + 2) continue;
+    if (Math.abs(x) > EDGE - 1) continue;
     sea.item('streetlamp', x, COAST_Z + 2.2, 4, 0);
   }
   A.buildSea(sea, { x0: X0 - 200, x1: X1 + 200, z0: COAST_Z + 2, z1: COAST_Z + 300 });
@@ -218,6 +225,15 @@ function nearCross(v, lines) {
 }
 
 // blok kenarı kaldırım donatıları (yerel lot koordinatında: kaldırım lotun dışında)
+// lot kutusu (dünya) — v147.5: dış halka lotları ara yolları kapatacak kadar uzar
+function lotBox(l) {
+  return {
+    bx0: cx(l.i0) - BLOCK / 2 - (l.ex0 || 0),
+    bx1: cx(l.i1) + BLOCK / 2 + (l.ex1 || 0),
+    bz0: cz(l.j0) - BLOCK / 2 - (l.ez0 || 0),
+    bz1: cz(l.j1) + BLOCK / 2 + (l.ez1 || 0),
+  };
+}
 function sidewalkProps(kit, lot, n, l) {
   const hw = lot.w / 2 + SIDE / 2 + 0.3;
   const hd = lot.d / 2 + SIDE / 2 + 0.3;
