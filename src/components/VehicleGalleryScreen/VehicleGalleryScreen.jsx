@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import CarImg from '../VehicleCard/CarImg'; // v150: araç görseli = 3D model
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
@@ -8,6 +9,38 @@ import './VehicleGalleryScreen.css';
 import { CarStatBars } from '../RaceTrackScreen/CarStats';
 import { useShopOffers, withOfferPrices } from '../../hooks/useShopOffers';
 import { priceChangedText } from '../../lib/priceChanged';
+import { JOBS } from '../../../functions/vehicleKinds.js';
+
+// v151 — galeri 3 sekme: Araba · Ticari (meslek) · Motor
+export const GALLERY_TABS = [
+  ['araba', '🚗 Araba'],
+  ['ticari', '🚚 Ticari'],
+  ['motor', '🏍️ Motor'],
+];
+export const kindOfCar = (car) => car?.kind || 'araba';
+export function VehicleKindTabs({ value, onChange }) {
+  return (
+    <div className="vg-tabs">
+      {GALLERY_TABS.map(([k, l]) => (
+        <button key={k} className={value === k ? 'on' : ''} onClick={() => onChange(k)}>
+          {l}
+        </button>
+      ))}
+    </div>
+  );
+}
+// ticari / motor: kartta hız çubukları yerine kısa bilgi
+export function VehicleKindInfo({ car }) {
+  const k = kindOfCar(car);
+  if (k === 'araba') return null;
+  const J = car.job ? JOBS[car.job] : null;
+  return (
+    <span className="vg-kind-info">
+      {J ? `💼 ${car.desc || J.name} · günde ${J.daily} ${J.unit}, ort. ${J.avg.toLocaleString('tr-TR')} altın` : `🏍️ ${car.seats || 1} kişilik`}
+      <em>⏳ 20 gün · 🔧 tamir / geliştirme yok · 🎨 modifiye var</em>
+    </span>
+  );
+}
 
 // Kullanıcı revizesi: "galeriden araba satın aldığımızda bi süre butonda
 // satın alındı yazsın, araba aldığımı anlayamadım oyuncular yanlışlıkla
@@ -31,6 +64,7 @@ export default function VehicleGalleryScreen({ items = null, onBuy = null, disab
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const [justBoughtIds, setJustBoughtIds] = useState(() => new Set());
+  const [tab, setTab] = useState('araba');
   const feedbackTimeouts = useRef({});
   // v132: oyunun galerisi — en ucuz oyuncu galerisinin fiyatı
   const best = useShopOffers('vehicle', { enabled: !items && Boolean(user) });
@@ -48,7 +82,7 @@ export default function VehicleGalleryScreen({ items = null, onBuy = null, disab
 
   const gold = player?.gold ?? 0;
 
-  const list = items || withOfferPrices(vehicleCatalog, best);
+  const list = (items || withOfferPrices(vehicleCatalog, best)).filter((c) => kindOfCar(c) === tab);
   const handleBuy = async (car) => {
     const catalogId = car.id;
     setBusy(catalogId);
@@ -75,14 +109,16 @@ export default function VehicleGalleryScreen({ items = null, onBuy = null, disab
 
   return (
     <div className="vehicle-gallery">
+      <VehicleKindTabs value={tab} onChange={setTab} />
+      {list.length === 0 && <p className="vg-empty">Bu sekmede satılık araç yok.</p>}
       {list.map((car) => {
         const justBought = justBoughtIds.has(car.id);
         return (
           <div key={car.id} className="vehicle-card">
-            <img className="vehicle-card-image" src={car.image} alt={car.name} />
+            <CarImg className="vehicle-card-image" catalogId={car.id} alt={car.name} />
             <div className="vehicle-card-info">
               <span className="vehicle-card-name">{car.name}</span>
-              <CarStatBars catalogId={car.id} level={1} compact />
+              {kindOfCar(car) === 'araba' ? <CarStatBars catalogId={car.id} level={1} compact /> : <VehicleKindInfo car={car} />}
               <span className="vehicle-card-price">{car.price.toLocaleString('tr-TR')} altın</span>
             </div>
             <button

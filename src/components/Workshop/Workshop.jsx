@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useWeapons } from '../../hooks/useWeapons';
@@ -6,7 +6,10 @@ import { useVehicles } from '../../hooks/useVehicles';
 import { useInventory } from '../../hooks/useInventory';
 import { shopAction } from '../../services/gameActions';
 import { weaponCatalog } from '../../data/weaponCatalog';
-import { vehicleImage, vehicleDisplayName } from '../VehicleCard/VehicleCard';
+import { vehicleDisplayName } from '../VehicleCard/VehicleCard';
+import CarImg from '../VehicleCard/CarImg';
+import { isCarCatalogId } from '../../data/vehicleCatalog';
+import { modCost, modDefaults } from '../../../functions/vehicleMods.js';
 import {
   WORKSHOP_ITEM_TYPE,
   gameWorkshopPrice,
@@ -33,6 +36,19 @@ import './Workshop.css';
 // =============================================================================
 
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
+// v150 — modifiye stüdyosu (three.js) sadece açılınca yüklenir
+const ModifiyeStudio = lazy(() => import('./ModifiyeStudio'));
+
+// Arabanın fabrikadan farkları (kaç parça modifiyeli?)
+function ModSummary({ item }) {
+  const diff = modCost(item.catalogId, modDefaults(item.catalogId), item.mods || null).items;
+  return (
+    <div className="bz-row">
+      <span>Modifiye</span>
+      <b>{diff.length ? `${diff.length} parça değişik` : 'Fabrika çıkışı'}</b>
+    </div>
+  );
+}
 const weaponImage = (id) => weaponCatalog.find((w) => w.id === id)?.image;
 
 function Gold({ v, cls = '' }) {
@@ -59,6 +75,7 @@ export default function Workshop({ shop, onClose }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [seenPrice, setSeenPrice] = useState(null);
+  const [studio, setStudio] = useState(false); // v150
 
   const items = useMemo(() => (isWeapon ? weapons : vehicles).filter((x) => !x.listed), [isWeapon, weapons, vehicles]);
   // v124: birden çok silah varsa varsayılan seçim EN GÜÇLÜ silah (araçta ilk sıradaki)
@@ -71,7 +88,8 @@ export default function Workshop({ shop, onClose }) {
     if (!itemId && defaultItem) setItemId(defaultItem.id);
   }, [itemId, defaultItem]);
 
-  const job = item ? workshopJob({ itemType, item, action: tab, upgradeType: isWeapon ? undefined : 'level' }) : null;
+  const isMod = tab === 'mod'; // v150: modifiye (sadece araba atölyesi)
+  const job = item && !isMod ? workshopJob({ itemType, item, action: tab, upgradeType: isWeapon ? undefined : 'level' }) : null;
   const material = job?.material || (tab === 'repair' ? 'tamirMalzemesi' : isWeapon ? 'silahUpgrade' : 'arabaGelistirme');
   const mat = BIZ_MATERIALS[material] || { icon: '📦', name: material };
   const isOwner = !isGame && shop.houseDoc?.ownerUid === user?.uid;
@@ -87,6 +105,12 @@ export default function Workshop({ shop, onClose }) {
   useEffect(() => {
     setMsg(null);
   }, [item?.id, tab]);
+  // v151: ticari araç / motor seçilince doğrudan Modifiye sekmesi
+  const workable = isWeapon || isCarCatalogId(item?.catalogId);
+  useEffect(() => {
+    if (item && !workable && tab !== 'mod') setTab('mod');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item?.id]);
   // ürün/sekme değişince o anki fiyat "görülmüş" sayılır; panel açıkken
   // dükkân sahibi fiyatı değiştirirse buton bir kez onay ister.
   useEffect(() => {
@@ -105,7 +129,7 @@ export default function Workshop({ shop, onClose }) {
   const repairsLeft = VEHICLE_WEAPON_MAX_REPAIRS - (item?.repairsUsed || 0);
   const level = isWeapon ? item?.level || 1 : vehicleRaceLevel(item);
   const maxLevel = isWeapon ? WEAPON_MAX_LEVEL : VEHICLE_MAX_LEVEL;
-  const img = item ? (isWeapon ? weaponImage(item.catalogId) : vehicleImage(item.catalogId)) : null;
+  const img = item && isWeapon ? weaponImage(item.catalogId) : null;
   const name = item ? (isWeapon ? item.name : vehicleDisplayName(item)) : '';
   const gain = tab === 'repair' && !job?.block ? job?.gain || 0 : 0;
   const lifeCls = life <= Math.ceil(cap * 0.2) ? 'crit' : life <= Math.ceil(cap * 0.5) ? 'low' : '';
@@ -116,9 +140,12 @@ export default function Workshop({ shop, onClose }) {
 
   // ---- neden yapılamıyor? (tek cümle) --------------------------------------------------
   let block = null; // { text, ok }
-  if (job?.block === 'repairs') block = { text: `Tamir hakkı bitti (${VEHICLE_WEAPON_MAX_REPAIRS}/${VEHICLE_WEAPON_MAX_REPAIRS} kullanıldı). Bu ${kindName} artık tamir edilemez.` };
+  // v150: dükkân sahibi kendi atölyesinde iş yaptıramaz (rakibe gitmeli) — sunucu da reddeder
+  if (isOwner) block = { text: `Burası senin dükkânın: kendi dükkânında ${isRepair ? 'tamir' : isMod ? 'modifiye' : 'geliştirme'} yaptıramazsın. Rakip bir ${isWeapon ? 'silahçıya' : 'modifiyeciye'} ya da oyunun dükkânına git.` };
+  else if (job?.block === 'repairs') block = { text: `Tamir hakkı bitti (${VEHICLE_WEAPON_MAX_REPAIRS}/${VEHICLE_WEAPON_MAX_REPAIRS} kullanıldı). Bu ${kindName} artık tamir edilemez.` };
   else if (job?.block === 'full') block = { ok: true, text: 'Ömrü zaten tam dolu, tamire gerek yok.' };
   else if (job?.block === 'maxLevel') block = { ok: true, text: `En yüksek seviyede (${maxLevel}/${maxLevel}). Daha fazla geliştirilemez.` };
+  else if (job?.block === 'noWork') block = { ok: true, text: `Ticari araç ve motorlarda ${isRepair ? 'tamir' : 'geliştirme'} yok (ömrü 20 gün). Görünümünü 🎨 Modifiye sekmesinden değiştirebilirsin.` };
   else if (job?.block === 'listed') block = { text: 'Bu ürün ilanda/vitrinde. Önce ilandan kaldır.' };
   else if (job?.block) block = { text: 'Bu işlem bu ürün için yapılamaz.' };
 
@@ -164,6 +191,7 @@ export default function Workshop({ shop, onClose }) {
       } else if (m === 'gold') setMsg({ ok: false, text: 'Altının yetmiyor.' });
       else if (m === 'shop-short' || m === 'own-short') setMsg({ ok: false, text: isOwner ? 'Envanterinde yeterli malzeme yok.' : 'Bu dükkânda şu an bu iş için yeterli malzeme yok. Dükkân sahibine haber verildi; biraz sonra tekrar dene.' });
       else if (m === 'not-present') setMsg({ ok: false, text: 'Dükkânın içinde olmalısın.' });
+      else if (m === 'own-shop') setMsg({ ok: false, text: 'Kendi dükkânında iş yaptıramazsın.' });
       else setMsg({ ok: false, text: m || 'İşlem yapılamadı.' });
     } finally {
       setBusy(false);
@@ -201,10 +229,16 @@ export default function Workshop({ shop, onClose }) {
           🔧 Tamir
           <small>ömrü uzat</small>
         </button>
-        <button className={!isRepair ? 'on' : ''} onClick={() => setTab('upgrade')}>
+        <button className={tab === 'upgrade' ? 'on' : ''} onClick={() => setTab('upgrade')}>
           ⬆️ Geliştir
           <small>{isWeapon ? 'gücü artır' : 'hızı artır'}</small>
         </button>
+        {!isWeapon && (
+          <button className={isMod ? 'on' : ''} onClick={() => setTab('mod')}>
+            🎨 Modifiye
+            <small>görünümü değiştir</small>
+          </button>
+        )}
       </div>
 
       {items.length === 0 ? (
@@ -214,10 +248,10 @@ export default function Workshop({ shop, onClose }) {
           {items.length > 1 && (
             <div className="wk-picker">
               {items.map((x) => {
-                const xi = isWeapon ? weaponImage(x.catalogId) : vehicleImage(x.catalogId);
+                const xi = isWeapon ? weaponImage(x.catalogId) : null;
                 return (
                   <button key={x.id} className={x.id === item?.id ? 'on' : ''} onClick={() => setItemId(x.id)}>
-                    {xi ? <img src={xi} alt="" /> : <span>{isWeapon ? '🔫' : '🚗'}</span>}
+                    {!isWeapon ? <CarImg catalogId={x.catalogId} mods={x.mods || null} /> : xi ? <img src={xi} alt="" /> : <span>🔫</span>}
                     <small>{isWeapon ? x.name : vehicleDisplayName(x)}</small>
                   </button>
                 );
@@ -228,7 +262,7 @@ export default function Workshop({ shop, onClose }) {
           {/* 1 — ürün ve işin sonucu */}
           <div className="bz-sec">
             <div className="wk-item">
-              <div className="wk-item-img">{img ? <img src={img} alt="" /> : <span>{isWeapon ? '🔫' : '🚗'}</span>}</div>
+              <div className="wk-item-img">{!isWeapon ? <CarImg catalogId={item.catalogId} mods={item.mods || null} /> : img ? <img src={img} alt="" /> : <span>🔫</span>}</div>
               <div className="wk-item-main">
                 <b>{name}</b>
                 {isWeapon ? (
@@ -243,7 +277,9 @@ export default function Workshop({ shop, onClose }) {
               </div>
             </div>
 
-            {isRepair ? (
+            {isMod ? (
+              <ModSummary item={item} />
+            ) : isRepair ? (
               <>
                 <div className="bz-row">
                   <span>Ömür</span>
@@ -293,6 +329,15 @@ export default function Workshop({ shop, onClose }) {
 
           {block ? (
             <p className={block.ok ? 'bz-ok' : 'bz-warn'}>{block.text}</p>
+          ) : isMod ? (
+            <>
+              <button className="bz-btn wide wk-go wk-mod-go" onClick={() => setStudio(true)}>
+                🎨 Modifiye stüdyosunu aç
+              </button>
+              <p className="wk-wallet">
+                Boya, jant, gövde kiti, tavan, neon ve plaka. Satın almadan önce arabanın üstünde dene; sadece uyguladığın değişikliklerin parasını ödersin.
+              </p>
+            </>
           ) : (
             <>
               {/* 2 — tek buton */}
@@ -322,6 +367,17 @@ export default function Workshop({ shop, onClose }) {
           )}
           {msg && <p className={msg.ok ? 'bz-ok' : 'bz-warn'}>{msg.text}</p>}
         </>
+      )}
+      {studio && item && !isWeapon && (
+        <Suspense fallback={null}>
+          <ModifiyeStudio
+            vehicle={item}
+            shop={isGame ? { kind: 'game' } : { kind: 'player', houseId: shop.houseId }}
+            isOwner={isOwner}
+            onClose={() => setStudio(false)}
+            onDone={(r) => setMsg({ ok: true, text: `✓ Modifiye tamam! ${fmt(r?.total)} altın ödendi.` })}
+          />
+        </Suspense>
       )}
     </div>
   );

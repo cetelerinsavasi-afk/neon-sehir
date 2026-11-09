@@ -330,7 +330,7 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
         myCarCell = cc;
         lastCar = null;
       }
-      const moved = !lastCar || Math.hypot(car.x - lastCar.x, car.z - lastCar.z) > 0.15 || Math.abs(car.y - lastCar.y) > 0.02 || car.d !== lastCar.d || car.v !== lastCar.v || Math.abs(car.s - lastCar.s) > 1.5;
+      const moved = !lastCar || Math.hypot(car.x - lastCar.x, car.z - lastCar.z) > 0.15 || Math.abs(car.y - lastCar.y) > 0.02 || car.d !== lastCar.d || car.v !== lastCar.v || car.m !== lastCar.m || car.j !== lastCar.j || Math.abs(car.s - lastCar.s) > 1.5;
       if ((moved && now - lastCarAt >= DRIVE_MS) || now - lastCarAt >= HEARTBEAT_MS * 3) {
         lastCar = car;
         lastCarAt = now;
@@ -355,7 +355,7 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
     if (offline) return null;
     try {
       const { m, db } = await rt();
-      for (let k = 1; k < Math.min(4, seats); k++) {
+      for (let k = 1; k < Math.min(30, seats); k++) {
         const r = m.ref(db, `city/s/${owner}/${k}`);
         const res = await withTimeout(m.runTransaction(r, (cur) => (cur ? undefined : uid)), 5000);
         if (res?.committed) {

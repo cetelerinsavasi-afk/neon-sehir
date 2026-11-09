@@ -10,6 +10,7 @@
 // Garaj (kendi arabaların) sadece "Arabalarım" açılınca okunur.
 // =============================================================================
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import CarImg from '../VehicleCard/CarImg'; // v150: araç görseli = 3D model
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useDailyActions } from '../../hooks/useDailyActions';
@@ -18,7 +19,9 @@ import { useVehicles } from '../../hooks/useVehicles';
 import { useBlocks } from '../../contexts/BlocksContext';
 import { useBackClose } from '../../lib/backStack';
 import { blockProfanity } from '../../lib/profanityGuard';
-import { buyFromVendor, buyFromBufe, sellContrabandAtPark, cityAction, createSixtagramPost } from '../../services/gameActions';
+import { buyFromVendor, buyFromBufe, sellContrabandAtPark, cityAction, createSixtagramPost, shopAction } from '../../services/gameActions';
+import { createJobRunner } from './cityJobs.js';
+import { JOBS } from '../../../functions/vehicleKinds.js';
 import { invalidateSixtagramFeed } from '../../hooks/useSixtagramFeed';
 import PhotoStoryEditor from '../HouseScreen/PhotoStoryEditor';
 import { vehicleCatalog } from '../../data/vehicleCatalog.js';
@@ -31,6 +34,7 @@ import PhoneScreen from '../Phone/PhoneScreen';
 import PlayerCard from '../PlayerCard/PlayerCard';
 import ReportBlockSheet from '../ReportBlockSheet/ReportBlockSheet';
 import GuestSignInSheet from '../Guest/GuestSignInSheet';
+import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
 import { useStadiumMatches } from '../../hooks/useStadiumMatches';
 import { liveState } from './stadiumMatch.js';
 import ShadyDealPanel from '../ShadyDeal/ShadyDealPanel';
@@ -146,9 +150,9 @@ function GarageSheet({ onPick, onClose, onGallery }) {
           const dead = v.lifeDays != null && Number(v.lifeDays) <= 0;
           return (
             <button key={v.id} className={`cs-car${dead ? ' dead' : ''}`} disabled={dead} onClick={() => !dead && onPick(c, v)}>
-              <img src={c.image} alt="" />
+              <CarImg catalogId={c.id} mods={v.mods || null} />
               <b>{v.customName || c.name}</b>
-              <span>{dead ? '⛔ Ömrü bitti' : `👥 ${({ 1: 4, 2: 4, 3: 4, 4: 2, 5: 4, 6: 2, 7: 2, 8: 2, 9: 1, 10: 2 })[c.id] || 2}`}</span>
+              <span>{dead ? '⛔ Ömrü bitti' : c.job ? `💼 ${JOBS[c.job]?.name || 'Meslek'}` : `👥 ${c.seats || ({ 1: 4, 2: 4, 3: 4, 4: 2, 5: 4, 6: 2, 7: 2, 8: 2, 9: 1, 10: 2 })[c.id] || 2}`}</span>
             </button>
           );
         })}
@@ -208,9 +212,16 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
   const [mapTick, setMapTick] = useState(0);
   const [imgOk, setImgOk] = useState(false);
   const [online, setOnline] = useState(0);
+  const [nearby, setNearby] = useState([]);
   const [offline, setOffline] = useState(false);
   const [card, setCard] = useState(null);
   const [report, setReport] = useState(null);
+  const [chatOpen, setChatOpen] = useState(false); // v151: sohbet geçmişi açık mı
+  // v151 — meslek (ticari araç): sürülen aracın belgesi + iş durumu
+  const [myVeh, setMyVeh] = useState(null);
+  const [jobUi, setJobUi] = useState(null);
+  const [jobPaid, setJobPaid] = useState(null);
+  const jobRef = useRef(null);
   const [busy, setBusy] = useState(null);
   const [sellResult, setSellResult] = useState(null);
   const toastT = useRef(0);
@@ -222,6 +233,27 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
     clearTimeout(toastT.current);
     toastT.current = setTimeout(() => setToast(null), 2600);
   }, []);
+
+  // v151 — meslek koşturucusu (işler art arda; sunucu öder)
+  useEffect(() => {
+    const r = createJobRunner({
+      engine: () => engineRef.current,
+      call: (payload) => shopAction(payload),
+      onUi: (u) => setJobUi(u),
+      onToast: (t) => flash(t),
+      onPaid: (p) => {
+        setJobPaid(p);
+        setTimeout(() => setJobPaid((x) => (x === p ? null : x)), 4200);
+      },
+    });
+    jobRef.current = r;
+    const iv = setInterval(() => r.tick(0.1), 100);
+    return () => {
+      clearInterval(iv);
+      r.stop(true);
+      jobRef.current = null;
+    };
+  }, [flash]);
 
   useEffect(() => {
     const img = new Image();
@@ -285,6 +317,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
         onReady: () => setReady(true),
         onPlayerTap: (id) => setCard(id),
         onEvent: (e) => {
+          if (e.type === 'crash') jobRef.current?.crash(e.speed);
           if (e.type === 'crash' && e.speed > 9 && Date.now() - lastCrash > 2500) {
             lastCrash = Date.now();
             flash('💥');
@@ -318,7 +351,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
           if (blockedRef.current(id)) return;
           const n = pr?.n || namesRef.current.get(id)?.n || 'Oyuncu';
           eng.playerSay(id, text);
-          setMsgs((m) => [...m.slice(-30), { id: `${id}_${Date.now()}`, uid: id, name: n, text }]);
+          setMsgs((m) => [...m.slice(-80), { id: `${id}_${Date.now()}`, uid: id, name: n, text }]);
         },
         onStatus: (s) => setOffline(s === 'offline'),
       });
@@ -410,7 +443,12 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
   // kişi sayısı (yakındakiler) — 2 sn'de bir motorun haritasından
   useEffect(() => {
     if (!ready) return undefined;
-    const iv = setInterval(() => setOnline(engineRef.current?.remoteCount?.() || 0), 2000);
+    const iv = setInterval(() => {
+      setOnline(engineRef.current?.remoteCount?.() || 0);
+      // v150 — 👥 Yakındakiler (profil buradan açılır; oyuncuya dokunmak profil açmaz)
+      const ids = (engineRef.current?.nearbyPlayers?.() || []).filter((id) => !blockedRef.current(id));
+      setNearby((cur) => (cur.join(',') === ids.join(',') ? cur : ids));
+    }, 2000);
     return () => clearInterval(iv);
   }, [ready]);
 
@@ -549,6 +587,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
     if (report) return setReport(null);
     if (card) return setCard(null);
     if (mapOpen) return setMapOpen(false);
+    if (chatOpen) return setChatOpen(false);
     if (panel?.kind === 'camera') return closeCamera();
     if (panel) return setPanel(null);
     if (e?.isDriving()) return e.exitCar();
@@ -567,10 +606,17 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
   };
 
   // --- araba -------------------------------------------------------------------------------
-  const callCar = (c) => {
-    const r = engineRef.current.callCar(c.id);
+  const callCar = (c, veh) => {
+    // v150: aracın kayıtlı modifiyesiyle (şehirde modifiyeli hali görünür)
+    const r = engineRef.current.callCar(c.id, veh?.mods || null);
     setPanel(null);
     flash(r.ok ? `🚗 ${c.name}` : r.reason);
+    // v151: ticari araçsa üstte "İşe başla"
+    if (r.ok) {
+      const v = veh && c.job ? { id: veh.id, catalogId: c.id, job: c.job } : null;
+      setMyVeh(v);
+      jobRef.current?.setVehicle(v);
+    }
   };
   const rideIn = async (z) => {
     const k = await netRef.current?.claimSeat(z.owner, z.seats);
@@ -697,7 +743,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
       return false;
     }
     engineRef.current?.say(text);
-    setMsgs((m) => [...m.slice(-30), { id: `me_${Date.now()}`, uid: user?.uid, name: myName, text, me: true }]);
+    setMsgs((m) => [...m.slice(-80), { id: `me_${Date.now()}`, uid: user?.uid, name: myName, text, me: true }]);
     return true;
   };
 
@@ -800,6 +846,55 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
             )}
           </div>
 
+          {/* v151 — MESLEK: ticari araçtayken "İşe başla" / iş paneli */}
+          {myVeh && !guest && (driving || jobUi?.active) && (() => {
+            const J = JOBS[myVeh.job];
+            const today = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
+            const done = player?.jobs?.day === today ? Number(player.jobs.n?.[myVeh.job]) || 0 : 0;
+            const left = jobUi?.left ?? Math.max(0, J.daily - done);
+            return (
+              <div className={`cs-job${jobUi?.active ? ' on' : ''}`}>
+                {!jobUi?.active ? (
+                  <button className="cs-job-start" onClick={() => jobRef.current?.start()} disabled={left <= 0}>
+                    <span>{J.icon} İşe başla</span>
+                    <small>{left > 0 ? `Bugün ${left}/${J.daily} ${J.unit} hakkın var · ort. ${fmt(J.avg)} altın` : 'Bugünkü hakkın doldu'}</small>
+                  </button>
+                ) : (
+                  <div className="cs-job-panel">
+                    <b>
+                      {jobUi.dist != null && (
+                        <span className="cs-job-arrow" style={{ transform: `rotate(${jobUi.dir}deg)` }} title={`${jobUi.dist} m`}>
+                          ▲
+                        </span>
+                      )}
+                      {jobUi.title}
+                      {jobUi.dist != null && <em className="cs-job-dist">{jobUi.dist} m</em>}
+                    </b>
+                    {jobUi.sub && <small>{jobUi.sub}</small>}
+                    {jobUi.bar != null && (
+                      <div className="cs-job-bar">
+                        <i style={{ width: `${Math.min(100, Math.round(jobUi.bar * 100))}%` }} />
+                      </div>
+                    )}
+                    <div className="cs-job-foot">
+                      <span>{jobUi.left != null ? `Kalan ${jobUi.left}/${jobUi.daily}` : ''}{jobUi.hits ? ` · 💥 ${jobUi.hits}` : ''}</span>
+                      <button onClick={() => jobRef.current?.stop()}>⏹ İşi bırak</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+          {jobPaid && (
+            <div className="cs-job-paid">
+              <span>{JOBS[jobPaid.job]?.icon} {JOBS[jobPaid.job]?.verb} tamam</span>
+              <b>+{fmt(jobPaid.total)} <i>altın</i></b>
+              <small>
+                ⏱️ hız ×{jobPaid.perf?.speed} · 💥 hasar ×{jobPaid.perf?.dmg}
+                {jobPaid.toDebt > 0 ? ` · ${fmt(jobPaid.toDebt)} borca` : ''}
+              </small>
+            </div>
+          )}
           {!driving && !guest && (
             <div className="v3-menu">
               <div className={`v3-badge v3-sus ${susCls}`}>🕵️ Şüphe <b>%{sus}</b></div>
@@ -823,6 +918,13 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
             )}
             {!driving && !riding && <button className="hs-side-btn cs-carbtn" onClick={() => (guest ? setAskSignIn(true) : setPanel({ kind: 'garage' }))} title="Arabalarım">🚗</button>}
             {!driving && !riding && <button className={`hs-side-btn${run ? ' on' : ''}`} onClick={() => { setRun(!run); engineRef.current.setRun(!run); }} title="Koş">{run ? '🏃' : '🚶'}</button>}
+            {!guest && !driving && (
+              <NearbyPlayersButton
+                buttonClassName="hs-side-btn"
+                collectionName="city"
+                others={nearby.map((id) => ({ uid: id, displayName: namesRef.current.get(id)?.n || 'Oyuncu', avatar: namesRef.current.get(id)?.a || null }))}
+              />
+            )}
             {!guest && <button className="hs-side-btn" onClick={() => setPanel({ kind: 'phone', app: 'chatsapp' })} title="ChatsApp">💬</button>}
             {!guest && <button className="hs-side-btn" onClick={() => setPanel({ kind: 'phone', app: null })} title="Telefon">📱</button>}
             <button className="hs-side-btn" onClick={() => (guest ? setAskSignIn(true) : openCamera())} title="Fotoğraf çek">📷</button>
@@ -869,15 +971,24 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
             </div>
           )}
           {!driving && !guest && (
-            <div className="hs-chat">
-              <div className="hs-chat-feed">
-                {msgs.slice(-3).map((m) => (
-                  <div
-                    key={m.id}
-                    className={`hs-msg${m.me ? ' me' : ''}`}
-                    onClick={() => !m.me && setReport({ uid: m.uid, name: m.name, text: m.text })}
-                  >
+            <div className={`hs-chat${chatOpen ? ' expanded' : ''}`}>
+              {/* v151: diğer mekânlardaki gibi — dokununca sohbet açılır (eski mesajlar); şikâyet ⚠️ ile */}
+              <div className="hs-chat-feed" onClick={() => setChatOpen((v) => !v)}>
+                {(chatOpen ? msgs : msgs.slice(-3)).map((m) => (
+                  <div key={m.id} className={`hs-msg${m.me ? ' me' : ''}`}>
                     <b>{m.name}:</b> {m.text}
+                    {chatOpen && !m.me && (
+                      <button
+                        className="cs-msg-report"
+                        title="Şikâyet et"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setReport({ uid: m.uid, name: m.name, text: m.text });
+                        }}
+                      >
+                        ⚠️
+                      </button>
+                    )}
                   </div>
                 ))}
                 {msgs.length === 0 && <div className="hs-msg dim">Yakındakilerle sohbet et 👋</div>}
@@ -891,7 +1002,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
       {panel?.kind === 'garage' && (
         <GarageSheet
           onClose={() => setPanel(null)}
-          onPick={(c) => callCar(c)}
+          onPick={(c, v) => callCar(c, v)}
           onGallery={() => {
             setPanel(null);
             onEnterRegion?.('araba_galerisi');

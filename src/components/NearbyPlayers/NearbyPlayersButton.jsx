@@ -12,7 +12,8 @@ import './NearbyPlayersButton.css';
 // props: others (use*Presence'tan), collectionName ('parkPresence' | 'interiorPresence'),
 //        className (ekranın düğme stili: 'pw' | 'ws')
 //        v64: giftVenue ('park' | 'gazino') + myHolding (elindeki ürün) → "🎁 Ismarla"
-export default function NearbyPlayersButton({ others = [], collectionName, variant = 'ws', giftVenue = null, myHolding = null }) {
+// v150: buttonClassName verilirse düğme ekranın kendi düğme sütununa (ör. şehir) oturur
+export default function NearbyPlayersButton({ others = [], collectionName, variant = 'ws', giftVenue = null, myHolding = null, buttonClassName = null }) {
   const [open, setOpen] = useState(false);
   const [target, setTarget] = useState(null);
   const [giftBusy, setGiftBusy] = useState(null);
@@ -35,7 +36,7 @@ export default function NearbyPlayersButton({ others = [], collectionName, varia
 
   return (
     <>
-      <button className={`nearby-btn nearby-btn-${variant}`} onClick={() => setOpen(true)} title="Yakındakiler" aria-label="Yakındaki oyuncular">
+      <button className={buttonClassName || `nearby-btn nearby-btn-${variant}`} style={buttonClassName ? { position: 'relative' } : undefined} onClick={() => setOpen(true)} title="Yakındakiler" aria-label="Yakındaki oyuncular">
         👥{others.length > 0 && <span className="nearby-count">{others.length}</span>}
       </button>
 

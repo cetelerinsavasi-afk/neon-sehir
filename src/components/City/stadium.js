@@ -427,8 +427,8 @@ export function buildStadyum(kit, lot) {
   kit.ellipse(0, 0, 34, 27.6, { car: true }); // arabalar stadyuma girmez
   kit.height(0, 0, 34.4, stadiumHeight); // tribün basamakları
   kit.area(0, 0, OUT_RX - 0.3, OUT_RZ - 0.3, 'stadyum');
-  // ana giriş: güney kapısının önü (stadyuma dönük doğulur)
-  kit.zone({ x: 0, z: 31.5, r: 0, kind: 'spawn', key: 'stadyum', lx: 0, lz: 0 });
+  // ana giriş: v151 — güney tünelinin içi (stadyum alanında doğulur → üstte Futbol düğmesi hemen görünür)
+  kit.zone({ x: 0, z: 22, r: 0, kind: 'spawn', key: 'stadyum', lx: 0, lz: 0 });
 
   // --- kamera engelleri (kamera duvar / tribün içine girmesin) -------------------------
   const inv = new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide });

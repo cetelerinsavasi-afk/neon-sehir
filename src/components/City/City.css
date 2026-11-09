@@ -112,3 +112,186 @@
 .cs-match-mid b i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 0 4px; vertical-align: 1px; border: 1px solid rgba(255, 255, 255, 0.6); }
 .cs-match-mid small { font-size: 11px; color: #39ff88; font-weight: 700; }
 .cs-futbol-layer { position: absolute; inset: 0; z-index: 60; }
+
+/* v151 — şehir sohbeti açıkken mesaj şikâyet düğmesi */
+.cs-msg-report {
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  font-size: 11px;
+  opacity: 0.6;
+  cursor: pointer;
+}
+.cs-msg-report:hover {
+  opacity: 1;
+}
+
+/* v151 — meslek paneli */
+.cs-job {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 64px);
+  left: 10px;
+  z-index: 30;
+  width: min(calc(100vw - 150px), 400px);
+  pointer-events: auto;
+}
+.cs-job-start {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 210, 63, 0.6);
+  background: linear-gradient(135deg, rgba(255, 210, 63, 0.95), rgba(255, 140, 40, 0.95));
+  color: #1a1206;
+  font-weight: 900;
+  font-size: 16px;
+  box-shadow: 0 8px 24px rgba(255, 170, 40, 0.35);
+  cursor: pointer;
+}
+.cs-job-start small {
+  font-size: 11.5px;
+  font-weight: 700;
+  opacity: 0.8;
+}
+.cs-job-start:disabled {
+  background: rgba(20, 24, 34, 0.86);
+  color: #9aa3b5;
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: none;
+}
+.cs-job-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(8, 11, 20, 0.86);
+  border: 1px solid rgba(25, 232, 255, 0.35);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  color: #fff;
+  backdrop-filter: blur(6px);
+}
+.cs-job-panel b {
+  font-size: 14.5px;
+}
+.cs-job-panel small {
+  font-size: 12px;
+  color: #cfd8ea;
+  line-height: 1.35;
+}
+.cs-job-bar {
+  height: 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.cs-job-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #19e8ff, #3ad07a);
+  transition: width 0.12s linear;
+}
+.cs-job-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11.5px;
+  color: #9aa3b5;
+}
+.cs-job-foot button {
+  border: 1px solid rgba(255, 80, 80, 0.5);
+  background: rgba(255, 60, 60, 0.14);
+  color: #ffb3b3;
+  border-radius: 10px;
+  padding: 4px 9px;
+  font-weight: 800;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.cs-job-paid {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 14px 22px;
+  border-radius: 20px;
+  background: rgba(8, 11, 20, 0.9);
+  border: 1px solid rgba(255, 210, 63, 0.55);
+  box-shadow: 0 0 40px rgba(255, 210, 63, 0.3);
+  color: #fff;
+  pointer-events: none;
+  animation: cs-paid-in 0.35s ease-out;
+}
+.cs-job-paid span {
+  font-size: 13px;
+  font-weight: 800;
+  color: #cfd8ea;
+}
+.cs-job-paid b {
+  font-size: 30px;
+  font-weight: 900;
+  color: #ffd23f;
+}
+.cs-job-paid b i {
+  font-size: 14px;
+  font-style: normal;
+}
+.cs-job-paid small {
+  font-size: 11.5px;
+  color: #9aa3b5;
+}
+@keyframes cs-paid-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -40%) scale(0.9);
+  }
+}
+.cs-jobtag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: rgba(8, 11, 20, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.cs-job-panel > b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cs-job-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  background: #19e8ff;
+  color: #061018;
+  font-size: 12px;
+  transition: transform 0.12s linear;
+}
+.cs-job-dist {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 12px;
+  color: #19e8ff;
+}

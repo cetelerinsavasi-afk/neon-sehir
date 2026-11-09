@@ -1,9 +1,10 @@
 import { useState } from 'react';
+import CarImg from '../VehicleCard/CarImg'; // v150: araç görseli = 3D model
 import { useVehicles } from '../../hooks/useVehicles';
 import { useOpenRaceRooms } from '../../hooks/useOpenRaceRooms';
 import { useTrainingProgress } from '../../hooks/useTrainingProgress';
 import { createRaceRoom, joinRaceRoom, createTrainingRace } from '../../services/gameActions';
-import { vehicleCatalog } from '../../data/vehicleCatalog';
+import { vehicleCatalog, isCarCatalogId } from '../../data/vehicleCatalog';
 import { INITIAL_LIFE_DAYS, vehicleDisplayName } from '../VehicleCard/VehicleCard';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import { usePlayer } from '../../hooks/usePlayer';
@@ -21,12 +22,10 @@ function raceable(v) {
   // — 2. elde listelenmiş (satışa çıkarılmış) araçlar seçim listesinde
   // hiç görünmemeli (sunucu tarafında da aynı kontrol var, bkz.
   // functions/index.js getVehicleForRace).
-  return !v.listed && !v.seizedByBank && (v.lifeDays ?? INITIAL_LIFE_DAYS) > 0;
+  // v151: ticari araç / motor yarışa giremez
+  return isCarCatalogId(v.catalogId) && !v.listed && !v.seizedByBank && (v.lifeDays ?? INITIAL_LIFE_DAYS) > 0;
 }
 
-function vehicleImage(catalogId) {
-  return vehicleCatalog.find((v) => v.id === catalogId)?.image;
-}
 
 // Araçlar artık düz bir <select> değil, fotoğraflı, tıklanabilir kartlar
 // olarak gösteriliyor (HTML <option> içine resim koyulamıyor).
@@ -41,7 +40,6 @@ function VehiclePicker({ vehicles, value, onChange }) {
   return (
     <div className="race-vehicle-picker">
       {vehicles.map((v) => {
-        const img = vehicleImage(v.catalogId);
         const selected = value === v.id;
         return (
           <button
@@ -49,7 +47,7 @@ function VehiclePicker({ vehicles, value, onChange }) {
             className={`race-vehicle-card${selected ? ' selected' : ''}`}
             onClick={() => onChange(v.id)}
           >
-            {img && <img className="race-vehicle-photo" src={img} alt={vehicleDisplayName(v)} />}
+            <CarImg className="race-vehicle-photo" catalogId={v.catalogId} mods={v.mods || null} alt={vehicleDisplayName(v)} />
             <span className="race-vehicle-info">
               <span className="race-vehicle-name">
                 {vehicleDisplayName(v)} <LevelPips level={vehicleRaceLevel(v)} />
@@ -254,7 +252,7 @@ export default function RaceLobby({ myUid, onEnterRoom }) {
           return (
             <div key={r.id} className="race-room-card">
               <div className="race-room-top">
-                {creatorInfo?.catalogId && <img className="race-room-thumb" src={vehicleImage(creatorInfo.catalogId)} alt={creatorInfo.vehicleModel} />}
+                {creatorInfo?.catalogId && <CarImg className="race-room-thumb" catalogId={creatorInfo.catalogId} alt={creatorInfo.vehicleModel} />}
                 <div className="race-room-info">
                   <p className="race-room-creator">
                     <strong>{creatorInfo?.displayName || 'Oyuncu'}</strong>

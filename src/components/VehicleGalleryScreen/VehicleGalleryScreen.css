@@ -84,3 +84,45 @@
   font-size: 12px;
   margin: 0;
 }
+
+/* v151 — Araba / Ticari / Motor sekmeleri */
+.vg-tabs {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.vg-tabs button {
+  flex: 1;
+  min-height: 40px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #cfd8ea;
+  font-weight: 800;
+  font-size: 14px;
+  cursor: pointer;
+}
+.vg-tabs button.on {
+  background: linear-gradient(135deg, rgba(25, 232, 255, 0.25), rgba(139, 92, 246, 0.25));
+  border-color: rgba(25, 232, 255, 0.6);
+  color: #fff;
+}
+.vg-kind-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11.5px;
+  color: #cfd8ea;
+  line-height: 1.3;
+}
+.vg-kind-info em {
+  font-style: normal;
+  color: #8f9ab0;
+  font-size: 10.5px;
+}
+.vg-empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: #8f9ab0;
+}

@@ -1,0 +1,14 @@
+/* v150 — 3D araç karesi hazırlanırken */
+.car-img-wait {
+  display: block;
+  background: linear-gradient(110deg, #10162a 30%, #1c2546 50%, #10162a 70%);
+  background-size: 220% 100%;
+  animation: car-img-shine 1.2s linear infinite;
+  min-height: 40px;
+  aspect-ratio: 16 / 10;
+}
+@keyframes car-img-shine {
+  to {
+    background-position: -220% 0;
+  }
+}

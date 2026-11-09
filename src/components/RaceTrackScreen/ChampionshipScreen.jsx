@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import CarImg from '../VehicleCard/CarImg'; // v150: araç görseli = 3D model
 import { useAuth } from '../../contexts/AuthContext';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useDailyActions } from '../../hooks/useDailyActions';
 import { useChampionshipBoard } from '../../hooks/useChampionshipBoard';
 import { createChampionshipRace } from '../../services/gameActions';
-import { vehicleCatalog } from '../../data/vehicleCatalog';
+import { vehicleCatalog, isCarCatalogId } from '../../data/vehicleCatalog';
 import { INITIAL_LIFE_DAYS, vehicleDisplayName } from '../VehicleCard/VehicleCard';
 import InfoIcon from '../InfoIcon/InfoIcon';
-import { CarStatBars, CarThumb, LevelPips, vehicleRaceLevel } from './CarStats';
+import { CarStatBars, LevelPips, vehicleRaceLevel } from './CarStats';
 import { fmtRace } from './timeAttackGame';
 import {
   CHAMP_PRIZE_TIERS,
@@ -154,11 +155,12 @@ function CarCard({ v, busy, disabled, onJoin }) {
   const lifeDays = v.lifeDays ?? INITIAL_LIFE_DAYS;
   const seized = Boolean(v.seizedByBank);
   const dead = !(lifeDays > 0);
-  const img = vehicleCatalog.find((c) => c.id === v.catalogId)?.image;
   const block = seized ? '🏦 Bankada' : dead ? '🔧 Tamir gerekli' : null;
   return (
     <div className={`cl-car${block ? ' blocked' : ''}`}>
-      <div className="cl-car-pic">{img ? <img src={img} alt="" /> : <CarThumb catalogId={v.catalogId} />}</div>
+      <div className="cl-car-pic">
+        <CarImg catalogId={v.catalogId} mods={v.mods || null} />
+      </div>
       <div className="cl-car-body">
         <div className="cl-car-name">
           <b>{vehicleDisplayName(v) || catalogName(v.catalogId)}</b>
@@ -193,7 +195,7 @@ export default function ChampionshipScreen({ onEnterRace }) {
     const byModel = new Map();
     const raceable = (v) => !v.seizedByBank && (v.lifeDays ?? INITIAL_LIFE_DAYS) > 0;
     for (const v of vehicles) {
-      if (v.listed) continue;
+      if (v.listed || !isCarCatalogId(v.catalogId)) continue; // v151: sadece arabalar
       const cur = byModel.get(v.catalogId);
       const better =
         !cur ||

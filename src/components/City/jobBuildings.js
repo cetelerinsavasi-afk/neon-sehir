@@ -1,0 +1,196 @@
+// =============================================================================
+// v151 — MESLEK YAPILARI: 2 lojistik deposu, hastane (acil girişi), benzinlik,
+// 10 otobüs durağı, liman yükleme alanı. Koordinatlar functions/cityJobsData.js ile
+// aynı (lot yereli: +z = lotun önü / yola bakan taraf).
+// =============================================================================
+import { THREE, M, glowMat } from './kit.js';
+
+const YELLOW = () => M('#e8b923', 0.6);
+
+// yerde boyalı alan (sarı çerçeve + çapraz çizgiler) — tır/ambulans burada durur
+export function paintBay(kit, x, z, w, d, color = '#e8b923', label = null, y = 0.15) {
+  const m = M(color, 0.6);
+  kit.box(w, 0.02, 0.3, m, x, y, z - d / 2, { cast: false });
+  kit.box(w, 0.02, 0.3, m, x, y, z + d / 2, { cast: false });
+  kit.box(0.3, 0.02, d, m, x - w / 2, y, z, { cast: false });
+  kit.box(0.3, 0.02, d, m, x + w / 2, y, z, { cast: false });
+  for (let i = -2; i <= 2; i++) kit.box(0.22, 0.02, Math.hypot(w, d) * 0.28, m, x + i * (w / 6), y, z, { cast: false, ry: 0.6 });
+  if (label) {
+    const g = kit.sign(`bay_${label}`, label, 0.9, x, y + 0.02, z, 0, { color: '#1a1a1a', bg: color, font: '900 110px Arial, sans-serif', light: false });
+    g.rotation.x = -Math.PI / 2;
+  }
+}
+
+// --- LOJİSTİK DEPOSU (dış bölge) ---------------------------------------------------------
+export function buildLojistik(kit, lot, { name = 'LOJİSTİK DEPOSU', accent = '#ffb15a' } = {}) {
+  const { w, d } = lot;
+  kit.floor('beton', w, d, 0, 0);
+  const bw = 22;
+  const bd = 10;
+  const bz = -d / 2 + bd / 2 + 0.5;
+  kit.wallBox('beton_blok', bw, 9, bd, 0, 0, bz, { tint: '#8d97a6' });
+  kit.box(bw + 0.6, 0.6, bd + 0.6, M('#3a4048', 0.6, 0.4), 0, 9, bz);
+  // yükleme kapıları + rampalar
+  for (let i = 0; i < 3; i++) {
+    const x = -7 + i * 7;
+    kit.item('garagedoor', x, bz + bd / 2, 0, 0, { solid: false });
+    kit.box(4.2, 0.8, 1.2, M('#55606e', 0.8), x, 0, bz + bd / 2 + 0.6);
+  }
+  kit.sign(`lojistik_${name}`, name, 1.15, 0, 7.4, bz + bd / 2 + 0.06, 0, { color: '#ffffff', glow: accent, font: '900 104px Arial, sans-serif', li: 8, ld: 14 });
+  kit.box(bw, 0.12, 0.12, glowMat(accent, 2.4), 0, 6.5, bz + bd / 2 + 0.05, { cast: false });
+  kit.mass(bw, 9.6, bd, 0, bz);
+  kit.solid(0, bz + bd / 2 + 0.6, bw / 2 - 1, 0.6);
+  // yan istifler (yolu kapatmaz): konteyner + palet
+  for (let k = 0; k < 2; k++) kit.item('container', -w / 2 + 2.6, -2 + k * 2.4, 2, (k + 2) % 6);
+  kit.item('container', -w / 2 + 2.6, -2, 2, 4, { y: 1.77, solid: false });
+  kit.item('pallets', w / 2 - 2, -1, 0, 0);
+  kit.item('crates', w / 2 - 2, 2, 0, 0);
+  kit.item('forklift', w / 2 - 3.5, -4, 6, 0);
+  // teslim alanı (cityJobsData.DEPOTS ile aynı: lot önünden 6 m içeride)
+  paintBay(kit, 0, d / 2 - 6, 9, 7, '#e8b923', 'TESLİM');
+  kit.pool(0, d / 2 - 6, accent, 12, 0.16, 0.35);
+  kit.item('portlight', -w / 2 + 1, d / 2 - 1, 0, 0);
+  kit.item('portlight', w / 2 - 1, d / 2 - 1, 0, 0);
+  return { mapLabel: { text: name, y: 13, z: bz } };
+}
+export const buildDepoKuzey = (kit, lot) => buildLojistik(kit, lot, { name: 'KUZEY LOJİSTİK DEPOSU', accent: '#ffb15a' });
+export const buildDepoDogu = (kit, lot) => buildLojistik(kit, lot, { name: 'DOĞU LOJİSTİK DEPOSU', accent: '#19e8ff' });
+
+// --- HASTANE (acil girişi önde) -------------------------------------------------------------
+export function buildHastane(kit, lot) {
+  const { w, d } = lot;
+  kit.floor('beton', w, d, 0, 0);
+  const bw = 20;
+  const bd = 11;
+  const bz = -d / 2 + bd / 2 + 0.5;
+  kit.wallBox('beton_duvar', bw, 13, bd, 0, 0, bz, { tint: '#eef2f6' });
+  kit.box(bw + 0.4, 0.4, bd + 0.4, M('#c9d3de', 0.6), 0, 13, bz);
+  // pencere bantları
+  for (let f = 0; f < 3; f++) kit.box(bw - 1.5, 1.3, 0.05, glowMat(f === 0 ? '#bfe6ff' : '#dff2ff', 0.8), 0, 2 + f * 3.6, bz + bd / 2 + 0.03, { cast: false });
+  // kırmızı haç + yazı
+  const red = glowMat('#ff2a3a', 2.6);
+  kit.box(0.9, 3.2, 0.2, red, bw / 2 - 2.6, 9.4, bz + bd / 2 + 0.1, { cast: false });
+  kit.box(3.2, 0.9, 0.2, red, bw / 2 - 2.6, 9.4, bz + bd / 2 + 0.1, { cast: false });
+  kit.sign('hastane', 'HASTANE', 1.4, -3, 10.6, bz + bd / 2 + 0.06, 0, { color: '#ffffff', glow: '#ff2a3a', font: '900 120px Arial, sans-serif', li: 8, ld: 14 });
+  // acil girişi saçağı
+  kit.box(8, 0.3, 4.5, M('#d9e1ea', 0.5, 0.2), 0, 3.6, bz + bd / 2 + 2.25);
+  for (const x of [-3.7, 3.7]) kit.box(0.3, 3.6, 0.3, M('#c0c8d2', 0.5), x, 0, bz + bd / 2 + 4.3);
+  kit.sign('acil', 'ACİL', 0.8, 0, 4.25, bz + bd / 2 + 4.52, 0, { color: '#ffffff', glow: '#ff2a3a', bg: '#c8141e', font: '900 110px Arial, sans-serif', li: 6, ld: 10 });
+  kit.item('door_cam', 0, bz + bd / 2, 0, 0, { solid: false });
+  kit.mass(bw, 13.4, bd, 0, bz);
+  kit.solid(-3.7, bz + bd / 2 + 4.3, 0.2, 0.2);
+  kit.solid(3.7, bz + bd / 2 + 4.3, 0.2, 0.2);
+  // ambulans alanı (cityJobsData.HOSPITAL: lot önünden 4 m içeride)
+  paintBay(kit, 0, d / 2 - 4, 8, 6, '#ff2a3a', 'AMBULANS');
+  kit.pool(0, bz + bd / 2 + 3, '#ff2a3a', 12, 0.16, 0.4);
+  return { mapLabel: { text: 'HASTANE', y: 16, z: bz } };
+}
+
+// --- BENZİNLİK --------------------------------------------------------------------------------
+export function buildBenzinlik(kit, lot) {
+  const { w, d } = lot;
+  kit.floor('beton', w, d, 0, 0);
+  // market (arkada)
+  const bw = 12;
+  const bd = 7;
+  const bz = -d / 2 + bd / 2 + 0.5;
+  kit.wallBox('beton_duvar', bw, 4.4, bd, -5, 0, bz, { tint: '#f2f2ee' });
+  kit.box(bw, 1.6, 0.05, glowMat('#cfeaff', 0.9), -5, 1.4, bz + bd / 2 + 0.03, { cast: false });
+  kit.sign('benzinmarket', 'MARKET 7/24', 0.7, -5, 3.6, bz + bd / 2 + 0.06, 0, { color: '#ffffff', glow: '#3ad07a', font: '900 100px Arial, sans-serif', li: 5, ld: 9 });
+  kit.mass(bw, 4.6, bd, -5, bz);
+  // kanopi + pompalar
+  const cz = 3;
+  const cw = 18;
+  const cd = 9;
+  kit.box(cw, 0.7, cd, M('#f4f4f2', 0.4, 0.2), 0, 5.2, cz);
+  kit.box(cw + 0.1, 0.35, cd + 0.1, glowMat('#3ad07a', 2.4), 0, 5.2, cz, { cast: false });
+  kit.box(cw - 1, 0.04, cd - 1, glowMat('#ffffff', 1.6), 0, 5.15, cz, { cast: false, center: true });
+  for (const x of [-6, 6]) {
+    kit.box(0.5, 5.2, 0.5, M('#d9dde3', 0.5, 0.4), x, 0, cz);
+    kit.solid(x, cz, 0.3, 0.3);
+  }
+  for (const x of [-3, 3]) {
+    for (const z of [cz - 2.2, cz + 2.2]) {
+      kit.box(0.8, 1.7, 0.5, M('#2a2f38', 0.5, 0.3), x, 0.12, z);
+      kit.box(0.82, 0.5, 0.52, glowMat('#3ad07a', 1.8), x, 1.4, z, { cast: false });
+      kit.solid(x, z, 0.45, 0.3);
+    }
+  }
+  kit.light(0, 4.6, cz, '#f2fff6', 9, 16);
+  // fiyat totemi
+  kit.box(1.4, 7, 0.4, M('#1a1f28', 0.5), w / 2 - 1.5, 0, d / 2 - 1.5);
+  kit.sign('benzinlik', 'NEON PETROL', 0.6, w / 2 - 1.5, 6.2, d / 2 - 1.28, 0, { color: '#3ad07a', font: '900 100px Arial, sans-serif', light: false });
+  kit.sign('benzinfiyat', '⛽ 42,90', 0.55, w / 2 - 1.5, 5.1, d / 2 - 1.28, 0, { color: '#ffd23f', font: '900 100px "Courier New", monospace', light: false });
+  kit.solid(w / 2 - 1.5, d / 2 - 1.5, 0.7, 0.3);
+  kit.pool(0, cz, '#3ad07a', 16, 0.16, 0.3);
+  return { mapLabel: { text: 'BENZİNLİK', y: 9, z: cz } };
+}
+
+// --- OTOBÜS DURAĞI (kaldırımda, yola bakar) -------------------------------------------------
+// kit dünya kökünde; stop: { n, name, sx, sz, fx, fz } (f: şeritten kaldırıma)
+export function buildBusStop(kit, stop) {
+  const g = new THREE.Group();
+  g.position.set(stop.sx + stop.fx * 0.4, 0.12, stop.sz + stop.fz * 0.4);
+  g.rotation.y = Math.atan2(-stop.fx, -stop.fz); // açık yüz yola dönük
+  kit.add(g);
+  const add = (geo, mat, x, y, z) => {
+    const o = new THREE.Mesh(geo, mat);
+    o.position.set(x, y, z);
+    o.castShadow = true;
+    o.receiveShadow = true;
+    g.add(o);
+    return o;
+  };
+  const frame = M('#2a2f3a', 0.5, 0.5);
+  const glass = new THREE.MeshStandardMaterial({ color: '#9fd8ff', roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.3, depthWrite: false, side: THREE.DoubleSide });
+  add(new THREE.BoxGeometry(3.6, 0.12, 1.6), M('#e8eef4', 0.5), 0, 2.5, -0.2); // çatı
+  add(new THREE.BoxGeometry(3.6, 0.06, 1.62), glowMat('#19e8ff', 2), 0, 2.43, -0.2);
+  add(new THREE.BoxGeometry(3.5, 2.3, 0.04), glass, 0, 1.2, -0.95); // arka cam
+  for (const x of [-1.75, 1.75]) {
+    add(new THREE.BoxGeometry(0.08, 2.5, 0.08), frame, x, 1.25, -0.95);
+    add(new THREE.BoxGeometry(0.08, 2.5, 0.08), frame, x, 1.25, 0.55);
+    add(new THREE.BoxGeometry(0.04, 2.1, 1.4), glass, x, 1.25, -0.2); // yan camlar
+  }
+  add(new THREE.BoxGeometry(2.6, 0.08, 0.45), M('#6b4423', 0.7), 0, 0.5, -0.65); // bank
+  // tabela direği + durak levhası
+  add(new THREE.CylinderGeometry(0.05, 0.05, 3.1, 8), frame, 2.1, 1.55, 0.55);
+  const tex = signTex(stop);
+  const pm = new THREE.MeshBasicMaterial({ map: tex, toneMapped: false, side: THREE.DoubleSide });
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(1.0, 1.0), pm);
+  p.position.set(2.1, 2.75, 0.56);
+  g.add(p);
+  // durak çizgisi (şeritte sarı "OTOBÜS" alanı)
+  const bay = new THREE.Group();
+  bay.position.set(stop.x, 0.01, stop.z);
+  bay.rotation.y = Math.abs(stop.fx) > 0.5 ? Math.PI / 2 : 0; // yerel x = yol yönü
+  kit.add(bay);
+  const ym = YELLOW();
+  const zig = (x, z, w2, d2, ry = 0) => {
+    const o = new THREE.Mesh(new THREE.BoxGeometry(w2, 0.02, d2), ym);
+    o.position.set(x, 0.005, z);
+    o.rotation.y = ry;
+    bay.add(o);
+  };
+  for (let i = -5; i <= 5; i++) zig(i * 1.2, 0, 0.18, 1.4, i % 2 ? 0.7 : -0.7);
+  const alongX = Math.abs(stop.fz) > 0.5;
+  kit.solid(stop.sx + stop.fx * 0.6, stop.sz + stop.fz * 0.6, alongX ? 1.8 : 0.8, alongX ? 0.8 : 1.8);
+  kit.label(`🚏 ${stop.name}`, stop.sx, 3.4, stop.sz, 'vendor');
+}
+function signTex(stop) {
+  const c = document.createElement('canvas');
+  c.width = 256;
+  c.height = 256;
+  const x = c.getContext('2d');
+  x.fillStyle = '#1745b5';
+  x.fillRect(0, 0, 256, 256);
+  x.fillStyle = '#ffffff';
+  x.font = '900 120px Arial';
+  x.textAlign = 'center';
+  x.textBaseline = 'middle';
+  x.fillText('🚌', 128, 92);
+  x.font = '900 46px Arial';
+  x.fillText(`DURAK ${stop.n}`, 128, 196);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}

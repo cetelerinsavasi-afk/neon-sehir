@@ -26,6 +26,7 @@ const MAP = {
   'not-on-menu': 'Bu ürün menüde yok.',
   'not-owner': 'Bu ürün senin değil.',
   'not-present': 'Bunun için mekânın içinde olmalısın.',
+  'no-change': 'Değişiklik yok — önce aracın üzerinde bir şeyi değiştir.', // v150
   'own-short': 'Envanterinde yeterli malzeme yok.',
   'police-last': 'Polissin: son silahını satamaz / vitrine koyamazsın.',
   'position-required': 'Önce Futbol › Futbolcu ekranından mevkini seç.',

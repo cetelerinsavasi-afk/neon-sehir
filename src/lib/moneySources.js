@@ -7,6 +7,7 @@ export const MONEY_SOURCES = {
   internet: { icon: '🖥️', label: 'İnternet kafe' },
   spor: { icon: '🏋️', label: 'Spor salonu' },
   atolye: { icon: '🛠️', label: 'Atölye (tamir / geliştirme)' },
+  modifiye: { icon: '🎨', label: 'Araç modifiyesi' }, // v150
   vitrin: { icon: '🪟', label: 'Vitrin satışı' },
   stok: { icon: '📦', label: 'Dükkân stoğu' }, // v130
   yayin: { icon: '🔴', label: 'Canlı yayın' },

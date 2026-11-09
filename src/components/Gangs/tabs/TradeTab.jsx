@@ -10,6 +10,7 @@
 //  - Görünürlük: tırları tüm üyeler görür; sipariş/yük içeriği Kıdemli+.
 //    Yönetim (tır/depo al, sipariş, sat/dağıt/2. el) Baba + Sağ Kol.
 import { useEffect, useMemo, useState } from 'react';
+import CarImg from '../../VehicleCard/CarImg'; // v150: araç görseli = 3D model
 import { limit, where } from 'firebase/firestore';
 import { fmtClock, istDateKey, istHour, istMidnight, nextWindowStart, truckAttackAt, useDocData, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
 import { AmountInput, Bar, Btn, Card, Chips, Confirm, Deadline, Empty, Logo, Sheet } from '../ui';
@@ -267,7 +268,7 @@ function OrderSheet({ trucks, routes, state, depot, gangId, memberCount, orders,
         <div className="gx-shop">
           {items.map((it) => (
             <div key={it.key} className={`gx-shop-item${qty[it.key] ? ' active' : ''}`}>
-              {it.image ? <img src={it.image} alt={it.label} /> : <span className="gx-shop-emoji">{productOf(product).emoji}</span>}
+              {it.carId ? <CarImg catalogId={it.carId} alt={it.label} /> : it.image ? <img src={it.image} alt={it.label} /> : <span className="gx-shop-emoji">{productOf(product).emoji}</span>}
               <span className="gx-shop-info">
                 <span className="gx-shop-name">{it.label}</span>
                 <span className="gx-shop-sub dim">{it.sub}</span>
@@ -356,7 +357,7 @@ function DepotItems({ depot, lead, listings }) {
               const free = q - listed;
               return (
                 <div key={k} className="gx-depot-row gx-depot-card">
-                  {it.image ? <img className="gx-depot-img" src={it.image} alt="" /> : <span className="gx-depot-emoji">{it.emoji}</span>}
+                  {it.carId ? <CarImg className="gx-depot-img" catalogId={it.carId} /> : it.image ? <img className="gx-depot-img" src={it.image} alt="" /> : <span className="gx-depot-emoji">{it.emoji}</span>}
                   <span className="gx-depot-name">
                     <b>{it.label}</b>
                     <span className="dim gx-mini">
@@ -447,7 +448,7 @@ function DepotItems({ depot, lead, listings }) {
         >
           {act.type === 'list' && (
             <div className="gx-list-head">
-              {act.it.image ? <img src={act.it.image} alt="" /> : <span className="gx-depot-emoji">{act.it.emoji}</span>}
+              {act.it.carId ? <CarImg catalogId={act.it.carId} /> : act.it.image ? <img src={act.it.image} alt="" /> : <span className="gx-depot-emoji">{act.it.emoji}</span>}
               <span className="gx-list-head-info">
                 <b>{act.it.label}</b>
                 <span className="dim gx-mini">Depoda ilana konabilir: {fmt(act.max)} adet</span>

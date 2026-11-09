@@ -1,9 +1,9 @@
 import { lazy, Suspense, useEffect, useRef } from 'react';
+import CarImg from '../VehicleCard/CarImg'; // v150
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import FutbolCrest from '../FutbolScreen/FutbolCrest';
 import PriceChart from '../PriceChart/PriceChart';
 import '../PriceChart/PriceChart.css';
-import { vehicleImage } from '../VehicleCard/VehicleCard';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
 import { createAvatarImageCache, renderPhotoFrame as parkRenderPhotoFrame } from '../../lib/parkScene';
 import {
@@ -184,10 +184,9 @@ export default function PostAttachment({ attachment, post = null }) {
   }
 
   if (attachment.type === 'vehicle') {
-    const img = vehicleImage(attachment.catalogId);
     return (
       <div className="post-att post-att-vehicle">
-        {img && <img src={img} alt={attachment.model} className="post-att-vehicle-img" />}
+        <CarImg catalogId={attachment.catalogId} mods={attachment.mods || null} alt={attachment.model} className="post-att-vehicle-img" />
         <div className="post-att-vehicle-caption">
           <p className="post-att-vehicle-name">{attachment.model}</p>
           <p className="post-att-vehicle-sub">

@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
+import CarImg from '../VehicleCard/CarImg'; // v150
 import { SharedMaterials } from '../Magaza/Magaza';
 import { shopAction } from '../../services/gameActions';
 import { weaponCatalog } from '../../data/weaponCatalog';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
+import { VehicleKindTabs, kindOfCar } from '../VehicleGalleryScreen/VehicleGalleryScreen';
+import '../VehicleGalleryScreen/VehicleGalleryScreen.css';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useShopStock } from '../../hooks/useShopStock';
 import { useShopOffers } from '../../hooks/useShopOffers';
@@ -114,6 +117,8 @@ function MaterialPrices({ houseId, houseDoc, type }) {
 const catalogOfKind = (kind) => (kind === 'weapon' ? weaponCatalog : vehicleCatalog);
 
 function StockThumb({ c, kind }) {
+  // v150: araçlar 3D modelden
+  if (kind === 'vehicle') return <span className="bz-thumb"><CarImg catalogId={c.id} /></span>;
   return <span className="bz-thumb">{c.image ? <img src={c.image} alt="" /> : KIND_TXT[kind].icon}</span>;
 }
 
@@ -125,6 +130,7 @@ function StockPrices({ houseId, kind }) {
   const offers = useShopOffers(kind, { exclude: houseId });
   const marketOf = (c) => (offers[String(c.id)] && offers[String(c.id)] < c.price ? offers[String(c.id)] : c.price);
   const catalog = catalogOfKind(kind);
+  const [vk, setVk] = useState('araba'); // v151: Araba / Ticari / Motor
   const [draft, setDraft] = useState({});
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -151,7 +157,8 @@ function StockPrices({ houseId, kind }) {
   return (
     <div className="bz-sec">
       <p className="bz-sec-title">{KIND_TXT[kind].icon} Fiyatlar</p>
-      {catalog.map((c) => {
+      {kind === 'vehicle' && <VehicleKindTabs value={vk} onChange={setVk} />}
+      {catalog.filter((c) => kind !== 'vehicle' || kindOfCar(c) === vk).map((c) => {
         const b = stockPriceBand(c.price);
         const step = b.step; // v132: fiyata göre 10 / 100 / 1.000 / 10.000
         const v = draft[c.id] ?? savedOf(c);
@@ -199,6 +206,7 @@ function StockAdd({ houseId, kind }) {
   const stock = useShopStock(houseId);
   const { player } = usePlayer();
   const catalog = catalogOfKind(kind);
+  const [vk, setVk] = useState('araba'); // v151: Araba / Ticari / Motor
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(null);
   const [msg, setMsg] = useState(null);
@@ -238,7 +246,8 @@ function StockAdd({ houseId, kind }) {
       </button>
       {open && (
         <div className="bz-list">
-          {catalog.map((c) => {
+          {kind === 'vehicle' && <VehicleKindTabs value={vk} onChange={setVk} />}
+      {catalog.filter((c) => kind !== 'vehicle' || kindOfCar(c) === vk).map((c) => {
             const cost = costOf(c);
             return (
               <div key={c.id} className="bz-item sk-row">

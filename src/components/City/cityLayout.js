@@ -20,6 +20,12 @@ export const LOTS = [
   ['silah', 0, 2], ['modifiye', 1, 2], ['park', 2, 2, 3, 2], ['stadyum', 4, 2, 5, 3],
   ['casino', 0, 3, 0, 3, 'e'], ['pist', 1, 3, 2, 3], ['ev', 3, 3],
   ['liman', 0, 4, 1, 4],
+  // v151 — meslek yapıları: dış bölgede limandan ve birbirinden uzak 2 lojistik deposu,
+  // hastane (ambulans), benzinlik (functions/cityJobsData.js koordinatlarıyla aynı)
+  ['depo_kuzey', -1, -1, -1, -1, 's'],
+  ['depo_dogu', 6, 4, 6, 4, 'w'],
+  ['hastane', 6, 1, 6, 1, 'w'],
+  ['benzinlik', 3, 0],
 ];
 
 // lot merkezleri (dünya) — harita eşlemesi için

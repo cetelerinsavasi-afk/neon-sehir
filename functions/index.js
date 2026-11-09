@@ -24,6 +24,8 @@ import { SLOT_GAME_COST, GAME_SLOT_STATE_CUT, rollSlotReels, slotOutcome, normal
 import { vaultWrite, settleGameCasinoVaults } from './gameCasinoVault.js'; // v126
 import { createVisits } from './visits.js';
 import { createShop, newSaleStat } from './shop.js';
+import { createJobs } from './jobs.js';
+import { CAR_IDS, isCarId } from './vehicleKinds.js';
 import { stockUnitCost } from './shopStockRules.js'; // v130
 import { createVenue } from './venue.js';
 import { createOffice } from './office.js';
@@ -298,11 +300,18 @@ const casino = createCasino({
   HttpsError,
   splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
 });
+// v151 — meslekler (functions/jobs.js) — shopAction op'ları: jobStart / jobDone / jobCancel
+const jobs = createJobs({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
+});
 // v132: silahçı / galeri stoğu çete deposu ilanlarından da alınır (çete sistemi aşağıda kurulunca bağlanır)
 const shopGangSource = { current: null };
 const shop = createShop({
   gangSource: shopGangSource,
-  extraOps: { ...venue.ops, ...gym.ops, ...homeOffice.ops, ...office.ops, ...depo.ops, ...casino.ops, ...sixSocial.ops },
+  extraOps: { ...venue.ops, ...gym.ops, ...homeOffice.ops, ...office.ops, ...depo.ops, ...casino.ops, ...sixSocial.ops, ...jobs.ops },
   db,
   FieldValue: admin.firestore.FieldValue,
   HttpsError,
@@ -2624,7 +2633,8 @@ async function resolveStuckLotteryAndChampionship(dateKey) {
     console.error('champV2 gece', e);
   }
   {
-    const catalogIds = Object.keys(VEHICLE_CATALOG);
+    // v151: şampiyona sadece arabalar (ticari araç / motor yarışmaz)
+    const catalogIds = CAR_IDS.map(String);
     const CHAMPIONSHIP_CATCHUP_DAYS = 7;
     for (let daysAgo = 1; daysAgo <= CHAMPIONSHIP_CATCHUP_DAYS; daysAgo += 1) {
       const champPrevDateKey = addDaysToDateKey(dateKey, -daysAgo);
@@ -8834,6 +8844,9 @@ async function getVehicleForRace(uid, vehicleId) {
   // Bu fonksiyon TÜM yarış giriş noktalarının (tekli yarış, eğitim yarışı,
   // oda kurma/katılma, şampiyona) ortak kontrol noktası olduğu için tek
   // yerden düzeltmek yeterli.
+  if (!isCarId(vehicle.catalogId)) {
+    throw new HttpsError('failed-precondition', 'Ticari araçlar ve motorlar yarışa giremez.');
+  }
   if (vehicle.listed) {
     throw new HttpsError(
       'failed-precondition',
@@ -10175,6 +10188,7 @@ export const createListing = onCall(async (request) => {
         vehicleTankUpgraded: Boolean(v.tankUpgraded),
         vehicleLifeDays,
         vehicleRepairsUsed: v.repairsUsed || 0,
+        ...(v.mods && typeof v.mods === 'object' && Object.keys(v.mods).length ? { vehicleMods: v.mods } : {}), // v150
         price: priceNum,
         // v115: 00:00'dan önce iptal bedelsiz · 7. gün otomatik sat / kaldır
         ...itemListingTimeFields(Date.now(), { min: vehicleMin, max: vehicleMax }, priceNum),
@@ -21861,6 +21875,8 @@ async function buildSixtagramAttachment(uid, attachment) {
       tankUpgraded: !!v.tankUpgraded,
       lifeDays: v.lifeDays ?? null,
       raceLevel: vehicleRaceLevel(v),
+      // v150: paylaşılan araç modifiyeli haliyle görünür
+      ...(v.mods && typeof v.mods === 'object' && Object.keys(v.mods).length ? { mods: v.mods } : {}),
     };
   }
 

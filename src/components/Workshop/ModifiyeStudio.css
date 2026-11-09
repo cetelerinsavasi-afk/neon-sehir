@@ -1,0 +1,375 @@
+/* v150 — Modifiye stüdyosu (Neon Garaj) */
+.ms-root {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  background: #070a12;
+  color: #e8edf6;
+  display: flex;
+  flex-direction: column;
+  font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  padding: env(safe-area-inset-top, 0px) 0 0;
+}
+.ms-stage {
+  position: relative;
+  flex: 1 1 45%;
+  min-height: 220px;
+  touch-action: none;
+  background: radial-gradient(ellipse at 20% 0%, rgba(255, 46, 140, 0.22), transparent 55%), radial-gradient(ellipse at 85% 0%, rgba(25, 232, 255, 0.18), transparent 55%), #090c18;
+}
+.ms-stage canvas {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+.ms-top {
+  position: absolute;
+  top: calc(10px + env(safe-area-inset-top, 0px));
+  left: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 2;
+  pointer-events: none;
+}
+.ms-top > * {
+  pointer-events: auto;
+}
+.ms-x,
+.ms-spin {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 1px solid #1f2a40;
+  background: rgba(10, 15, 27, 0.8);
+  color: #fff;
+  font-size: 18px;
+  cursor: pointer;
+}
+.ms-spin.on {
+  border-color: #19e8ff;
+  box-shadow: 0 0 14px rgba(25, 232, 255, 0.45);
+}
+.ms-title {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  text-shadow: 0 1px 6px #000;
+}
+.ms-title small {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 3px;
+  color: #ff2e8c;
+  text-shadow: 0 0 10px #ff2e8c;
+}
+.ms-title b {
+  font-size: 17px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ms-panel {
+  flex: 1 1 55%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #0e1320, #0a0e18);
+  border-top: 1px solid #1f2a40;
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5);
+}
+.ms-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 10px 10px 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex: none;
+}
+.ms-tabs::-webkit-scrollbar {
+  display: none;
+}
+.ms-tabs button {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 13px;
+  border-radius: 12px;
+  border: 1px solid #1f2a40;
+  background: #0a0f1b;
+  color: #8a93a8;
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ms-tabs button b {
+  font-size: 16px;
+}
+.ms-tabs button.on {
+  color: #fff;
+  border-color: #ff2e8c;
+  box-shadow: 0 0 0 1px #ff2e8c inset, 0 0 18px rgba(255, 46, 140, 0.25);
+}
+.ms-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 12px 8px;
+  overscroll-behavior: contain;
+}
+.ms-row {
+  padding: 9px 0;
+  border-bottom: 1px solid rgba(31, 42, 64, 0.6);
+}
+.ms-row-h {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #b9c2d6;
+  margin-bottom: 8px;
+  letter-spacing: 0.3px;
+}
+.ms-row-h em {
+  font-style: normal;
+  color: #ffd23f;
+  font-weight: 900;
+}
+.ms-sw {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ms-sw button,
+.ms-sw-custom {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  padding: 0;
+}
+.ms-sw button.on {
+  transform: scale(1.18);
+  box-shadow: 0 0 0 2px #070a12, 0 0 0 4px #19e8ff, 0 0 14px rgba(25, 232, 255, 0.6);
+}
+.ms-sw-custom {
+  position: relative;
+  display: grid;
+  place-items: center;
+  background: conic-gradient(#ff2e8c, #ffd23f, #3ad07a, #19e8ff, #8b5cf6, #ff2e8c);
+  overflow: hidden;
+}
+.ms-sw-custom input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.ms-sw-custom span {
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 1px 3px #000;
+  pointer-events: none;
+}
+.ms-opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.ms-opts button {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 8px 12px;
+  border-radius: 11px;
+  border: 1px solid #1f2a40;
+  background: #0a0f1b;
+  color: #d6dcea;
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+.ms-opts button small {
+  font-weight: 600;
+  font-size: 11px;
+  color: #8a93a8;
+}
+.ms-opts button i {
+  font-style: normal;
+  font-size: 10.5px;
+  color: #ffd23f;
+  font-weight: 800;
+}
+.ms-opts button.on {
+  color: #fff;
+  border-color: #19e8ff;
+  box-shadow: 0 0 0 1px #19e8ff inset, 0 0 16px rgba(25, 232, 255, 0.22);
+}
+.ms-range {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ms-range input {
+  flex: 1;
+  accent-color: #ff2e8c;
+}
+.ms-range b {
+  min-width: 64px;
+  text-align: right;
+  font-size: 13px;
+  color: #19e8ff;
+}
+.ms-text {
+  width: 100%;
+  max-width: 260px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #1f2a40;
+  background: #0a0f1b;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  user-select: text;
+  -webkit-user-select: text;
+}
+.ms-plate {
+  margin-top: 10px;
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: 6px;
+  overflow: hidden;
+  border: 2px solid #111;
+  background: #f4f4f0;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+.ms-plate i {
+  font-style: normal;
+  background: #1b3fa0;
+  color: #fff;
+  font-weight: 800;
+  font-size: 12px;
+  padding: 10px 6px 4px;
+}
+.ms-plate b {
+  padding: 6px 16px;
+  color: #111;
+  font-size: 24px;
+  letter-spacing: 2px;
+  font-family: 'Arial Narrow', Arial, sans-serif;
+}
+.ms-foot {
+  flex: none;
+  padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid #1f2a40;
+  background: #0a0e18;
+}
+.ms-bill {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 8px;
+  max-height: 64px;
+  overflow-y: auto;
+}
+.ms-bill span {
+  font-size: 11.5px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: rgba(255, 210, 63, 0.08);
+  border: 1px solid rgba(255, 210, 63, 0.25);
+  color: #d6dcea;
+}
+.ms-bill b {
+  color: #ffd23f;
+}
+.ms-hint {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: #8a93a8;
+  line-height: 1.4;
+}
+.ms-foot-row {
+  display: flex;
+  gap: 8px;
+}
+.ms-ghost {
+  flex: none;
+  padding: 11px 12px;
+  border-radius: 12px;
+  border: 1px solid #1f2a40;
+  background: transparent;
+  color: #b9c2d6;
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+}
+.ms-ghost:disabled {
+  opacity: 0.35;
+}
+.ms-go {
+  flex: 1;
+  padding: 12px;
+  border-radius: 12px;
+  border: 0;
+  background: linear-gradient(90deg, #ff2e8c, #b13cff);
+  color: #fff;
+  font-weight: 900;
+  font-size: 15px;
+  cursor: pointer;
+  box-shadow: 0 0 22px rgba(255, 46, 140, 0.4);
+}
+.ms-go:disabled {
+  background: #1a2133;
+  color: #8a93a8;
+  box-shadow: none;
+}
+.ms-ok,
+.ms-warn {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.4;
+  font-weight: 700;
+}
+.ms-ok {
+  color: #3ad07a;
+}
+.ms-warn {
+  color: #ff8a8a;
+}
+.ms-wallet {
+  margin: 6px 0 0;
+  font-size: 11.5px;
+  color: #8a93a8;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+@media (min-width: 820px) {
+  .ms-root {
+    flex-direction: row;
+  }
+  .ms-stage {
+    flex: 1 1 auto;
+  }
+  .ms-panel {
+    flex: none;
+    width: 400px;
+    border-top: 0;
+    border-left: 1px solid #1f2a40;
+  }
+}

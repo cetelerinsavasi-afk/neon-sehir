@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import CarImg from '../VehicleCard/CarImg'; // v150
 import { X } from 'lucide-react';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
@@ -18,7 +19,7 @@ import { useLottery } from '../../hooks/useLottery';
 import { useFlappyLeaderboard, useMyFlappyBest } from '../../hooks/useFlappyBird';
 import { useInventory } from '../../hooks/useInventory';
 import { useAuth } from '../../contexts/AuthContext';
-import { vehicleImage, vehicleDisplayName } from '../VehicleCard/VehicleCard';
+import { vehicleDisplayName } from '../VehicleCard/VehicleCard';
 import { createSixtagramPost } from '../../services/gameActions';
 import PostAttachment from './PostAttachment';
 import './ComposeModal.css';
@@ -607,9 +608,7 @@ export default function ComposeModal({ onClose, onPosted }) {
             )}
             {vehicles.map((v) => (
               <button key={v.id} className="six-compose-sublist-item" onClick={() => chooseVehicle(v)}>
-                {vehicleImage(v.catalogId) && (
-                  <img src={vehicleImage(v.catalogId)} alt={vehicleDisplayName(v)} />
-                )}
+                <CarImg catalogId={v.catalogId} mods={v.mods || null} alt={vehicleDisplayName(v)} />
                 <span>{vehicleDisplayName(v)}</span>
               </button>
             ))}

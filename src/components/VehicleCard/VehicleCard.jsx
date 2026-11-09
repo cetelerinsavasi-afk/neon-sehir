@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { renameVehicle } from '../../services/gameActions';
 import { CarStatBars, vehicleRaceLevel } from '../RaceTrackScreen/CarStats';
+import CarImg from './CarImg';
 import './VehicleCard.css';
 
 // VehicleCard — Profil (HomeScreen) VE Modifiye Garajı (GarageScreen)
@@ -112,7 +113,6 @@ export function UpgradeCells({ slots, kind = 'vehicle' }) {
 }
 
 export default function VehicleCard({ vehicle, locked = false }) {
-  const img = vehicleImage(vehicle.catalogId);
   const displayName = vehicleDisplayName(vehicle);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(displayName);
@@ -140,7 +140,8 @@ export default function VehicleCard({ vehicle, locked = false }) {
 
   return (
     <div className={`vcard-card${locked ? ' cue-dim cue-lock' : ''}`}>
-      {img && <img className="vcard-photo" src={img} alt={displayName} />}
+      {/* v150: fotoğraf yerine aracın modifiyeli 3D hali */}
+      <CarImg className="vcard-photo" catalogId={vehicle.catalogId} mods={vehicle.mods || null} alt={displayName} />
       <div className="vcard-body">
         {editingName ? (
           <div className="vcard-name-edit-row">

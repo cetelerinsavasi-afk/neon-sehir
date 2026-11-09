@@ -33,4 +33,17 @@ export const vehicleCatalog = [
   { id: 8, name: 'Track-Spec Süper Spor', gearLevel: 5, baseTank: 100, price: 600000, storage: 5, turboCount: 3, image: v08 },
   { id: 9, name: 'GT Yarış Arabası', gearLevel: 5, baseTank: 150, price: 800000, storage: 5, turboCount: 2, image: v09 },
   { id: 10, name: 'Üstün Cabrio', gearLevel: 5, baseTank: 150, price: 1000000, storage: 5, turboCount: 3, image: v10 },
+  // v151 — ticari araçlar (meslek) ve motorlar: görseli 3D modelden (CarImg); tamir/geliştirme yok
+  { id: 11, kind: 'ticari', job: 'tir', name: 'Tır', gearLevel: 1, baseTank: 400, price: 500000, storage: 200, turboCount: 0, seats: 2, desc: 'Limandan yükle, depoya teslim et' },
+  { id: 12, kind: 'ticari', job: 'otobus', name: 'Otobüs', gearLevel: 1, baseTank: 300, price: 200000, storage: 30, turboCount: 0, seats: 28, desc: '10 durak, sırayla sefer' },
+  { id: 13, kind: 'ticari', job: 'taksi', name: 'Taksi', gearLevel: 3, baseTank: 100, price: 100000, storage: 5, turboCount: 0, seats: 4, desc: 'Çağrı al, yolcu taşı' },
+  { id: 14, kind: 'ticari', job: 'polis', name: 'Polis Aracı', gearLevel: 4, baseTank: 100, price: 400000, storage: 5, turboCount: 0, seats: 4, desc: 'İhbar, kovalamaca, devriye' },
+  { id: 15, kind: 'ticari', job: 'ambulans', name: 'Ambulans', gearLevel: 2, baseTank: 120, price: 300000, storage: 10, turboCount: 0, seats: 4, desc: '112 vakaları, hastaneye yetiştir' },
+  { id: 21, kind: 'motor', name: 'Scooter', gearLevel: 1, baseTank: 10, price: 15000, storage: 0, turboCount: 0, seats: 2 },
+  { id: 22, kind: 'motor', name: 'Cross Motor', gearLevel: 2, baseTank: 12, price: 35000, storage: 0, turboCount: 0, seats: 1 },
+  { id: 23, kind: 'motor', name: 'Chopper', gearLevel: 2, baseTank: 20, price: 60000, storage: 0, turboCount: 0, seats: 2 },
+  { id: 24, kind: 'motor', name: 'Spor Motor', gearLevel: 3, baseTank: 18, price: 95000, storage: 0, turboCount: 0, seats: 2 },
 ];
+// v151: araç türü (araba / ticari / motor) — galeri sekmeleri
+export const vehicleKindOfId = (id) => vehicleCatalog.find((v) => v.id === Number(id))?.kind || 'araba';
+export const isCarCatalogId = (id) => vehicleKindOfId(id) === 'araba';

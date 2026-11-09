@@ -1,4 +1,5 @@
 import { resaleTax } from '../../../functions/tax.js';
+import CarImg from '../VehicleCard/CarImg';
 import { useBelediyeRates } from '../../hooks/useBelediyeRates';
 import { resaleRateFrac } from '../../../functions/belediyeRates.js';
 import { useEffect, useRef, useState } from 'react';
@@ -263,9 +264,6 @@ function adRemainingLabel(listing) {
   return hours <= 1 ? '1 saatten az kaldı' : `${hours} saat kaldı`;
 }
 
-function vehicleImage(catalogId) {
-  return vehicleCatalog.find((v) => v.id === catalogId)?.image;
-}
 function weaponImage(catalogId) {
   return weaponCatalog.find((w) => w.id === catalogId)?.image;
 }
@@ -410,7 +408,6 @@ function SellForm({ onCreated, onClose, initialItemType }) {
                 <p className="market-hint">Satışa uygun (ipoteksiz, el konulmamış) bir aracın yok.</p>
               )}
               {sellableVehicles.map((v) => {
-                const img = vehicleImage(v.catalogId);
                 const selected = selectedId === v.id;
                 return (
                   <button
@@ -418,7 +415,7 @@ function SellForm({ onCreated, onClose, initialItemType }) {
                     className={`market-item-card${selected ? ' selected' : ''}`}
                     onClick={() => setSelectedId(v.id)}
                   >
-                    {img && <img className="market-item-photo" src={img} alt={vehicleDisplayName(v)} />}
+                    <CarImg className="market-item-photo" catalogId={v.catalogId} mods={v.mods || null} alt={vehicleDisplayName(v)} />
                     <span className="market-item-name">{vehicleDisplayName(v)}</span>
                     <ListingCarStats vehicle={v} />
                   </button>
@@ -522,8 +519,8 @@ function SellForm({ onCreated, onClose, initialItemType }) {
 function ListingCard({ listing, isMine, busy, onCancel, onBuy, noGold = false, sellerLabel = null }) {
   let media = null;
   if (listing.itemType === 'vehicle') {
-    const img = vehicleImage(listing.vehicleCatalogId);
-    media = img ? <img className="market-card-photo" src={img} alt={listing.vehicleModel} /> : null;
+    // v150: fotoğraf yerine 3D model (ilanda modifiye bilgisi varsa onunla)
+    media = <CarImg className="market-card-photo" catalogId={listing.vehicleCatalogId} mods={listing.vehicleMods || null} alt={listing.vehicleModel} />;
   } else if (listing.itemType === 'weapon') {
     const img = weaponImage(listing.weaponCatalogId);
     media = img ? <img className="market-card-photo" src={img} alt={listing.weaponName} /> : null;

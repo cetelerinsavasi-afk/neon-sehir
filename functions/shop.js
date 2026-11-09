@@ -35,7 +35,7 @@
 //     Satış alıcıya giden ürünün ömrünü düşürmez.
 // =============================================================================
 
-import { BIZ_TYPES, midnightDayKey } from './businessCatalogData.js';
+import { BIZ_TYPES, midnightDayKey, bizDayKey } from './businessCatalogData.js';
 import { bizTax, resaleTax, taxLedgerWrite } from './tax.js';
 import {
   WORKSHOP_MATERIALS,
@@ -53,6 +53,8 @@ import {
   itemListingFields,
 } from './itemRules.js';
 import { goldTag } from './moneyLog.js';
+import { sanitizeMods, compactMods, modCost } from './vehicleMods.js';
+import { isVehicleId } from './vehicleKinds.js';
 import { itemListingTimeFields, batchesOf, consumeBatches, nextExpireAtMs, materialTtl } from './listingBatches.js';
 import { planAutoSupply, planGameSupply, AUTO_SUPPLY_MAT_NAMES } from './autoSupply.js';
 import { VEHICLE_CATALOG, WEAPON_CATALOG } from './catalogData.js';
@@ -250,6 +252,8 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       if (!isGame) {
         h = await txHouse(tx, houseId);
         type = requireBiz(h, Object.keys(WORKSHOP_MATERIALS));
+        // v149: dükkân sahibi kendi atölyesinde tamir / geliştirme yaptıramaz (rakibe gitmeli)
+        if (h.ownerUid === uid) fail('failed-precondition', 'own-shop');
         if (!(await txPresent(tx, uid, houseId))) fail('failed-precondition', 'not-present');
       }
       if (!WORKSHOP_MATERIALS[type]) fail('invalid-argument', 'Geçersiz atölye.');
@@ -365,6 +369,99 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
     });
     // Onboarding görev 19 — "silahını geliştir"
     if (result.action === 'upgrade' && result.itemType === 'weapon') await advanceOnboardingStep(uid, 19).catch(() => {});
+    return result;
+  }
+
+  // v151 — dünün EN AZ kazanan oyuncu dükkânı (bizRank en büyük; dün sırası olmayan yeni
+  // dükkânlar sıralılardan sonra). Liste günde bir kez sorgulanıp gameVenues/{tür}.least'e
+  // yazılır (her işlemde tüm dükkânlar okunmasın). Alıcının kendi dükkânı atlanır.
+  async function leastEarnerTx(tx, type, excludeUid) {
+    const day = bizDayKey(type, now());
+    const gs = await tx.get(db.collection('gameVenues').doc(type));
+    const cached = gs.exists ? gs.data()?.least : null;
+    let ids = cached?.day === day && Array.isArray(cached.ids) ? cached.ids.filter(isId) : null;
+    let cacheWrite = null;
+    if (!ids) {
+      const qs = await tx.get(db.collection('houses').where('bizType', '==', type).limit(300));
+      const rk = (d) => {
+        const r = Number(d.data().bizRank);
+        return Number.isFinite(r) && r > 0 ? r : 0;
+      };
+      ids = qs.docs
+        .filter((d) => !d.data().bizGame && d.data().biz?.type === type && d.data().ownerUid)
+        .sort((a, b) => Number(rk(a) === 0) - Number(rk(b) === 0) || rk(b) - rk(a) || a.id.localeCompare(b.id))
+        .slice(0, 8)
+        .map((d) => d.id);
+      cacheWrite = { least: { day, ids } };
+    }
+    for (const id of ids) {
+      const hs = await tx.get(houseRef(id));
+      const h = hs.exists ? hs.data() : null;
+      if (h && !h.bizGame && h.biz?.type === type && h.ownerUid && h.ownerUid !== excludeUid) return { houseId: id, h, cacheWrite };
+    }
+    return { houseId: null, h: null, cacheWrite };
+  }
+
+  // ---- v150 MODİFİYE (sadece modifiye garajları) -------------------------------------
+  // p: { shop: houseId | 'game', vehicleId, mods (istenen tam görünüm), expect }
+  // Ücret = aracın ŞU ANKİ halinden farklı her alanın fiyatı (aracın fiyatının yüzdesi —
+  // functions/vehicleMods.js). Satın alınan tasarım saklanmaz: değiştirince gider.
+  // Para: oyuncu dükkânında vergi kesilip sahibine; oyunun garajında vergi belediyeye.
+  // Dükkân sahibi kendi garajında modifiye yaptıramaz. Sadece görünüm (yarış değeri yok).
+  async function modify(uid, p) {
+    const isGame = p.shop === 'game';
+    const houseId = isGame ? null : String(p.shop || '');
+    const vehicleId = String(p.vehicleId || '');
+    if (!isId(vehicleId)) fail('invalid-argument', 'Geçersiz araç.');
+    let result = null;
+    await db.runTransaction(async (tx) => {
+      let h = null;
+      const type = 'modifiye';
+      if (!isGame) {
+        h = await txHouse(tx, houseId);
+        requireBiz(h, ['modifiye']);
+        if (h.ownerUid === uid) fail('failed-precondition', 'own-shop');
+        if (!(await txPresent(tx, uid, houseId))) fail('failed-precondition', 'not-present');
+      }
+      // v151: oyunun garajında yapılan modifiyenin parası DÜNÜN EN AZ KAZANAN modifiyecisine
+      // (vergisi kesilerek) gider; hiç oyuncu modifiyecisi yoksa oyuna (eski davranış).
+      let least = null;
+      if (isGame) {
+        least = await leastEarnerTx(tx, type, uid);
+        if (least.houseId) h = least.h;
+      }
+      const payHouseId = isGame ? least.houseId : houseId;
+      const vRef = db.collection('vehicles').doc(vehicleId);
+      const reads = [tx.get(vRef), tx.get(userRef(uid))];
+      if (h) reads.push(tx.get(userRef(h.ownerUid)));
+      const [vs, us, os] = await Promise.all(reads);
+      if (!vs.exists || vs.data().ownerId !== uid) fail('failed-precondition', 'not-owner');
+      const v = vs.data();
+      if (v.listed) fail('failed-precondition', 'listed');
+      if (v.seizedByBank) fail('failed-precondition', 'mortgaged');
+      const cid = Number(v.catalogId);
+      if (!isVehicleId(cid)) fail('invalid-argument', 'Bu araç modifiye edilemez.');
+      const want = sanitizeMods(cid, p.mods);
+      const cost = modCost(cid, v.mods || null, want);
+      if (cost.total <= 0) fail('failed-precondition', 'no-change');
+      if (Number(p.expect) !== cost.total) fail('aborted', `price-changed:${cost.total}`);
+      if (Number(us.data()?.gold || 0) < cost.total) fail('failed-precondition', 'gold');
+      // --- yazmalar ---
+      tx.update(userRef(uid), { gold: FieldValue.increment(-cost.total), goldTag: goldTag('modifiye') });
+      tx.update(vRef, { mods: compactMods(cid, want), modsAtMs: now() });
+      const products = Object.fromEntries(cost.items.map((x) => [`modifiye:${x.label}`, 1]));
+      if (least?.cacheWrite) tx.set(db.collection('gameVenues').doc(type), least.cacheWrite, { merge: true });
+      if (payHouseId && h) {
+        const tax = bizTax(cost.total, type);
+        const { goldDelta, debtDelta } = splitIncomeForDebt(os.data()?.debtToState, cost.total - tax);
+        tx.update(userRef(h.ownerUid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('modifiye'), debtToState: FieldValue.increment(debtDelta) });
+        business?.recordIncomeTx(tx, { houseId: payHouseId, h, amount: cost.total, kind: 'labor', customerUid: uid, products, tax });
+      } else {
+        const tax = bizTax(cost.total, type);
+        business?.recordGameIncomeTx?.(tx, { type, amount: cost.total, kind: 'labor', customerUid: uid, products, tax });
+      }
+      result = { ok: true, total: cost.total, items: cost.items, mods: compactMods(cid, want) };
+    });
     return result;
   }
 
@@ -632,7 +729,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
   }
 
   // Müşteri: stoktan satın al. p: { houseId, catalogId, expect (fiyat) }
-  // v132: dükkân sahibi de kendi dükkânından alabilir.
+  // v149: dükkân sahibi kendi dükkânından ALAMAZ (depo / gazino gibi).
   async function stockBuy(uid, p) {
     const houseId = String(p.houseId || '');
     const pre = (await houseRef(houseId).get()).data();
@@ -643,6 +740,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       const type = requireBiz(h, Object.keys(STOCK_KIND));
       const kind = STOCK_KIND[type];
       const cid = cleanCid(kind, p.catalogId);
+      if (h.ownerUid === uid) fail('failed-precondition', 'own-shop');
       if (!(await txPresent(tx, uid, houseId))) fail('failed-precondition', 'not-present');
       const [ss, us, os] = await Promise.all([tx.get(stockRef(houseId)), tx.get(userRef(uid)), tx.get(userRef(h.ownerUid))]);
       const st = stockOf(ss, type);
@@ -699,7 +797,8 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
           const qty = st ? stockQty(st, cid) : 0;
           const real = st && qty > 0 ? clampStockPrice(e.price, st.prices?.[cid]) : 0;
           if (!real || real !== pr) fixes.push([hid, real]);
-          else valid.push({ hid, h, st });
+          // v149: alıcının kendi dükkânı atlanır (kendi dükkânından alışveriş yok)
+          else if (h.ownerUid !== uid) valid.push({ hid, h, st });
         });
         if (valid.length) {
           valid.sort((a, b) => rankOf(b.h) - rankOf(a.h) || a.hid.localeCompare(b.hid));
@@ -1025,6 +1124,8 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
     const uid = requireAuth(request);
     const p = request.data || {};
     switch (p.op) {
+      case 'modify':
+        return modify(uid, p);
       case 'stock':
         return stock(uid, p);
       case 'prices':

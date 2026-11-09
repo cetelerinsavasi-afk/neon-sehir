@@ -2073,7 +2073,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
           {panel === 'showcase' && bizType && (
             <div className="wk-sheet-bg" onClick={() => setPanel(null)}>
               <div className="wk-sheet" onClick={(e) => e.stopPropagation()}>
-                <ShopShowcase houseId={houseId} kind={bizType === 'galeri' ? 'vehicle' : 'weapon'} onClose={() => setPanel(null)} />
+                <ShopShowcase houseId={houseId} kind={bizType === 'galeri' ? 'vehicle' : 'weapon'} own={Boolean(houseDoc?.ownerUid) && houseDoc.ownerUid === user?.uid} onClose={() => setPanel(null)} />
               </div>
             </div>
           )}

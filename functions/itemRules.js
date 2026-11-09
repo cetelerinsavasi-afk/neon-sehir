@@ -9,6 +9,7 @@
 
 import { VEHICLE_CATALOG, WEAPON_CATALOG } from './catalogData.js';
 import { vehicleRaceLevel, VEHICLE_MAX_LEVEL } from './raceSim.js';
+import { canRepairVehicle } from './vehicleKinds.js';
 
 // --- Ömür + tamir (v58 değerleri) ---------------------------------------------
 export const VEHICLE_WEAPON_INITIAL_LIFE_DAYS = 20; // araç ömür tavanı
@@ -31,6 +32,10 @@ export function repairRequiredQty(price) {
 // 2. el satış değeri oranı: (kalanTamirHakkı × bonus + kalanÖmür) / azami
 export function valueRatioOf(item, kind = 'vehicle') {
   const cap = lifeCapOf(kind);
+  // v151: ticari araç / motor tamir edilemez → değer sadece kalan ömre bağlı
+  if (kind === 'vehicle' && item?.catalogId != null && !canRepairVehicle(item.catalogId)) {
+    return Math.max(0, Math.min(1, Math.max(0, item?.lifeDays ?? cap) / cap));
+  }
   const bonus = repairBonusOf(kind);
   const repairsUsed = item?.repairsUsed || 0;
   const remainingRepairs = Math.max(0, VEHICLE_WEAPON_MAX_REPAIRS - repairsUsed);
@@ -56,7 +61,7 @@ export function itemListingBand(itemType, item) {
   if (itemType === 'vehicle') {
     const base = VEHICLE_CATALOG[item?.catalogId]?.price || 0;
     // v78: araç seviyesi (1-3) — eski vites/depo geliştirmeleri seviyeye sayılır
-    const mult = vehicleRaceLevel(item);
+    const mult = canRepairVehicle(item?.catalogId) ? vehicleRaceLevel(item) : 1;
     raw = base * mult * valueRatioOf(item, 'vehicle');
   } else if (itemType === 'weapon') {
     const base = WEAPON_CATALOG[item?.catalogId]?.price || 0;
@@ -81,6 +86,8 @@ export function itemListingFields(itemType, itemId, item) {
       vehicleRaceLevel: vehicleRaceLevel(item),
       vehicleLifeDays: item.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS,
       vehicleRepairsUsed: item.repairsUsed || 0,
+      // v150: ilanda araç modifiyeli haliyle görünür
+      ...(item.mods && typeof item.mods === 'object' && Object.keys(item.mods).length ? { vehicleMods: item.mods } : {}),
     };
   }
   return {
@@ -159,6 +166,8 @@ export function clampWorkshopPrice(material, p) {
 export function workshopJob({ itemType, item, action, upgradeType }) {
   if (!item) return { block: 'type' };
   if (item.listed) return { block: 'listed' };
+  // v151: ticari araç ve motorda tamir / geliştirme yok (sadece modifiye)
+  if (itemType === 'vehicle' && (action === 'repair' || action === 'upgrade') && !canRepairVehicle(item.catalogId)) return { block: 'noWork', material: action === 'repair' ? 'tamirMalzemesi' : 'arabaGelistirme', qty: 0 };
   if (action === 'repair') {
     const price = itemType === 'weapon' ? weaponLivePrice(item) : vehicleLivePrice(item);
     const cap = lifeCapOf(itemType);

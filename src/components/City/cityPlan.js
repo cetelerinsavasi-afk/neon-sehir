@@ -9,6 +9,8 @@ import { Kit, M, floorMat, floorRep, planeGeo, glowMat } from './kit.js';
 import * as B from './buildings.js';
 import * as A from './areas.js';
 import { VENUES } from '../../../functions/venueLayouts.js';
+import * as J from './jobBuildings.js';
+import { BUS_STOPS, LIMAN_BAY } from '../../../functions/cityJobsData.js';
 
 import { P, BLOCK, SIDE, COLS, ROWS, cx, cz, COAST_Z, BOUNDS, LOTS } from './cityLayout.js';
 export { P, BLOCK, SIDE, COLS, ROWS, cx, cz, COAST_Z, BOUNDS };
@@ -33,6 +35,11 @@ const T = {
   park: { build: A.buildPark, region: 'park', name: 'Park', icon: '🌳', open: true },
   pist: { build: A.buildPist, region: 'yaris_pisti', name: 'Yarış Pisti', icon: '🏁', open: true },
   liman: { build: A.buildLiman, region: 'liman_depo', name: 'Liman & Depo', icon: '⚓' },
+  // v151 — meslek yapıları (girilmez; tır / ambulans burada teslim eder)
+  depo_kuzey: { build: J.buildDepoKuzey, name: 'Kuzey Lojistik Deposu', icon: '📦', open: true },
+  depo_dogu: { build: J.buildDepoDogu, name: 'Doğu Lojistik Deposu', icon: '📦', open: true },
+  hastane: { build: J.buildHastane, name: 'Hastane', icon: '🏥', open: true },
+  benzinlik: { build: J.buildBenzinlik, name: 'Benzinlik', icon: '⛽', open: true },
 };
 
 // Seyyar satıcılar: mekân değil, sokakta (lot yerel koordinatı)
@@ -170,9 +177,16 @@ export function buildCity() {
       A.buildQuay(q, { w: bw, d: 18 });
       A.cargoShip(q, -12, 15, 0, 38, 1);
       A.cargoShip(q, 22, 16, 0.05, 30, 4);
+      // v151: tır yükleme alanı (cityJobsData.LIMAN_BAY)
+      J.paintBay(q, LIMAN_BAY.x - mx, LIMAN_BAY.z - (COAST_Z + 9), 9, 7, '#e8b923', 'YÜKLEME', 0.17);
     }
     if (info.mapLabel) kit.label(info.mapLabel.text, info.mapLabel.x || 0, info.mapLabel.y, info.mapLabel.z || 0, 'map');
   });
+
+  // --- v151 otobüs durakları (iç halka, saat yönü) -------------------------------
+  const stops = new Kit('duraklar');
+  kits.push(stops);
+  BUS_STOPS.forEach((st) => J.buildBusStop(stops, st));
 
   // --- seyyar satıcılar --------------------------------------------------------
   VENDORS_AT.forEach((v) => {
