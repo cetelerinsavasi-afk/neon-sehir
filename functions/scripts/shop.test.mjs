@@ -288,7 +288,7 @@ test('v130 galeri stoğu: araç oyunun galerisindekiyle aynı belge; kredi SMS +
   assert.equal(v.ownerId, 'ali');
   assert.equal(v.model, VEHICLE_CATALOG[2].name);
   assert.equal(v.mortgaged, false);
-  assert.ok(h.keys('users/ali/messages/').map((k) => h.G(k)).some((m) => m.type === 'loan_offer'));
+  assert.ok(!h.keys('users/ali/messages/').map((k) => h.G(k)).some((m) => m.type === 'loan_offer'), 'v152: araç alınca SMS gelmez');
   assert.deepEqual(h.onboard.at(-1), ['ali', 11]);
   // kâr 2.500 → vergi 250
   assert.equal(h.G(`shopStocks/${id}`).items['2'], 0);

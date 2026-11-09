@@ -11,28 +11,30 @@
 // =============================================================================
 
 export const LIMAN_BAY = { key: 'liman', name: 'Liman Yükleme Alanı', x: -80, z: 112, r: 7 };
+// v152: limanın (sol alt) TERS tarafında: kuzey (üst orta) ve kuzeydoğu köşesi
 export const DEPOTS = [
-  { key: 'kuzey', name: 'Kuzey Lojistik Deposu', x: -140, z: -113, r: 7.5 },
-  { key: 'dogu', name: 'Doğu Lojistik Deposu', x: 133, z: 80, r: 7.5 },
+  { key: 'kuzey', name: 'Kuzey Lojistik Deposu', x: -20, z: -113, r: 7.5 },
+  { key: 'dogu', name: 'Doğu Lojistik Deposu', x: 140, z: -113, r: 7.5 },
 ];
 export const HOSPITAL = { key: 'hastane', name: 'Hastane — Acil Girişi', x: 131, z: -40, r: 7 };
 export const GAS_STATION = { key: 'benzinlik', name: 'Benzinlik', x: 20, z: -80 };
 
-// Otobüs durakları — sıra = güzergâh (saat yönü: üst yol doğuya, sağ yol güneye,
-// sahil yolu batıya, sol yol kuzeye). x,z: otobüsün duracağı şerit; sx,sz: durak
-// (kaldırım); fx,fz: şeritten kaldırıma birim yön.
+// Otobüs durakları (v152) — DIŞ halka yolu (x = ±160, z = -140 ve sahil yolu z = 100),
+// saat yönü: üst yol doğuya, sağ yol güneye, sahil yolu batıya, sol yol kuzeye. Duraklar
+// blok ortalarında (kavşakta değil), aralarında ~110-120 m; şehir tarafında (sağ şerit).
+// x,z: otobüsün duracağı şerit; sx,sz: durak (kaldırım); fx,fz: şeritten kaldırıma birim yön.
 const S = (n, name, x, z, fx, fz) => ({ n, key: `durak${n}`, name, x, z, fx, fz, sx: x + fx * 3.6, sz: z + fz * 3.6, r: 7.5 });
 export const BUS_STOPS = [
-  S(1, 'Karakol', -60, -98, 0, 1),
-  S(2, 'Banka', 0, -98, 0, 1),
-  S(3, 'Spor Salonu', 64, -98, 0, 1),
-  S(4, 'Belediye', 118, -50, -1, 0),
-  S(5, 'Stadyum', 118, 26, -1, 0),
-  S(6, 'Evler', 30, 98, 0, -1),
-  S(7, 'Plaza', -24, 98, 0, -1),
-  S(8, 'Liman', -86, 98, 0, -1),
-  S(9, 'Casino', -118, 44, 1, 0),
-  S(10, 'Camii', -118, -38, 1, 0),
+  S(1, 'Kuzey Kapısı', -100, -138, 0, 1),
+  S(2, 'Kuzey Lojistik', 20, -138, 0, 1),
+  S(3, 'Doğu Lojistik', 140, -138, 0, 1),
+  S(4, 'Hastane', 158, -40, -1, 0),
+  S(5, 'Stadyum Arkası', 158, 40, -1, 0),
+  S(6, 'Doğu Sahil', 100, 98, 0, -1),
+  S(7, 'Plaza', -20, 98, 0, -1),
+  S(8, 'Liman', -100, 98, 0, -1),
+  S(9, 'Batı Sahil', -158, 40, 1, 0),
+  S(10, 'Batı Kapısı', -158, -80, 1, 0),
 ];
 
 export const manhattan = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.z - b.z);
@@ -44,8 +46,8 @@ export function busRouteLen(start = 0) {
 }
 
 // --- yol kenarı noktaları ---------------------------------------------------------------
-const XS = [-120, -80, -40, 0, 40, 80, 120];
-const ZS = [-100, -60, -20, 20, 60, 100];
+const XS = [-160, -120, -80, -40, 0, 40, 80, 120, 160];
+const ZS = [-140, -100, -60, -20, 20, 60, 100];
 // birleşik büyük lotlar (yolun üstünü kaplar): park, stadyum, pist, liman
 const BIG = [
   [-36, 36, -16, 16],
@@ -78,6 +80,10 @@ function buildSpots() {
   const out = [];
   const add = (x, z, fx, fz) => {
     if (covered(x + fx * 4, z + fz * 4)) return;
+    // dış halkada sadece şehir tarafı kaldırım (en dıştaki duvar bloklarına yolcu koyma)
+    const sx = x + fx * 3.6;
+    const sz = z + fz * 3.6;
+    if (sx < -157 || sx > 157 || sz < -137) return;
     out.push({ i: out.length, x, z, fx, fz, sx: x + fx * 3.6, sz: z + fz * 3.6, name: `${placeName(x + fx * 14, z + fz * 14)} önü`, r: 7 });
   };
   // yatay yollar (z sabit): iki kenar

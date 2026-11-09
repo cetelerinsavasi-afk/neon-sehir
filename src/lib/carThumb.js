@@ -7,7 +7,7 @@
 // Bu dosya three.js'i ana pakete sokmamak için CarImg'den tembel yüklenir.
 // =============================================================================
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { getSharedRenderer, releaseSharedRenderer } from '../components/HouseScreen/houseEngine.js';
 import { buildVehicle } from '../components/City/vehicles.js';
 import { modsKey } from '../../functions/vehicleMods.js';
 import { getCachedPhoto, putCachedPhoto, photoKey, runPhotoJob, onPhotoQueueIdle, IS_MOBILE_DEVICE } from './photoCache.js';
@@ -15,22 +15,14 @@ import { getCachedPhoto, putCachedPhoto, photoKey, runPhotoJob, onPhotoQueueIdle
 // v151: kare (eski araba resimleri gibi) — ön 3/4, alçak açı, araç kareyi doldurur
 const W = 480;
 const H = 480;
-let R = null; // { renderer, scene, camera, env }
+// v152: kendi grafik bağlamı YOK — Sixtagram / ev fotoğraflarıyla aynı ortak çizici ('snap').
+// Telefonda ikinci-üçüncü WebGL bağlamı belleği zorlayıp oyunu kapatıyordu.
+let R = null; // { scene, camera, bgTex, ring, floor }
 const mem = new Map();
 
 function studio() {
   if (R) return R;
-  const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true, alpha: false });
-  renderer.setPixelRatio(1);
-  renderer.setSize(W, H, false);
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.15;
   const scene = new THREE.Scene();
-  const pm = new THREE.PMREMGenerator(renderer);
-  const env = pm.fromScene(new RoomEnvironment(), 0.04).texture;
-  pm.dispose();
-  scene.environment = env;
   scene.environmentIntensity = 0.9;
   // koyu stüdyo zemini + pembe / turkuaz neon parıltı
   const bg = document.createElement('canvas');
@@ -68,22 +60,30 @@ function studio() {
   ring.position.y = 0.005;
   scene.add(ring);
   const camera = new THREE.PerspectiveCamera(30, W / H, 0.1, 100);
-  R = { renderer, scene, camera, env, bgTex, ring, floor };
+  R = { scene, camera, bgTex, ring, floor };
   return R;
 }
-function release() {
-  if (!R) return;
+// telefonda kuyruk boşalınca ortak çizici bırakılır (bellek)
+if (IS_MOBILE_DEVICE) onPhotoQueueIdle(() => releaseSharedRenderer('snap'));
+// ortak çiziciyi bu kare için ayarla, sonra eski ayarlarına döndür
+function withRenderer(fn) {
+  const { renderer, env } = getSharedRenderer('snap');
+  const keep = { tm: renderer.toneMapping, ex: renderer.toneMappingExposure, pr: renderer.getPixelRatio(), size: renderer.getSize(new THREE.Vector2()), sh: renderer.shadowMap.enabled };
+  renderer.setPixelRatio(1);
+  renderer.setSize(W, H, false);
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.15;
+  renderer.shadowMap.enabled = false;
   try {
-    R.env.dispose();
-    R.bgTex.dispose();
-    R.renderer.dispose();
-    R.renderer.forceContextLoss?.();
-  } catch {
-    /* yoksay */
+    return fn(renderer, env);
+  } finally {
+    renderer.toneMapping = keep.tm;
+    renderer.toneMappingExposure = keep.ex;
+    renderer.setPixelRatio(keep.pr);
+    renderer.setSize(keep.size.x, keep.size.y, false);
+    renderer.shadowMap.enabled = keep.sh;
   }
-  R = null;
 }
-if (IS_MOBILE_DEVICE) onPhotoQueueIdle(release);
 
 function disposeTree(o) {
   o.traverse((m) => {
@@ -139,8 +139,11 @@ function draw(catalogId, mods) {
     S.camera.position.copy(look).addScaledVector(dir, dist);
     S.camera.lookAt(look);
     S.camera.updateProjectionMatrix();
-    S.renderer.render(S.scene, S.camera);
-    return S.renderer.domElement.toDataURL('image/jpeg', 0.86);
+    return withRenderer((renderer, env) => {
+      S.scene.environment = env;
+      renderer.render(S.scene, S.camera);
+      return renderer.domElement.toDataURL('image/jpeg', 0.86);
+    });
   } finally {
     S.scene.remove(v.root);
     disposeTree(v.root);

@@ -141,10 +141,14 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
       const z = num(c.z, -450, 450);
       const v = Number(c.v);
       const rec = rt.c.get(c.o);
-      if (x === null || z === null || !Number.isInteger(v) || v < 1 || v > 10) return;
+      // v152: ticari araçlar (11-15) ve motorlar (21-24) de fotoğrafa girer
+      if (x === null || z === null || !Number.isInteger(v) || v < 1 || v > 30) return;
       if (!fresh(rec, FRESH_C_MS) || Number(rec.v) !== v || Math.hypot(rec.x - x, rec.z - z) > NEAR_C) return;
       carOwners.add(c.o);
-      cars.push({ o: c.o, v, x: r2(x), z: r2(z), y: r2(num(c.y, -2, 20) ?? 0), r: r3(num(c.r, -50, 50) ?? 0), st: r2(num(c.st, -1, 1) ?? 0) });
+      // v152: modifiye (m) ve iş hâli (j: dorse / yolcular / tepe lambası) RTDB kaydından — sahte olamaz
+      const m = typeof rec.m === 'string' && rec.m.length <= 700 ? rec.m : '';
+      const j = Math.max(0, Math.min(40, Math.floor(Number(rec.j) || 0)));
+      cars.push({ o: c.o, v, x: r2(x), z: r2(z), y: r2(num(c.y, -2, 20) ?? 0), r: r3(num(c.r, -50, 50) ?? 0), st: r2(num(c.st, -1, 1) ?? 0), ...(m ? { m } : {}), ...(j ? { j } : {}) });
     });
 
     // kişiler

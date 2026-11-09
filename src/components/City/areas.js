@@ -289,8 +289,9 @@ export function buildQuay(kit, { w, d }) {
   kit.item('portlight', -w / 2 + 1, 0, 2, 0);
   kit.item('portlight', w / 2 - 1, 0, 6, 0);
   kit.solid(0, d / 2 + 0.3, w / 2, 0.3); // su kenarı
-  kit.solid(-w / 2 - 0.3, 0, 0.3, d / 2);
-  kit.solid(w / 2 + 0.3, 0, 0.3, d / 2);
+  // v152: yanlar sahil kaldırımını (ilk ~3 m) kapatmasın — kaldırımın bittiği yerde görünmez duvar vardı
+  kit.solid(-w / 2 - 0.3, 1.5, 0.3, d / 2 - 1.5);
+  kit.solid(w / 2 + 0.3, 1.5, 0.3, d / 2 - 1.5);
 }
 
 // Kargo gemisi (gövde + konteynerler) — denizde hafifçe sallanır

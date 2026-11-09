@@ -98,30 +98,20 @@ export function buildBenzinlik(kit, lot) {
   kit.box(bw, 1.6, 0.05, glowMat('#cfeaff', 0.9), -5, 1.4, bz + bd / 2 + 0.03, { cast: false });
   kit.sign('benzinmarket', 'MARKET 7/24', 0.7, -5, 3.6, bz + bd / 2 + 0.06, 0, { color: '#ffffff', glow: '#3ad07a', font: '900 100px Arial, sans-serif', li: 5, ld: 9 });
   kit.mass(bw, 4.6, bd, -5, bz);
-  // kanopi + pompalar
+  // v152: kanopi, pompalar, fiyat totemi, hava makinesi, oto yıkama — Benzinlik mobilyaları
   const cz = 3;
-  const cw = 18;
-  const cd = 9;
-  kit.box(cw, 0.7, cd, M('#f4f4f2', 0.4, 0.2), 0, 5.2, cz);
-  kit.box(cw + 0.1, 0.35, cd + 0.1, glowMat('#3ad07a', 2.4), 0, 5.2, cz, { cast: false });
-  kit.box(cw - 1, 0.04, cd - 1, glowMat('#ffffff', 1.6), 0, 5.15, cz, { cast: false, center: true });
-  for (const x of [-6, 6]) {
-    kit.box(0.5, 5.2, 0.5, M('#d9dde3', 0.5, 0.4), x, 0, cz);
-    kit.solid(x, cz, 0.3, 0.3);
-  }
-  for (const x of [-3, 3]) {
-    for (const z of [cz - 2.2, cz + 2.2]) {
-      kit.box(0.8, 1.7, 0.5, M('#2a2f38', 0.5, 0.3), x, 0.12, z);
-      kit.box(0.82, 0.5, 0.52, glowMat('#3ad07a', 1.8), x, 1.4, z, { cast: false });
-      kit.solid(x, z, 0.45, 0.3);
-    }
+  for (const x of [-4.4, 4.4]) {
+    kit.item('canopy', x, cz, 0, 0, { scale: 1.55 });
+    kit.item('pump', x - 1.6, cz, 2, 0);
+    kit.item('pump', x + 1.6, cz, 2, 0);
   }
   kit.light(0, 4.6, cz, '#f2fff6', 9, 16);
-  // fiyat totemi
-  kit.box(1.4, 7, 0.4, M('#1a1f28', 0.5), w / 2 - 1.5, 0, d / 2 - 1.5);
-  kit.sign('benzinlik', 'NEON PETROL', 0.6, w / 2 - 1.5, 6.2, d / 2 - 1.28, 0, { color: '#3ad07a', font: '900 100px Arial, sans-serif', light: false });
-  kit.sign('benzinfiyat', '⛽ 42,90', 0.55, w / 2 - 1.5, 5.1, d / 2 - 1.28, 0, { color: '#ffd23f', font: '900 100px "Courier New", monospace', light: false });
-  kit.solid(w / 2 - 1.5, d / 2 - 1.5, 0.7, 0.3);
+  kit.item('pricesign', w / 2 - 1.6, d / 2 - 1.6, 0, 0, { scale: 1.6 });
+  kit.item('airpump', 3.5, bz + bd / 2 + 1.2, 4, 0);
+  kit.item('carwash', w / 2 - 3.2, -d / 2 + 4.5, 2, 0);
+  kit.item('cone', -w / 2 + 1.5, d / 2 - 2, 0, 0);
+  kit.item('cone', -w / 2 + 1.5, d / 2 - 4, 0, 0);
+  kit.sign('benzinlik', 'NEON PETROL', 0.9, -5, 5.2, bz + bd / 2 + 0.06, 0, { color: '#3ad07a', glow: '#3ad07a', font: '900 100px Arial, sans-serif', li: 5, ld: 9 });
   kit.pool(0, cz, '#3ad07a', 16, 0.16, 0.3);
   return { mapLabel: { text: 'BENZİNLİK', y: 9, z: cz } };
 }

@@ -1705,6 +1705,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     tail.position.set(0, 0.04, -v.len / 2 - 0.6);
     v.root.add(tail);
     myCar = { v, id, mk, x: spot.x, z: spot.z, y: 0, yaw: spot.yaw, vx: 0, vz: 0, steer: 0, roll: 0, pitch: 0, lastVF: 0, spawnT: 0, skidD: 0 };
+    setPax(myCar, myJob.on ? myJob.pax : 0); // v152: tır dorsesiz başlar
     scene.add(v.root);
     v.root.position.set(spot.x, 0, spot.z);
     v.root.rotation.y = spot.yaw;
@@ -1802,8 +1803,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     let fx = Math.sin(c.yaw);
     let fz = Math.cos(c.yaw);
     const vF0 = c.vx * fx + c.vz * fz;
-    c.steer += (-st - c.steer) * Math.min(1, dt * (st ? 3.6 : 6));
-    const delta = (c.steer * P.steer) / (1 + Math.abs(vF0) * 0.045);
+    // v152: motor — direksiyon daha yavaş tepki verir ve hızlandıkça çok daha az döner
+    // (yatarak geniş dönüş); otobüs / tır — kısa dönüş için daha çok direksiyon açısı
+    const moto = Boolean(c.v.moto);
+    c.steer += (-st - c.steer) * Math.min(1, dt * (st ? (moto ? 2.2 : 3.6) : moto ? 4 : 6));
+    const delta = (c.steer * P.steer) / (1 + Math.abs(vF0) * (moto ? 0.085 : c.v.len > 6 ? 0.03 : 0.045));
     let yawRate = (vF0 * Math.tan(delta)) / c.v.wb;
     if (hand && Math.abs(vF0) > 3) yawRate *= 1.45;
     c.yaw += yawRate * dt;
@@ -1893,7 +1897,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   // v151 — tır dorsesi: çekiciyi takip eder (yalpa açısı)
   function stepTrailer(c, speed, dyaw, dt) {
     const tr = c.v.trailer;
-    if (!tr) return;
+    if (!tr || !c.v.trailerOn) return;
     c.th = c.th || 0;
     c.th += -(speed / tr.wheelX) * Math.sin(c.th) * dt - dyaw;
     c.th = clamp(c.th, -1.35, 1.35);
@@ -1914,6 +1918,15 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   // Sadece görüntü: şoför bunları işi için görür, diğerleri "işteyken dolu" hâlini görür.
   function setPax(c, n) {
     const v = c.v;
+    // v152: tırda "yolcu" = dorse — yük alınınca gelir, teslim edilince gider
+    if (v.trailer) {
+      const on = n > 0;
+      v.trailer.pivot.visible = on;
+      v.trailerOn = on;
+      if (!on) c.th = 0;
+      v.camK = null; // kamera uzaklığı yeniden hesaplansın
+      return;
+    }
     (c.pax || []).forEach((m) => {
       m.parent?.remove(m);
       m.traverse((o) => o.isMesh && o.geometry.dispose());
@@ -2401,14 +2414,28 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       const zoom = self.camDist / 6.2;
       // v151: uzun araçlarda (otobüs, dorseli tır) kamera daha geride/yukarıda; motorda biraz yakın
       if (c.v.camK == null) {
-        const L = c.v.len + (c.v.trailer ? c.v.trailer.length : 0);
+        const trl = c.v.trailer && c.v.trailerOn ? c.v.trailer.length : 0;
+        const L = c.v.len + trl;
         c.v.camK = Math.pow(clamp(L / 4.6, 0.8, 4.2), 0.6);
         // aracın merkezden arkaya uzunluğu (dorse dahil) — kamera bunun arkasında durur
-        c.v.camBack = Math.max(0, c.v.len / 2 + (c.v.trailer ? c.v.trailer.length : 0) - 2.4);
+        c.v.camBack = Math.max(0, c.v.len / 2 + trl - 2.4);
+        // v152: yüksek araçlar (tır çekicisi, otobüs) — kamera tavanın üstünden baksın
+        if (c.v.camH == null) {
+          const bb = new THREE.Box3();
+          (c.v.tilt || c.v.root).updateWorldMatrix(true, true);
+          (c.v.tilt || c.v.root).traverseVisible((o) => {
+            if (o.isMesh && o.geometry) {
+              if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+              bb.union(o.geometry.boundingBox.clone().applyMatrix4(o.matrixWorld));
+            }
+          });
+          c.v.camH = Math.max(0, bb.max.y - c.v.root.position.y - 1.7);
+        }
       }
       const ck = c.v.camK;
-      let dist = ((5.4 + spd * 0.055) * zoom + c.v.camBack) * (camera.aspect < 1 ? 1.18 : 1);
-      const hgt = (1.7 + self.camPitch * 2.2 + spd * 0.012) * zoom * Math.sqrt(ck);
+      const tall = c.v.camH || 0;
+      let dist = ((5.4 + spd * 0.055) * zoom + c.v.camBack + tall * 0.9) * (camera.aspect < 1 ? 1.18 : 1);
+      const hgt = (1.7 + self.camPitch * 2.2 + spd * 0.012) * zoom * Math.sqrt(ck) + tall * 1.1;
       head.set(c.x, c.y + 1.2, c.z);
       const dir = new V(Math.sin(cy), 0, Math.cos(cy));
       camRay.set(head, dir);
@@ -2424,7 +2451,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         camShake *= Math.exp(-dt * 7);
       }
       const fwd = new V(Math.sin(c.yaw), 0, Math.cos(c.yaw));
-      camera.lookAt(c.x + fwd.x * 2.6 * ck, c.y + 0.9 * Math.sqrt(ck), c.z + fwd.z * 2.6 * ck);
+      camera.lookAt(c.x + fwd.x * (2.6 * ck + tall * 0.8), c.y + 0.9 * Math.sqrt(ck) + tall * 0.35, c.z + fwd.z * (2.6 * ck + tall * 0.8));
       const wantFov = 60 + Math.min(1, spd / c.v.def.phys.vmax) * 16;
       driveFov += (wantFov - driveFov) * Math.min(1, dt * 3);
       if (Math.abs(camera.fov - driveFov) > 0.05) {
@@ -2967,7 +2994,14 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     try {
       (att.cars || []).slice(0, 8).forEach((c) => {
         if (!hasVehicle(c.v)) return;
-        const v = buildVehicle(c.v);
+        let mods = null;
+        try {
+          mods = typeof c.m === 'string' && c.m ? JSON.parse(c.m) : null;
+        } catch {
+          mods = null;
+        }
+        const v = buildVehicle(c.v, mods);
+        setPax({ v }, Math.max(0, (Number(c.j) || 0) - 1), Number(c.j) > 0);
         const head = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 7.5), headMat('#ffe9b8', 0.45));
         head.rotation.x = -Math.PI / 2;
         head.position.set(0, 0.04, v.len / 2 + 3.9);
@@ -3325,11 +3359,43 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       if (myCar) setPax(myCar, p);
     },
     jobTarget: (t) => jobWorld?.setTarget(t),
+    jobRoute: (pts, color) => jobWorld?.setRoute(pts, color),
     jobPeople: (list) => jobWorld?.setPeople(list),
     jobSuspect: (sp) => jobWorld?.setSuspect(sp),
     jobSuspectPos: () => jobWorld?.suspect() || null,
     jobStopSuspect: () => jobWorld?.stopSuspect(),
     // şoförün aracı: konum, hız (m/s), sürüyor mu, katalog no
+    // geliştirici: araba çarpışma ızgarasını sahnede kırmızı göster (görünmez engel avı)
+    dbgCarGrid(on = true) {
+      if (!import.meta.env?.DEV) return;
+      const old = scene.getObjectByName('dbgCarGrid');
+      if (old) scene.remove(old);
+      // 0,9 m üstü kesilir: sadece zemindeki izler + ızgara (perspektif kayması olmasın)
+      renderer.clippingPlanes = on ? [new THREE.Plane(new V(0, -1, 0), 0.9)] : [];
+      if (!on) return;
+      const c = document.createElement('canvas');
+      c.width = GW;
+      c.height = GH;
+      const x = c.getContext('2d');
+      const img = x.createImageData(GW, GH);
+      for (let k = 0; k < GW * GH; k++) {
+        const b = carGrid[k] === 1;
+        const w = grid[k] === 1;
+        img.data[k * 4] = b ? 255 : 0;
+        img.data[k * 4 + 1] = !b && w ? 200 : 0;
+        img.data[k * 4 + 2] = 0;
+        img.data[k * 4 + 3] = b ? 150 : w ? 70 : 0;
+      }
+      x.putImageData(img, 0, 0);
+      const t = new THREE.CanvasTexture(c);
+      t.magFilter = THREE.NearestFilter;
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(GW * RES, GH * RES), new THREE.MeshBasicMaterial({ map: t, transparent: true, depthTest: false, toneMapped: false }));
+      m.rotation.x = -Math.PI / 2;
+      m.position.set(GX0 + (GW * RES) / 2, 0.4, GZ0 + (GH * RES) / 2);
+      m.renderOrder = 99;
+      m.name = 'dbgCarGrid';
+      scene.add(m);
+    },
     jobProbe() {
       if (!myCar) return null;
       return { x: myCar.x, z: myCar.z, speed: Math.hypot(myCar.vx, myCar.vz), driving, id: myCar.id, yaw: myCar.yaw };

@@ -93,8 +93,9 @@ function render(att, key) {
   const job = runPhotoJob('city', async () => {
       const a = aspectOf(att);
       const vert = Boolean(att.vert) && !att.sq;
-      const w = 540;
-      const h = vert ? 960 : 540;
+      // v152: telefonda daha küçük kare (bellek)
+      const w = IS_MOBILE_DEVICE ? 432 : 540;
+      const h = vert ? Math.round((w * 16) / 9) : w;
       let cam = cropCam(att.cam || {}, a, vert ? PHOTO_ASPECT : 1);
       if (att.sq && att.vert) cam = cropCam(cropCam(att.cam || {}, a, PHOTO_ASPECT), PHOTO_ASPECT, 1);
       const eng = engine();
@@ -121,10 +122,15 @@ function render(att, key) {
 // önizleme (paylaşmadan önce) — önbelleğe alınmaz
 export const renderCityPhotoUrl = (att) => render(att, null);
 
-export default function CityPhoto({ attachment }) {
+// v152: telefonda akıştaki şehir fotoğrafları, şehir açık değilse dokununca çizilir — her
+// gönderi için ekran dışında koca şehri kurmak bellek yetmeyince oyunu kapatabiliyordu
+// ("Sixtagram'a girince bazen atıyor"). Cihazda kayıtlıysa yine anında görünür.
+export default function CityPhoto({ attachment, manual = IS_MOBILE_DEVICE }) {
+  const [asked, setAsked] = useState(false);
   const key = JSON.stringify([attachment.cam, attachment.vert ? 1 : 0, attachment.sq ? 1 : 0, attachment.overlay ? JSON.stringify(attachment.overlay).length : 0, (attachment.people || []).map((p) => `${p.uid}${p.x},${p.z}`), (attachment.cars || []).length]);
   const [src, setSrc] = useState(null);
   const [failed, setFailed] = useState(false);
+  const [waiting, setWaiting] = useState(false);
   const boxRef = useRef(null);
   useEffect(() => {
     // v147.3: önce cihaz önbelleği (anında, 3D sahne hiç kurulmaz); yoksa ekrana yaklaşınca çiz + kaydet
@@ -134,6 +140,7 @@ export default function CityPhoto({ attachment }) {
     getCachedPhoto(pk).then((hit) => {
       if (!alive) return;
       if (hit) return setSrc(hit);
+      if (manual && !asked && !getLiveCityEngine()) return setWaiting(true);
       stop = whenVisible(boxRef.current, () => {
         render(attachment, key)
           .then((u) => {
@@ -148,8 +155,22 @@ export default function CityPhoto({ attachment }) {
       stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, asked]);
   if (failed) return <div className="post-att-housephoto-empty">🌆</div>;
+  if (!src && waiting && !asked)
+    return (
+      <button
+        type="button"
+        className="post-att-housephoto-empty post-att-cityphoto-tap"
+        onClick={(e) => {
+          e.stopPropagation();
+          setWaiting(false);
+          setAsked(true);
+        }}
+      >
+        🌆 Şehir fotoğrafı — göstermek için dokun
+      </button>
+    );
   if (!src) return <div ref={boxRef} className="post-att-housephoto-empty">Fotoğraf yükleniyor…</div>;
   return <img className={`post-att-housephoto-img${attachment.vert && !attachment.sq ? ' vert' : ''}`} src={src} alt="Neon Şehir" />;
 }

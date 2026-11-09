@@ -24,7 +24,9 @@ import { createJobRunner } from './cityJobs.js';
 import { JOBS } from '../../../functions/vehicleKinds.js';
 import { invalidateSixtagramFeed } from '../../hooks/useSixtagramFeed';
 import PhotoStoryEditor from '../HouseScreen/PhotoStoryEditor';
-import { vehicleCatalog } from '../../data/vehicleCatalog.js';
+import { vehicleCatalog, vehicleKindOfId } from '../../data/vehicleCatalog.js';
+import { VehicleKindTabs } from '../VehicleGalleryScreen/VehicleGalleryScreen';
+import '../VehicleGalleryScreen/VehicleGalleryScreen.css';
 import mapImg from '../../assets/sehir-haritasi.jpg';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import { VENUES } from '../../../functions/venueLayouts.js';
@@ -132,11 +134,26 @@ function Speedo({ kmh, gear, ratio }) {
 // "Arabalarım" — sadece açılınca okunur (Firestore okuması yalnız burada)
 function GarageSheet({ onPick, onClose, onGallery }) {
   const { vehicles, loading } = useVehicles();
-  const usable = vehicles.filter((v) => !v.listed && !v.seizedByBank);
+  const [tab, setTab] = useState('araba'); // v152: Araba / Ticari / Motor (galerideki gibi)
+  const all = vehicles.filter((v) => !v.listed && !v.seizedByBank);
+  const usable = all.filter((v) => vehicleKindOfId(v.catalogId) === tab);
+  // açılışta: Araba sekmesi boşsa aracı olan ilk sekme
+  const autoTab = useRef(false);
+  useEffect(() => {
+    if (loading || autoTab.current || !all.length) return;
+    autoTab.current = true;
+    if (!usable.length) {
+      const k = ['araba', 'ticari', 'motor'].find((x) => all.some((v) => vehicleKindOfId(v.catalogId) === x));
+      if (k) setTab(k);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, all.length]);
   return (
     <Sheet title="🚗 Arabalarım" onClose={onClose} closeLabel="Kapat">
+      <VehicleKindTabs value={tab} onChange={setTab} />
       {loading && <div className="cs-garage-empty">…</div>}
-      {!loading && usable.length === 0 && (
+      {!loading && all.length > 0 && usable.length === 0 && <p className="vg-empty">Bu sekmede aracın yok.</p>}
+      {!loading && all.length === 0 && (
         <div className="cs-garage-empty">
           <span>🚗</span>
           <button className="v3-btn primary" onClick={onGallery}>Araba Galerisi</button>
@@ -856,8 +873,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
               <div className={`cs-job${jobUi?.active ? ' on' : ''}`}>
                 {!jobUi?.active ? (
                   <button className="cs-job-start" onClick={() => jobRef.current?.start()} disabled={left <= 0}>
-                    <span>{J.icon} İşe başla</span>
-                    <small>{left > 0 ? `Bugün ${left}/${J.daily} ${J.unit} hakkın var · ort. ${fmt(J.avg)} altın` : 'Bugünkü hakkın doldu'}</small>
+                    <span>{left > 0 ? `${J.icon} İşe başla` : `${J.icon} Bugünkü hakkın doldu`}</span>
                   </button>
                 ) : (
                   <div className="cs-job-panel">

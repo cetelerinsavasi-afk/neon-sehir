@@ -126,7 +126,7 @@ function HousePhotoReady({ attachment, onReady }) {
   }, []);
   return (
     <div ref={ref} className="six-sv-hp">
-      {attachment.type === 'cityPhoto' ? <CityPhoto attachment={attachment} /> : <HousePhoto attachment={attachment} />}
+      {attachment.type === 'cityPhoto' ? <CityPhoto attachment={attachment} manual={false} /> : <HousePhoto attachment={attachment} />}
     </div>
   );
 }

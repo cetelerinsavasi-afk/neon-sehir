@@ -79,6 +79,73 @@ export function createJobWorld({ scene, layer, Fig, groundY, buildVehicle, place
     beacon.position.set(target.x, groundY(target.x, target.z), target.z);
   }
 
+  // --- v152: YOL ÇİZGİSİ (prototipteki gibi): hedefe giden yol, yolun üstünde akan oklar ---
+  const arrowTex = (() => {
+    const c = document.createElement('canvas');
+    c.width = 64;
+    c.height = 64;
+    const x = c.getContext('2d');
+    x.clearRect(0, 0, 64, 64);
+    x.fillStyle = 'rgba(255,255,255,0.35)';
+    x.fillRect(0, 0, 64, 64);
+    x.fillStyle = '#ffffff';
+    x.beginPath();
+    x.moveTo(14, 8);
+    x.lineTo(42, 32);
+    x.lineTo(14, 56);
+    x.lineTo(26, 56);
+    x.lineTo(54, 32);
+    x.lineTo(26, 8);
+    x.closePath();
+    x.fill();
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = THREE.RepeatWrapping;
+    t.wrapT = THREE.ClampToEdgeWrapping;
+    t.colorSpace = THREE.SRGBColorSpace;
+    return t;
+  })();
+  const routeMat = new THREE.MeshBasicMaterial({ map: arrowTex, color: '#19e8ff', transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -4 });
+  let route = null;
+  function setRoute(pts, color) {
+    if (route) {
+      scene.remove(route);
+      route.geometry.dispose();
+      route = null;
+    }
+    if (!pts || pts.length < 2) return;
+    if (color) routeMat.color.set(color);
+    const W = 1.5;
+    const pos = [];
+    const uv = [];
+    const idx = [];
+    let u = 0;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i];
+      const b = pts[i + 1];
+      const L = Math.hypot(b.x - a.x, b.z - a.z);
+      if (L < 0.05) continue;
+      const nx = (-(b.z - a.z) / L) * (W / 2);
+      const nz = ((b.x - a.x) / L) * (W / 2);
+      const ya = groundY(a.x, a.z) + 0.07;
+      const yb = groundY(b.x, b.z) + 0.07;
+      const k = pos.length / 3;
+      pos.push(a.x + nx, ya, a.z + nz, a.x - nx, ya, a.z - nz, b.x + nx, yb, b.z + nz, b.x - nx, yb, b.z - nz);
+      // oklar yol yönünde: u = mesafe / 1,6 m
+      uv.push(u / 1.6, 1, u / 1.6, 0, (u + L) / 1.6, 1, (u + L) / 1.6, 0);
+      idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
+      u += L;
+    }
+    if (!idx.length) return;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    route = new THREE.Mesh(g, routeMat);
+    route.renderOrder = 3;
+    route.frustumCulled = false;
+    scene.add(route);
+  }
+
   // --- bot insanlar -------------------------------------------------------------------
   const people = new Map(); // id → { fig, lie }
   function setPeople(list) {
@@ -165,6 +232,7 @@ export function createJobWorld({ scene, layer, Fig, groundY, buildVehicle, place
 
   function update(dt, camera, now, px, pz, w, h) {
     stepSuspect(dt, px, pz);
+    arrowTex.offset.x = -(now / 1000) * 1.6; // oklar hedefe doğru akar
     if (sus && target?.follow) {
       target.x = sus.x;
       target.z = sus.z;
@@ -189,6 +257,7 @@ export function createJobWorld({ scene, layer, Fig, groundY, buildVehicle, place
 
   return {
     setTarget,
+    setRoute,
     setPeople,
     setSuspect,
     suspect: () => (sus ? { x: sus.x, z: sus.z, speed: sus.speed } : null),
@@ -197,6 +266,7 @@ export function createJobWorld({ scene, layer, Fig, groundY, buildVehicle, place
     dispose() {
       setPeople([]);
       setSuspect(null);
+      setRoute(null);
       scene.remove(beacon);
       tag.remove();
     },

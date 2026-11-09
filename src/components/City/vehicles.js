@@ -1577,7 +1577,7 @@ function buildBusModel(n) {
     e.root.traverse((ft) => {
       ft.isMesh && !ft.material.transparent && ((ft.castShadow = true), (ft.receiveShadow = true));
     }),
-    { ...e, def: { name: t.name, seats: t.seats, phys: { vmax: t.vmax, acc: 3.2, grip: 5, steer: 0.45 } }, len: l, wb: ae - rt, halfW: c / 2, seatPts, seat: seatPts[0], open: true }
+    { ...e, def: { name: t.name, seats: t.seats, phys: { vmax: t.vmax, acc: 3.2, grip: 5, steer: 0.82 } }, len: l, wb: ae - rt, halfW: c / 2, seatPts, seat: seatPts[0], open: true }
   );
 }
 let TRUCK_TRAILERS = {
@@ -1832,7 +1832,7 @@ function buildTruckModel(n) {
     t.root.traverse((D) => {
       D.isMesh && !D.material.transparent && ((D.castShadow = true), (D.receiveShadow = true));
     }),
-    { ...t, def: { name: "T\u0131r", seats: 2, phys: { vmax: 20, acc: 2.6, grip: 5, steer: 0.42 } }, len: f, wb: d - 1.1 + 1.95, halfW: h / 2, seatPts, seat: seatPts[0], open: true }
+    { ...t, def: { name: "T\u0131r", seats: 2, phys: { vmax: 20, acc: 2.6, grip: 5, steer: 0.74 } }, len: f, wb: d - 1.1 + 1.95, halfW: h / 2, seatPts, seat: seatPts[0], open: true }
   );
 }
 function sideRails(n, t, e, i, s) {
@@ -1844,10 +1844,10 @@ function sideRails(n, t, e, i, s) {
 // v151 — MOTORLAR (mobilyadaki 4 motorun modeli; sürücü kask + mont)
 // =============================================================================
 const MOTO_DEF = {
-  scooter: { k: 'moto_scooter', name: 'Scooter', seats: 2, phys: { vmax: 22, acc: 6, grip: 9, steer: 0.7 } },
-  cross: { k: 'moto_cross', name: 'Cross Motor', seats: 1, phys: { vmax: 33, acc: 10, grip: 9, steer: 0.7 } },
-  chopper: { k: 'moto_chopper', name: 'Chopper', seats: 2, phys: { vmax: 36, acc: 8, grip: 8, steer: 0.5 } },
-  sport: { k: 'moto_sport', name: 'Spor Motor', seats: 2, phys: { vmax: 48, acc: 13, grip: 11, steer: 0.62 } },
+  scooter: { k: 'moto_scooter', name: 'Scooter', seats: 2, phys: { vmax: 22, acc: 6, grip: 9, steer: 0.5 } },
+  cross: { k: 'moto_cross', name: 'Cross Motor', seats: 1, phys: { vmax: 33, acc: 10, grip: 9, steer: 0.48 } },
+  chopper: { k: 'moto_chopper', name: 'Chopper', seats: 2, phys: { vmax: 36, acc: 8, grip: 8, steer: 0.38 } },
+  sport: { k: 'moto_sport', name: 'Spor Motor', seats: 2, phys: { vmax: 48, acc: 13, grip: 11, steer: 0.42 } },
 };
 const MOTO_FINISH = { parlak: [0.22, 0.55], metalik: [0.15, 0.9], mat: [0.85, 0.1], krom: [0.05, 1], sedef: [0.18, 0.7] };
 function buildMotoModel(n) {
@@ -1902,7 +1902,7 @@ function buildMotoModel(n) {
     [f[2], f[1] - 0.06, 0],
     [f[2] - 0.45, f[1] - 0.01, 0],
   ].slice(0, t.seats);
-  return { root, tilt, body: seatFrame, wheels, flashers: [], tlMat, def: { name: t.name, seats: t.seats, phys: t.phys }, len, wb: len * 0.62, halfW: 0.45, neon, moto: true, seatPts, seat: seatPts[0], open: true, rider: { helmet: n.helmet, visor: n.helmetVisor, jacket: n.jacket } };
+  return { root, tilt, body: seatFrame, wheels, flashers: [], tlMat, def: { name: t.name, seats: t.seats, phys: t.phys }, len, wb: len * 0.95, halfW: 0.45, neon, moto: true, seatPts, seat: seatPts[0], open: true, rider: { helmet: n.helmet, visor: n.helmetVisor, jacket: n.jacket } };
 }
 
 // =============================================================================

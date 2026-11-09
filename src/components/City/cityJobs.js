@@ -15,6 +15,89 @@ import { LIMAN_BAY, DEPOTS, HOSPITAL, BUS_STOPS, ROAD_SPOTS } from '../../../fun
 import { JOBS } from '../../../functions/vehicleKinds.js';
 
 const STOP_V = 1.4;
+
+// --- v152: YOL BULMA (yol ızgarası üzerinde en kısa yol) — yol çizgisi için --------------
+const RX = [-160, -120, -80, -40, 0, 40, 80, 120, 160];
+const RZ = [-140, -100, -60, -20, 20, 60, 100];
+const BIG = [
+  [-36, 36, -16, 16],
+  [44, 116, -16, 56],
+  [-76, -4, 24, 56],
+  [-116, -44, 64, 96],
+];
+const coveredRoad = (x, z) => BIG.some(([x0, x1, z0, z1]) => x > x0 + 1 && x < x1 - 1 && z > z0 + 1 && z < z1 - 1);
+const NODES = [];
+RX.forEach((x, i) => RZ.forEach((z, j) => NODES.push({ i, j, x, z, id: i * RZ.length + j })));
+const nodeAt = (i, j) => (i >= 0 && j >= 0 && i < RX.length && j < RZ.length ? NODES[i * RZ.length + j] : null);
+const EDGES = [];
+NODES.forEach((n) => {
+  [[1, 0], [0, 1]].forEach(([di, dj]) => {
+    const m = nodeAt(n.i + di, n.j + dj);
+    if (m && !coveredRoad((n.x + m.x) / 2, (n.z + m.z) / 2)) EDGES.push([n, m]);
+  });
+});
+const ADJ = new Map(NODES.map((n) => [n.id, []]));
+EDGES.forEach(([a, b]) => {
+  const L = Math.abs(a.x - b.x) + Math.abs(a.z - b.z);
+  ADJ.get(a.id).push([b, L]);
+  ADJ.get(b.id).push([a, L]);
+});
+// noktayı en yakın yol kenarına izdüşür
+function snapRoad(p) {
+  let best = null;
+  EDGES.forEach(([a, b]) => {
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.z - a.z) * dz) / (dx * dx + dz * dz)));
+    const x = a.x + dx * t;
+    const z = a.z + dz * t;
+    const d = Math.hypot(p.x - x, p.z - z);
+    if (!best || d < best.d) best = { a, b, x, z, d };
+  });
+  return best;
+}
+export function roadRoute(from, to) {
+  const s = snapRoad(from);
+  const e = snapRoad(to);
+  if (!s || !e) return [from, to];
+  const pts = [{ x: s.x, z: s.z }];
+  // aynı yol parçasındaysa doğrudan
+  if ((s.a === e.a && s.b === e.b) || (s.a === e.b && s.b === e.a)) {
+    pts.push({ x: e.x, z: e.z });
+  } else {
+    // Dijkstra: başlangıç parçanın iki ucu → bitiş parçanın iki ucu
+    const dist = new Map();
+    const prev = new Map();
+    const q = [];
+    [s.a, s.b].forEach((n) => {
+      const d = Math.hypot(n.x - s.x, n.z - s.z);
+      if (d < (dist.get(n.id) ?? Infinity)) {
+        dist.set(n.id, d);
+        q.push(n);
+      }
+    });
+    while (q.length) {
+      q.sort((m, n) => dist.get(m.id) - dist.get(n.id));
+      const n = q.shift();
+      ADJ.get(n.id).forEach(([m, L]) => {
+        const nd = dist.get(n.id) + L;
+        if (nd < (dist.get(m.id) ?? Infinity)) {
+          dist.set(m.id, nd);
+          prev.set(m.id, n);
+          if (!q.includes(m)) q.push(m);
+        }
+      });
+    }
+    const ends = [e.a, e.b].map((n) => ({ n, d: (dist.get(n.id) ?? Infinity) + Math.hypot(n.x - e.x, n.z - e.z) }));
+    ends.sort((m, n) => m.d - n.d);
+    const chain = [];
+    for (let n = ends[0].n; n; n = prev.get(n.id)) chain.unshift(n);
+    chain.forEach((n) => pts.push({ x: n.x, z: n.z }));
+    pts.push({ x: e.x, z: e.z });
+  }
+  if (Math.hypot(to.x - e.x, to.z - e.z) > 1) pts.push({ x: to.x, z: to.z });
+  return pts;
+}
 const fmtT = (s) => {
   const n = Math.max(0, Math.round(s));
   return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`;
@@ -59,9 +142,27 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
     });
   }
   let tgt = null; // pusula için: şu anki hedef
+  let routeAt = 0;
+  let routeFrom = null;
   function target(t) {
     tgt = t ? { ...t } : null;
     E()?.jobTarget(t);
+    routeAt = 0; // yol hemen yeniden çizilsin
+    if (!t) E()?.jobRoute(null);
+  }
+  // v152: hedefe giden yol (araç yer değiştirdikçe / şüpheli kaçtıkça yenilenir)
+  function refreshRoute() {
+    const p = E()?.jobProbe();
+    if (!p || !tgt) return;
+    const t = performance.now();
+    const moved = !routeFrom || Math.hypot(p.x - routeFrom.x, p.z - routeFrom.z) > 6;
+    if (t - routeAt < (tgt.follow ? 700 : 1500) && !moved) return;
+    if (t - routeAt < 350) return;
+    routeAt = t;
+    routeFrom = { x: p.x, z: p.z };
+    let to = { x: tgt.x, z: tgt.z };
+    if (tgt.follow) to = E()?.jobSuspectPos() || to;
+    E()?.jobRoute(roadRoute({ x: p.x, z: p.z }, to), tgt.color || '#19e8ff');
   }
   function compass() {
     const p = E()?.jobProbe();
@@ -88,6 +189,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
   }
   function clearWorld() {
     target(null);
+    E()?.jobRoute(null);
     people([]);
     E()?.jobSuspect(null);
   }
@@ -123,7 +225,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
       st.phase = 'pickup';
       st.depot = DEPOTS[T.depot] || DEPOTS[0];
       st.title = `📦 ${T.cargo} · ${T.ton} t`;
-      st.sub = `⚓ Limandaki sarı YÜKLEME alanına gir ve dur → ${st.depot.name}`;
+      st.sub = `⚓ Limandaki sarı YÜKLEME alanına gir ve dur, dorseni al → ${st.depot.name}`;
       target({ ...LIMAN_BAY, name: 'Liman — Yükleme', icon: '⚓', color: '#ffd23f', r: 6 });
     } else if (T.type === 'otobus') {
       st.phase = 'drive';
@@ -236,6 +338,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
     if (!active || !run || busy || !st) return;
     const p = E()?.jobProbe();
     if (!p) return;
+    refreshRoute();
     const T = run.task;
     const tnow = now();
     if (T.type === 'tir') {
@@ -249,6 +352,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
         st.sub = '🏗️ Yükleniyor… aracı oynatma';
         st.bar = st.phaseT / 4;
         if (st.phaseT >= 4) {
+          setPax(1); // v152: dorse takılır (diğer oyuncular da görür)
           st.phase = 'deliver';
           st.t0 = tnow;
           st.bar = null;
@@ -267,7 +371,10 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
         st.phaseT += p.speed < STOP_V ? dt : 0;
         st.sub = '📤 Boşaltılıyor…';
         st.bar = st.phaseT / 3;
-        if (st.phaseT >= 3) return finish(st.dt);
+        if (st.phaseT >= 3) {
+          setPax(0); // dorse depoda kalır
+          return finish(st.dt);
+        }
       }
     } else if (T.type === 'otobus') {
       const s = st.route[st.idx];

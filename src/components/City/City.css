@@ -130,7 +130,8 @@
 /* v151 — meslek paneli */
 .cs-job {
   position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + 64px);
+  /* v152: "İn" düğmesinin altında (üstüne binmesin) */
+  top: calc(122px + var(--hs-safe-t, 0px));
   left: 10px;
   z-index: 30;
   width: min(calc(100vw - 150px), 400px);

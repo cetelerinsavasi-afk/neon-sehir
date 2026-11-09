@@ -717,15 +717,12 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
     return { itemRef, tax, own };
   }
 
-  // Satın alma sonrası (oyunun mağazasından alınca olanlar: onboarding + araç kredi SMS'i)
+  // Satın alma sonrası (oyunun mağazasından alınca olanlar: onboarding)
+  // v152: araç alınca gelen eski "Banka: aracını ipotek et" SMS'i kaldırıldı
   async function afterItemBuy(uid, kind, name) {
-    if (kind === 'vehicle') {
-      await userRef(uid)
-        .collection('messages')
-        .add({ text: `Banka: yeni ${name} aracınızı ipotek ederek kredi çekebilirsiniz. Detaylar için Banka'ya uğrayın.`, createdAt: FieldValue.serverTimestamp(), read: false, type: 'loan_offer' })
-        .catch(() => {});
-      await advanceOnboardingStep(uid, 11).catch(() => {});
-    } else await advanceOnboardingStep(uid, 5).catch(() => {});
+    void name;
+    if (kind === 'vehicle') await advanceOnboardingStep(uid, 11).catch(() => {});
+    else await advanceOnboardingStep(uid, 5).catch(() => {});
   }
 
   // Müşteri: stoktan satın al. p: { houseId, catalogId, expect (fiyat) }
