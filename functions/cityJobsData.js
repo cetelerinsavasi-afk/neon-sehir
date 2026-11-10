@@ -19,22 +19,24 @@ export const DEPOTS = [
 export const HOSPITAL = { key: 'hastane', name: 'Hastane — Acil Girişi', x: 131, z: -40, r: 7 };
 export const GAS_STATION = { key: 'benzinlik', name: 'Benzinlik', x: 20, z: -80 };
 
-// Otobüs durakları (v152) — DIŞ halka yolu (x = ±160, z = -140 ve sahil yolu z = 100),
-// saat yönü: üst yol doğuya, sağ yol güneye, sahil yolu batıya, sol yol kuzeye. Duraklar
-// blok ortalarında (kavşakta değil), aralarında ~110-120 m; şehir tarafında (sağ şerit).
+// Otobüs durakları (v153) — şehrin İÇİNE girip DIŞINA çıkan tek hat (saat yönü). Sıra = sefer:
+// Kuzey Kapısı (dış) → Karakol (iç) → Bar (iç) → Hastane (dış doğu) → Stadyum (iç) → Evler (iç)
+// → Plaza (sahil) → Liman (sahil) → Batı Kapısı (dış batı) → Camii (iç) → başa.
+// Duraklar blok ortalarında (kavşakta değil), aralarında ~80-160 m; gidiş yönünde sağ şerit,
+// durak kaldırımı adını aldığı binanın önünde.
 // x,z: otobüsün duracağı şerit; sx,sz: durak (kaldırım); fx,fz: şeritten kaldırıma birim yön.
 const S = (n, name, x, z, fx, fz) => ({ n, key: `durak${n}`, name, x, z, fx, fz, sx: x + fx * 3.6, sz: z + fz * 3.6, r: 7.5 });
 export const BUS_STOPS = [
-  S(1, 'Kuzey Kapısı', -100, -138, 0, 1),
-  S(2, 'Kuzey Lojistik', 20, -138, 0, 1),
-  S(3, 'Doğu Lojistik', 140, -138, 0, 1),
-  S(4, 'Hastane', 158, -40, -1, 0),
-  S(5, 'Stadyum Arkası', 158, 40, -1, 0),
-  S(6, 'Doğu Sahil', 100, 98, 0, -1),
-  S(7, 'Plaza', -20, 98, 0, -1),
-  S(8, 'Liman', -100, 98, 0, -1),
-  S(9, 'Batı Sahil', -158, 40, 1, 0),
-  S(10, 'Batı Kapısı', -158, -80, 1, 0),
+  S(1, 'Kuzey Kapısı', -60, -138, 0, 1), // üst dış yol, doğuya
+  S(2, 'Karakol', -42, -80, -1, 0), // x = -40, güneye
+  S(3, 'Bar', 60, -58, 0, 1), // z = -60, doğuya
+  S(4, 'Hastane', 158, -40, -1, 0), // doğu dış yol, güneye
+  S(5, 'Stadyum', 100, 58, 0, -1), // z = 60, batıya (stadyumun güneyi)
+  S(6, 'Evler', 20, 58, 0, -1), // z = 60, batıya
+  S(7, 'Plaza', -20, 98, 0, -1), // sahil yolu, batıya
+  S(8, 'Liman', -100, 98, 0, -1), // sahil yolu, batıya
+  S(9, 'Batı Kapısı', -158, 0, 1, 0), // batı dış yol, kuzeye
+  S(10, 'Camii', -100, -58, 0, 1), // z = -60, doğuya
 ];
 
 export const manhattan = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.z - b.z);

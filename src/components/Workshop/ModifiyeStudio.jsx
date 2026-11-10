@@ -46,7 +46,7 @@ const NEON = { t: 'sw', k: 'neonColor', l: 'Neon rengi', list: MOD_OPTIONS.neonC
 const PLATE = { t: 'plate' };
 const KIND_TABS = {
   taxi: [
-    ['taksi', '🚕', 'Taksi', [{ t: 'opts', k: 'taxiType', l: 'Taksi tipi', list: MOD_OPTIONS.taxiType }, { t: 'opts', k: 'finish', l: 'Yüzey', list: MOD_OPTIONS.finish.filter(([k]) => ['parlak', 'metalik', 'sedef'].includes(k)) }, { t: 'opts', k: 'tint', l: 'Cam filmi', list: MOD_OPTIONS.tint }, { t: 'note', text: 'Taksi rengi yasal olarak sabit: tip seçince boya, tepe lambası ve şerit birlikte değişir.' }]],
+    ['taksi', '🚕', 'Taksi', [{ t: 'opts', k: 'taxiType', l: 'Taksi tipi', list: MOD_OPTIONS.taxiType }, { t: 'opts', k: 'finish', l: 'Yüzey', list: MOD_OPTIONS.finish.filter(([k]) => ['parlak', 'metalik', 'sedef'].includes(k)) }, { t: 'opts', k: 'tint', l: 'Cam filmi', list: MOD_OPTIONS.tint }]],
     ['jant', '🛞', 'Jant', WHEELS],
     ['govde', '🔧', 'Gövde', [{ t: 'range', k: 'ride', l: 'Süspansiyon', f: (v) => rideLabel(v) }, { t: 'opts', k: 'exhaust', l: 'Egzoz', list: MOD_OPTIONS.exhaust }, { t: 'acc', l: 'Parçalar', only: ['spoiler', 'skirts'] }]],
     ['isik', '✨', 'Işık', [{ t: 'acc', l: 'Işıklar', only: ['fog', 'neon'] }, NEON]],
@@ -600,9 +600,7 @@ export default function ModifiyeStudio({ vehicle, shop, isOwner = false, onClose
                 </span>
               ))}
             </div>
-          ) : (
-            <p className="ms-hint">Seçtiğin her şey satın almadan önce aracın üzerinde görünür. Sadece değiştirdiklerinin ücretini ödersin.</p>
-          )}
+          ) : null}
           <div className="ms-foot-row">
             <button className="ms-ghost" onClick={() => set(base)} disabled={!cost.items.length}>
               ↺ Geri al

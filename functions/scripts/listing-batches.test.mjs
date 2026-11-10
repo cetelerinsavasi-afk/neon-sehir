@@ -225,3 +225,11 @@ test('v115/v146 araç/silah ilanı: ortanın altı 3. gün oyuna satılır (ür�
   assert.equal(G('weapons/w1').shopListingId, null);
   assert.equal(G('marketplaceListings/L3').expireAtMs, undefined);
 });
+
+test('v153: fabrika (malzeme) ilanı uygunsa da değilse de 3 günde kapanır', () => {
+  assert.equal(LB.materialTtl('tamirMalzemesi', 1), 3 * DAY);
+  assert.equal(LB.materialTtl('tamirMalzemesi', 999999), 3 * DAY);
+  // araç / silah ilanları değişmedi (uygun 3 gün, değilse 7 gün)
+  assert.equal(LB.itemTtl(1000, { min: 900, max: 2000 }), 3 * DAY);
+  assert.equal(LB.itemTtl(1900, { min: 900, max: 2000 }), 7 * DAY);
+});

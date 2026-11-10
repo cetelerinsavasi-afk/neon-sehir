@@ -32,6 +32,7 @@ import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import { VENUES } from '../../../functions/venueLayouts.js';
 import { VENDORS, VENDOR_COST } from '../../../functions/vendorData.js';
 import HeldIcon from '../HouseScreen/HeldIcon';
+import HeistPanel from '../HeistPanel/HeistPanel';
 import PhoneScreen from '../Phone/PhoneScreen';
 import PlayerCard from '../PlayerCard/PlayerCard';
 import ReportBlockSheet from '../ReportBlockSheet/ReportBlockSheet';
@@ -178,7 +179,7 @@ function GarageSheet({ onPick, onClose, onGallery }) {
   );
 }
 
-export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpenHeist }) {
+export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion }) {
   const { user, loading: authLoading } = useAuth();
   // v149 — misafir (giriş yapmamış) da şehri gezer: yürür, oturur, mekân kapılarından girer.
   // Ağ (diğer oyuncular / sohbet) yok, alışveriş · araba · fotoğraf giriş ister.
@@ -203,6 +204,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
   const [view, setView] = useState('3d');
   const [zone, setZone] = useState(null);
   const [panel, setPanel] = useState(null);
+  const [haracHide, setHaracHide] = useState(false); // v153: animasyon oynarken haraç penceresi gizli
   const [toast, setToast] = useState(null);
   const [msgs, setMsgs] = useState([]);
   const [run, setRun] = useState(false);
@@ -492,6 +494,39 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
     g.fillRect(0, 0, W, W);
     g.drawImage(img, u - span / 2, v - span / 2, span, span, 0, 0, W, W);
     const k = W / span;
+    // v153: iş güzergahı mini haritada da çizili
+    const jr = engineRef.current?.jobRoutePts?.();
+    if (jr && jr.pts.length > 1) {
+      g.lineCap = 'round';
+      g.lineJoin = 'round';
+      const path = () => {
+        g.beginPath();
+        jr.pts.forEach((p, i) => {
+          const [pu, pv] = mapping.toImg(p.x, p.z);
+          const X = W / 2 + (pu - u) * k;
+          const Y = W / 2 + (pv - v) * k;
+          if (i) g.lineTo(X, Y);
+          else g.moveTo(X, Y);
+        });
+      };
+      path();
+      g.strokeStyle = 'rgba(0,0,0,0.55)';
+      g.lineWidth = W * 0.06;
+      g.stroke();
+      path();
+      g.strokeStyle = jr.color;
+      g.lineWidth = W * 0.035;
+      g.stroke();
+      const last = jr.pts[jr.pts.length - 1];
+      const [lu, lv] = mapping.toImg(last.x, last.z);
+      g.fillStyle = jr.color;
+      g.strokeStyle = '#fff';
+      g.lineWidth = 3;
+      g.beginPath();
+      g.arc(W / 2 + (lu - u) * k, W / 2 + (lv - v) * k, W * 0.04, 0, Math.PI * 2);
+      g.fill();
+      g.stroke();
+    }
     if (hud.car && !hud.driving) {
       const [cu, cv] = mapping.toImg(hud.car.x, hud.car.z);
       g.font = `${Math.round(W * 0.12)}px sans-serif`;
@@ -570,6 +605,23 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
         g.fillText(label, px, py - r * 2.2);
       }
     };
+    // v153: iş güzergahı büyük haritada da
+    const jr = engineRef.current?.jobRoutePts?.();
+    if (jr && jr.pts.length > 1) {
+      g.lineCap = 'round';
+      g.lineJoin = 'round';
+      g.beginPath();
+      jr.pts.forEach((p, i) => {
+        const [pu, pv] = mapping.toImg(p.x, p.z);
+        if (i) g.lineTo(ox + pu * s, oy + pv * s);
+        else g.moveTo(ox + pu * s, oy + pv * s);
+      });
+      g.strokeStyle = jr.color;
+      g.lineWidth = 8;
+      g.stroke();
+      const last = jr.pts[jr.pts.length - 1];
+      dot(last.x, last.z, jr.color, 12, '🎯');
+    }
     if (hud.car && !hud.driving) dot(hud.car.x, hud.car.z, '#19e8ff', 10, '🚗');
     dot(hud.x, hud.z, '#ffd23f', 14, '📍');
   }, [mapOpen, mapping, imgOk, mapTick]);
@@ -661,12 +713,11 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
     setBusy('vendor');
     try {
       await buyFromVendor(v.id);
-      holdFor(v.product);
       const npc = VENUES[z.vendor].npcs?.[0];
-      if (npc) engineRef.current.npcSay(npc.id, 'Afiyet olsun!');
-      flash(`${HOUSE_PRODUCTS[v.product]?.emoji || '🛍️'} ${HOUSE_PRODUCTS[v.product]?.label} · −${fmt(VENDOR_COST)} · 🕵️ −5`);
+      if (npc) engineRef.current.npcSay(npc.id, 'Allah razı olsun!');
+      flash(`🤲 Bağış yaptın · −${fmt(VENDOR_COST)} · 🕵️ −5`);
     } catch (e) {
-      flash(e?.message || 'Alışveriş yapılamadı.');
+      flash(e?.message || 'Bağış yapılamadı.');
     } finally {
       setBusy(null);
     }
@@ -774,14 +825,14 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
 
   // --- etkileşim butonları -------------------------------------------------------------
   let actions = null;
-  if (zone && !driving && !riding) {
+  if (zone && !driving && !riding && !haracHide) {
     const list = [];
     if (zone.kind === 'door') list.push({ label: zone.label || `${zone.title.split(' ')[0]} İçeri gir`, cls: 'take', free: true, on: () => onEnterRegion?.(zone.region) });
     if (zone.kind === 'vendor') {
       const v = vendorOf(zone);
       if (!vendorDone(v)) {
-        list.push({ label: '🛍️ Alışveriş yap', cls: 'take', on: () => vendorBuy(zone) });
-        list.push({ label: '💰 Haraç kes', cls: 'heist', on: () => onOpenHeist?.(v.id) });
+        list.push({ label: '🤲 Bağış yap', cls: 'take', on: () => vendorBuy(zone) });
+        list.push({ label: '💰 Haraç kes', cls: 'heist', on: () => setPanel({ kind: 'heist', zone }) });
       }
       list.push({ label: '🧾 Menü', on: () => setPanel({ kind: 'menu', zone }) });
     }
@@ -970,7 +1021,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
                 <HoldBtn className="cs-round" onHold={(on) => setDrive({ steer: on ? -1 : 0 })}>◀</HoldBtn>
                 <HoldBtn className="cs-round" onHold={(on) => setDrive({ steer: on ? 1 : 0 })}>▶</HoldBtn>
               </div>
-              <Speedo kmh={drive?.kmh || 0} gear={drive?.gear || 'N'} ratio={drive?.ratio || 0} />
+              {/* v153: iç kamerada kokpitin kendi göstergeleri var */}
+              {carCam !== 'in' && <Speedo kmh={drive?.kmh || 0} gear={drive?.gear || 'N'} ratio={drive?.ratio || 0} />}
               <div className="cs-pedals">
                 <button className="cs-round sm" onPointerDown={() => engineRef.current.horn()}>📯</button>
                 <HoldBtn className="cs-round sm hb" onHold={(on) => setDrive({ hand: on })}>🅿️</HoldBtn>
@@ -1054,6 +1106,40 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onOpe
           </div>
         </Sheet>
       )}
+      {panel?.kind === 'heist' && (() => {
+        const v = vendorOf(panel.zone);
+        if (!v) return null;
+        // v153: haraç şehirde kesilir — sistem aynı (HeistPanel), sadece animasyon eklendi
+        const runHarac = async (fn) => {
+          const eng = engineRef.current;
+          setHaracHide(true);
+          const began = Boolean(eng?.haracBegin?.(panel.zone.vendor));
+          const t0 = performance.now();
+          let res;
+          try {
+            res = await fn();
+          } catch (e) {
+            if (began) await eng.haracEnd({ outcome: 'cancel' });
+            setHaracHide(false);
+            throw e;
+          }
+          if (began) {
+            const d = res?.data || {};
+            const wait = 800 - (performance.now() - t0);
+            if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+            await eng.haracEnd({ outcome: !d.started ? 'cancel' : d.caught ? 'caught' : 'ok', reward: d.reward });
+          }
+          setHaracHide(false);
+          return res;
+        };
+        return (
+          <div className={`cs-heist-sheet${haracHide ? ' hide' : ''}`}>
+            <Sheet title={`${VENUES[panel.zone.vendor]?.icon || '💰'} ${v.name} · Haraç`} onClose={() => !haracHide && setPanel(null)} closeLabel="Kapat">
+              <HeistPanel target={v.id} onRun={runHarac} />
+            </Sheet>
+          </div>
+        );
+      })()}
       {panel?.kind === 'shady' && (
         <Sheet title="🕶️ Şüpheli Adam" onClose={() => setPanel(null)}>
           <ShadyDealPanel qty={inventory?.yasakliMadde || 0} busy={busy === 'risky' || busy === 'safe' ? busy : null} onSell={shadySell} />

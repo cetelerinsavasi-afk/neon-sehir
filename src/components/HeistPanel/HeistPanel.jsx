@@ -283,7 +283,8 @@ function PlanCard({ plan, myUid, onChanged }) {
   );
 }
 
-export default function HeistPanel({ target }) {
+// v153: onRun — şehirde haraç animasyonu için soygun çağrısını sarar (fn → sonuç)
+export default function HeistPanel({ target, onRun = null }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const { actions } = useDailyActions();
@@ -323,7 +324,7 @@ export default function HeistPanel({ target }) {
     setError(null);
     setResult(null);
     try {
-      const res = await attemptHeist(target);
+      const res = onRun ? await onRun(() => attemptHeist(target)) : await attemptHeist(target);
       setResult(res.data);
       if (!res.data.started && res.data.reason === 'insufficient_power') {
         setShowTeamForming(true);
@@ -389,7 +390,7 @@ export default function HeistPanel({ target }) {
       {official ? (
         <p className="hp-note bad">🏛️ Belediye görevlileri soygun yapamaz.</p>
       ) : (
-        done && <p className="hp-note">✅ {actions.vendorPurchases?.[target] && !actions.heist?.[target] ? 'Bugün buradan alışveriş yaptın.' : 'Bugün bu mekânı soydun.'}</p>
+        done && <p className="hp-note">✅ {actions.vendorPurchases?.[target] && !actions.heist?.[target] ? 'Bugün buraya bağış yaptın.' : 'Bugün bu mekânı soydun.'}</p>
       )}
 
       {needsTeam ? (
@@ -402,7 +403,7 @@ export default function HeistPanel({ target }) {
         )
       ) : (
         <button className="hp-cta" disabled={done || busy || crimeLocked || official} onClick={handleAttempt}>
-          {done ? (actions.vendorPurchases?.[target] ? 'Bugün buradan alışveriş yaptın' : 'Bugün zaten denedin') : busy ? 'Soyuluyor…' : '💰 SOYGUN YAP'}
+          {done ? (actions.vendorPurchases?.[target] ? 'Bugün buraya bağış yaptın' : 'Bugün zaten denedin') : busy ? 'Soyuluyor…' : '💰 SOYGUN YAP'}
         </button>
       )}
 

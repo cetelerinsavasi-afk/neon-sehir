@@ -12,7 +12,8 @@ import { heldCanvas } from '../HouseScreen/heldArt';
 import { PetFollower, FireAuraFx, EMOTES, getSharedRenderer } from '../HouseScreen/houseEngine';
 import { PET_ART } from '../../lib/cosmeticsArt';
 import { buildCity, BOUNDS, COAST_Z, cx, cz, BLOCK } from './cityPlan.js';
-import { buildVehicle, hasVehicle, seatedPerson } from './vehicles.js';
+import { buildVehicle, hasVehicle, seatedPerson, vehicleConfig } from './vehicles.js';
+import { buildCockpit } from './cockpit.js';
 import { createJobWorld } from './jobWorld.js';
 import { EngineSound } from './sound.js';
 import { createStadiumMatch } from './stadiumMatch.js';
@@ -66,11 +67,11 @@ function avatarTextures(avatar) {
   const key = JSON.stringify(av);
   let e = avCache.get(key);
   if (e) return e;
-  e = { ready: false, tex: {} };
+  const full = { ...DEFAULT_AVATAR, ...av };
+  e = { ready: false, tex: {}, full };
   avCache.set(key, e);
   const poses = ['idle', 'walk1', 'walk2', 'sit', 'back', 'backIdle'];
   let left = poses.length;
-  const full = { ...DEFAULT_AVATAR, ...av };
   poses.forEach((pose) => {
     let markup = buildFullAvatarSvgMarkup(full, { pose: pose === 'back' ? 'sit' : pose === 'backIdle' ? 'idle' : pose, animFire: full?.acc?.aura === 'fire' }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, '');
     // arkadan görünüş (arabada sürücü): yüzün üstü saç rengiyle kapanır, ense ve kulaklar görünür
@@ -91,6 +92,23 @@ function avatarTextures(avatar) {
     img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(markup);
   });
   return e;
+}
+// v153: ek poz (haraç: 'aim' / 'handsup') — ilk istendiğinde çizilir
+function ensurePoseTex(e, pose) {
+  if (!e || e.tex[pose] || e.pending?.[pose]) return;
+  (e.pending ||= {})[pose] = true;
+  const img = new Image();
+  img.onload = () => {
+    const c = document.createElement('canvas');
+    c.width = 320;
+    c.height = 580;
+    c.getContext('2d').drawImage(img, 0, 0, 320, 580);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 4;
+    e.tex[pose] = t;
+  };
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(buildFullAvatarSvgMarkup(e.full, { pose }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, ''));
 }
 function backOfHead(s) {
   const bald = !s.hairStyle || s.hairStyle === 'kel';
@@ -201,6 +219,10 @@ class Fig {
       this.pet = pet ? new PetFollower(this.scene, pet) : null;
     } else this.pet.set(pet);
   }
+  setForcePose(p) {
+    this.forcePose = p || null;
+    if (p) ensurePoseTex(this.tex, p);
+  }
   setHolding(p) {
     this.holding = p || null;
     if (p) {
@@ -271,6 +293,9 @@ class Fig {
       this.walkT += dt * (forceWalk ? 0.7 : this.run ? 1.6 : 1);
       pose = Math.floor(this.walkT / 0.16) % 2 ? 'walk2' : 'walk1';
     }
+    // v153: haraç pozu (silah doğrultma / eller havada) + titreme
+    if (this.forcePose && this.tex.tex[this.forcePose] && !this.inCar && !this.sitting) pose = this.forcePose;
+    this.pivot.position.x = this.shakeUntil > now ? Math.sin(now / 21) * 0.035 : 0;
     if (this.tex.ready) {
       const t = this.tex.tex[pose];
       if (this.mat.map !== t) {
@@ -1564,8 +1589,65 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     c.v[key] = { eye: new V(-sp[2] * (c.v.moto ? 1 : 0.92), Math.min(sp[1] + up, roofY), sp[0] - back) };
     return c.v[key];
   }
+  // v153 — ayrıntılı birinci şahıs kokpit (motorda yok). Aracın kendi kaba iç parçaları gizlenir.
+  function cockpitRig(c, ck) {
+    if (c.v.moto) return null;
+    if (c.v.rig !== undefined) return c.v.rig;
+    let mods = null;
+    try {
+      mods = c.mk ? JSON.parse(c.mk) : null;
+    } catch {
+      mods = null;
+    }
+    let cfg = {};
+    try {
+      cfg = vehicleConfig(c.v.catalogId, mods) || {};
+    } catch {
+      cfg = {};
+    }
+    const big = c.v.len > 6.5;
+    const rig = buildCockpit({
+      closed: c.v.closed !== false && cfg.cab !== false,
+      accent: cfg.acc?.neon || mods?.neonColor || cfg.neonColor || '#19e8ff',
+      trim: cfg.interior || '#1a1a1d',
+      body: cfg.paint || '#777777',
+      halfW: c.v.halfW || 0.9,
+      eyeX: ck.eye.x,
+      big,
+    });
+    const host = c.v.tilt || c.v.root;
+    rig.group.position.copy(ck.eye);
+    if (c.v.tilt) rig.group.position.sub(c.v.tilt.position);
+    rig.group.visible = false;
+    host.add(rig.group);
+    c.v.rig = rig;
+    return rig;
+  }
+  // iç kamerada aracın dış gövdesi gizlenir (kaput, sütunlar, tavan kokpitte ayrıca çizili);
+  // farların yere düşen ışığı (keepFp) kalır
+  function showRig(c, on) {
+    const rig = c?.v?.rig;
+    if (!rig) return;
+    rig.group.visible = on;
+    if (on) {
+      const hid = [];
+      c.v.root.traverse((o) => {
+        if (!o.isMesh || !o.visible || o.userData.keepFp) return;
+        for (let p = o; p; p = p.parent) if (p === rig.group) return;
+        o.visible = false;
+        hid.push(o);
+      });
+      c.v.fpHidden = hid;
+    } else {
+      (c.v.fpHidden || []).forEach((o) => {
+        o.visible = true;
+      });
+      c.v.fpHidden = null;
+    }
+  }
   function setInterior(c) {
     if (interiorCar === c) return;
+    if (interiorCar) showRig(interiorCar, false);
     interiorCar = c;
     const near = c ? 0.06 : IS_MOBILE ? 0.3 : 0.15;
     inYawSm = null;
@@ -1692,17 +1774,21 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       return { ok: false, reason: 'Yakında boş şerit yok' };
     }
     if (old) {
+      if (interiorCar === old) setInterior(null);
       scene.remove(old.v.root);
+      old.v.rig?.dispose();
       old.v.root.traverse((o) => o.isMesh && o.geometry.dispose());
     }
     // ön farların yere düşen ışığı
     const head = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 7.5), headMat('#ffe9b8', 0.5));
     head.rotation.x = -Math.PI / 2;
     head.position.set(0, 0.04, v.len / 2 + 3.9);
+    head.userData.keepFp = true;
     v.root.add(head);
     const tail = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.6), headMat('#ff2a3a', 0.5));
     tail.rotation.x = -Math.PI / 2;
     tail.position.set(0, 0.04, -v.len / 2 - 0.6);
+    tail.userData.keepFp = true;
     v.root.add(tail);
     myCar = { v, id, mk, x: spot.x, z: spot.z, y: 0, yaw: spot.yaw, vx: 0, vz: 0, steer: 0, roll: 0, pitch: 0, lastVF: 0, spawnT: 0, skidD: 0 };
     setPax(myCar, myJob.on ? myJob.pax : 0); // v152: tır dorsesiz başlar
@@ -2136,6 +2222,152 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   };
   const camTarget = new V();
   const head = new V();
+  // v153 — haraç animasyonu (sadece bu cihazda; diğer oyuncular görmez)
+  let harac = null;
+  const haracCam = { k: 0, x: 0, z: 0 };
+  const coinTex = (() => {
+    const mk = (w, h, draw) => {
+      const c = document.createElement('canvas');
+      c.width = w;
+      c.height = h;
+      draw(c.getContext('2d'));
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    };
+    let coin = null;
+    let bill = null;
+    return (kind) =>
+      kind === 'bill'
+        ? (bill ||= mk(96, 48, (g) => {
+            g.fillStyle = '#1d7a3e';
+            g.fillRect(0, 0, 96, 48);
+            g.fillStyle = '#4fd17a';
+            g.fillRect(4, 4, 88, 40);
+            g.strokeStyle = '#1d7a3e';
+            g.lineWidth = 3;
+            g.beginPath();
+            g.arc(48, 24, 11, 0, Math.PI * 2);
+            g.stroke();
+            g.fillStyle = '#1d7a3e';
+            g.font = '900 16px Arial';
+            g.textAlign = 'center';
+            g.fillText('₺', 48, 30);
+          }))
+        : (coin ||= mk(64, 64, (g) => {
+            g.fillStyle = '#b37800';
+            g.beginPath();
+            g.arc(32, 32, 30, 0, Math.PI * 2);
+            g.fill();
+            g.fillStyle = '#ffcf33';
+            g.beginPath();
+            g.arc(32, 32, 25, 0, Math.PI * 2);
+            g.fill();
+            g.fillStyle = '#8a5a00';
+            g.font = '900 30px Arial';
+            g.textAlign = 'center';
+            g.fillText('₺', 32, 43);
+          }));
+  })();
+  function haracFx(cls, text) {
+    const el = document.createElement('div');
+    el.className = `cs-harac-fx ${cls}`;
+    el.textContent = text;
+    el.style.display = 'none';
+    layer.appendChild(el);
+    return el;
+  }
+  function haracFinish() {
+    const h = harac;
+    if (!h) return;
+    harac = null;
+    h.npc.setForcePose(null);
+    h.npc.shakeUntil = 0;
+    me.setForcePose(null);
+    if (h.savedHold) me.setHolding(h.savedHold);
+    self.camDist = h.savedDist;
+    h.coins.forEach((c) => {
+      scene.remove(c.sp);
+      c.sp.material.dispose();
+    });
+    h.label?.remove();
+    h.siren?.remove();
+    h.resolve?.();
+  }
+  function stepHarac(dt, now) {
+    const h = harac;
+    h.t += dt;
+    // ikisi birbirine baksın (ekranda soldan sağa)
+    const right = new V().setFromMatrixColumn(camera.matrixWorld, 0);
+    const side = (h.npc.x - me.x) * right.x + (h.npc.z - me.z) * right.z;
+    if (Math.abs(side) > 0.05) {
+      me.facingLeft = side < 0;
+      h.npc.facingLeft = !me.facingLeft;
+    }
+    if (h.phase === 'aim') {
+      if (!h.scared && h.t > 0.45) {
+        h.scared = true;
+        h.npc.setForcePose('handsup');
+        h.npc.shakeUntil = now + 60000;
+        h.npc.say('Tamam abi, sakin ol! Ateş etme!');
+      }
+      if (h.outcome && h.t >= 1.15) {
+        h.phase = h.outcome.outcome;
+        h.t = 0;
+        if (h.phase === 'ok') {
+          h.npc.say('Al abi, al! Hepsi bu!');
+          h.label = haracFx('gold', `+${Number(h.outcome.reward || 0).toLocaleString('tr-TR')} altın`);
+        } else if (h.phase === 'caught') {
+          h.npc.say('Polis! İmdat!');
+          me.say('Eyvah… 🚨');
+          h.label = haracFx('police', '🚨 POLİS!');
+          h.siren = document.createElement('div');
+          h.siren.className = 'cs-harac-siren';
+          layer.appendChild(h.siren);
+        }
+      }
+    }
+    const W = container.clientWidth;
+    const H = container.clientHeight;
+    const ly = me.y + AV_PLANE_H - AV_FEET + 0.25;
+    const lx = (me.x + h.npc.x) / 2;
+    const lz = (me.z + h.npc.z) / 2;
+    if (h.phase === 'ok') {
+      const from = { x: h.npc.x, y: h.npc.y + 1.85, z: h.npc.z };
+      while (h.coins.length < 9 && h.t > h.coins.length * 0.11) {
+        const bill = h.coins.length % 3 === 1;
+        const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: coinTex(bill ? 'bill' : 'coin'), transparent: true, toneMapped: false }));
+        sp.scale.set(bill ? 0.36 : 0.24, bill ? 0.18 : 0.24, 1);
+        sp.position.set(from.x, from.y, from.z);
+        scene.add(sp);
+        h.coins.push({ sp, t0: h.t, arc: 0.7 + Math.random() * 0.5, j: (Math.random() - 0.5) * 0.4, from });
+      }
+      h.coins.forEach((c) => {
+        const k = clamp((h.t - c.t0) / 0.62, 0, 1);
+        const to = { x: me.x + c.j * 0.3, y: me.y + 1.05, z: me.z + c.j * 0.3 };
+        c.sp.position.set(c.from.x + (to.x - c.from.x) * k, c.from.y + (to.y - c.from.y) * k + Math.sin(k * Math.PI) * c.arc, c.from.z + (to.z - c.from.z) * k);
+        c.sp.material.rotation = k * 9 + c.j * 5;
+        c.sp.visible = k < 1;
+      });
+      if (h.t > 0.7) {
+        const k = clamp((h.t - 0.7) / 1.6, 0, 1);
+        h.label.style.opacity = String(k < 0.12 ? k / 0.12 : k > 0.85 ? (1 - k) / 0.15 : 1);
+        placeLabel(h.label, lx, ly + k * 0.5, lz, W, H, 80, ` scale(${(1 + Math.max(0, 0.25 - k) * 1.6).toFixed(2)})`);
+      }
+      if (h.t > 1.3 && me.forcePose) me.setForcePose(null);
+      if (h.t > 2.2 && h.npc.forcePose) {
+        h.npc.setForcePose(null);
+        h.npc.shakeUntil = 0;
+      }
+      if (h.t > 2.6) haracFinish();
+    } else if (h.phase === 'caught') {
+      h.siren.classList.toggle('blue', Math.floor(h.t / 0.16) % 2 === 1);
+      h.siren.style.opacity = String(h.t > 2.2 ? Math.max(0, (2.6 - h.t) / 0.4) : 1);
+      if (h.t > 0.3 && me.forcePose) me.setForcePose(null);
+      placeLabel(h.label, lx, ly + 0.15, lz, W, H, 80);
+      if (h.t > 2.6) haracFinish();
+    } else if (h.phase === 'cancel' && h.t > 0.3) haracFinish();
+  }
   let raf = 0;
   let paused = false;
   let first = true;
@@ -2210,6 +2442,13 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     return slid;
   }
   function stepWalk(dt) {
+    if (harac) {
+      self.target = null;
+      self.path = null;
+      ring.visible = false;
+      me.moving = false;
+      return;
+    }
     let f = 0;
     let s = 0;
     if (keys.KeyW || keys.ArrowUp) f += 1;
@@ -2361,6 +2600,22 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       const c = interiorCar;
       const ck = cockpitOf(c, driving ? 0 : self.ride.k || 1);
       me.group.visible = false;
+      // v153: kokpit sadece sürücü koltuğunda (yolcu, aracın kendi iç modelini görür)
+      const rig = driving ? cockpitRig(c, ck) : null;
+      if (rig) {
+        if (!rig.group.visible) showRig(c, true);
+        const vmax = c.v.def.phys.vmax || 30;
+        const spdR = Math.hypot(c.vx || 0, c.vz || 0);
+        rig.update(dt, {
+          steer: c.steer || 0,
+          kmh: driveStat.kmh || 0,
+          gear: driveStat.gear || 'N',
+          rpm: Math.min(7.8, 0.9 + ((spdR / vmax) * 5 % 1) * 5.5 + (driveStat.gear === 'N' ? 0 : 0.6)),
+          vmaxKmh: Math.max(60, Math.ceil((vmax * 3.6) / 20) * 20),
+          heading: c.yaw,
+          now: performance.now(),
+        });
+      }
       driveCamIdle += dt;
       if (driving && driveCamIdle > 2.2) {
         inLook.yaw *= Math.exp(-dt * 1.8);
@@ -2383,13 +2638,14 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       // hızlanınca hafif başın geri gitmesi / virajda dönüş yönüne bakış
       const lookAhead = clamp(dyw * 0.9, -0.25, 0.25);
       const cy = inYawSm + inLook.yaw + lookAhead;
-      const pitch = inLook.pitch + 0.04; // v151: ufka yakın — torpido ekranın altında kalsın
+      const rigOn = Boolean(driving && c.v.rig?.group.visible);
+      const pitch = inLook.pitch + (rigOn ? -0.02 : 0.04); // v151: ufka yakın; v153 kokpitte gösterge görünsün
       const cp = Math.cos(pitch);
       const roll = clamp(-(c.roll || 0) * 0.7, -0.08, 0.08);
       camera.up.set(Math.cos(cy) * Math.sin(roll), Math.cos(roll), -Math.sin(cy) * Math.sin(roll));
       camera.lookAt(eye.x + Math.sin(cy) * cp, eye.y + Math.sin(pitch), eye.z + Math.cos(cy) * cp);
       camera.up.set(0, 1, 0);
-      const wantFov = 74 + Math.min(1, spdIn / (c.v.def.phys.vmax || 30)) * 8;
+      const wantFov = (rigOn && camera.aspect < 1 ? 82 : 74) + Math.min(1, spdIn / (c.v.def.phys.vmax || 30)) * 8;
       if (Math.abs(camera.fov - wantFov) > 0.05) {
         camera.fov += (wantFov - camera.fov) * Math.min(1, dt * 3);
         camera.updateProjectionMatrix();
@@ -2397,10 +2653,19 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       // iç ışık: kabin karanlık kalmasın (ışık havuzunun sonuncusu araca girer)
       const pl = pool[pool.length - 1];
       if (pl) {
-        pl.position.set(eye.x, eye.y + 0.35, eye.z);
-        pl.color.set('#ffe9cc');
-        pl.intensity = 2.4;
-        pl.distance = 2.8;
+        if (rigOn) {
+          // v153: kokpit ışığı — torpidonun üstünden, soğuk beyaz (tavan sarıya boyanmasın)
+          const f = new V(Math.sin(c.yaw), 0, Math.cos(c.yaw));
+          pl.position.set(eye.x + f.x * 0.35, eye.y + 0.05, eye.z + f.z * 0.35);
+          pl.color.set('#dfe8ff');
+          pl.intensity = 1.6;
+          pl.distance = 2.2;
+        } else {
+          pl.position.set(eye.x, eye.y + 0.35, eye.z);
+          pl.color.set('#ffe9cc');
+          pl.intensity = 2.4;
+          pl.distance = 2.8;
+        }
       }
       return;
     }
@@ -2488,7 +2753,16 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const pitch = clamp(self.camPitch, -0.2, 1.2);
     const aspect = camera.aspect || 1;
     let dist = self.camDist * (aspect < 1 ? 1 + (1 - aspect) * 0.55 : 1);
-    head.set(self.x, eyeY, self.z);
+    // v153: haraçta kamera ikisinin ortasına bakar
+    if (harac) {
+      haracCam.x = harac.npc.x;
+      haracCam.z = harac.npc.z;
+    }
+    haracCam.k = clamp(haracCam.k + (harac ? dt * 2.5 : -dt * 2), 0, 1);
+    const hk = haracCam.k * haracCam.k * (3 - 2 * haracCam.k);
+    const fx = self.x + (haracCam.x - self.x) * 0.56 * hk;
+    const fz = self.z + (haracCam.z - self.z) * 0.56 * hk;
+    head.set(fx, eyeY, fz);
     let want = null;
     let look = null;
     if (standsK < 0.999) {
@@ -2500,7 +2774,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       if (h.length) dist = Math.max(1.2, h[0].distance - 0.4);
       want = head.clone().addScaledVector(dir, dist);
       want.y = Math.max(want.y, 0.5);
-      look = new V(self.x, eyeY - 0.15, self.z);
+      look = new V(fx, eyeY - 0.15, fz);
     }
     if (standsK > 0.001) {
       const baseY = me.sitting ? (me.seatY ?? me.y + 0.5) + 0.85 : eyeY;
@@ -2625,6 +2899,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       n.moving = false;
       n.update(dt, camera, now);
     });
+    if (harac) stepHarac(dt, now);
     me.sink = waters.length ? sinkAt(me.x, me.z) : 0;
     me.standYaw = !me.sitting && !me.inCar ? standsYaw(self.x, self.z) : null;
     me.update(dt, camera, now);
@@ -3020,7 +3295,15 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       const t0 = Date.now();
       while (tmpFigs.some((f) => !f.tex.ready) && Date.now() - t0 < 5000) await sleep(80);
       if (tmpFigs.some((f) => f.pet)) await sleep(60); // evcil hayvan dokuları
-      return shoot(att, w, h, tmpFigs, tmpCars);
+      // v153: stadyum reklamları fotoğrafın çekildiği andaki sponsorlar (eski fotoğraf: varsayılan)
+      const stM = stadLot?.info?.match;
+      const liveAds = stM?.getSponsors?.() ?? null;
+      if (stM?.setSponsors) stM.setSponsors(Array.isArray(att.sp) ? att.sp.slice(0, 8).map((x) => String(x).slice(0, 40)) : null);
+      try {
+        return shoot(att, w, h, tmpFigs, tmpCars);
+      } finally {
+        if (stM?.setSponsors && !snapshot) stM.setSponsors(liveAds);
+      }
     } finally {
       tmpFigs.forEach((f) => f.dispose(scene));
       tmpCars.forEach((c) => {
@@ -3360,6 +3643,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     },
     jobTarget: (t) => jobWorld?.setTarget(t),
     jobRoute: (pts, color) => jobWorld?.setRoute(pts, color),
+    jobRoutePts: () => jobWorld?.route?.() || null,
     jobPeople: (list) => jobWorld?.setPeople(list),
     jobSuspect: (sp) => jobWorld?.setSuspect(sp),
     jobSuspectPos: () => jobWorld?.suspect() || null,
@@ -3424,7 +3708,42 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     lots: city.lots.map((l) => ({ type: l.type, outer: l.outer, x0: l.mx - l.bw / 2, x1: l.mx + l.bw / 2, z0: l.mz - l.bd / 2, z1: l.mz + l.bd / 2, name: l.def?.name, icon: l.def?.icon, door: zones.find((z) => z.kind === 'door' && z.type === l.type) || null })),
     zones,
     stats: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles }),
+    // v153 — haraç animasyonu: başla (silah doğrult) → sunucu cevabı → bitir (para / polis)
+    haracBegin(venueKey) {
+      if (harac || driving || self.ride || self.seat) return false;
+      const npc = npcs.find((n) => n.vendor === venueKey);
+      if (!npc) return false;
+      ensurePoseTex(me.tex, 'aim');
+      ensurePoseTex(npc.tex, 'handsup');
+      const savedHold = me.holding;
+      me.setHolding(null);
+      me.setForcePose('aim');
+      me.say('Kasayı boşalt! 🔫');
+      const a = Math.atan2(npc.x - self.x, npc.z - self.z);
+      const yaw = [a + Math.PI / 2, a - Math.PI / 2].sort(
+        (p, q) => Math.abs(Math.atan2(Math.sin(p - self.camYaw), Math.cos(p - self.camYaw))) - Math.abs(Math.atan2(Math.sin(q - self.camYaw), Math.cos(q - self.camYaw)))
+      )[0];
+      if (view === '3d') glideCam(yaw, 0.2);
+      harac = { npc, phase: 'aim', t: 0, outcome: null, coins: [], savedHold, savedDist: self.camDist, label: null, siren: null, resolve: null };
+      self.camDist = Math.max(self.camDist, 8.6);
+      return true;
+    },
+    haracEnd(res) {
+      if (!harac) return Promise.resolve();
+      const h = harac;
+      return new Promise((resolve) => {
+        h.resolve = resolve;
+        const o = res?.outcome;
+        h.outcome = { outcome: o === 'ok' || o === 'caught' ? o : 'cancel', reward: res?.reward };
+        if (h.outcome.outcome === 'cancel') {
+          h.phase = 'cancel';
+          h.t = 0;
+        }
+      });
+    },
+    haracActive: () => Boolean(harac),
     dispose() {
+      haracFinish();
       cancelAnimationFrame(raf);
       try {
         stadium?.dispose();

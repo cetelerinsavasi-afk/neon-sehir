@@ -162,7 +162,10 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
     routeFrom = { x: p.x, z: p.z };
     let to = { x: tgt.x, z: tgt.z };
     if (tgt.follow) to = E()?.jobSuspectPos() || to;
-    E()?.jobRoute(roadRoute({ x: p.x, z: p.z }, to), tgt.color || '#19e8ff');
+    const pts = roadRoute({ x: p.x, z: p.z }, to);
+    // v153: şerit aracın tam altından başlar, hedefin kendisinde biter
+    if (pts.length && Math.hypot(pts[0].x - p.x, pts[0].z - p.z) > 0.5) pts.unshift({ x: p.x, z: p.z });
+    E()?.jobRoute(pts, tgt.color || '#19e8ff');
   }
   function compass() {
     const p = E()?.jobProbe();

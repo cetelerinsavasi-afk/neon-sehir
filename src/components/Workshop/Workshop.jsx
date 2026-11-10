@@ -334,9 +334,6 @@ export default function Workshop({ shop, onClose }) {
               <button className="bz-btn wide wk-go wk-mod-go" onClick={() => setStudio(true)}>
                 🎨 Modifiye stüdyosunu aç
               </button>
-              <p className="wk-wallet">
-                Boya, jant, gövde kiti, tavan, neon ve plaka. Satın almadan önce arabanın üstünde dene; sadece uyguladığın değişikliklerin parasını ödersin.
-              </p>
             </>
           ) : (
             <>

@@ -60,7 +60,7 @@ export const casino = createCasino({ db: fakeDb, FieldValue, HttpsError: Preview
 export const sixSocial = createSixtagramSocial({ db: fakeDb, FieldValue, HttpsError: PreviewHttpsError });
 // v151 meslekler (gerçek sunucu modülü) + önizleme için bir tır / otobüs / taksi / polis / ambulans / motor
 export const jobs = createJobs({ db: fakeDb, FieldValue, HttpsError: PreviewHttpsError, splitIncomeForDebt: (debt, amount) => ({ goldDelta: amount, debtDelta: 0 }) });
-[11, 12, 13, 14, 15, 21, 24].forEach((cid) => fakeDb.doc(`vehicles/pv_${cid}`).set({ ownerId: PREVIEW_UID, catalogId: cid, model: `Araç ${cid}`, lifeDays: 20, repairsUsed: 0 }));
+[2, 6, 10, 11, 12, 13, 14, 15, 21, 24].forEach((cid) => fakeDb.doc(`vehicles/pv_${cid}`).set({ ownerId: PREVIEW_UID, catalogId: cid, model: `Araç ${cid}`, lifeDays: 20, repairsUsed: 0 }));
 export const shop = createShop({
   extraOps: { ...venue.ops, ...gym.ops, ...homeOffice.ops, ...office.ops, ...casino.ops, ...sixSocial.ops, ...jobs.ops },
   db: fakeDb,

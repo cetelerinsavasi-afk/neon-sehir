@@ -590,7 +590,7 @@ export const VENUES = {
         // motor istasyonları ters sırayla dizer → ekranda: Alışveriş yap · Haraç kes · Menü
         { act: 'menu', label: '🧾 Menü' },
         { act: 'harac', label: '💰 Haraç kes' },
-        { act: 'buy', label: '🛍️ Alışveriş yap' },
+        { act: 'buy', label: '🤲 Bağış yap' },
       ],
     },
     npcs: [
@@ -639,7 +639,7 @@ export const VENUES = {
         // motor istasyonları ters sırayla dizer → ekranda: Alışveriş yap · Haraç kes · Menü
         { act: 'menu', label: '🧾 Menü' },
         { act: 'harac', label: '💰 Haraç kes' },
-        { act: 'buy', label: '🛍️ Alışveriş yap' },
+        { act: 'buy', label: '🤲 Bağış yap' },
       ],
     },
     npcs: [
@@ -697,7 +697,7 @@ export const VENUES = {
         // motor istasyonları ters sırayla dizer → ekranda: Alışveriş yap · Haraç kes · Menü
         { act: 'menu', label: '🧾 Menü' },
         { act: 'harac', label: '💰 Haraç kes' },
-        { act: 'buy', label: '🛍️ Alışveriş yap' },
+        { act: 'buy', label: '🤲 Bağış yap' },
       ],
     },
     npcs: [
@@ -749,7 +749,7 @@ export const VENUES = {
         // motor istasyonları ters sırayla dizer → ekranda: Alışveriş yap · Haraç kes · Menü
         { act: 'menu', label: '🧾 Menü' },
         { act: 'harac', label: '💰 Haraç kes' },
-        { act: 'buy', label: '🛍️ Alışveriş yap' },
+        { act: 'buy', label: '🤲 Bağış yap' },
       ],
     },
     npcs: [

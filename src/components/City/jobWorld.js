@@ -104,17 +104,12 @@ export function createJobWorld({ scene, layer, Fig, groundY, buildVehicle, place
     t.colorSpace = THREE.SRGBColorSpace;
     return t;
   })();
-  const routeMat = new THREE.MeshBasicMaterial({ map: arrowTex, color: '#19e8ff', transparent: true, opacity: 0.85, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -4 });
-  let route = null;
-  function setRoute(pts, color) {
-    if (route) {
-      scene.remove(route);
-      route.geometry.dispose();
-      route = null;
-    }
-    if (!pts || pts.length < 2) return;
-    if (color) routeMat.color.set(color);
-    const W = 1.5;
+  const routeMat = new THREE.MeshBasicMaterial({ map: arrowTex, color: '#19e8ff', transparent: true, opacity: 0.95, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -4 });
+  // v153: oklu şeridin altında geniş, parlak bir bant (uzaktan / yukarıdan da görünsün)
+  const glowMat = new THREE.MeshBasicMaterial({ color: '#19e8ff', transparent: true, opacity: 0.32, depthWrite: false, side: THREE.DoubleSide, toneMapped: false, blending: THREE.AdditiveBlending, polygonOffset: true, polygonOffsetFactor: -3 });
+  let glow = null;
+  let routePts = null;
+  function ribbon(pts, W, y0, uvScale) {
     const pos = [];
     const uv = [];
     const idx = [];
@@ -126,24 +121,57 @@ export function createJobWorld({ scene, layer, Fig, groundY, buildVehicle, place
       if (L < 0.05) continue;
       const nx = (-(b.z - a.z) / L) * (W / 2);
       const nz = ((b.x - a.x) / L) * (W / 2);
-      const ya = groundY(a.x, a.z) + 0.07;
-      const yb = groundY(b.x, b.z) + 0.07;
+      const ya = groundY(a.x, a.z) + y0;
+      const yb = groundY(b.x, b.z) + y0;
       const k = pos.length / 3;
-      pos.push(a.x + nx, ya, a.z + nz, a.x - nx, ya, a.z - nz, b.x + nx, yb, b.z + nz, b.x - nx, yb, b.z - nz);
-      // oklar yol yönünde: u = mesafe / 1,6 m
-      uv.push(u / 1.6, 1, u / 1.6, 0, (u + L) / 1.6, 1, (u + L) / 1.6, 0);
+      // köşelerde boşluk kalmasın: parça yarım genişlik kadar uzatılır
+      const ex = ((b.x - a.x) / L) * (W / 2);
+      const ez = ((b.z - a.z) / L) * (W / 2);
+      const ax = a.x - (i ? ex : 0);
+      const az = a.z - (i ? ez : 0);
+      const bx = b.x + (i < pts.length - 2 ? ex : 0);
+      const bz = b.z + (i < pts.length - 2 ? ez : 0);
+      pos.push(ax + nx, ya, az + nz, ax - nx, ya, az - nz, bx + nx, yb, bz + nz, bx - nx, yb, bz - nz);
+      uv.push(u / uvScale, 1, u / uvScale, 0, (u + L) / uvScale, 1, (u + L) / uvScale, 0);
       idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
       u += L;
     }
-    if (!idx.length) return;
+    if (!idx.length) return null;
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     g.setIndex(idx);
-    route = new THREE.Mesh(g, routeMat);
-    route.renderOrder = 3;
+    return g;
+  }
+  let route = null;
+  function setRoute(pts, color) {
+    for (const m of [route, glow]) {
+      if (!m) continue;
+      scene.remove(m);
+      m.geometry.dispose();
+    }
+    route = null;
+    glow = null;
+    routePts = null;
+    if (!pts || pts.length < 2) return;
+    if (color) {
+      routeMat.color.set(color);
+      glowMat.color.set(color);
+    }
+    const g1 = ribbon(pts, 2.2, 0.09, 2.2);
+    if (!g1) return;
+    routePts = pts.map((p) => ({ x: p.x, z: p.z }));
+    route = new THREE.Mesh(g1, routeMat);
+    route.renderOrder = 4;
     route.frustumCulled = false;
     scene.add(route);
+    const g2 = ribbon(pts, 4.2, 0.07, 4);
+    if (g2) {
+      glow = new THREE.Mesh(g2, glowMat);
+      glow.renderOrder = 3;
+      glow.frustumCulled = false;
+      scene.add(glow);
+    }
   }
 
   // --- bot insanlar -------------------------------------------------------------------
@@ -232,7 +260,7 @@ export function createJobWorld({ scene, layer, Fig, groundY, buildVehicle, place
 
   function update(dt, camera, now, px, pz, w, h) {
     stepSuspect(dt, px, pz);
-    arrowTex.offset.x = -(now / 1000) * 1.6; // oklar hedefe doğru akar
+    arrowTex.offset.x = -(now / 1000) * 1.2; // oklar hedefe doğru akar
     if (sus && target?.follow) {
       target.x = sus.x;
       target.z = sus.z;
@@ -258,6 +286,7 @@ export function createJobWorld({ scene, layer, Fig, groundY, buildVehicle, place
   return {
     setTarget,
     setRoute,
+    route: () => (routePts ? { pts: routePts, color: `#${routeMat.color.getHexString()}` } : null),
     setPeople,
     setSuspect,
     suspect: () => (sus ? { x: sus.x, z: sus.z, speed: sus.speed } : null),

@@ -6062,12 +6062,12 @@ export const buyFromVendor = onCall(async (request) => {
     if (!isMenu) {
       const daily = dailySnap?.data();
       if (daily?.vendorPurchases?.[vendorId]) {
-        throw new HttpsError('failed-precondition', 'Bu satıcıdan bugün zaten alışveriş yaptın.');
+        throw new HttpsError('failed-precondition', 'Bu satıcıya bugün zaten bağış yaptın.');
       }
       if (daily?.heist?.[vendorId]) {
         throw new HttpsError(
           'failed-precondition',
-          'Bu satıcıdan bugün haraç kestin, aynı gün alışveriş yapamazsın.'
+          'Bu satıcıdan bugün haraç kestin, aynı gün bağış yapamazsın.'
         );
       }
     }
@@ -6084,9 +6084,12 @@ export const buyFromVendor = onCall(async (request) => {
       });
       tx.set(dailyRef, { vendorPurchases: { [vendorId]: true } }, { merge: true });
     }
-    // ürün ele (yeni ürün eldekinin yerini alır; süre baştan)
-    tx.set(heldRef, { itemId, venue: 'ev', houseId, untilMs: t + HELD_ITEM_MS, boughtAtMs: t });
-    if (houseId && presSnap.exists && presSnap.data().houseId === houseId) tx.update(presRef, { holding: itemId });
+    // ürün ele (yeni ürün eldekinin yerini alır; süre baştan) — v153: sadece MENÜ
+    // alışverişinde. Günlük hak artık "bağış": ele ürün gelmez.
+    if (isMenu) {
+      tx.set(heldRef, { itemId, venue: 'ev', houseId, untilMs: t + HELD_ITEM_MS, boughtAtMs: t });
+      if (houseId && presSnap.exists && presSnap.data().houseId === houseId) tx.update(presRef, { holding: itemId });
+    }
     // v145: seyyar satıcı geliri devlete (Ticaret Bakanlığı)
     stateWrite(tx, db, admin.firestore.FieldValue, {
       kind: 'in',
@@ -6098,9 +6101,10 @@ export const buyFromVendor = onCall(async (request) => {
     });
   });
 
-  // Onboarding görev 7 — "bi seyyar satıcıyla alışveriş yap".
+  // Onboarding görev 7 — "bi seyyar satıcıya bağış yap" (v153: eski adı alışveriş).
   if (!isMenu) await advanceOnboardingStep(uid, 7);
 
+  if (!isMenu) return { ok: true, itemId: null, price, donation: true, menu: false };
   return { ok: true, itemId, price, untilMs: t + HELD_ITEM_MS, menu: isMenu };
 });
 
@@ -6243,7 +6247,7 @@ export const attemptHeist = onCall(async (request) => {
   if (dailySnap.exists && dailySnap.data().vendorPurchases?.[target]) {
     throw new HttpsError(
       'failed-precondition',
-      'Bu satıcıdan bugün alışveriş yaptın, aynı gün haraç kesemezsin.'
+      'Bu satıcıya bugün bağış yaptın, aynı gün haraç kesemezsin.'
     );
   }
 
@@ -6973,7 +6977,7 @@ export const createHeistPlan = onCall(async (request) => {
   if (dailySnap.exists && dailySnap.data().vendorPurchases?.[target]) {
     throw new HttpsError(
       'failed-precondition',
-      'Bu satıcıdan bugün alışveriş yaptın, aynı gün haraç kesemezsin.'
+      'Bu satıcıya bugün bağış yaptın, aynı gün haraç kesemezsin.'
     );
   }
 
@@ -7164,7 +7168,7 @@ export const joinHeistPlan = onCall(async (request) => {
     if (dailySnap.exists && dailySnap.data().vendorPurchases?.[plan.target]) {
       throw new HttpsError(
         'failed-precondition',
-        'Bu satıcıdan bugün alışveriş yaptın, aynı gün haraç kesemezsin.'
+        'Bu satıcıya bugün bağış yaptın, aynı gün haraç kesemezsin.'
       );
     }
   }
@@ -8221,7 +8225,7 @@ async function settleMaterialListing(listingRef, nowMs = Date.now()) {
       addUserSms(
         tx,
         l.sellerId,
-        `📦 İlandaki ${qtyTxt} adet ${label} 7 gündür satılmadığı için ilandan kaldırıldı, envanterine iade edildi.`,
+        `📦 İlandaki ${qtyTxt} adet ${label} 3 gündür satılmadığı için ilandan kaldırıldı, envanterine iade edildi.`,
         'listing_expired'
       );
     }
@@ -8375,7 +8379,7 @@ export const expireOldMarketplaceListings = onSchedule({ schedule: 'every 24 hou
         return;
       }
       const legacyAt = listing.createdAt?.toMillis?.() ?? 0;
-      if (legacyAt && now - legacyAt >= SEVEN_DAYS_MS) {
+      if (legacyAt && now - legacyAt >= materialTtl(listing.materialType, 0)) {
         jobs.push(settleMaterialListing(doc.ref, now).catch((err) => console.error('legacy settle', doc.id, err)));
       }
       return;

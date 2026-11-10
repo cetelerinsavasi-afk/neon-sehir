@@ -108,6 +108,27 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
     return out;
   }
 
+  // v153: stadyum reklam panoları — 1. lig takımlarının sponsor fabrikaları (oyundaki
+  // panolarla aynı liste: src/hooks/useStadiumMatches.js). Fotoğrafa yazılır ki her cihazda
+  // çekildiği andaki sponsorlar görünsün. Sunucu örneğinde 30 dk saklanır.
+  let spCache = { at: 0, list: null };
+  async function sponsorList() {
+    if (spCache.list && now() - spCache.at < 30 * 60_000) return spCache.list;
+    const ls = await db.collection('futbolLeagues').get();
+    const top = ls.docs.filter((d) => (Number(d.data()?.tier) || 9) === 1).map((d) => d.id);
+    const names = [];
+    for (const id of top) {
+      const ts = await db.collection('futbolTeams').where('leagueId', '==', id).get();
+      ts.docs.forEach((d) => {
+        const n = d.data()?.sponsorFactoryName;
+        if (n) names.push(String(n).slice(0, 40));
+      });
+    }
+    const list = [...new Set(names)].slice(0, 8);
+    spCache = { at: now(), list };
+    return list;
+  }
+
   // Deklanşör: sahneyi doğrula + imzala (Firestore'a YAZILMAZ)
   async function photoShot(uid, p) {
     const cam = cleanCam(p?.cam);
@@ -211,7 +232,13 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
 
     // v147.4: çekildiği saatin gökyüzü (gündüz / gün batımı / gece / gün doğumu)
     const tod = ['day', 'sunset', 'night', 'sunrise'].includes(p?.tod) ? p.tod : null;
-    const att = { type: 'cityPhoto', cam, people: picked, cars, vert: true, ...(tod ? { tod } : {}) };
+    let sp = null;
+    try {
+      sp = await sponsorList();
+    } catch {
+      sp = null; // reklam panosu varsayılan yazıyla çizilir
+    }
+    const att = { type: 'cityPhoto', cam, people: picked, cars, vert: true, ...(tod ? { tod } : {}), ...(sp ? { sp } : {}) };
     const body = JSON.stringify({ uid, at: t, att });
     if (body.length > 120_000) fail('resource-exhausted', 'Fotoğraf çok kalabalık.');
     return { shot: body, sig: await sign(body), att };

@@ -38,9 +38,11 @@ export function materialRange(storePrice) {
 }
 
 // v146: ilanın parti süresi (otomatik satılan 3 gün, diğerleri 7 gün)
+// v153: fabrika (malzeme) ilanı: uygunsa 3 günde satılır, değilse 3 günde kalkar.
+export const MATERIAL_TTL_MS = AUTO_SELL_TTL_MS;
+// eslint-disable-next-line no-unused-vars
 export function materialTtl(materialType, unitPrice) {
-  const { min, max } = materialRange(AMAZOR_PRICES[materialType]);
-  return ttlFor(autoSellsAt(unitPrice, min, max));
+  return MATERIAL_TTL_MS;
 }
 export function itemTtl(price, band) {
   return ttlFor(Number(band?.max) > 0 && autoSellsAt(price, band.min, band.max));

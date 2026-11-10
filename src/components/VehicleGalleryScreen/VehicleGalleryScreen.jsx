@@ -9,7 +9,6 @@ import './VehicleGalleryScreen.css';
 import { CarStatBars } from '../RaceTrackScreen/CarStats';
 import { useShopOffers, withOfferPrices } from '../../hooks/useShopOffers';
 import { priceChangedText } from '../../lib/priceChanged';
-import { JOBS } from '../../../functions/vehicleKinds.js';
 
 // v151 — galeri 3 sekme: Araba · Ticari (meslek) · Motor
 export const GALLERY_TABS = [
@@ -27,18 +26,6 @@ export function VehicleKindTabs({ value, onChange }) {
         </button>
       ))}
     </div>
-  );
-}
-// ticari / motor: kartta hız çubukları yerine kısa bilgi
-export function VehicleKindInfo({ car }) {
-  const k = kindOfCar(car);
-  if (k === 'araba') return null;
-  const J = car.job ? JOBS[car.job] : null;
-  return (
-    <span className="vg-kind-info">
-      {J ? `💼 ${car.desc || J.name} · günde ${J.daily} ${J.unit}, ort. ${J.avg.toLocaleString('tr-TR')} altın` : `🏍️ ${car.seats || 1} kişilik`}
-      <em>⏳ 20 gün · 🔧 tamir / geliştirme yok · 🎨 modifiye var</em>
-    </span>
   );
 }
 
@@ -118,7 +105,7 @@ export default function VehicleGalleryScreen({ items = null, onBuy = null, disab
             <CarImg className="vehicle-card-image" catalogId={car.id} alt={car.name} />
             <div className="vehicle-card-info">
               <span className="vehicle-card-name">{car.name}</span>
-              {kindOfCar(car) === 'araba' ? <CarStatBars catalogId={car.id} level={1} compact /> : <VehicleKindInfo car={car} />}
+              {kindOfCar(car) === 'araba' && <CarStatBars catalogId={car.id} level={1} compact />}
               <span className="vehicle-card-price">{car.price.toLocaleString('tr-TR')} altın</span>
             </div>
             <button

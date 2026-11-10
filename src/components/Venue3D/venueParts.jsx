@@ -579,18 +579,18 @@ export function BelediyePart({ panel, setPanel, walk }) {
 // ── SEYYAR SATICILAR (v145) ──────────────────────────────────────────────────
 // Kokoreççi / Simitçi / Dönerci / Köfteci — açık hava 3D mekân.
 //   • Sol üst: şüphe (parktaki gibi).
-//   • Sağ üst: "🛒 Seyyar satıcı" → Alışveriş yap · Haraç kes (bugün yapıldıysa → Menü).
-//   • Arabaya yaklaşınca: Alışveriş yap · Haraç kes · Menü (bugün yapıldıysa sadece Menü).
+//   • Sağ üst: "🛒 Seyyar satıcı" → Bağış yap · Haraç kes (bugün yapıldıysa → Menü).
+//   • Arabaya yaklaşınca: Bağış yap · Haraç kes · Menü (bugün yapıldıysa sadece Menü).
 //   • Satıcıya dokununca: yanına yürür, aynı seçenekler.
-//   • Alışveriş: 1.000 altın, ürün ele gelir, −5 şüphe (günde 1). Menü: serbest.
+//   • Bağış (v153, eski adı alışveriş): 1.000 altın, ele ürün gelmez, −5 şüphe (günde 1). Menü: serbest.
 //   Gelirin tamamı devlete (Ticaret Bakanlığı) — sunucu: buyFromVendor.
 function VendorChoice({ cfg, busy, err, onBuy, onHarac, onMenu, onClose }) {
   return (
     <Sheet title={`${cfg.icon} ${cfg.title}`} onClose={onClose}>
       <div className="v3-vendor-acts">
         <button className="v3-vendor-act buy" disabled={busy} onClick={onBuy}>
-          <HeldIcon product={cfg.product} size={44} />
-          <b>{busy ? 'Alınıyor…' : 'Alışveriş yap'}</b>
+          <span className="v3-vendor-ico">🤲</span>
+          <b>{busy ? 'Bağışlanıyor…' : 'Bağış yap'}</b>
           <em>
             <span className="gold-coin-icon" style={{ width: 12, height: 12 }} /> {fmt(VENDOR_COST)} · 🕵️ −5
           </em>
@@ -648,11 +648,10 @@ export function VendorPart({ venue, panel, setPanel, flash, walk, engineRef, onO
     setErr(null);
     try {
       await buyFromVendor(vendorId);
-      const label = HOUSE_PRODUCTS[v.product]?.label || 'Ürün';
-      flash?.(`${label} elinde (2 dk) · −${fmt(VENDOR_COST)} · 🕵️ −5`);
+      flash?.(`🤲 Bağış yaptın · −${fmt(VENDOR_COST)} · 🕵️ −5`);
       setPanel(null);
     } catch (e) {
-      setErr(e?.message || 'Alışveriş yapılamadı.');
+      setErr(e?.message || 'Bağış yapılamadı.');
       setPanel('choose');
     } finally {
       setBusy(null);

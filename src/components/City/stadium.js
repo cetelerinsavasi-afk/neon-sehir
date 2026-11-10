@@ -550,6 +550,7 @@ export function buildStadyum(kit, lot) {
       scoreboard,
       // maç saatinde sahaya girilmez (kit yereli, merkez 0,0)
       pitchLock: { hw: 20.85, hd: 13.85 },
+      getSponsors: () => (lastAds ? JSON.parse(lastAds) : null),
       setSponsors(names) {
         const key = JSON.stringify(names || []);
         if (key === lastAds) return;

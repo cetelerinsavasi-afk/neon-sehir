@@ -44,7 +44,7 @@ const TASK_DEFS = {
   4: { emoji: '🕌', title: "Camii'ye gidip ibadet et", info: 'Günde 5 vakit ibadet ederek şüphe miktarını düşük tut ve saygınlık kazan, şüphen yüksekken polise yakalanırsın.' },
   5: { emoji: '🔫', title: 'Herhangi bir silah al', info: 'Silah alıp güçlenebilir ve seyyar satıcılardan haraç kesebilirsin.' },
   6: { emoji: '💸', title: 'Bir seyyar satıcıdan haraç kes', info: 'Seyyar satıcılardan haraç kesip para kazanabilirsin.' },
-  7: { emoji: '🛒', title: 'Bir seyyar satıcıyla alışveriş yap', info: 'Seyyar satıcılarla alışveriş yaparak şüpheni azaltıp saygınlık kazanabilirsin.' },
+  7: { emoji: '🤲', title: 'Bir seyyar satıcıya bağış yap', info: 'Seyyar satıcılara bağış yaparak şüpheni azaltıp saygınlık kazanabilirsin.' },
   9: { emoji: '🚨', title: "Şüpheni 20'ye çıkart", info: 'Şüphen yükseldikçe yakalanma riskin artar, yakalanırsan para cezası yersin.' },
   10: { emoji: '🤝', title: 'Polise rüşvet ver', info: 'Rüşvet vermek şüpheyi 20 düşürür.' },
   11: { emoji: '🚗', title: 'Herhangi bir araba al', info: 'Arabanla yarışlara katılabilirsin.' },

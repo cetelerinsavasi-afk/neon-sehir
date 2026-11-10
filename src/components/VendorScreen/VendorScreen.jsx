@@ -11,10 +11,10 @@ export default function VendorScreen({ vendorId, vendorName }) {
   return (
     <div>
       <SimpleActionScreen
-        signInMessage="Alışveriş yapmak için giriş yapmalısın."
-        description={`${vendorName}'dan günde bir kez, ${VENDOR_COST.toLocaleString('tr-TR')} altına alışveriş yaparak şüpheni 5 azalt, saygınlık kazan.`}
-        buttonLabel={`Alışveriş Yap (${VENDOR_COST.toLocaleString('tr-TR')} altın)`}
-        doneLabel="Bugün zaten alışveriş yaptın"
+        signInMessage="Bağış yapmak için giriş yapmalısın."
+        description={`${vendorName}'ya günde bir kez ${VENDOR_COST.toLocaleString('tr-TR')} altın bağış yaparak şüpheni 5 azalt, saygınlık kazan.`}
+        buttonLabel={`Bağış Yap (${VENDOR_COST.toLocaleString('tr-TR')} altın)`}
+        doneLabel="Bugün zaten bağış yaptın"
         isDone={(actions) => Boolean(actions.vendorPurchases?.[vendorId])}
         goldCost={VENDOR_COST}
         actionFn={() => buyFromVendor(vendorId)}

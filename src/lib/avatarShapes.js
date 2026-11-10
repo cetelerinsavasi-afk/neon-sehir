@@ -747,6 +747,40 @@ function botOverlayShape(s) {
     .join('');
 }
 
+// v153 — haraç animasyonu pozları (şehir): 'aim' (silah doğrultmuş kol) ve
+// 'handsup' (eller havada, korkmuş ağız + ter damlası).
+function poseBox(s) {
+  return s.build === 'zayif' ? { tl: 98, tr: 222, ty: 264 } : s.build === 'iri' ? { tl: 50, tr: 270, ty: 258 } : { tl: 70, tr: 250, ty: 262 };
+}
+function aimArmShape(s) {
+  const B = poseBox(s);
+  const sleeve = shadeColor(s.clothColor, -12);
+  const sx = Math.min(B.tr - 14, 236);
+  const y = B.ty + 16;
+  return `<g>
+    <path d="M${sx},${y + 6} L262,${y - 2}" stroke="${sleeve}" stroke-width="28" stroke-linecap="round"/>
+    <circle cx="270" cy="${y - 2}" r="14" fill="${s.skin}"/>
+    <g transform="translate(258,${y - 24}) rotate(-4)">
+      <rect x="10" y="12" width="13" height="24" rx="3" fill="#141414" transform="rotate(-12 16 12)"/>
+      <rect x="0" y="0" width="58" height="17" rx="3" fill="#232323"/>
+      <rect x="4" y="2.5" width="46" height="3" fill="#4a4a4a"/>
+      <rect x="52" y="4" width="8" height="8" fill="#3a3a3a"/>
+      <circle cx="56" cy="8" r="2.2" fill="#000"/>
+    </g>
+    <path d="M262,${y - 6} q8,-5 16,0" stroke="${shadeColor(s.skin, -18)}" stroke-width="3" fill="none"/>
+  </g>`;
+}
+function handsUpShape(s) {
+  const B = poseBox(s);
+  const sleeve = shadeColor(s.clothColor, -12);
+  const arm = (x0, x1) => `
+    <path d="M${x0},${B.ty + 16} L${x1},150" stroke="${sleeve}" stroke-width="24" stroke-linecap="round"/>
+    <ellipse cx="${x1}" cy="132" rx="14" ry="17" fill="${s.skin}"/>
+    <path d="M${x1 - 9},120 v-10 M${x1 - 3},118 v-13 M${x1 + 3},118 v-13 M${x1 + 9},120 v-10" stroke="${s.skin}" stroke-width="5" stroke-linecap="round"/>`;
+  return arm(B.tl + 16, Math.max(B.tl - 6, 34)) + arm(B.tr - 16, Math.min(B.tr + 6, 286));
+}
+const SCARED_FACE = '<ellipse cx="160" cy="210" rx="11" ry="14" fill="#3a1010"/><ellipse cx="160" cy="216" rx="6" ry="4" fill="#c0505a"/><path d="M222,150 q6,10 0,14 q-6,-4 0,-14z" fill="#7fd8ff" opacity="0.9"/>';
+
 // buildAvatarSvgInner — tüm parçaları birleştirip <svg> içine konacak
 // markup'ı üretir.
 //
@@ -770,7 +804,8 @@ export function buildAvatarSvgInner(rawState, opts = {}) {
 
   let upperBody = '';
   upperBody += torsoShape(s);
-  upperBody += heldItemShape(s);
+  if (pose === 'handsup') upperBody += handsUpShape(s);
+  else if (pose !== 'aim') upperBody += heldItemShape(s);
   upperBody += neckAccShape(s);
   upperBody += hairBackShape(s);
   upperBody += neckShape(s);
@@ -789,6 +824,8 @@ export function buildAvatarSvgInner(rawState, opts = {}) {
   upperBody += faceAccShape(s);
   upperBody += botOverlayShape(s); // v132 — bot kıyafet çizimleri
   upperBody += L.front;
+  if (pose === 'aim') upperBody += aimArmShape(s);
+  if (pose === 'handsup') upperBody += SCARED_FACE;
 
   let svg = '';
   svg += `<ellipse cx="160" cy="${GROUND_Y}" rx="74" ry="12" fill="#000" opacity="0.35"/>`;
