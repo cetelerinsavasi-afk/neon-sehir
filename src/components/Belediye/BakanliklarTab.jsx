@@ -143,6 +143,7 @@ function Ticaret({ r, c, rates }) {
           { label: 'Sıfır satış vergisi', value: nf(sfTax), sub: 'kârdan' },
           { label: 'Piyango vergisi', value: nf(c.in.vergi_piyango), sub: st.pi_bilet ? `${nf(st.pi_bilet)} bilet · ödül ${nf(st.pi_odul)}` : null },
           { label: 'Seyyar satıcılar', value: nf(c.in.seyyar_satis), sub: st.sy_n ? `${nf(st.sy_n)} satış · tamamı devlete` : 'tamamı devlete' },
+          { label: 'Benzinlik', value: nf(c.in.benzinlik), sub: st.bz_n ? `⛽ ${nf(st.bz_benzin_n)} · 🛒 ${nf(st.bz_market_n)} · tamamı devlete` : 'benzin + market · tamamı devlete' },
         ]}
       />
       {rows.length > 0 && (

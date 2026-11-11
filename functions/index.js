@@ -1,3 +1,4 @@
+import { createGasStation } from './gasStation.js';
 import { MACHINE_BASE_PRICE, MACHINE_PROD_RANGE, WORKERLESS_RANGE, TIERED_MACHINE_TYPES, tieredMachinePrice, tieredFleetValue } from './factoryMachineRules.js';
 import { onCall as onCallRaw, onRequest as onRequestRaw, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule as onScheduleRaw } from 'firebase-functions/v2/scheduler';
@@ -357,10 +358,14 @@ const cityPhoto = createCityPhoto({
   assertCanSpeak: (uid, content) => moderation.assertCanSpeak(uid, content),
   isProduct: (k) => Object.prototype.hasOwnProperty.call(HOUSE_PRODUCTS, k),
 });
+// v156 — benzinlik: benzin al (RP, 100 altın) + market (eldeki ürün)
+const gasStation = createGasStation({ db, FieldValue: admin.firestore.FieldValue, HttpsError, goldTag, stateWrite, heldItemMs: 120_000 }); // = HELD_ITEM_MS (2 dk)
 export const cityAction = onCall(async (request) => {
   const uid = requireAuth(request);
   const p = request.data || {};
   if (p.op === 'photoShot') return cityPhoto.photoShot(uid, p);
+  if (p.op === 'fuelBuy') return gasStation.fuelBuy(uid);
+  if (p.op === 'marketBuy') return gasStation.marketBuy(uid, p);
   throw new HttpsError('invalid-argument', 'Geçersiz işlem.');
 });
 

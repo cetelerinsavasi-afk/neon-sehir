@@ -86,6 +86,7 @@ export const STATE_IN = {
   vergi_sifirSilah: 'Vergi · Sıfır silah satış kârı', // v130
   vergi_sifirAraba: 'Vergi · Sıfır araba satış kârı', // v130
   seyyar_satis: 'Seyyar satıcı satışları', // v145 — Ticaret Bakanlığı
+  benzinlik: 'Benzinlik satışları (benzin + market)', // v156 — Ticaret Bakanlığı
   bagis: 'Belediyeye bağışlar',
   adaylik: 'Belediye başkanlığı adaylık ücretleri', // v136
   borc_acik: 'Kasa açığının borca çevrilmesi (tek seferlik)',

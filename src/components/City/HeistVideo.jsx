@@ -131,9 +131,10 @@ export default function HeistVideo({ job, onClose }) {
           <p>{isVendorHeist(job.target) ? 'Haraç kesiliyor…' : 'Soygun başlıyor…'}</p>
         </div>
       )}
-      {(phase === 'load' || isVendorHeist(job.target)) && (
+      {/* v156: soygunda yüklenirken sağ altta düğme yok (videonun kendi "Geç"i var); haraçta sağ üstte */}
+      {isVendorHeist(job.target) && (
         <button className="hv-skip" onClick={() => closeRef.current?.()}>
-          Geç ⏭
+          Geç
         </button>
       )}
     </div>,

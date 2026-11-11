@@ -41,6 +41,7 @@ export const MONEY_SOURCES = {
   dilenci: { icon: '🤲', label: 'Dilenci bağışı' },
   rusvet: { icon: '🤝', label: 'Rüşvet' },
   seyyar: { icon: '🌭', label: 'Seyyar satıcı' },
+  benzinlik: { icon: '⛽', label: 'Benzinlik (benzin / market)' }, // v156
   kacak: { icon: '💊', label: 'Kaçak satışı' },
   mekan: { icon: '🍹', label: 'Mekân alışverişi' },
   liman: { icon: '⚓', label: 'Liman siparişi / iadesi' },

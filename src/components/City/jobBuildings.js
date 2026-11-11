@@ -90,14 +90,55 @@ export function buildHastane(kit, lot) {
 export function buildBenzinlik(kit, lot) {
   const { w, d } = lot;
   kit.floor('beton', w, d, 0, 0);
-  // market (arkada)
+  // market (arkada) — v156: cam vitrinli gerçek market; içi oyunun market mobilyaları, kasada kasiyer.
+  // Bina girilmez (kütle); kapının önünde "🛒 Market" düğmesi (sunucu: cityAction marketBuy).
   const bw = 12;
   const bd = 7;
   const bz = -d / 2 + bd / 2 + 0.5;
-  kit.wallBox('beton_duvar', bw, 4.4, bd, -5, 0, bz, { tint: '#f2f2ee' });
-  kit.box(bw, 1.6, 0.05, glowMat('#cfeaff', 0.9), -5, 1.4, bz + bd / 2 + 0.03, { cast: false });
-  kit.sign('benzinmarket', 'MARKET 7/24', 0.7, -5, 3.6, bz + bd / 2 + 0.06, 0, { color: '#ffffff', glow: '#3ad07a', font: '900 100px Arial, sans-serif', li: 5, ld: 9 });
-  kit.mass(bw, 4.6, bd, -5, bz);
+  const mx = -5;
+  const fz = bz + bd / 2; // ön cephe (cam)
+  const H = 4.4;
+  kit.floor('zemin_beyaz', bw - 0.4, bd - 0.4, mx, bz, 0.16);
+  kit.wallBox('beton_duvar', bw, H, 0.25, mx, 0, bz - bd / 2 + 0.125, { tint: '#f2f2ee' }); // arka
+  kit.wallBox('beton_duvar', 0.25, H, bd, mx - bw / 2 + 0.125, 0, bz, { tint: '#f2f2ee' }); // sol
+  kit.wallBox('beton_duvar', 0.25, H, bd, mx + bw / 2 - 0.125, 0, bz, { tint: '#f2f2ee' }); // sağ
+  kit.box(bw + 0.3, 0.3, bd + 0.3, M('#e6e8ea', 0.6), mx, H, bz); // çatı
+  kit.box(bw + 0.3, 0.9, 0.12, M('#1c7a46', 0.5, 0.2), mx, H - 0.9, fz + 0.02); // yeşil saçak bandı
+  // cam vitrin + otomatik kapı (kapı boşluğu x = mx + 3)
+  const glass = new THREE.MeshStandardMaterial({ color: '#bfe6ff', roughness: 0.05, metalness: 0.1, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide });
+  const dx = mx + 3;
+  const seg = (x0, x1) => {
+    const w = x1 - x0;
+    const g = new THREE.Mesh(new THREE.BoxGeometry(w, H - 1.0, 0.05), glass);
+    g.position.set((x0 + x1) / 2, (H - 1.0) / 2 + 0.12, fz);
+    kit.add(g);
+  };
+  seg(mx - bw / 2 + 0.25, dx - 0.8);
+  seg(dx + 0.8, mx + bw / 2 - 0.25);
+  for (const x of [mx - bw / 2 + 0.25, dx - 0.8, dx + 0.8, mx + bw / 2 - 0.25]) kit.box(0.08, H - 0.9, 0.1, M('#2a2f3a', 0.5, 0.5), x, 0.12, fz);
+  kit.item('door_market', dx, fz, 0, 0, { solid: false });
+  // içerisi: içecek dolapları (arka duvar), raf sıraları, kasa
+  for (const x of [-9.6, -8.7, -7.8, -6.9]) kit.item('drinkfridge', x, bz - bd / 2 + 0.55, 0, 0);
+  for (const z of [bz - 0.9, bz + 1.0]) {
+    kit.item('shelf', mx - 3.2, z, 0, 0);
+    kit.item('shelf', mx - 1.2, z, 0, 0);
+  }
+  kit.item('beltcheckout', mx + 3.6, bz + 0.2, 6, 0);
+  kit.item('plantb', mx + bw / 2 - 0.7, fz - 0.6, 0, 0);
+  kit.light(mx, H - 0.5, bz, '#f4fbff', 5, 9);
+  kit.box(bw - 0.6, 0.06, 0.4, glowMat('#eaf6ff', 1.6), mx, H - 0.1, bz, { cast: false });
+  kit.sign('benzinmarket', 'MARKET 7/24', 0.7, mx, H - 0.45, fz + 0.09, 0, { color: '#ffffff', glow: '#3ad07a', font: '900 100px Arial, sans-serif', li: 5, ld: 9 });
+  kit.mass(bw, H + 0.2, bd, mx, bz);
+  // kasiyer (cam arkasında görünür) + kapı önünde market düğmesi
+  kit.npcs.push({
+    id: 'npc_benzinci',
+    name: 'Kasiyer Selin',
+    av: { gender: 'kadin', build: 'standart', skin: '#e0ac69', hairStyle: 'ponytail', hairColor: '#3b2a1a', clothing: 'vest', clothColor: '#1c7a46', neckAcc: 'none', pantsColor: '#22262f' },
+    x: mx + 4.6,
+    z: bz + 0.2,
+    lines: ['Hoş geldiniz!', 'Kola soğuk, cips taze!', 'Benzin dışarıda, pompalarda.'],
+  });
+  kit.zone({ x: dx, z: fz + 1.4, r: 2.4, kind: 'market', title: '🛒 Benzinlik Market' });
   // v152: kanopi, pompalar, fiyat totemi, hava makinesi, oto yıkama — Benzinlik mobilyaları
   const cz = 3;
   for (const x of [-4.4, 4.4]) {
@@ -111,7 +152,7 @@ export function buildBenzinlik(kit, lot) {
   kit.item('carwash', w / 2 - 3.2, -d / 2 + 4.5, 2, 0);
   kit.item('cone', -w / 2 + 1.5, d / 2 - 2, 0, 0);
   kit.item('cone', -w / 2 + 1.5, d / 2 - 4, 0, 0);
-  kit.sign('benzinlik', 'NEON PETROL', 0.9, -5, 5.2, bz + bd / 2 + 0.06, 0, { color: '#3ad07a', glow: '#3ad07a', font: '900 100px Arial, sans-serif', li: 5, ld: 9 });
+  kit.sign('benzinlik', 'NEON PETROL', 0.9, -5, 5.2, bz + bd / 2 + 0.12, 0, { color: '#3ad07a', glow: '#3ad07a', font: '900 100px Arial, sans-serif', li: 5, ld: 9 });
   kit.pool(0, cz, '#3ad07a', 16, 0.16, 0.3);
   return { mapLabel: { text: 'BENZİNLİK', y: 9, z: cz } };
 }

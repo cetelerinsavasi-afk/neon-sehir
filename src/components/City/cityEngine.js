@@ -3635,6 +3635,20 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
           camGlide = null;
         },
         isBusy: () => Boolean(harac || driving || self.ride || self.seat),
+        // v156: soygun iç mekânı başlık kartı sırasında derlenir (kapıda donma olmasın)
+        warm: (pos, look) => {
+          renderer.compile(scene, camera);
+          // iç mekânı bir kez GERÇEKTEN çiz (başlık kartı opak siyahın altında, görünmez):
+          // sürücü shader'ları bağlar, dokuları yükler → kapıdan girerken ilk karede donma olmaz
+          if (pos && look) {
+            const c = camera.clone();
+            c.position.copy(pos);
+            c.lookAt(look);
+            c.updateMatrixWorld();
+            c.updateProjectionMatrix();
+            renderer.render(scene, c);
+          }
+        },
       });
 
   const api = {

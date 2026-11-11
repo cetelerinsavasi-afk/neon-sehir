@@ -1,4 +1,4 @@
-import { system, PREVIEW_UID, fakeDb, houses, shop, futbolPro, visits, raceTa, cosmetics, stream, casino } from './backend.js';
+import { system, PREVIEW_UID, fakeDb, houses, shop, futbolPro, visits, raceTa, cosmetics, stream, casino, gasStation } from './backend.js';
 import { FieldValue } from '../../functions/gang/test/fakeFirestore.js';
 import { sanitizeDrawing } from '../../functions/drawingData.js';
 import { buildSongAttachment, buildNewsInterviewAttachment, buildPaintingAttachment } from '../../functions/homeOffice.js';
@@ -102,6 +102,8 @@ export function httpsCallable(functions, name) {
       if (name === 'buyFromVendor' && window.__buyFromVendor) return { data: await window.__buyFromVendor(data) }; // v145 önizleme
       if (name === 'houseAction') return { data: await houses.houseAction(request) };
       if (name === 'cityAction' && data?.op === 'photoShot') return { data: await cityPhoto.photoShot(request.auth.uid, data) };
+      if (name === 'cityAction' && data?.op === 'fuelBuy') return { data: await gasStation.fuelBuy(PREVIEW_UID) }; // v156
+      if (name === 'cityAction' && data?.op === 'marketBuy') return { data: await gasStation.marketBuy(PREVIEW_UID, data) };
       if (name === 'shopAction') return { data: await shop.shopAction(request) };
       if (name === 'recordVenueVisit') return { data: await visits.recordVenueVisit(PREVIEW_UID, data) };
       if (name === 'futbolProAction') return { data: await futbolPro.action(PREVIEW_UID, data) };

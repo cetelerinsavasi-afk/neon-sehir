@@ -89,3 +89,18 @@
   font-weight: 800;
 }
 .cs-root.cs-heist-on > :not(.hs-stage) { display: none !important; }
+/* v156 — açılış: siyaha ani geçiş yerine kısa yumuşak geçiş; başlık kartı kompozitörde (opacity/transform)
+   canlandırılır → arka planda sahne kurulurken bile akıcı */
+.hx-fade.on.intro{animation:hxIntro .32s ease-out both}
+@keyframes hxIntro{from{opacity:0}to{opacity:1}}
+.hx-title{will-change:opacity}
+.hx-title.on b{animation:hxTitleIn .7s cubic-bezier(.2,1.1,.3,1) both;will-change:transform,opacity}
+.hx-title.on small,.hx-title.on i{animation:hxTitleSub .6s ease-out .12s both}
+@keyframes hxTitleIn{from{opacity:0;transform:scale(1.12);letter-spacing:.22em}to{opacity:1;transform:none}}
+@keyframes hxTitleSub{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.hx-result{z-index:20;touch-action:manipulation}
+.hx-res-btn button{touch-action:manipulation;-webkit-tap-highlight-color:transparent;position:relative;z-index:1}
+/* v156 — şehir dışı videoda "Geç" (sadece haraç) sağ üstte, videodaki düğmelerle aynı görünüm */
+.hv-skip{top:calc(9.5% + 10px);bottom:auto;right:12px;padding:6px 12px;font-size:12px;background:rgba(8,10,18,.62);border-color:rgba(255,255,255,.18)}
+.hv-loading .hs-spinner{display:none}
+.hv-loading p{animation:hxTitleSub .5s ease-out both}

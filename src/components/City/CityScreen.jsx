@@ -20,6 +20,8 @@ import { useBlocks } from '../../contexts/BlocksContext';
 import { useBackClose } from '../../lib/backStack';
 import { blockProfanity } from '../../lib/profanityGuard';
 import { buyFromVendor, buyFromBufe, sellContrabandAtPark, cityAction, createSixtagramPost, shopAction } from '../../services/gameActions';
+import { FUEL_PRICE, GAS_MARKET_MENU } from '../../../functions/gasStation.js';
+import { GAS_STATION } from '../../../functions/cityJobsData.js';
 import { createJobRunner } from './cityJobs.js';
 import { JOBS } from '../../../functions/vehicleKinds.js';
 import { invalidateSixtagramFeed } from '../../hooks/useSixtagramFeed';
@@ -74,6 +76,9 @@ const BUFE_MENU = [
   { id: 'latte', price: 500 },
 ];
 const HOLD_MS = 120_000;
+
+// v156 — benzinlik pompaları (lot merkezinden 3 m önde, iki kanopi) → "⛽ Benzin al"
+const PUMPS = { x: GAS_STATION.x, z: GAS_STATION.z + 3, r: 9 };
 
 function Sheet({ title, onClose, children, closeLabel = 'Uzaklaş' }) {
   return (
@@ -227,7 +232,9 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const [carCam, setCarCam] = useState('out'); // v149 — araba içi kamera
   // v149 — stadyum: içindeyken Futbol düğmesi, maç saatinde maç seçici (her cihazda ayrı)
   const [inStadium, setInStadium] = useState(false);
-  const [inPist, setInPist] = useState(false); // v154: yarış pisti alanı (tribün / pit)
+  const [inPist, setInPist] = useState(false);
+  const [atPump, setAtPump] = useState(false); // v156
+  const [fueling, setFueling] = useState(false); // v156 // v154: yarış pisti alanı (tribün / pit)
   // v154: şehir açıkken yarış ekranı / yarış balonu şehrin üstünde görünsün
   useEffect(() => {
     document.body.classList.add('ns-city-open');
@@ -346,6 +353,9 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           hudRef.current = s;
           setInStadium((v) => (v === (s.area === 'stadyum') ? v : s.area === 'stadyum'));
           setInPist((v) => (v === (s.area === 'pist') ? v : s.area === 'pist'));
+          // v156: arabayla pompaların yanında mı? (⛽ Benzin al)
+          const atPump = Boolean(s.driving && s.car && Math.hypot(s.car.x - PUMPS.x, s.car.z - PUMPS.z) < PUMPS.r);
+          setAtPump((v) => (v === atPump ? v : atPump));
           drawMiniRef.current?.();
           setHud((h) => {
             const d = s.drive;
@@ -826,6 +836,37 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     }
   };
 
+  // --- v156 benzinlik: benzin (RP) + market --------------------------------------------------
+  const buyFuel = async () => {
+    if (fueling || busy) return;
+    if (gold < FUEL_PRICE) return flash('Yetersiz altın.');
+    setFueling(true);
+    try {
+      // pompa sesi / dolum çubuğu (1,6 sn) sunucu çağrısıyla birlikte
+      await Promise.all([cityAction({ op: 'fuelBuy' }), new Promise((r) => setTimeout(r, 1600))]);
+      flash(`⛽ Depo full! · −${fmt(FUEL_PRICE)}`);
+    } catch (e) {
+      flash(e?.message || 'Benzin alınamadı.');
+    } finally {
+      setFueling(false);
+    }
+  };
+  const marketBuy = async (item) => {
+    if (busy) return;
+    setBusy(`m_${item}`);
+    try {
+      await cityAction({ op: 'marketBuy', item });
+      holdFor(item);
+      setPanel(null);
+      engineRef.current?.npcSay?.('npc_benzinci', 'Afiyet olsun! 🙂');
+      flash(`${HOUSE_PRODUCTS[item]?.emoji || ''} ${HOUSE_PRODUCTS[item]?.label} · −${fmt(GAS_MARKET_MENU[item])}`);
+    } catch (e) {
+      flash(e?.message || 'Satın alma başarısız.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const sendChat = (text) => {
     if (blockProfanity(text)) return false;
     if (!netRef.current?.say(text) && !netRef.current?.isOffline()) {
@@ -867,6 +908,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     if (zone.kind === 'pist') list.push({ label: '🏁 Yarış Pisti', cls: 'take', on: () => openIn('yaris_pisti') });
     // v154: tribünde / pitte otururken de yarışlara katılınabilsin
     if (zone.kind === 'seated' && inPist) list.push({ label: '🏁 Yarış Pisti', cls: 'take', on: () => openIn('yaris_pisti') });
+    if (zone.kind === 'market') list.push({ label: '🛒 Market', cls: 'take', on: () => setPanel({ kind: 'market' }) });
     if (zone.kind === 'atm') list.push({ label: '🏧 Banka', cls: 'take', on: () => setPanel({ kind: 'phone', app: 'banka' }) });
     if (zone.kind === 'car') {
       list.push({ label: '🚗 Bin', cls: 'take', on: () => engineRef.current.enterCar() });
@@ -1044,6 +1086,12 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                 <button className="hs-act" onClick={() => engineRef.current.exitCar()}>🚪 İn</button>
                 <button className="cs-round sm" onClick={toggleCarCam} title={carCam === 'in' ? 'Dış kamera' : 'İç kamera'}>{carCam === 'in' ? '🚗' : '🎥'}</button>
                 <button className="cs-round sm" onClick={() => { const m = !muted; setMuted(m); engineRef.current.setMuted(m); }}>{muted ? '🔇' : '🔊'}</button>
+                {/* v156: benzinlikte pompanın yanında — sadece RP (100 altın) */}
+                {(atPump || fueling) && !guest && (
+                  <button className={`hs-act cs-fuel${fueling ? ' on' : ''}`} disabled={fueling} onClick={buyFuel}>
+                    {fueling ? <><i />⛽ Dolduruluyor…</> : `⛽ Benzin al · ${fmt(FUEL_PRICE)}`}
+                  </button>
+                )}
               </div>
               <div className="cs-steer">
                 <HoldBtn className="cs-round" onHold={(on) => setDrive({ steer: on ? -1 : 0 })}>◀</HoldBtn>
@@ -1215,6 +1263,20 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           </div>
         );
       })()}
+      {panel?.kind === 'market' && (
+        <Sheet title="🛒 Benzinlik Market" onClose={() => setPanel(null)}>
+          <div className="cs-market">
+            {Object.entries(GAS_MARKET_MENU).map(([id, price]) => (
+              <button key={id} className="cs-market-item" disabled={Boolean(busy) || gold < price} onClick={() => marketBuy(id)}>
+                <span>{HOUSE_PRODUCTS[id]?.emoji}</span>
+                <b>{HOUSE_PRODUCTS[id]?.label}</b>
+                <em>{busy === `m_${id}` ? '…' : `${fmt(price)} altın`}</em>
+              </button>
+            ))}
+          </div>
+          <p className="cs-market-note">Aldığın ürün 2 dakika elinde kalır; yakınındakine ısmarlayabilirsin.</p>
+        </Sheet>
+      )}
       {panel?.kind === 'shady' && (
         <Sheet title="🕶️ Şüpheli Adam" onClose={() => setPanel(null)}>
           <ShadyDealPanel qty={inventory?.yasakliMadde || 0} busy={busy === 'risky' || busy === 'safe' ? busy : null} onSell={shadySell} />

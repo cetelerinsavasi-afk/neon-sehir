@@ -311,6 +311,7 @@ function k6(t) {
       placeLabel: h,
       headMat: d,
       snapCam: m,
+      warm: W0,
     } = t,
     u = null,
     b = null,
@@ -545,6 +546,20 @@ function k6(t) {
       T.add(ee),
       Object.assign(A, { vault: T, vaultPivot: G, goldL: ee, spokes: ye.filter(($) => $.geometry?.type === "BoxGeometry") }));
   }
+  // v156: iç mekânı (ve içerideki kişileri) başlık kartı sırasında GPU'ya hazırla → kapıdan girerken
+  // ilk çizimde shader derleme / doku yükleme donması olmaz (eskiden 2-3 sn kararıyordu)
+  function Ww() {
+    if (!W0 || !p) return;
+    let A = p.g.visible,
+      T = u.npcs.map((G) => G.group.visible);
+    try {
+      ((p.g.visible = !0), u.npcs.forEach((G) => (G.group.visible = !0)), W0(b.I(5, 1.6, 6.3), b.I(0, 1.1, -1)));
+    } catch {
+      /* yoksay */
+    } finally {
+      ((p.g.visible = A), u.npcs.forEach((G, Be) => (G.group.visible = T[Be])));
+    }
+  }
   function k(A, T = "", ye = null) {
     let G = document.createElement("div");
     return ((G.className = A), T && (G.innerHTML = T), (ye || u.root).appendChild(G), G);
@@ -559,7 +574,7 @@ function k6(t) {
       (u.flash = k("hx-flash")),
       (u.barT = k("hx-bar top")),
       (u.barB = k("hx-bar bot")),
-      (u.fade = k("hx-fade on")),
+      (u.fade = k("hx-fade on intro")),
       (u.title = k("hx-title")),
       (u.cast = k("hx-cast")),
       (u.cap = k("hx-cap")),
@@ -892,6 +907,7 @@ function k6(t) {
         : (me(qe, T(7, ee + 1.3), !1),
           Ie(qe, T(0, 0)),
           J({ pos: T(-4.5, ee + 1, 1.4), look: () => new xn(qe.x, 1.1, qe.z), k: 0, kl: 6, fov: 46 })),
+      Ww(),
       (u.title.innerHTML = `<small>NEON \u015EEH\u0130R</small><b>${A.title}</b><i>${pn ? "Tek ba\u015F\u0131na" : `${Ge} ki\u015Filik ekip`} \xB7 60 saniye</i>`),
       u.title.classList.add("on"),
       g.sting(),
@@ -942,7 +958,7 @@ function k6(t) {
     if (
       (ct && Ea.push(be(ct, [T(-0.4, $(0.54)), T(-0.3, -1)], _i)),
       await Promise.all(Ea),
-      await oe(!0, 0.15),
+      await oe(!0, 0.1),
       ke(qe),
       ct && ke(ct),
       _t && ke(_t),
@@ -1094,8 +1110,8 @@ function k6(t) {
   async function Xt({ lead: A, gun: T, card: ye }) {
     let { I: G } = b,
       { crew: Be, outcome: R } = u.opts;
-    (me(A, G(5, 0, 6.3), !0),
-      T && me(T, G(5.6, 0, 6.5), !0),
+    (me(A, G(4.5, 0, 4.4), !0),
+      T && me(T, G(5.4, 0, 4.9), !0),
       J({ pos: G(-0.6, 1.55, -0.6), look: G(4.4, 1.25, 4.6), fov: 52 }),
       await oe(!1, 0.15),
       await Promise.all([be(A, G(4, 0, 3), wn), T ? be(T, G(5.6, 0, 3.6), wn) : null]),
@@ -1155,8 +1171,8 @@ function k6(t) {
     let { I: G } = b,
       { crew: Be, outcome: R, reward: ee } = u.opts,
       $ = u.npcByRole;
-    (me(A, G(5, 0, 6.3), !0),
-      T && me(T, G(5.6, 0, 6.5), !0),
+    (me(A, G(4.5, 0, 4.4), !0),
+      T && me(T, G(5.4, 0, 4.9), !0),
       J({ pos: G(-0.4, 1.55, 0.6), look: G(4.6, 1.25, 4.8), fov: 54 }),
       await oe(!1, 0.15),
       await Promise.all([be(A, G(4.2, 0, 2.8), wn), T ? be(T, G(5.8, 0, 3.4), wn) : null]),
@@ -1231,8 +1247,8 @@ function k6(t) {
     let { I: G } = b,
       { crew: Be, outcome: R, reward: ee } = u.opts,
       $ = u.npcByRole;
-    (me(A, G(5, 0, 6.3), !0),
-      T && me(T, G(5.6, 0, 6.5), !0),
+    (me(A, G(4.5, 0, 4.4), !0),
+      T && me(T, G(5.4, 0, 4.9), !0),
       J({ pos: G(-0.6, 1.55, -0.2), look: G(4.4, 1.25, 4.6), fov: 52 }),
       await oe(!1, 0.15),
       await Promise.all([be(A, G(4, 0, 3), wn), T ? be(T, G(5.6, 0, 3.6), wn) : null]),
@@ -1339,8 +1355,8 @@ function k6(t) {
     let { I: G } = b,
       { crew: Be, outcome: R, reward: ee } = u.opts,
       $ = u.npcByRole;
-    (me(A, G(5, 0, 6.3), !0),
-      T && me(T, G(5.6, 0, 6.5), !0),
+    (me(A, G(4.5, 0, 4.4), !0),
+      T && me(T, G(5.4, 0, 4.9), !0),
       J({ pos: G(-2.6, 1.55, 0.2), look: G(4.4, 1.25, 4.6), fov: 52 }),
       await oe(!1, 0.15),
       await Promise.all([be(A, G(3.2, 0, 1.4), wn), T ? be(T, G(4.8, 0, 2.2), wn) : null]),
@@ -1409,8 +1425,8 @@ function k6(t) {
     let { I: G } = b,
       { crew: Be, outcome: R, reward: ee } = u.opts,
       $ = u.npcByRole;
-    (me(A, G(5, 0, 6.3), !0),
-      T && me(T, G(5.6, 0, 6.5), !0),
+    (me(A, G(4.5, 0, 4.4), !0),
+      T && me(T, G(5.4, 0, 4.9), !0),
       J({ pos: G(-3.6, 1.7, 1.2), look: G(4.4, 1.25, 4.6), fov: 54 }),
       await oe(!1, 0.15),
       await Promise.all([be(A, G(3.4, 0, 2.6), wn), T ? be(T, G(4.8, 0, 3.4), wn) : null]),
@@ -1463,8 +1479,8 @@ function k6(t) {
     let { I: G } = b,
       { crew: Be, outcome: R, reward: ee } = u.opts,
       $ = u.npcByRole;
-    (me(A, G(5, 0, 6.3), !0),
-      T && me(T, G(5.6, 0, 6.5), !0),
+    (me(A, G(4.5, 0, 4.4), !0),
+      T && me(T, G(5.4, 0, 4.9), !0),
       J({ pos: G(-2, 1.55, 2.4), look: G(4.4, 1.25, 4.8), fov: 54 }),
       await oe(!1, 0.15),
       await Promise.all([be(A, G(3.6, 0, 2.8), wn), T ? be(T, G(5.2, 0, 3.4), wn) : null]),
@@ -1614,16 +1630,27 @@ function k6(t) {
       <ul>${ee}</ul>
       <div class="hx-res-btn"><button data-a="again">\u21BB Tekrar izle</button><button data-a="close" class="pri">Kapat</button></div>`),
       A.forEach(($, le) => (R.querySelector(`[data-n="${le}"]`).textContent = $.name)),
-      (R.querySelector('[data-a="again"]').onclick = () => {
-        let $ = u.opts;
-        (Vo(!0), Rs($));
+      ["pointerdown", "touchstart", "mousedown"].forEach(($) => R.addEventListener($, (le) => le.stopPropagation(), { passive: !0 })),
+      Rb(R.querySelector('[data-a="again"]'), () => {
+        let $ = u?.opts;
+        if (!$) return;
+        (Vo(!0), Rs($) || $.onDone?.({ outcome: $.outcome }));
       }),
-      (R.querySelector('[data-a="close"]').onclick = () => {
-        let $ = u.opts;
+      Rb(R.querySelector('[data-a="close"]'), () => {
+        let $ = u?.opts;
+        if (!$) return;
         (Vo(!1), $.onDone?.({ outcome: $.outcome }));
       }),
       requestAnimationFrame(() => R.classList.add("on")),
       G ? g.win() : g.lose());
+  }
+  // v156: düğme hem click hem pointerup ile çalışır (bazı WebView'larda click gelmiyordu); bir kez
+  function Rb(A, T) {
+    let ye = !1,
+      G = (Be) => {
+        (Be.preventDefault?.(), Be.stopPropagation?.(), ye || ((ye = !0), T()));
+      };
+    (A.addEventListener("click", G), A.addEventListener("pointerup", G));
   }
   function ri(A) {
     !u ||

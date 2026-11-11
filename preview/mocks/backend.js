@@ -142,3 +142,8 @@ export const raceTa = createRaceTa({
 
 // v78 evcil hayvan & aksesuar önizlemesi (gerçek sunucu modülü)
 export const cosmetics = createCosmetics({ db: fakeDb, FieldValue, HttpsError: PreviewHttpsError });
+
+// v156 — benzinlik (benzin al + market)
+import { createGasStation } from '../../functions/gasStation.js';
+import { stateWrite as gasStateWrite } from '../../functions/stateTreasury.js';
+export const gasStation = createGasStation({ db: fakeDb, FieldValue, HttpsError: PreviewHttpsError, goldTag: (s) => s, stateWrite: gasStateWrite, heldItemMs: 120_000 });
