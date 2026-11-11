@@ -61,6 +61,8 @@ function PlayEmeraldSection({ user, blocked, emerald }) {
   const [prices, setPrices] = useState({});
   const [busyId, setBusyId] = useState(null);
   const [note, setNote] = useState(null); // { ok, text }
+  // v155: native Play (WebView v15+) bu cihazda kullanılamıyor (Play Store yok, çocuk modu…)
+  const [unavailable, setUnavailable] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -76,6 +78,7 @@ function PlayEmeraldSection({ user, blocked, emerald }) {
       const pr = await getPlayPrices(svc);
       if (!alive) return;
       setPrices(pr);
+      if (svc.isNative && svc.unavailable) setUnavailable(true);
 
       if (user) {
         const restored = await restorePlayPurchases(svc);
@@ -92,16 +95,21 @@ function PlayEmeraldSection({ user, blocked, emerald }) {
     setBusyId(prod.productId);
     setNote(null);
     try {
-      const r = await buyWithPlay(service, prod.productId);
+      const r = await buyWithPlay(service, prod.productId, user?.uid || null);
       if (r.cancelled) return;
       if (r.pending) {
         setNote({ ok: true, text: '⏳ Ödemen onay bekliyor. Onaylanınca zümrütlerin yüklenecek.' });
+      } else if (r.ok && r.restored) {
+        setNote({ ok: true, text: `💎 Yarım kalan satın alman tamamlandı: ${r.emerald} zümrüt yüklendi. Yeni paket için tekrar dokun.` });
       } else if (r.ok) {
         setNote({ ok: true, text: `💎 ${prod.emerald} zümrüt hesabına yüklendi!` });
+      } else if (r.alreadyOwned) {
+        setNote({ ok: false, text: 'Önceki satın alman hâlâ işleniyor. Birkaç dakika sonra tekrar dene.' });
       } else {
         setNote({ ok: false, text: 'Satın alma tamamlanamadı.' });
       }
     } catch (err) {
+      if (err?.unavailable) setUnavailable(true);
       setNote({ ok: Boolean(err?.safePending), text: err?.message || 'Satın alma tamamlanamadı.' });
     } finally {
       setBusyId(null);
@@ -137,8 +145,8 @@ function PlayEmeraldSection({ user, blocked, emerald }) {
               {prod.badge && <span className="gold-store-badge">{prod.badge}</span>}
               <img className="gold-store-card-image" src={BUY_PACKAGES[i]?.image} alt={`${prod.emerald} Zümrüt`} />
               <p className="gold-store-price">{prices[prod.productId] || prod.price}</p>
-              <button className="gold-store-btn emerald" disabled={!user || Boolean(busyId)} onClick={() => buy(prod)}>
-                {busyId === prod.productId ? 'İşleniyor…' : 'Satın Al'}
+              <button className="gold-store-btn emerald" disabled={!user || Boolean(busyId) || unavailable} onClick={() => buy(prod)}>
+                {unavailable ? 'Bu cihazda kullanılamıyor' : busyId === prod.productId ? 'İşleniyor…' : 'Satın Al'}
               </button>
             </div>
           ))}

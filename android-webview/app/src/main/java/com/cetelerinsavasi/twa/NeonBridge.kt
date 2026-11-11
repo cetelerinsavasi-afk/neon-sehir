@@ -18,7 +18,7 @@ import java.util.concurrent.Executors
  *    WebView işleri runOnUiThread ile ana thread'e taşınır.
  *  - Asenkron sonuçlar window.__neonNative.resolve("<JSON>") ile döner
  *    (LauncherActivity.resolveJs — ana thread, JSON kaçışlı).
- *  - Hiçbir metot Firestore'a / ağa istek atmaz.
+ *  - Hiçbir metot Firestore'a / ağa istek atmaz (v155 faturalandırma: sadece Google Play'in kendi kütüphanesi).
  *
  * Web tarafı: src/lib/nativeBridge.js
  */
@@ -42,7 +42,36 @@ class NeonBridge(private val activity: LauncherActivity) {
             .put("versionCode", BuildConfig.VERSION_CODE)
             .put("versionName", BuildConfig.VERSION_NAME)
             .put("sdk", Build.VERSION.SDK_INT)
+            // v155: native Play faturalandırma (web bu yeteneğe göre mağazayı açar — sürüme göre değil)
+            .put("billing", PlayBilling.supported)
             .toString()
+    }
+
+    // ------------------------------------------------ v155 Google Play Faturalandırma
+    // Sonuçlar requestId ile window.__neonNative.resolve(...) üzerinden döner (bkz. PlayBilling).
+    // Native taraf zümrüt YÜKLEMEZ; tüketme sadece sunucu doğruladıktan sonra web isteyince.
+    @JavascriptInterface
+    fun billingGetDetails(requestId: String, productIdsJson: String?) {
+        if (!trusted()) return reject(requestId)
+        PlayBilling.getDetails(requestId, productIdsJson)
+    }
+
+    @JavascriptInterface
+    fun billingPurchase(requestId: String, productId: String?, accountHash: String?) {
+        if (!trusted()) return reject(requestId)
+        PlayBilling.purchase(requestId, productId, accountHash)
+    }
+
+    @JavascriptInterface
+    fun billingListPurchases(requestId: String) {
+        if (!trusted()) return reject(requestId)
+        PlayBilling.listPurchases(requestId)
+    }
+
+    @JavascriptInterface
+    fun billingConsume(requestId: String, purchaseToken: String?) {
+        if (!trusted()) return reject(requestId)
+        PlayBilling.consume(requestId, purchaseToken)
     }
 
     // ------------------------------------------------------------ Google girişi

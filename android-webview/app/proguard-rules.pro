@@ -5,3 +5,5 @@
     @android.webkit.JavascriptInterface <methods>;
 }
 -keep class com.cetelerinsavasi.twa.NeonBridge { *; }
+
+# v155: Play Faturalandırma kütüphanesi kendi kurallarını getirir (consumer rules); ek kural gerekmez.

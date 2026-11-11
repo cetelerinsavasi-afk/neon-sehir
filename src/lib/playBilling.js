@@ -14,6 +14,56 @@
 // =============================================================================
 import { IS_ANDROID_APP, IS_ANDROID_WEBVIEW } from './platform';
 import { verifyPlayPurchase } from '../services/gameActions';
+import { hasNativeBilling, nativeBillingDetails, nativeBillingPurchase, nativeBillingList, nativeBillingConsume } from './nativeBridge';
+
+// -----------------------------------------------------------------------------
+// v155 — KAPATMA ANAHTARI (WebView v15+ native Play ödemesi)
+// false yapıp siteyi yayınlarsan: WebView'da Zümrüt Mağazası ve "Satın Al" GİZLENİR
+// (yeni AAB gerekmez). AMA açılıştaki sessiz geri yükleme (quietRestorePlayPurchases →
+// sunucu doğrulaması) ÇALIŞMAYA DEVAM EDER — o anda bekleyen bir ödeme varsa zümrüt yine
+// yüklenir; yoksa Google 3 gün içinde tüketilmeyen ödemeyi iade eder ve oyuncu zümrütünü
+// alamaz. Eski TWA ve tarayıcı bu anahtardan etkilenmez.
+// -----------------------------------------------------------------------------
+export const NATIVE_PLAY_BILLING_ON = true;
+
+// WebView'da mağaza açık mı? (köprüde faturalandırma var + anahtar açık). Senkron.
+export const webViewStoreOpen = () => IS_ANDROID_WEBVIEW && hasNativeBilling() && NATIVE_PLAY_BILLING_ON;
+// Zümrüt mağazasına yönlendiren yazılar ("Telefon › Zümrüt Mağazası") gösterilsin mi?
+export const zumrutStoreReachable = () => !IS_ANDROID_WEBVIEW || webViewStoreOpen();
+// Sessiz geri yükleme bu cihazda çalışsın mı? (anahtardan BAĞIMSIZ — bkz. yukarısı)
+export const playRestoreSupported = () => IS_ANDROID_APP && (!IS_ANDROID_WEBVIEW || hasNativeBilling());
+
+// v155: native adaptör — Digital Goods servisiyle AYNI arayüz (getDetails / listPurchases / consume)
+// + purchase. "Bu cihazda Play kullanılamıyor" (BILLING_UNAVAILABLE vb.) durumunu `unavailable` ile verir.
+function createNativeService() {
+  const svc = {
+    isNative: true,
+    unavailable: false,
+    async getDetails(ids) {
+      const r = await nativeBillingDetails(ids);
+      if (Array.isArray(r?.items)) {
+        svc.unavailable = false;
+        return r.items;
+      }
+      if (r?.unavailable) svc.unavailable = true;
+      const e = new Error(r?.error || (r?.timeout ? 'Google Play yanıt vermedi.' : 'Google Play fiyatları alınamadı.'));
+      e.name = r?.code != null ? `PlayBilling${r.code}` : 'PlayBilling';
+      throw e;
+    },
+    async listPurchases() {
+      const r = await nativeBillingList();
+      if (Array.isArray(r?.purchases)) return r.purchases;
+      if (r?.unavailable) svc.unavailable = true;
+      throw new Error(r?.error || 'Google Play satın alma listesi alınamadı.');
+    },
+    async consume(purchaseToken) {
+      await nativeBillingConsume(purchaseToken);
+    },
+    purchase: (productId, accountHash) => nativeBillingPurchase(productId, accountHash),
+  };
+  return svc;
+}
+let nativeService = null;
 
 export const PLAY_BILLING_METHOD = 'https://play.google.com/billing';
 
@@ -29,8 +79,15 @@ let servicePromise = null;
 // Play Faturalandırma bu cihazda kullanılabilir mi? (Android uygulaması +
 // uygulama kabuğu faturalandırma destekli sürüm + Chrome 101+)
 export async function getPlayBillingService() {
-  // v148: WebView kabuğunda Digital Goods API yok (native faturalandırma 2. adımda).
-  if (!IS_ANDROID_APP || IS_ANDROID_WEBVIEW || typeof window === 'undefined' || !('getDigitalGoodsService' in window)) return null;
+  // v155: WebView kabuğunda native faturalandırma (köprü yeteneği: getInfo().billing). Kapatma
+  // anahtarı kapalıyken de servis döner (sessiz geri yükleme çalışsın); satın alma ayrıca engellenir.
+  if (IS_ANDROID_WEBVIEW) {
+    if (!hasNativeBilling()) return null; // v14: faturalandırmasız kabuk → mağaza kapalı
+    if (!nativeService) nativeService = createNativeService();
+    return nativeService;
+  }
+  // Eski TWA: Digital Goods API (DEĞİŞMEDİ)
+  if (!IS_ANDROID_APP || typeof window === 'undefined' || !('getDigitalGoodsService' in window)) return null;
   if (!servicePromise) {
     servicePromise = window.getDigitalGoodsService(PLAY_BILLING_METHOD).catch((err) => {
       console.warn('Play Faturalandırma kullanılamıyor:', err);
@@ -139,7 +196,17 @@ async function verifyWithRetry(productId, purchaseToken) {
   throw e;
 }
 
-async function verifyAndConsume(service, productId, purchaseToken) {
+// v155: aynı jeton aynı anda iki kez doğrulanmasın (satın alma sonucu + o anda çalışan geri yükleme).
+// Sunucu zaten tek seferlik yüklüyor; bu kilit "+N zümrüt" mesajının iki kez çıkmasını önler.
+const verifying = new Map();
+function verifyAndConsume(service, productId, purchaseToken) {
+  const k = `${productId}|${purchaseToken}`;
+  if (verifying.has(k)) return verifying.get(k).then((d) => ({ ...d, credited: false }));
+  const p = verifyAndConsumeOnce(service, productId, purchaseToken).finally(() => verifying.delete(k));
+  verifying.set(k, p);
+  return p;
+}
+async function verifyAndConsumeOnce(service, productId, purchaseToken) {
   const res = await verifyWithRetry(productId, purchaseToken);
   const data = res?.data || {};
   if (data.ok) {
@@ -153,8 +220,60 @@ async function verifyAndConsume(service, productId, purchaseToken) {
   return data;
 }
 
+// v155: adet koruması — sunucu her jeton için TEK paket yükler. Play'den birden çok adet
+// gelirse doğrulamaya gönderilmez (tüketilmez → Google 3 gün içinde otomatik iade eder).
+export const MULTI_QTY_TEXT = 'Aynı anda birden fazla paket alınamaz. Bu ödeme 3 gün içinde Google Play tarafından otomatik iade edilecek.';
+const multiQty = (p) => Number(p?.quantity || 1) > 1;
+
+// v155: Play'e hile sinyali — Firebase UID'nin SHA-256 özeti (64 hex). Ham UID / e-posta GİTMEZ.
+export async function accountHashOf(uid) {
+  try {
+    if (!uid || !globalThis.crypto?.subtle) return '';
+    const buf = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(uid)));
+    return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return '';
+  }
+}
+
+const unavailableErr = () => {
+  const e = new Error('Google Play ödemesi bu cihazda kullanılamıyor.');
+  e.unavailable = true;
+  return e;
+};
+
+// v155: WebView v15+ — native Play ödeme akışı (Payment Request yerine). Dönüş biçimi aynı.
+async function buyWithNative(service, productId, uid) {
+  if (!NATIVE_PLAY_BILLING_ON) throw new Error('Zümrüt satın alma şu an kapalı.');
+  const r = await service.purchase(productId, await accountHashOf(uid));
+  if (!r) throw unavailableErr();
+  if (r.cancelled) return { cancelled: true };
+  if (r.alreadyOwned) {
+    // Önceki bir satın alma tüketilmemiş (ör. internet kesildi) → önce onu tamamla
+    const n = await restorePlayPurchases(service);
+    if (n > 0) return { ok: true, emerald: n, restored: true };
+    return { ok: false, alreadyOwned: true };
+  }
+  if (r.timeout) {
+    const e = new Error('✓ Google Play yanıtı gecikti. Ödeme yaptıysan zümrütlerin kısa süre içinde yüklenecek.');
+    e.safePending = true;
+    throw e;
+  }
+  if (r.unavailable) {
+    service.unavailable = true;
+    throw unavailableErr();
+  }
+  if (r.error) throw new Error(r.error);
+  if (multiQty(r)) throw new Error(MULTI_QTY_TEXT);
+  if (r.pending) return { pending: true };
+  if (!r.purchaseToken) throw new Error('Google Play bir satın alma bilgisi döndürmedi.');
+  return verifyAndConsume(service, productId, r.purchaseToken);
+}
+
 // Paketi satın al. Dönen: { ok, emerald } | { pending } | { cancelled } — hata ise fırlatır.
-export async function buyWithPlay(service, productId) {
+// uid: oturumdaki oyuncu (sadece native yolda, SHA-256 özeti Play'e gider)
+export async function buyWithPlay(service, productId, uid = null) {
+  if (service?.isNative) return buyWithNative(service, productId, uid);
   const request = new PaymentRequest(
     [{ supportedMethods: PLAY_BILLING_METHOD, data: { sku: productId } }],
     // Play bu tutarı kullanmaz ama Payment Request API zorunlu tutuyor.
@@ -219,6 +338,11 @@ export async function restorePlayPurchases(service) {
   }
   for (const p of list) {
     if (!PLAY_PRODUCTS.some((x) => x.productId === p.itemId)) continue;
+    if (multiQty(p)) {
+      // v155: birden çok adet → doğrulanmaz (3 günde otomatik iade)
+      console.warn('Play satın alma birden çok adet, atlandı:', p.itemId);
+      continue;
+    }
     try {
       const data = await verifyAndConsume(service, p.itemId, p.purchaseToken);
       if (data.ok && data.credited) total += Number(data.emerald || 0);

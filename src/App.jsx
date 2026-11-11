@@ -23,8 +23,8 @@ import { regions } from './data/regions';
 import { BIZ_BY_REGION } from '../functions/businessCatalogData.js';
 import { vendorVenueKey, VENDORS } from '../functions/vendorData.js';
 import CityPegman from './components/City/CityPegman'; // v147.3 — sürükle-bırak ile şehre gir
-import { IS_ANDROID_APP, IS_ANDROID_WEBVIEW } from './lib/platform';
-import { quietRestorePlayPurchases } from './lib/playBilling';
+import { IS_ANDROID_APP } from './lib/platform';
+import { quietRestorePlayPurchases, playRestoreSupported } from './lib/playBilling';
 import { exitApp, installBackHandler, rearmBack, useBackClose } from './lib/backStack';
 import ConfirmModal from './components/ConfirmModal/ConfirmModal';
 import LiveStreamsButton from './components/Stream/LiveStreamsButton';
@@ -140,14 +140,19 @@ function GameShell() {
   // kesildi, uygulama kapandı) satın almalar uygulama açılınca ve öne
   // gelince sessizce tamamlanır. Zümrüt yüklenince oyuncuya SMS de gider.
   useEffect(() => {
-    // v148: WebView kabuğunda Play Faturalandırma (Digital Goods API) yok — hiçbir şey yapma.
-    if (!IS_ANDROID_APP || IS_ANDROID_WEBVIEW || !user) return undefined;
+    // v155: WebView'da sadece köprüsünde faturalandırma olan sürümde (v15+); v14'te hiçbir şey yapmaz.
+    // Kapatma anahtarı (NATIVE_PLAY_BILLING_ON) kapalıyken de ÇALIŞIR (bekleyen ödeme iade olmasın).
+    if (!playRestoreSupported() || !user) return undefined;
     const t = setTimeout(() => quietRestorePlayPurchases(), 4000);
     const onVis = () => document.visibilityState === 'visible' && quietRestorePlayPurchases();
+    // native taraf: arka planda tamamlanan (yavaş kart) ya da akış dışı gelen satın almalar
+    const onNative = () => quietRestorePlayPurchases();
     document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('ns-play-purchases-updated', onNative);
     return () => {
       clearTimeout(t);
       document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('ns-play-purchases-updated', onNative);
     };
   }, [user]);
   // Çeteler bildirim işaretleri (alt çubuk + çete içi sekmeler)

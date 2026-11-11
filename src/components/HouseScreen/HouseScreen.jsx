@@ -57,7 +57,7 @@ import GymResult from '../Gym/GymResult';
 import { EQUIP } from '../Gym/gymMeta';
 import '../Gym/Gym.css';
 import { shopAction } from '../../services/gameActions';
-import { IS_ANDROID_WEBVIEW } from '../../lib/platform';
+import { zumrutStoreReachable } from '../../lib/playBilling';
 import { MENU_TYPES, isMenuProduct, netPriceOf, NET_DEVICE_CAP, NET_SEEN_MS } from '../../../functions/venue.js';
 import '../Venue/Venue.css';
 import '../Piano/Piano.css';
@@ -2640,7 +2640,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
                   <p className="hs-err">
                     {isEditor
                       ? `Mobilya kasası yetmiyor — ${houseDoc?.ownerName || 'sahibi'} kasaya ekleyebilir.`
-                      : `${payGold < cart.gold ? 'Altının yetmiyor. ' : ''}${payGem < cart.gem ? (IS_ANDROID_WEBVIEW ? 'Zümrütün yetmiyor.' : 'Zümrütün yetmiyor (Telefon > Zümrüt Mağazası).') : ''}`}
+                      : `${payGold < cart.gold ? 'Altının yetmiyor. ' : ''}${payGem < cart.gem ? (!zumrutStoreReachable() ? 'Zümrütün yetmiyor.' : 'Zümrütün yetmiyor (Telefon > Zümrüt Mağazası).') : ''}`}
                   </p>
                 )}
                 <div className="hh-modal-row">

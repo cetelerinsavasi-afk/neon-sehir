@@ -12,7 +12,7 @@ plugins {
 // "Web SDK configuration" → "Web client ID". Sonu ".apps.googleusercontent.com".
 // (Android istemci kimliği DEĞİL — WEB istemci kimliği.) Ayrıntı: README.md
 // -----------------------------------------------------------------------------
-val webClientId = "WEB_CLIENT_ID_BURAYA.apps.googleusercontent.com"
+val webClientId = "751782476133-8ugeei3ghqdl2ufm1estgcm1oq60ib61.apps.googleusercontent.com"
 
 // -----------------------------------------------------------------------------
 // İmza: keystore.properties (git dışı) veya ortam değişkenleri
@@ -39,8 +39,10 @@ android {
         applicationId = "com.cetelerinsavasi.twa"
         minSdk = 24
         targetSdk = 36
-        versionCode = 14
-        versionName = "1.1.0"
+        // v155: Zümrüt Mağazası (Google Play Faturalandırma). UA eki (NeonSehirApp/15) ve açılış
+        // adresi (av=15) BuildConfig.VERSION_CODE'dan türetilir — başka yere elle yazılmaz.
+        versionCode = 15
+        versionName = "1.2.0"
 
         buildConfigField("String", "WEB_CLIENT_ID", "\"$webClientId\"")
         buildConfigField("String", "SITE_HOST", "\"cetelerinsavasi.com\"")
@@ -118,6 +120,12 @@ dependencies {
     implementation("androidx.credentials:credentials:1.5.0")
     implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
     implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+
+    // v155 — Google Play Faturalandırma (zümrüt). Play, 31 Ağu 2026'dan beri en az PBL 8 istiyor.
+    // Kodda sadece geri çağrı (callback) API'leri var: "billing-ktx" Kotlin 2.1.20 ile derlenmezse
+    // bu satırı  implementation("com.android.billingclient:billing:9.1.0")  yap (başka değişiklik gerekmez).
+    // Kotlin sürümünü YÜKSELTME.
+    implementation("com.android.billingclient:billing-ktx:9.1.0")
 
     testImplementation("junit:junit:4.13.2")
 }

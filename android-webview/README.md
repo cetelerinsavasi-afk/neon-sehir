@@ -5,10 +5,10 @@ Oyun (`https://cetelerinsavasi.com`) artık Chrome'un içinde (TWA) değil, **uy
 | | |
 |---|---|
 | Paket adı | `com.cetelerinsavasi.twa` (eski TWA ile **aynı** — Play'de aynı uygulamanın güncellemesi) |
-| Sürüm | `versionCode 14`, `versionName 1.1.0` |
+| Sürüm | `versionCode 15`, `versionName 1.2.0` (v155: Zümrüt Mağazası — Google Play Faturalandırma) |
 | SDK | `minSdk 24` (Android 7), `targetSdk 36`, `compileSdk 36` |
 | İmza | `../android/android.keystore`, alias `android` (eski TWA ile aynı) |
-| Açılış adresi | `https://cetelerinsavasi.com/?src=app&av=14` |
+| Açılış adresi | `https://cetelerinsavasi.com/?src=app&av=15` (sürüm kodundan otomatik) |
 | Derleme araçları | Gradle 8.11.1 + Android Gradle Plugin 8.9.1 + Kotlin 2.1.20 (eski TWA projesiyle aynı Gradle/AGP) |
 
 Eski TWA projesi (`../android/`) **olduğu gibi duruyor** — geri dönüş için (bkz. "Geri dönüş planı").
@@ -132,6 +132,40 @@ Yerel deneme (isteğe bağlı, Play'den önce): `gradlew.bat assembleRelease` �
 WebView'da ciddi sorun çıkarsa: eski TWA projesinden (`../android/`) **versionCode 15** ile AAB üret (`android\aab-olustur.bat` → sürüm kodu sorulunca `15`) ve kapalı teste yükle. Sürüm kodu geriye gidemez, bu yüzden 15. Web değişiklikleri TWA'yı bozmadığı için **web'de geri alma gerekmez**: `?src=twa` gelen her açılış eskisi gibi TWA sayılır, zümrüt mağazası Play Faturalandırma ile çalışır.
 
 ---
+
+## 7. Zümrüt Mağazası (v15) — Google Play Faturalandırma
+
+**Nasıl çalışıyor:** Uygulama Android'in kendi Play Billing kütüphanesini (PBL 9.1.0) kullanır. Ödeme
+penceresini Play açar; çıkan satın alma jetonu web'e gider, web sunucuya (`verifyPlayPurchase`)
+doğrulatır, **zümrütü sadece sunucu yükler**, sonra satın alma tüketilir (paket tekrar alınabilir).
+Uygulama kendisi asla zümrüt yüklemez, Firestore'a dokunmaz, sunucu doğrulamadan tüketmez.
+Ürünler: `zumrut_50`, `zumrut_200` (tek seferlik / tüketilebilir). Paket adı aynı: `com.cetelerinsavasi.twa`.
+
+### 7.1 Lisans testi (bir kez — gerçek para çekilmeden test)
+1. Play Console → **Ayarlar** (sol menü, en altta) → **Lisans testi**.
+2. Kendi Gmail adresini listeye ekle → **Lisans yanıtı: RESPOND_NORMALLY** → Kaydet.
+3. Play Console → Zümrüt ürünleri: **Para kazanma → Ürünler → Uygulama içi ürünler** → `zumrut_50` ve
+   `zumrut_200` **Etkin** olmalı. Ürün ayarlarında **"Birden çok adet" KAPALI** olmalı (sunucu her ödemede
+   tek paket yükler; uygulama birden çok adetli ödemeyi doğrulamaya göndermez, Google 3 günde iade eder).
+
+### 7.2 Dahili test
+1. `aab-olustur.bat` → `NeonSehir-webview-v15.aab`.
+2. Play Console → **Test edin ve yayınlayın → Dahili test** → yeni sürüm → AAB'yi yükle → kaydet → yayınla.
+3. Dahili test sayfasındaki **katılım bağlantısını** telefonda (lisans test hesabıyla oturum açık Play Store) aç,
+   uygulamayı **Play'den** güncelle. (Bilgisayardan yüklenen debug derlemesi farklı imzalı olduğu için satın alamaz.)
+4. Ödeme penceresinde test kartları çıkar: **"Her zaman onaylanır"**, **"Her zaman reddedilir"**,
+   **"Yavaş kart, birkaç dakika sonra onaylanır"**. Gerçek para çekilmez.
+5. Test listesi: `WEBVIEW-TEST-LISTESI.md` → **D. Zümrüt Mağazası (v15)**.
+
+### 7.3 Kapatma anahtarı (yeni AAB gerekmez)
+`src/lib/playBilling.js` → `NATIVE_PLAY_BILLING_ON = false` → siteyi yayınla (git push). WebView'da mağaza ve
+"Satın Al" gizlenir. **Açılıştaki sessiz geri yükleme çalışmaya devam eder** — o an bekleyen bir ödeme varsa
+zümrüt yine yüklenir (yoksa Google 3 günde iade eder ve oyuncu zümrütünü alamazdı). Eski TWA ve tarayıcı etkilenmez.
+
+### 7.4 Derleme notu
+`app/build.gradle.kts` → `billing-ktx:9.1.0`. Kotlin 2.1.20 ile derlenmezse o satırı
+`implementation("com.android.billingclient:billing:9.1.0")` yap (kod coroutine kullanmıyor, başka değişiklik
+gerekmez). **Kotlin sürümünü yükseltme.**
 
 ## Sık karşılaşılan hatalar (ilk derleme)
 

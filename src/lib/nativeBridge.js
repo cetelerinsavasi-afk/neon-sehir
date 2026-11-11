@@ -187,3 +187,51 @@ export async function nativeSaveBlob(blob, fileName, mimeType) {
   }
   return callAsync('saveFileEnd', [transferId], 60_000);
 }
+
+// ------------------------------------------------- v155 Google Play Faturalandırma (native)
+// Sadece köprüsünde faturalandırma OLAN WebView sürümünde (v15+) çalışır. Karar sürüm
+// numarasına göre değil köprünün yeteneğine göre: getInfo().billing === true.
+// getInfo() senkron (JavascriptInterface) → modül ilk kullanıldığında bir kez okunur;
+// böylece mağaza ilk çizimde bir görünüp bir kaybolmaz. Native taraf ASLA zümrüt yüklemez,
+// Firestore'a dokunmaz; zümrütü SADECE sunucu (verifyPlayPurchase) yükler.
+let billingCap = null;
+export function hasNativeBilling() {
+  if (billingCap !== null) return billingCap;
+  billingCap = false;
+  const b = bridge();
+  if (!b || typeof b.getInfo !== 'function') return billingCap;
+  try {
+    const info = JSON.parse(b.getInfo() || '{}');
+    billingCap = info?.billing === true && typeof b.billingPurchase === 'function';
+  } catch {
+    billingCap = false;
+  }
+  return billingCap;
+}
+
+const BILLING_TIMEOUT = 20_000;
+const PURCHASE_TIMEOUT = 10 * 60_000;
+const billingReady = () => hasNativeBilling();
+
+// [{ itemId, title, price, priceAmountMicros, priceCurrencyCode }] | { error, code, unavailable }
+export async function nativeBillingDetails(productIds) {
+  if (!billingReady()) return null;
+  return callAsync('billingGetDetails', [JSON.stringify(productIds || [])], BILLING_TIMEOUT);
+}
+// { ok, productId, purchaseToken, orderId, quantity } | { pending, productId, purchaseToken }
+// | { cancelled } | { alreadyOwned } | { error, code, unavailable } | { timeout }
+// accountHash: Firebase UID'nin SHA-256 özeti (64 hex) — Play'e hile sinyali (ham UID gitmez)
+export async function nativeBillingPurchase(productId, accountHash) {
+  if (!billingReady()) return null;
+  return callAsync('billingPurchase', [String(productId), accountHash ? String(accountHash) : ''], PURCHASE_TIMEOUT);
+}
+// { ok, purchases: [{ itemId, purchaseToken, purchaseState, quantity }] } (sadece PURCHASED)
+export async function nativeBillingList() {
+  if (!billingReady()) return null;
+  return callAsync('billingListPurchases', [], BILLING_TIMEOUT);
+}
+// Sunucu doğruladıktan SONRA çağrılır; hata yutulur (sunucu zaten tüketiyor)
+export async function nativeBillingConsume(purchaseToken) {
+  if (!billingReady()) return null;
+  return callAsync('billingConsume', [String(purchaseToken)], BILLING_TIMEOUT);
+}

@@ -37,7 +37,7 @@ if (cfg.bridge) {
   const files = new Map();
   win.__calls = calls;
   win.NeonAndroid = {
-    getInfo: () => '{"shell":"webview","versionCode":14}',
+    getInfo: () => (cfg.billing ? '{"shell":"webview","versionCode":15,"billing":true}' : '{"shell":"webview","versionCode":14}'),
     signInWithGoogle: (id) => {
       calls.push(['signInWithGoogle', id]);
       if (cfg.bridge === 'silent') return; // yanıt vermez → zaman aşımı
@@ -61,6 +61,29 @@ if (cfg.bridge) {
     },
   };
   win.__files = files;
+  // v155: native Play faturalandırma (sadece cfg.billing varken köprüde bulunur)
+  if (cfg.billing) {
+    const B = cfg.billing;
+    const reply = (id, body) => setTimeout(() => win.__neonNative.resolve(JSON.stringify({ requestId: id, ...body })), 2);
+    Object.assign(win.NeonAndroid, {
+      billingGetDetails: (id, ids) => {
+        calls.push(['billingGetDetails', JSON.parse(ids)]);
+        reply(id, B.unavailable ? { ok: false, unavailable: true, code: 3, error: 'Google Play ödemesi bu cihazda kullanılamıyor.' } : { ok: true, items: [{ itemId: 'zumrut_50', title: '50', price: '₺49,99' }, { itemId: 'zumrut_200', title: '200', price: '₺159,99' }] });
+      },
+      billingPurchase: (id, productId, hash) => {
+        calls.push(['billingPurchase', productId, hash]);
+        reply(id, B.purchase || { ok: true, productId, purchaseToken: `tok_${productId}`, quantity: 1 });
+      },
+      billingListPurchases: (id) => {
+        calls.push(['billingListPurchases']);
+        reply(id, { ok: true, purchases: B.list || [] });
+      },
+      billingConsume: (id, token) => {
+        calls.push(['billingConsume', token]);
+        reply(id, { ok: true });
+      },
+    });
+  }
 }
 globalThis.window = win;
 globalThis.document = { referrer: cfg.referrer || '' };

@@ -17,6 +17,7 @@ import { useUnreadNotifications, markSixtagramSeen } from '../../hooks/useUnread
 import { useSocial } from '../../contexts/SocialContext';
 import { OPEN_DM_EVENT } from '../../lib/chatsappNav';
 import { IS_ANDROID_APP, IS_ANDROID_WEBVIEW } from '../../lib/platform';
+import { webViewStoreOpen } from '../../lib/playBilling';
 import { useBackClose } from '../../lib/backStack';
 import './PhoneScreen.css';
 
@@ -55,7 +56,9 @@ const ANDROID_STORE_ENABLED = true;
 // v148: Yeni Android WebView uygulamasında Digital Goods API yok → bu adımda
 // mağaza SADECE WebView kabuğunda kapalı (native Play Faturalandırma 2. adımda).
 // Eski TWA'da (IS_ANDROID_TWA) ANDROID_STORE_ENABLED davranışı aynen sürer.
-const STORE_BLOCKED = IS_ANDROID_WEBVIEW || (IS_ANDROID_APP && !ANDROID_STORE_ENABLED);
+// v155: WebView'da mağaza SADECE köprüsünde faturalandırma olan sürümde (v15+) ve kapatma
+// anahtarı (lib/playBilling.js NATIVE_PLAY_BILLING_ON) açıkken görünür. Senkron karar → titreme yok.
+const STORE_BLOCKED = IS_ANDROID_WEBVIEW ? !webViewStoreOpen() : IS_ANDROID_APP && !ANDROID_STORE_ENABLED;
 const isAppBlocked = (id) => STORE_BLOCKED && id === GOLD_STORE_APP_ID;
 const VISIBLE_EXTRA_APPS = STORE_BLOCKED
   ? EXTRA_APPS.filter((app) => app.id !== GOLD_STORE_APP_ID)

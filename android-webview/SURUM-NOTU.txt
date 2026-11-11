@@ -1,8 +1,6 @@
 <tr-TR>
-Neon Şehir 1.1.0
-• Oyun artık Chrome üzerinden değil, doğrudan uygulamanın içinde çalışıyor.
-• Google ile giriş telefonun hesap seçicisiyle yapılıyor. Güncellemeden sonra bir kez yeniden giriş yapman gerekebilir; karakterin ve eşyaların aynen duruyor.
-• Test oyuncularının bildirdiği kapanmalar için: oyun beklenmedik şekilde kapanırsa kendiliğinden yeniden açılıyor.
-• Şarkı dışa aktarma İndirilenler klasörüne kaydediyor.
-• Zümrüt satın alma bu sürümde geçici olarak kapalı.
+Neon Şehir 1.2.0
+• Zümrüt Mağazası geri geldi: zümrüt paketleri Google Play ile satın alınabiliyor.
+• Ödeme onay bekliyorsa (ör. yavaş kart) onaylanınca zümrütlerin kendiliğinden yükleniyor.
+• Ödeme sonrası internet kesilse ya da uygulama kapansa bile zümrütlerin bir sonraki açılışta yükleniyor.
 </tr-TR>

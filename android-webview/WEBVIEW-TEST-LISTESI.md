@@ -51,3 +51,20 @@ Masaüstü Chrome, Android Chrome, iPhone Safari'de:
 12. - [ ] Uzun oturum (30+ dk): telefon aşırı ısınmıyor, bellek uyarısı / kapanma yok.
 13. - [ ] Firebase Console → Firestore → Kullanım: test öncesi/sonrası okuma-yazma sayıları kıyaslanabilir (cihaz başına ilk açılıştaki bir kerelik önbellek dolumu hariç artış yok).
 14. - [ ] Dışarıdan `https://cetelerinsavasi.com/...` linkine tıklayınca (ör. WhatsApp'tan) oyun açılıyor, ikinci bir oyun penceresi açılmıyor.
+
+
+## D. Zümrüt Mağazası (v15 — dahili test, lisans test hesabıyla; README → 7)
+Önce: web deploy edildi; tarayıcı (A), eski TWA (B) ve **v14 WebView'da mağaza KAPALI, hata/uyarı yok** kontrol edildi.
+1. - [ ] Telefon → Zümrüt Mağazası açılıyor, iki paketin **Play fiyatı** görünüyor (₺…).
+2. - [ ] "Her zaman onaylanır" ile `zumrut_50` → zümrüt **bir kez** yükleniyor, SMS geliyor, bakiye doğru.
+3. - [ ] Aynı paketi hemen **tekrar** alabiliyor (tüketildi).
+4. - [ ] "Her zaman reddedilir" → anlaşılır mesaj, zümrüt yok.
+5. - [ ] Ödeme penceresinden **vazgeç** → sessiz, hata yok.
+6. - [ ] "Yavaş kart" → "⏳ Ödemen onay bekliyor" mesajı; birkaç dakika sonra uygulama öne gelince zümrüt **bir kez** yükleniyor.
+7. - [ ] Ödeme biter bitmez **uçak modu** aç / uygulamayı kapat → tekrar açınca zümrüt **bir kez** yükleniyor (asla iki kez değil).
+8. - [ ] Aynı hesapla **web'den** girince bakiye aynı.
+9. - [ ] Android'de **Shopier hiçbir yerde yok**.
+10. - [ ] Firebase Console → Kullanım: okuma/yazma sayısı **artmadı**.
+11. - [ ] Ev/işletmede zümrüt yetmeyince yazı: "Zümrütün yetmiyor (Telefon > Zümrüt Mağazası)." (v14'te sadece "Zümrütün yetmiyor.")
+12. - [ ] **Kapatma anahtarı** (isteğe bağlı, önizleme/ikinci bir test sitesinde): `NATIVE_PLAY_BILLING_ON = false` → mağaza gizli, açılışta bekleyen ödeme yine yükleniyor.
+13. - [ ] Play Console → ürün ayarı **"Birden çok adet" kapalı**.

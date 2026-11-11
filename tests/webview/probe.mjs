@@ -37,6 +37,38 @@ if (scenario !== 'platform') {
     globalThis.setTimeout = (fn, ms, ...a) => realSetTimeout(fn, ms > 1000 ? 20 : ms, ...a); // 60 sn → 20 ms
     out.signin = await B.nativeGoogleSignIn();
   }
+  if (scenario.startsWith('billing')) {
+    const PB = await import('../../src/lib/playBilling.js');
+    out.billingCap = B.hasNativeBilling();
+    out.storeOpen = PB.webViewStoreOpen();
+    out.reachable = PB.zumrutStoreReachable();
+    out.restoreOk = PB.playRestoreSupported();
+    out.flag = PB.NATIVE_PLAY_BILLING_ON;
+    const svc = await PB.getPlayBillingService();
+    out.service = svc ? (svc.isNative ? 'native' : 'digital-goods') : null;
+    if (svc && scenario === 'billing-prices') {
+      out.prices = await PB.getPlayPrices(svc);
+      out.unavailable = Boolean(svc.unavailable);
+    }
+    const tryBuy = async () => {
+      try {
+        return await PB.buyWithPlay(svc, 'zumrut_50', 'uid-123');
+      } catch (e) {
+        return { thrown: e.message, safePending: Boolean(e.safePending), unavailable: Boolean(e.unavailable) };
+      }
+    };
+    if (svc && scenario === 'billing-buy') out.buy = await tryBuy();
+    if (svc && scenario === 'billing-restore') out.restored = await PB.restorePlayPurchases(svc);
+    if (svc && scenario === 'billing-quiet') out.restored = await PB.quietRestorePlayPurchases();
+    if (svc && scenario === 'billing-race') {
+      // satın alma sonucu + o anda çalışan geri yükleme aynı jetonu birlikte doğrular
+      const [a, b] = await Promise.all([tryBuy(), PB.restorePlayPurchases(svc)]);
+      out.buy = a;
+      out.restored = b;
+    }
+    out.hash = await PB.accountHashOf('uid-123');
+    out.verify = globalThis.__verifyCalls || [];
+  }
   out.calls = window.__calls || null;
 }
 process.stdout.write(JSON.stringify(out));

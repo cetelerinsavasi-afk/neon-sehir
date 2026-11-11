@@ -49,7 +49,7 @@ import org.json.JSONObject
  *
  * Sınıf adı eski TWA ile aynıdır (ana ekran kısayolları korunur).
  */
-class LauncherActivity : ComponentActivity() {
+class LauncherActivity : ComponentActivity(), PlayBilling.Sink {
 
     private lateinit var root: FrameLayout
     private var webView: WebView? = null
@@ -103,6 +103,9 @@ class LauncherActivity : ComponentActivity() {
         }
 
         googleSignIn = GoogleSignIn(this)
+        // v155: Play Faturalandırma (uygulama bağlamında tek BillingClient) — köprüden ÖNCE
+        PlayBilling.init(applicationContext)
+        PlayBilling.attach(this)
         bridge = NeonBridge(this)
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
@@ -463,6 +466,7 @@ class LauncherActivity : ComponentActivity() {
             loadGame(UrlPolicy.launchUrl(lastGameUrl, BuildConfig.VERSION_CODE))
         }
         webView?.onResume()
+        PlayBilling.onResume() // v155: arkadayken tamamlanan ödeme varsa web geri yüklesin
     }
 
     override fun onPause() {
@@ -480,8 +484,22 @@ class LauncherActivity : ComponentActivity() {
         }
         webView = null
         bridge.shutdown()
+        PlayBilling.detach(this)
         super.onDestroy()
     }
+
+    // ------------------------------------------------ v155 PlayBilling.Sink
+    override fun deliver(result: JSONObject) = resolveJs(result)
+
+    override fun purchasesUpdated() {
+        runOnUiThread {
+            if (trustedPage) webView?.evaluateJavascript("window.dispatchEvent(new Event('ns-play-purchases-updated'))", null)
+        }
+    }
+
+    override fun currentActivity(): android.app.Activity? = if (isFinishing || isDestroyed) null else this
+
+    override fun isInForeground(): Boolean = lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
 
     companion object {
         private const val TAG = "NeonSehir"
