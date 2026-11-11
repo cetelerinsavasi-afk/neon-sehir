@@ -377,13 +377,17 @@ export function createClock(core, actions) {
         tx.update(ctx.ref.gang(winnerGang.id), { routeProducts: FV.arrayUnion(war.product) });
         gangLog(tx, ctx, winnerGang.id, '🛣️', `${war.productLabel} ticaret yolu sizin! Günlük sipariş limiti: ${orderLimit.toLocaleString('tr-TR')}`);
       } else {
-        tx.set(routeRef, { product: war.product, holderType: null, holderId: null, holderName: null, holderLogo: null, sinceDateKey: addDays(dayKey, 1), untilDateKey: null, powerUsed: 0, dailyOrderLimit: 0, warId, lastWinner: winnerKey === 'intel' ? 'intel' : null });
+        // v154: Polis kazandıysa yol 3 hafta boşta (kimse sipariş veremez); ürün sırası 3 haftada bir döndüğü için
+        // bir sonraki savaşı da zaten 3 hafta sonra — idleUntilDateKey arayüzde gösterilir
+        const idle = winnerKey === 'intel' ? { idleUntilDateKey: addDays(dayKey, 1 + INTEL.ROUTE_IDLE_DAYS_AFTER_POLICE) } : {};
+        tx.set(routeRef, { product: war.product, holderType: null, holderId: null, holderName: null, holderLogo: null, sinceDateKey: addDays(dayKey, 1), untilDateKey: null, powerUsed: 0, dailyOrderLimit: 0, warId, lastWinner: winnerKey === 'intel' ? 'intel' : null, ...idle });
       }
       let intelIncome = 0;
       if (winnerKey === 'intel') {
-        intelIncome = Math.floor(totalWarPower * INTEL.WAR_WIN_KASA_TOTAL_RATIO);
+        // v154: toplam savaş gücünün 1/10'u devlete (eskiden %5)
+        intelIncome = Math.floor(totalWarPower * INTEL.WAR_WIN_STATE_GOLD_PER_POWER);
         const cr = intelK?.exists && intelIncome > 0 ? core.creditIntel(tx, ctx, intelK, intelIncome, { type: 'intel_trade_war_win', refId: warId }) : { credited: 0, burned: 0 };
-        intelLog(tx, ctx, '🏆', `Ticaret yolu savaşını Polis Teşkilatı kazandı! Yol kimseye verilmedi, devlet kasasına +${cr.credited.toLocaleString('tr-TR')}.`);
+        intelLog(tx, ctx, '🏆', `Ticaret yolu savaşını Polis Teşkilatı kazandı! Teşkilat sayesinde devlet kasasına +${cr.credited.toLocaleString('tr-TR')} altın. ${war.productLabel} yolu 3 hafta boşta.`);
       }
       // v84: biat edenlerin katkısı — kendi günlüklerine ve biat ettikleri çetenin günlüğüne
       const biatSides = { ...(w.biatSides || {}) };

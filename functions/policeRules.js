@@ -59,15 +59,19 @@ export function heistStateEntries({ paidToCriminals = 0, fines = 0, policeShare 
 // modifiye_garaji, fabrika… (seyyar satıcılar tek kalem: seyyar).
 //   outcome: 'success' | 'caught' (şüpheden yakalandı) | 'stopped' (polis durdurdu)
 //   paid: suçlulara ödenen · fine: yazılan cezalar · recovered: polisin kurtardığı · policeShare: polise giden pay
-export const HEIST_STAT_TARGETS = ['banka', 'casino', 'araba_galerisi', 'modifiye_garaji', 'fabrika', 'seyyar'];
+// v154: yeni soygun listesi — Modifiye Garajı çıktı, Silahçı + İnternet Kafe eklendi;
+// haraç artık satıcı satıcı ayrı kalem (sh_seyyar_satici_N_*). Haraç toplamı yine har_*.
+export const HEIST_STAT_TARGETS = ['banka', 'casino', 'araba_galerisi', 'silah_magazasi', 'fabrika', 'internet_kafe'];
+export const HARAC_STAT_TARGETS = ['seyyar_satici_1', 'seyyar_satici_2', 'seyyar_satici_3', 'seyyar_satici_4', 'seyyar_satici_5', 'seyyar_satici_6'];
 export function heistTargetKey(target) {
   const t = String(target || '');
+  if (HARAC_STAT_TARGETS.includes(t)) return t;
   if (t.startsWith('seyyar_satici')) return 'seyyar';
   return HEIST_STAT_TARGETS.includes(t) ? t : 'diger';
 }
 export function heistStat(target, { outcome, team = false, paid = 0, fine = 0, recovered = 0, policeShare = 0 } = {}) {
   const t = heistTargetKey(target);
-  const p = t === 'seyyar' ? 'har' : 'soy';
+  const p = t === 'seyyar' || t.startsWith('seyyar_satici') ? 'har' : 'soy';
   const n = (v) => Math.max(0, Math.floor(Number(v) || 0));
   const st = { [`${p}_n`]: 1, [`sh_${t}_n`]: 1 };
   if (team) st.soy_ekip_n = 1;

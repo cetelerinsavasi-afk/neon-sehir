@@ -3,12 +3,13 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { useDailyActions } from '../../hooks/useDailyActions';
 import { currentPrayerWindow } from '../../hooks/useMosqueAttendance';
 import { WINDOW_HOURS } from '../MosqueScreen/MosqueScreen';
-import { prayAtMosque, bribePolice, buyFromVendor, shopAction } from '../../services/gameActions';
-import { CAFE_CALM_AT, CAFE_CALM_SUSPICION } from '../../../functions/venue.js';
+import { prayAtMosque, bribePolice, buyFromVendor } from '../../services/gameActions';
 import { regionEmojis, regionLabels } from '../../data/regions';
 import { msUntilIstanbulMidnight, msUntilNextPrayerWindow, formatCountdown } from '../../lib/istanbulTime';
 import GuestOverlay from '../GuestOverlay/GuestOverlay';
 import './SuspicionTab.css';
+// v154: satıcı listesi tek kaynaktan (6 satıcı)
+import { VENDOR_IDS } from '../../../functions/vendorData.js';
 
 const BRIBE_COST = 3000;
 const VENDOR_COST = 1000;
@@ -19,7 +20,6 @@ function reputationGainFor(rep) {
   if (rep >= 50) return 1;
   return 3;
 }
-const VENDOR_IDS = ['seyyar_satici_1', 'seyyar_satici_2', 'seyyar_satici_3', 'seyyar_satici_4'];
 
 // SuspicionTab (Şüphe) — yeni istek: "şüphe düşürebileceğimiz mekanlar
 // olacak, buradan o mekanlara gitmeden şüphemizi düşürebileceğiz... camii
@@ -108,14 +108,6 @@ export default function SuspicionTab() {
     }),
   ];
 
-  // v141 — Kafe & Bar: kafe / bardaki yiyecek-içecek harcaması çubuğu doldurur (2.000 altın).
-  // Kendiliğinden sıfırlanmaz, dolunca artmaz; butona basınca -10 şüphe, çubuk sıfırlanır.
-  // Günde 1 kez; kullanılan gün çubuk dolmaz.
-  const cafeSpend = Math.min(CAFE_CALM_AT, Math.max(0, Number(player?.cafeSpend) || 0));
-  const cafeUsedToday = Boolean(actions.cafeCalm); // günde 1 kez, 00:00'da yenilenir
-  const cafeReady = cafeSpend >= CAFE_CALM_AT && !cafeUsedToday;
-  const cafeCalm = () => runAction('cafe', () => shopAction({ op: 'cafeCalm' }));
-
   // "en üstte hala kullanabileceklerimiz, kullanım dışı olanlarda ise
   // vakti en yakın olan" — önce kullanılabilirlik, sonra (kullanılamayanlar
   // arasında) kalan süre artan sırada.
@@ -157,43 +149,7 @@ export default function SuspicionTab() {
               )}
             </div>
   );
-  // v141 — Kafe & Bar kartı: kullanılmadıysa kullanılabilirlerin, kullanıldıysa
-  // kullanılanların en altında. Kullanılan gün çubuk gizlenir (sunucu da doldurmaz);
-  // 00:00'dan sonra sıfırdan dolmaya başlar.
-  const cafeCard = (
-    <div key="cafe" className={`suspicion-card cafe-card${cafeReady ? ' available' : ''}${cafeUsedToday ? ' used' : ''}`}>
-      <div className="suspicion-card-main cafe-main">
-        <span className="suspicion-card-emoji">☕</span>
-        <div className="suspicion-card-info cafe-info">
-          <span className="suspicion-card-name">Kafe &amp; Bar</span>
-          {cafeUsedToday ? (
-            <span className="suspicion-card-meta">Şüphe -{CAFE_CALM_SUSPICION}</span>
-          ) : (
-            <>
-              <span className="suspicion-card-meta">Şüphe -{CAFE_CALM_SUSPICION}</span>
-              <span className="cafe-bar" role="progressbar" aria-valuemin={0} aria-valuemax={CAFE_CALM_AT} aria-valuenow={cafeSpend}>
-                <i style={{ width: `${(cafeSpend / CAFE_CALM_AT) * 100}%` }} />
-              </span>
-              <span className="cafe-amount">
-                {cafeSpend.toLocaleString('tr-TR')} / {CAFE_CALM_AT.toLocaleString('tr-TR')} altın
-              </span>
-            </>
-          )}
-        </div>
-      </div>
-      {cafeUsedToday ? (
-        <div className="suspicion-card-cooldown">
-          <span className="suspicion-card-countdown">⏳ {formatCountdown(msUntilIstanbulMidnight())}</span>
-          <span className="suspicion-card-note">Bugün kullandın</span>
-        </div>
-      ) : (
-        <button className="suspicion-card-btn" disabled={!cafeReady || busyKey === 'cafe'} onClick={cafeCalm}>
-          {busyKey === 'cafe' ? '…' : `-${CAFE_CALM_SUSPICION} şüphe`}
-        </button>
-      )}
-    </div>
-  );
-
+  // v154 — Kafe & Bar kartı kaldırıldı (2000 altın harcayıp -10 şüphe).
   return (
     <div className="suspicion-tab">
       <p className="suspicion-current">
@@ -205,9 +161,7 @@ export default function SuspicionTab() {
       <GuestOverlay>
         <div className="suspicion-list">
           {sorted.filter((i) => i.available).map(renderItem)}
-          {!cafeUsedToday && cafeCard}
           {sorted.filter((i) => !i.available).map(renderItem)}
-          {cafeUsedToday && cafeCard}
         </div>
       </GuestOverlay>
       {errorMsg && <p className="suspicion-error">{errorMsg}</p>}

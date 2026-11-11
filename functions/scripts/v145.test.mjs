@@ -9,8 +9,8 @@ import { ministryOfCat } from '../belediyeRates.js';
 import { ministryReport } from '../belediye.js';
 import { HEIST_STAT_TARGETS, heistTargetKey } from '../policeRules.js';
 
-test('v145: dört seyyar satıcının her biri kendi 3D mekânına bağlı (harita kimliği ↔ mekân)', () => {
-  assert.deepEqual(VENDOR_IDS.sort(), ['seyyar_satici_1', 'seyyar_satici_2', 'seyyar_satici_3', 'seyyar_satici_4']);
+test('v145/v154: altı seyyar satıcının her biri kendi 3D mekânına bağlı (harita kimliği ↔ mekân)', () => {
+  assert.deepEqual([...VENDOR_IDS].sort(), ['seyyar_satici_1', 'seyyar_satici_2', 'seyyar_satici_3', 'seyyar_satici_4', 'seyyar_satici_5', 'seyyar_satici_6']);
   const keys = new Set();
   for (const id of VENDOR_IDS) {
     const key = vendorVenueKey(id);
@@ -32,7 +32,7 @@ test('v145: dört seyyar satıcının her biri kendi 3D mekânına bağlı (hari
     assert.ok(!VENUE_FREE_TAKE_KEYS.includes(cart.k));
     assert.ok(v.items.every((x) => x.k !== 'caysemaver' && x.k !== 'watercooler'), 'mekânda bedava çay/su olmasın');
   }
-  assert.equal(keys.size, 4, 'her satıcının tasarımı ayrı');
+  assert.equal(keys.size, 6, 'her satıcının tasarımı ayrı');
 });
 
 test('v145: menü ürünleri gerçek ürün (elde çizimi/etiketi var), fiyatlar pozitif; günlük alışveriş 1.000', () => {
@@ -45,7 +45,7 @@ test('v145: menü ürünleri gerçek ürün (elde çizimi/etiketi var), fiyatlar
       assert.ok(HOUSE_PRODUCTS[k], `${k} ürünü yok`);
       assert.ok(Number.isInteger(p) && p > 0 && p < VENDOR_COST);
     }
-    assert.ok(Object.keys(v.menu).includes('ayran') || Object.keys(v.menu).includes('cay'));
+    assert.ok(['ayran', 'cay', 'su'].some((k) => Object.keys(v.menu).includes(k)), 'yanında bir içecek');
   }
 });
 
@@ -74,7 +74,22 @@ test('v145: seyyar satıcı geliri devlet defterine "seyyar_satis" (Ticaret Baka
   assert.equal(rep.ministries.ticaret.lines[0].label, 'Seyyar satıcı satışları');
 });
 
-test('v145: haraç istatistiği değişmedi (seyyar satıcılar tek kalem)', () => {
-  assert.ok(HEIST_STAT_TARGETS.includes('seyyar'));
-  for (const id of VENDOR_IDS) assert.equal(heistTargetKey(id), 'seyyar');
+test('v154: haraç istatistiği satıcı satıcı ayrı kalem; Modifiye listeden çıktı, Silahçı + İnternet Kafe girdi', () => {
+  for (const id of VENDOR_IDS) assert.equal(heistTargetKey(id), id);
+  assert.equal(heistTargetKey('seyyar_satici_99'), 'seyyar');
+  assert.ok(!HEIST_STAT_TARGETS.includes('modifiye_garaji'));
+  assert.equal(heistTargetKey('modifiye_garaji'), 'diger');
+  for (const t of ['banka', 'casino', 'araba_galerisi', 'silah_magazasi', 'fabrika', 'internet_kafe']) assert.equal(heistTargetKey(t), t);
+});
+
+test('v154: Balık Ekmekçi (eski Dönerci) + yeni satıcıların arabaları sadece mekânda (fiyatsız), ürünleri tanımlı', () => {
+  assert.equal(VENDORS.seyyar_satici_3.name, 'Balık Ekmekçi');
+  assert.equal(VENDORS.seyyar_satici_3.venue, 'donerci', 'kimlik değişmedi (oyuncu verisi)');
+  assert.equal(VENUES.donerci.items.find((x) => x.i === 'dn_cart').k, 'balikekmekarabasi');
+  for (const k of ['balikekmekarabasi', 'midyetezgahi', 'dondurmaarabasi', 'neon_balik', 'neon_midye', 'neon_dondurma']) assert.equal(ITEM_PRICES[k], undefined, `${k} satışa çıkmamalı`);
+  assert.deepEqual(HOUSE_TAKEABLES.midyetezgahi, ['midye']);
+  assert.ok(HOUSE_PRODUCTS.balikekmek && HOUSE_PRODUCTS.midye && HOUSE_PRODUCTS.dondurma);
+  // eski döner arabası oyuncuların eşyası olarak aynen duruyor
+  assert.ok(ITEM_PRICES.donerarabasi);
+  assert.deepEqual(HOUSE_TAKEABLES.donerarabasi, ['doner', 'ayran']);
 });

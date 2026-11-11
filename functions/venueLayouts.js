@@ -43,6 +43,9 @@ const AV = {
   simitci: { gender: 'erkek', build: 'zayif', skin: '#e0ac69', hairStyle: 'short', hairColor: '#8a8f99', facialHair: 'mustache', clothing: 'vest', clothColor: '#7a4a24', neckAcc: 'scarf', pantsColor: '#3b3f4a', hat: 'beanie', hatColor: '#c62a2f' },
   donerci: { gender: 'erkek', build: 'standart', skin: '#d9a066', hairStyle: 'slick', hairColor: '#0d0a08', facialHair: 'goatee', clothing: 'jumpsuit', clothColor: '#f2f1ec', neckAcc: 'none', pantsColor: '#f2f1ec', hat: 'cap', hatColor: '#c62a2f' },
   kofteci: { gender: 'erkek', build: 'iri', skin: '#a86b3c', hairStyle: 'short', hairColor: '#241813', facialHair: 'horseshoe', clothing: 'hawaii', clothColor: '#db2777', neckAcc: 'none', pantsColor: '#1f2430', hat: 'headband', hatColor: '#f4f1e8' },
+  // v154 — yeni seyyar satıcılar
+  midyeci: { gender: 'erkek', build: 'zayif', skin: '#a86b3c', hairStyle: 'short', hairColor: '#0d0a08', facialHair: 'mustache', clothing: 'tanktop', clothColor: '#0f766e', neckAcc: 'chain', pantsColor: '#1f2430', hat: 'cap', hatColor: '#facc15' },
+  dondurmaci: { gender: 'erkek', build: 'standart', skin: '#d9a066', hairStyle: 'short', hairColor: '#241813', facialHair: 'full', clothing: 'vest', clothColor: '#be123c', neckAcc: 'none', pantsColor: '#1f2430', hat: 'beret', hatColor: '#c62a2f' },
 };export const NPC_AVATARS = AV; // v100 — evlerdeki eşya NPC'leri (büfeci) de kullanır
 
 
@@ -649,14 +652,14 @@ export const VENUES = {
 
   donerci: {
     houseId: 'game_donerci',
-    name: 'Dönerci',
-    icon: '🥙',
+    name: 'Balık Ekmekçi', // v154: Dönerci → Balık Ekmekçi (anahtar aynı)
+    icon: '🐟',
     loc: 'donerci',
     vendor: 'seyyar_satici_3',
     light: true,
     outdoor: true,
     sky: '#0b0e24',
-    v: 1,
+    v: 2, // v154: döner arabası → balık ekmek arabası (venueEnsure belgeyi günceller)
     wall: 'neon_sehir',
     floor: 'kaldirim',
     items: [
@@ -664,8 +667,8 @@ export const VENUES = {
       it('dn_yaya', 'vz_yaya', -1.6, -5.5),
       it('dn_car1', 'car_classic', -5.6, -5.6, 2, 1),
       it('dn_cn1', 'cone', 6.0, -4.5),
-      it('dn_cart', 'donerarabasi', 3, -2.4),
-      it('dn_neon', 'neon_doner', 3, -7, 0, 0),
+      it('dn_cart', 'balikekmekarabasi', 3, -2.4),
+      it('dn_neon', 'neon_balik', 3, -7, 0, 0),
       it('dn_lm1', 'streetlamp', 0.4, -3.6),
       it('dn_lm2', 'streetlamp', 6.6, -3.6),
       it('dn_cp', 'copkutusu', 5.0, -3.3),
@@ -701,7 +704,7 @@ export const VENUES = {
       ],
     },
     npcs: [
-      { id: 'npc_donerci', name: 'Dönerci Cemil', x: 3.5, z: -3.3, av: AV.donerci, station: 'dn_cart', act: 'vendor', lines: ['Dürüm mü ekmek arası mı?', 'Döner yeni kesildi, buyur!', 'Acı olsun mu?', 'Fabrikadan çıkan işçiler hep bize gelir.', 'Ayranı soğuk, dolaptan yeni çıktı.'] },
+      { id: 'npc_donerci', name: 'Balıkçı Cemil', x: 3.5, z: -3.3, av: AV.donerci, station: 'dn_cart', act: 'vendor', lines: ['Balık ekmek, ızgaradan yeni indi!', 'Soğanlı mı olsun abi?', 'Limonu bol sıkayım mı?', 'Fabrikadan çıkan işçiler hep bize gelir.', 'Uskumru taze, sabah tuttuk.'] },
     ],
   },
 
@@ -754,6 +757,95 @@ export const VENUES = {
     },
     npcs: [
       { id: 'npc_kofteci', name: 'Köfteci Nuri', x: 3.5, z: -3.05, av: AV.kofteci, station: 'kf_cart', act: 'vendor', lines: ['Köfte ekmek, mangalda!', 'Biberi de közledim, koyayım mı?', 'Liman işçisinin gözdesi buradadır.', 'Közün dumanı kokusu şehri sardı.', 'Bir köfte yemeden gitme!'] },
+    ],
+  },
+
+  // v154 — MİDYECİ (Bar'ın yanı): gece sokağı, neon, bar masaları
+  midyeci: {
+    houseId: 'game_midyeci',
+    name: 'Midyeci',
+    icon: '🦪',
+    loc: 'midyeci',
+    vendor: 'seyyar_satici_5',
+    light: true,
+    outdoor: true,
+    sky: '#0b0e24',
+    v: 1,
+    wall: 'neon_sehir',
+    floor: 'kaldirim',
+    items: [
+      it('md_yol', 'vz_yol', 0, -5.5),
+      it('md_car1', 'car_sport', -5.0, -5.6, 2, 3),
+      it('md_cart', 'midyetezgahi', 3, -2.4),
+      it('md_neon', 'neon_midye', 3, -7, 0, 3),
+      it('md_n2', 'neon2', -9, -1.5, 2),
+      it('md_lm1', 'streetlamp', 0.4, -3.6),
+      it('md_lm2', 'streetlamp', 6.6, -3.6),
+      it('md_cp', 'copkutusu', 5.2, -3.3),
+      it('md_bt1', 'bartable', -1.0, 0.2),
+      it('md_bs1', 'stool', -1.6, 0.6),
+      it('md_bs2', 'stool', -0.4, 0.6),
+      it('md_bt2', 'bartable', -4.4, 1.4),
+      it('md_bs3', 'stool', -5.0, 1.8),
+      it('md_bs4', 'stool', -3.8, 1.8),
+      it('md_m1', 'plastikmasa', -2.2, 3.8, 0, 2),
+      it('md_t11', 'plastiktabure', -2.95, 3.8, 0, 1),
+      it('md_t12', 'plastiktabure', -1.45, 3.8, 0, 1),
+      it('md_pt1', 'planter', 8.2, 1.4, 6),
+      it('md_pl1', 'plantb', -8.3, 6.3),
+    ],
+    stations: {
+      md_cart: [
+        { act: 'menu', label: '🧾 Menü' },
+        { act: 'harac', label: '💰 Haraç kes' },
+        { act: 'buy', label: '🤲 Bağış yap' },
+      ],
+    },
+    npcs: [
+      { id: 'npc_midyeci', name: 'Midyeci Kâzım', x: 3.5, z: -3.3, av: AV.midyeci, station: 'md_cart', act: 'vendor', lines: ['Midye dolma, limonlu!', 'Kaç tane sayayım abi?', 'Bardan çıkan buraya uğrar.', 'Limonu sık, öyle ye!', 'Bir tane daha, son tane!'] },
+    ],
+  },
+
+  // v154 — DONDURMACI (Stadyumun yanı): Maraş usulü, maç çıkışı
+  dondurmaci: {
+    houseId: 'game_dondurmaci',
+    name: 'Dondurmacı',
+    icon: '🍦',
+    loc: 'dondurmaci',
+    vendor: 'seyyar_satici_6',
+    light: true,
+    outdoor: true,
+    sky: '#0b0e24',
+    v: 1,
+    wall: 'neon_sehir',
+    floor: 'kaldirim',
+    items: [
+      it('dd_yol', 'vz_yol', 0, -5.5),
+      it('dd_yaya', 'vz_yaya', 2.4, -5.5),
+      it('dd_cart', 'dondurmaarabasi', 3, -2.4),
+      it('dd_neon', 'neon_dondurma', 3, -7, 0, 1),
+      it('dd_lm1', 'streetlamp', 0.4, -3.6),
+      it('dd_lm2', 'streetlamp', 6.6, -3.6),
+      it('dd_cp', 'copkutusu', 5.2, -3.3),
+      it('dd_b1', 'parkbench', -3.4, -2.7, 4),
+      it('dd_b2', 'parkbench', -6.8, -2.7, 4),
+      it('dd_m1', 'plastikmasa', -3.0, 1.6, 0, 4),
+      it('dd_t11', 'plastiktabure', -3.75, 1.6, 0, 4),
+      it('dd_t12', 'plastiktabure', -2.25, 1.6, 0, 4),
+      it('dd_t13', 'plastiktabure', -3.0, 2.35, 0, 4),
+      it('dd_um', 'umbrella', -3.0, 1.6),
+      it('dd_pt1', 'planter', 8.2, 5.2, 6),
+      it('dd_pl', 'palm', 8.3, 1.8),
+    ],
+    stations: {
+      dd_cart: [
+        { act: 'menu', label: '🧾 Menü' },
+        { act: 'harac', label: '💰 Haraç kes' },
+        { act: 'buy', label: '🤲 Bağış yap' },
+      ],
+    },
+    npcs: [
+      { id: 'npc_dondurmaci', name: 'Dondurmacı Hasan', x: 3.5, z: -3.3, av: AV.dondurmaci, station: 'dd_cart', act: 'vendor', lines: ['Maraş dondurması, kesmelik!', 'Al bakalım… yok, kaçtı! 😄', 'Kaymaklı mı, çikolatalı mı?', 'Maçtan çıkan soluğu burada alır.', 'Külah mı, kâse mi?'] },
     ],
   },
 };

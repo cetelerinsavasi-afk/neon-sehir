@@ -43,10 +43,8 @@ export const WAITER_TYPES = ['cafe', 'bar'];
 export const MENU_PRICE = { def: 100, min: 10, max: 1000 };
 export const menuBand = (type) => (type === 'sinema' ? CINEMA_PRICE : MENU_PRICE);
 export const MENU_DAILY_LIMIT = 10_000;
-// v141 — Şüphe › Kafe & Bar: kafe / bardaki yiyecek-içecek harcaması users.cafeSpend'e
-// birikir (en fazla CAFE_CALM_AT; kendiliğinden sıfırlanmaz). Dolunca oyuncu -10 şüphe
-// alır, çubuk sıfırlanır. Düğme günde 1 kez (İstanbul 00:00'da yenilenir); kullanılan gün
-// çubuk dolmaz, 00:00'dan sonra sıfırdan dolmaya başlar.
+// v141 — Şüphe › Kafe & Bar (2000 altın harcayınca -10 şüphe). v154: KALDIRILDI;
+// sabitler eski testler / ekranlar derlensin diye duruyor, hiçbir yerde kullanılmıyor.
 export const CAFE_CALM_TYPES = ['cafe', 'bar'];
 export const CAFE_CALM_AT = 2000;
 export const CAFE_CALM_SUSPICION = 10;
@@ -167,19 +165,13 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       const ws = null;
       const waiter = ws?.exists ? ws.data() : null;
       const waiterHere = waiter && waiter.uid !== uid ? await txPresence(tx, waiter.uid, houseId) : null;
-      // v141: kafe / bar — bugün Kafe & Bar şüphe düşürme kullanıldıysa çubuk 00:00'a kadar dolmaz
-      const calmRef = !isOwner && CAFE_CALM_TYPES.includes(h.biz.type) ? db.collection('dailyActions').doc(`${uid}_${dayKey}`) : null;
-      const [us, os, ss, cs] = await Promise.all([tx.get(userRef(uid)), isOwner ? null : tx.get(userRef(h.ownerUid)), isOwner ? null : tx.get(spendRef), calmRef ? tx.get(calmRef) : null]);
+      // v154: Kafe & Bar şüphe düşürme kaldırıldı — harcama artık biriktirilmiyor (ek okuma yok)
+      const [us, os, ss] = await Promise.all([tx.get(userRef(uid)), isOwner ? null : tx.get(userRef(h.ownerUid)), isOwner ? null : tx.get(spendRef)]);
       const spent = Number(ss?.exists ? ss.data().amount || 0 : 0);
       if (!isOwner) {
         if (spent + price > MENU_DAILY_LIMIT) fail('failed-precondition', `limit:${spent}`);
         if (Number(us.data()?.gold || 0) < price) fail('failed-precondition', 'gold');
         const upd = { gold: FieldValue.increment(-price), goldTag: goldTag(h.biz.type === 'sinema' ? 'sinema' : 'menu') };
-        // v141: kafe / bar harcaması şüphe çubuğuna (doluysa artmaz)
-        if (calmRef && price > 0 && !(cs?.exists && cs.data()?.cafeCalm)) {
-          const cur = Math.max(0, Number(us.data()?.cafeSpend) || 0);
-          if (cur < CAFE_CALM_AT) upd.cafeSpend = Math.min(CAFE_CALM_AT, cur + price);
-        }
         tx.update(userRef(uid), upd);
         tx.set(spendRef, { houseId, uid, dayKey, amount: FieldValue.increment(price), updatedAtMs: t }, { merge: true });
       }
@@ -559,25 +551,9 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     return { sessions: old.size, spend: spend.size, orders };
   }
 
-  // v141 — Şüphe › Kafe & Bar: çubuk doluysa -10 şüphe, çubuk sıfırlanır.
-  // Günde 1 kez (İstanbul 00:00'da yenilenir): dailyActions/{uid}_{gün}.cafeCalm
-  async function cafeCalm(uid) {
-    let result = null;
-    const dailyRef = db.collection('dailyActions').doc(`${uid}_${midnightDayKey(now())}`);
-    await db.runTransaction(async (tx) => {
-      const [us, ds] = await Promise.all([tx.get(userRef(uid)), tx.get(dailyRef)]);
-      const u = us.data();
-      if (!u) fail('failed-precondition', 'Oyuncu bulunamadı.');
-      if (ds.exists && ds.data()?.cafeCalm) fail('failed-precondition', 'Kafe & Bar şüphe düşürmeyi bugün kullandın. 00:00\'da yenilenir.');
-      if ((Number(u.cafeSpend) || 0) < CAFE_CALM_AT) fail('failed-precondition', `Kafe ve barlarda ${CAFE_CALM_AT.toLocaleString('tr-TR')} altınlık harcama yapınca kullanabilirsin.`);
-      const before = Math.max(0, Math.min(100, Math.round(Number(u.suspicion) || 0)));
-      if (before <= 0) fail('failed-precondition', 'Şüphen zaten 0.');
-      const after = Math.max(0, before - CAFE_CALM_SUSPICION);
-      tx.update(userRef(uid), { suspicion: after, cafeSpend: 0 });
-      tx.set(dailyRef, { cafeCalm: true }, { merge: true });
-      result = { ok: true, suspicion: after };
-    });
-    return result;
+  // v154 — Kafe & Bar şüphe düşürme KALDIRILDI. Eski istemciler çağırırsa anlaşılır mesaj.
+  async function cafeCalm() {
+    fail('failed-precondition', 'Kafe & Bar şüphe düşürme kaldırıldı.');
   }
 
   const ops = { cafeCalm, menuPrices, menuBuy, netPrice, netStart, netTick, netLeave, waiterJoin, waiterQuit, orderDeliver, orderSweep };

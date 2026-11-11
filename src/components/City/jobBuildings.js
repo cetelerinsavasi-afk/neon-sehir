@@ -184,3 +184,43 @@ function signTex(stop) {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
+
+// --- v154 TAKSİ DURAĞI (şehrin doğu dış halkası, stadyumun karşısı) ------------------------
+// Girilmez; yola bakan kulübe + tabela + sıra bekleyen 3 sarı taksi. Sunucu/Firestore yok.
+export function buildTaksiDuragi(kit, lot) {
+  const { w, d } = lot;
+  kit.floor('beton', w, d, 0, 0);
+  const Y = '#f6c400';
+  const ym = M(Y, 0.55);
+  // kulübe (arka orta)
+  const bw = 8;
+  const bd = 4.6;
+  const bz = -d / 2 + bd / 2 + 1.2;
+  kit.wallBox('beton_duvar', bw, 3.4, bd, 0, 0, bz, { tint: '#f4f1e6' });
+  kit.box(bw + 1.6, 0.3, bd + 2.4, M('#1d1f24', 0.5, 0.3), 0, 3.4, bz + 0.9); // saçak
+  kit.box(bw + 1.6, 0.12, 0.08, glowMat(Y, 2.4), 0, 3.42, bz + bd / 2 + 2.1, { cast: false });
+  kit.box(bw - 1.4, 1.2, 0.05, glowMat('#ffe9a8', 0.9), 0, 1.3, bz + bd / 2 + 0.03, { cast: false }); // vitrin
+  // dama şeridi
+  for (let i = 0; i < 16; i++) kit.box(0.5, 0.25, 0.05, M(i % 2 ? '#111111' : Y, 0.5), -bw / 2 + 0.25 + i * 0.5, 2.85, bz + bd / 2 + 0.04, { cast: false });
+  kit.sign('taksidurak', 'TAKSİ DURAĞI', 0.85, 0, 4.15, bz + bd / 2 + 0.6, 0, { color: '#111111', bg: Y, glow: Y, font: '900 110px Arial, sans-serif', li: 6, ld: 12 });
+  kit.item('door_cam', -2.4, bz + bd / 2, 0, 0, { solid: false });
+  kit.item('parkbench', 1.8, bz + bd / 2 + 1.1, 0, 0);
+  kit.mass(bw, 3.6, bd, 0, bz);
+  // totem (köşede, yoldan görünsün)
+  kit.box(0.35, 5.2, 0.35, M('#2a2f3a', 0.5, 0.5), w / 2 - 2, 0, d / 2 - 2);
+  kit.sign('taksitotem', 'TAKSİ', 1.1, w / 2 - 2, 5.6, d / 2 - 1.8, 0, { color: '#111111', bg: Y, glow: Y, font: '900 120px Arial, sans-serif', li: 5, ld: 10 });
+  kit.solid(w / 2 - 2, d / 2 - 2, 0.3, 0.3);
+  // sıra çizgileri + bekleyen taksiler (ön tarafta, yola dik)
+  const slots = [-7.5, -2.5, 2.5, 7.5];
+  for (const x of [-10, -5, 0, 5, 10]) kit.box(0.14, 0.02, 5.4, ym, x, 0.14, d / 2 - 4.4, { cast: false });
+  kit.box(20, 0.02, 0.14, ym, 0, 0.14, d / 2 - 7.1, { cast: false });
+  slots.slice(0, 3).forEach((x, i) => {
+    const car = kit.item('car_sedan', x, d / 2 - 4.4, 0, 4);
+    if (!car) return;
+    const s = kit.sign(`taksitepe${i}`, 'TAKSİ', 0.28, 0, 0, 0, 0, { color: '#111111', bg: Y, font: '900 110px Arial, sans-serif', light: false });
+    s.position.set(car.position.x, 1.62, car.position.z);
+  });
+  kit.sign('bay_taksi', 'TAKSİ', 0.9, slots[3], 0.17, d / 2 - 4.4, 0, { color: '#1a1a1a', bg: Y, font: '900 110px Arial, sans-serif', light: false }).rotation.x = -Math.PI / 2;
+  kit.pool(0, bz + bd / 2 + 2, Y, 12, 0.16, 0.4);
+  return { mapLabel: { text: 'TAKSİ DURAĞI', y: 8, z: bz } };
+}

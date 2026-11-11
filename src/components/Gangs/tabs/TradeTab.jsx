@@ -124,7 +124,13 @@ function Routes({ routes, gangId, state, today, memberCount }) {
                   <Logo logo={r.holderLogo} size={16} /> {r.holderName}
                 </span>
               ) : (
-                <span className="gx-route-holder dim">{r?.lastWinner === 'intel' ? '🕵️ kapatıldı' : 'boş'}</span>
+                <span className="gx-route-holder dim">
+                  {r?.lastWinner === 'intel'
+                    ? r.idleUntilDateKey
+                      ? `🚓 Polis kapattı · ${r.idleUntilDateKey.slice(8, 10)}.${r.idleUntilDateKey.slice(5, 7)}'e kadar boşta`
+                      : '🕵️ kapatıldı'
+                    : 'boş'}
+                </span>
               )}
             </div>
           );

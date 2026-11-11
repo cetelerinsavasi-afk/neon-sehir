@@ -163,6 +163,11 @@ export const INTEL = {
   // v50: pazar savaşını kazanırsa kasaya, savaşa katılan TÜM tarafların
   // (çeteler + İstihbarat) toplam gücünün %5'i girer (eskiden kendi gücünün 1/10'u).
   WAR_WIN_KASA_TOTAL_RATIO: 0.05,
+  // v154: Cumartesi ticaret yolu savaşını Polis kazanırsa devlet kasasına savaşta kullanılan TÜM gücün
+  // 1/10'u kadar altın (ör. toplam 10.000.000 güç → 1.000.000 altın; teşkilat sayesinde devlete). Eskiden %5.
+  // Yol 3 hafta boşta kalır.
+  WAR_WIN_STATE_GOLD_PER_POWER: 0.1,
+  ROUTE_IDLE_DAYS_AFTER_POLICE: 21,
   // v50: şüpheyle yakalanma cezasının (soygun / yasaklı madde) bir kısmı kasaya
   // girer (v94: %25); kalanı yakılır (ekonomiden çıkar). Oyuncunun borcu değişmez.
   SUSPICION_FINE_KASA_RATIO: 1 / 4, // v94: %50 → %25

@@ -585,6 +585,46 @@ export function buildCockpit({ closed = true, accent = '#19e8ff', trim = '#1a1a1
     group.add(brake);
   }
 
+  // --- v154: taban (halı) + orta tünel + torpido altı + kapıların alt kısmı ---------------
+  // Aracın kendi gövdesi iç kamerada gizlendiği için aşağı bakınca asfalt görünüyordu.
+  {
+    const mCarpet = new THREE.MeshStandardMaterial({ color: '#121216', roughness: 1, emissive: '#040405' });
+    mats.push(mCarpet);
+    const fy = -0.92 * S; // taban yüksekliği (göze göre)
+    const zBack = big ? -1.1 * S : -1.5; // arka koltuğun arkası
+    const zFront = zf + 0.02;
+    const len = zFront - zBack;
+    const floor = new THREE.Mesh(new THREE.BoxGeometry(width + 0.1, 0.04, len), mCarpet);
+    floor.position.set(centerX, fy, zBack + len / 2);
+    group.add(floor);
+    // torpido altı (ön ayak boşluğunun önü)
+    const fw = new THREE.Mesh(new THREE.BoxGeometry(width + 0.1, dy - 0.5 - fy + 0.04, 0.04), mCarpet);
+    fw.position.set(centerX, (fy + dy - 0.5) / 2, zFront);
+    group.add(fw);
+    if (!big) {
+      const tunnel = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.14, 1.7), mSoft);
+      tunnel.position.set(centerX, fy + 0.07, -0.25);
+      group.add(tunnel);
+    }
+    // kapıların alt kısmı: taban ile kapı paneli arasında boşluk kalmasın (arka kapılar dahil)
+    const doorBot = sill - 0.3 - 0.275;
+    [xl, xr].forEach((x, i) => {
+      const s = i === 0 ? 1 : -1;
+      const lo = new THREE.Mesh(new THREE.BoxGeometry(0.06, doorBot - fy + 0.02, len), mSoft);
+      lo.position.set(x + s * 0.03, (doorBot + fy) / 2, zBack + len / 2);
+      group.add(lo);
+      if (!big) {
+        // arka kapı paneli (ön kapı panelinin arkasından arka koltuğa kadar)
+        const rd = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.55, 0.9), mSoft);
+        rd.position.set(x + s * 0.03, sill - 0.3, -1.05);
+        group.add(rd);
+        const rt = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.05, 0.9), mDash);
+        rt.position.set(x + s * 0.01, sill, -1.05);
+        group.add(rt);
+      }
+    });
+  }
+
   // gölge yok: iç kamerada gölge haritasıyla titreşmesin
   group.traverse((o) => {
     if (o.isMesh) {

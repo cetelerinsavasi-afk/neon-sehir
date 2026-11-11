@@ -39,10 +39,10 @@ export const vehicleCatalog = [
   { id: 13, kind: 'ticari', job: 'taksi', name: 'Taksi', gearLevel: 3, baseTank: 100, price: 100000, storage: 5, turboCount: 0, seats: 4, desc: 'Çağrı al, yolcu taşı' },
   { id: 14, kind: 'ticari', job: 'polis', name: 'Polis Aracı', gearLevel: 4, baseTank: 100, price: 400000, storage: 5, turboCount: 0, seats: 4, desc: 'İhbar, kovalamaca, devriye' },
   { id: 15, kind: 'ticari', job: 'ambulans', name: 'Ambulans', gearLevel: 2, baseTank: 120, price: 300000, storage: 10, turboCount: 0, seats: 4, desc: '112 vakaları, hastaneye yetiştir' },
-  { id: 21, kind: 'motor', name: 'Scooter', gearLevel: 1, baseTank: 10, price: 15000, storage: 0, turboCount: 0, seats: 2 },
-  { id: 22, kind: 'motor', name: 'Cross Motor', gearLevel: 2, baseTank: 12, price: 35000, storage: 0, turboCount: 0, seats: 1 },
-  { id: 23, kind: 'motor', name: 'Chopper', gearLevel: 2, baseTank: 20, price: 60000, storage: 0, turboCount: 0, seats: 2 },
-  { id: 24, kind: 'motor', name: 'Spor Motor', gearLevel: 3, baseTank: 18, price: 95000, storage: 0, turboCount: 0, seats: 2 },
+  { id: 21, kind: 'motor', job: 'kurye', name: 'Scooter', gearLevel: 1, baseTank: 10, price: 15000, storage: 0, turboCount: 0, seats: 2 },
+  { id: 22, kind: 'motor', job: 'kurye', name: 'Cross Motor', gearLevel: 2, baseTank: 12, price: 35000, storage: 0, turboCount: 0, seats: 1 },
+  { id: 23, kind: 'motor', job: 'kurye', name: 'Chopper', gearLevel: 2, baseTank: 20, price: 60000, storage: 0, turboCount: 0, seats: 2 },
+  { id: 24, kind: 'motor', job: 'kurye', name: 'Spor Motor', gearLevel: 3, baseTank: 18, price: 95000, storage: 0, turboCount: 0, seats: 2 },
 ];
 // v151: araç türü (araba / ticari / motor) — galeri sekmeleri
 export const vehicleKindOfId = (id) => vehicleCatalog.find((v) => v.id === Number(id))?.kind || 'araba';

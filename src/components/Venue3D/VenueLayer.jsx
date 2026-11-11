@@ -36,6 +36,8 @@ const PARTS = {
   simitci: VendorPart,
   donerci: VendorPart,
   kofteci: VendorPart,
+  midyeci: VendorPart, // v154
+  dondurmaci: VendorPart,
   teskilat: TeskilatPart, // v146
 };
 

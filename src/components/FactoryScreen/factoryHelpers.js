@@ -1,3 +1,4 @@
+import { TIERED_MACHINE_TYPES, tieredFleetValue } from '../../../functions/factoryMachineRules.js';
 // factoryHelpers — FactoryScreen.jsx ve hisse (stok) modallarının (bkz.
 // FactoryShareBuyModal.jsx) PAYLAŞTIĞI saf yardımcı fonksiyonlar. Ayrı bir
 // dosyada tutuluyor ki bileşen dosyaları sadece bileşen export etsin (React
@@ -56,13 +57,18 @@ function miningFleetValue(count, cryptoPrice) {
 export function computeFactoryValue(machines, cryptoPrice) {
   let value = FACTORY_CREATE_COST;
   let miningCount = 0;
+  const tiered = {};
   for (const m of machines || []) {
     if (m.type === 'mining') {
       miningCount += 1;
+    } else if (TIERED_MACHINE_TYPES.includes(m.type)) {
+      tiered[m.type] = (tiered[m.type] || 0) + 1;
     } else {
       value += MACHINE_PRICES[m.type] || 0;
     }
   }
+  // v154: aynı türden her makine +1.000 (sunucudaki computeFactoryValue ile aynı)
+  Object.entries(tiered).forEach(([t, n]) => (value += tieredFleetValue(t, n)));
   value += miningFleetValue(miningCount, cryptoPrice);
   return value;
 }

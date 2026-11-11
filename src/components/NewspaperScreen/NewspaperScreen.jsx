@@ -31,12 +31,16 @@ const HEIST_TARGET_LABELS = {
   banka: 'Banka',
   casino: 'Casino',
   araba_galerisi: 'Araba Galerisi',
-  modifiye_garaji: 'Modifiye Garajı',
+  modifiye_garaji: 'Modifiye Garajı', // v154: listeden çıktı; eski haberler için duruyor
+  silah_magazasi: 'Silahçı',
+  internet_kafe: 'İnternet Kafe',
   fabrika: 'Fabrika',
   seyyar_satici_1: 'Bir Seyyar Satıcı',
   seyyar_satici_2: 'Bir Seyyar Satıcı',
   seyyar_satici_3: 'Bir Seyyar Satıcı',
   seyyar_satici_4: 'Bir Seyyar Satıcı',
+  seyyar_satici_5: 'Bir Seyyar Satıcı',
+  seyyar_satici_6: 'Bir Seyyar Satıcı',
 };
 
 const CUP_ROUND_LABELS = {

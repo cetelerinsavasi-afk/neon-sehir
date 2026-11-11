@@ -21,6 +21,13 @@ function footballer(shirt, i, keeper, shorts) {
 }
 
 // maçın canlı durumu + 1 maç dakikasının gerçek saniyesi (spm)
+// v154 — fotoğraf için: maçtaki futbolcuların / hakemin görünüşü (canlıdakiyle aynı)
+export function matchAvatar(side, i, hc = '#ff3fa0', ac = '#19e8ff') {
+  if (side === 'ref') return { ...footballer('#111216', 4, false, '#111216'), shoeColor: '#111216' };
+  const gk = i === 0;
+  return footballer(gk ? (side === 'home' ? '#ffd23f' : '#39ff88') : side === 'home' ? hc : ac, i + (side === 'home' ? 0 : 2), gk, gk ? '#1b1e29' : '#f4f6fa');
+}
+
 export function liveState(match, now = Date.now()) {
   if (!match) return { phase: 'none' };
   const st = computeLiveMatchState(match, now);
@@ -91,14 +98,12 @@ export function createStadiumMatch({ scene, layer, Fig, group, info, groundY, on
     const hc = m.homeColor || '#ff3fa0';
     const ac = m.awayColor || '#19e8ff';
     ['home', 'away'].forEach((side) => {
-      const shirt = side === 'home' ? hc : ac;
-      for (let i = 0; i < 6; i++) {
-        const gk = i === 0;
-        const av = footballer(gk ? (side === 'home' ? '#ffd23f' : '#39ff88') : shirt, i + (side === 'home' ? 0 : 2), gk, gk ? '#1b1e29' : '#f4f6fa');
+        for (let i = 0; i < 6; i++) {
+        const av = matchAvatar(side, i, hc, ac);
         players.push({ f: npc(`mac_${side}_${i}`, av), side, i, x: null, z: null, vx: 0, vz: 0, kick: 0, dive: 0 });
       }
     });
-    ref = { f: npc('mac_hakem', { ...footballer('#111216', 4, false, '#111216'), shoeColor: '#111216' }), x: null, z: null, vx: 0, vz: 0, kick: 0, dive: 0 };
+    ref = { f: npc('mac_hakem', matchAvatar('ref', 0)), x: null, z: null, vx: 0, vz: 0, kick: 0, dive: 0 };
   }
   function setMatch(m) {
     match = m || null;
@@ -360,5 +365,20 @@ export function createStadiumMatch({ scene, layer, Fig, group, info, groundY, on
     const st = liveState(match, Date.now());
     return { phase: st.phase, minute: st.elapsedMinute ?? null, hs: st.homeScore ?? 0, as: st.awayScore ?? 0, home: match?.homeName, away: match?.awayName };
   }
-  return { setMatch, update, dispose, hasMatch: () => Boolean(match), state, matchId: () => match?.id || null };
+  // v154 — fotoğraf: deklanşör anındaki futbolcular + hakem + top (dünya koordinatı)
+  const r2 = (v) => Math.round(v * 100) / 100;
+  function snap() {
+    if (!match || !root.visible || !ball.visible) return null;
+    const fig = (f) => [r2(f.x), r2(f.z), f.facingLeft ? 1 : 0, f.moving ? 1 : 0, Math.floor(f.walkT / 0.16) % 2 ? 1 : 0];
+    return {
+      hc: match.homeColor || '#ff3fa0',
+      ac: match.awayColor || '#19e8ff',
+      p: players.filter((p) => p.x != null && p.f.group.visible).map((p) => [p.side === 'home' ? 0 : 1, p.i, ...fig(p.f)]),
+      ...(ref && ref.x != null ? { r: fig(ref.f) } : {}),
+      b: [r2(ball.position.x), r2(ball.position.y), r2(ball.position.z)],
+    };
+  }
+  // fotoğraf karesi çizilirken canlı maç gizlenir (yerine fotoğraftaki an çizilir)
+  const liveObjects = () => [root, ...players.map((p) => p.f.group), ...(ref ? [ref.f.group] : [])];
+  return { setMatch, update, dispose, hasMatch: () => Boolean(match), state, snap, liveObjects, matchId: () => match?.id || null };
 }

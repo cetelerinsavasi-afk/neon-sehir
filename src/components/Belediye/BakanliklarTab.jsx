@@ -14,7 +14,24 @@ import { Kpis, Ledger, Person, RateEditor, Table, dayLabel, hoursLeft, nf, useTi
 const RANK_LABEL = { baskan: 'Emniyet Genel Müdürü', sef: 'Emniyet Amiri', uzman: 'Başkomiser', ajan: 'Komiser', muhbir: 'Polis Memuru' };
 const MACHINE_LABEL = { mining: 'Kripto', tamirMalzemesi: 'Tamir Malz.', arabaGelistirme: 'Araba Gel.', silahUpgrade: 'Silah Gel.' };
 // v132 — soygun hedefleri (functions/policeRules.js heistTargetKey)
-const HEIST_LABEL = { banka: '🏦 Banka', casino: '🎰 Casino', araba_galerisi: '🚗 Galeri', modifiye_garaji: '🔧 Modifiye', fabrika: '🏭 Fabrika', seyyar: '🥙 Haraç', diger: 'Diğer' };
+// v154: yeni soygun listesi + haraç satıcı satıcı (eski raporlardaki 'seyyar' / 'modifiye' satırları da görünür)
+const HEIST_LABEL = {
+  banka: '🏦 Banka',
+  casino: '🎰 Casino',
+  araba_galerisi: '🚗 Galeri',
+  silah_magazasi: '🔫 Silahçı',
+  fabrika: '🏭 Fabrika',
+  internet_kafe: '🖥️ İnternet Kafe',
+  seyyar_satici_6: '🍦 Dondurmacı',
+  seyyar_satici_5: '🦪 Midyeci',
+  seyyar_satici_1: '🌯 Kokoreçci',
+  seyyar_satici_2: '🥯 Simitçi',
+  seyyar_satici_3: '🐟 Balık Ekmekçi',
+  seyyar_satici_4: '🍔 Köfteci',
+  seyyar: '💰 Haraç',
+  modifiye_garaji: '🔧 Modifiye',
+  diger: 'Diğer',
+};
 
 // Raporun gelir/gider kalemleri: { in: {cat: n}, out: {cat: n} }
 function catsOf(report) {
@@ -112,8 +129,10 @@ function Ticaret({ r, c, rates }) {
   const sy = [
     ['kk', '🌯 Kokoreççi'],
     ['sm', '🥯 Simitçi'],
-    ['dn', '🥙 Dönerci'],
+    ['dn', '🐟 Balık Ekmekçi'],
     ['kf', '🍔 Köfteci'],
+    ['md', '🦪 Midyeci'],
+    ['dd', '🍦 Dondurmacı'],
   ].map(([k, name]) => ({ key: k, name, n: nf(st[`sy_${k}_n`]), ciro: nf(st[`sy_${k}_ciro`]) }));
   return (
     <>

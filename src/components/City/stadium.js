@@ -427,6 +427,7 @@ export function buildStadyum(kit, lot) {
   kit.ellipse(0, 0, 34, 27.6, { car: true }); // arabalar stadyuma girmez
   kit.height(0, 0, 34.4, stadiumHeight); // tribün basamakları
   kit.area(0, 0, OUT_RX - 0.3, OUT_RZ - 0.3, 'stadyum');
+  buildStadiumParking(kit, lot);
   // ana giriş: v151 — güney tünelinin içi (stadyum alanında doğulur → üstte Futbol düğmesi hemen görünür)
   kit.zone({ x: 0, z: 22, r: 0, kind: 'spawn', key: 'stadyum', lx: 0, lz: 0 });
 
@@ -560,4 +561,36 @@ export function buildStadyum(kit, lot) {
       },
     },
   };
+}
+
+// --- v154 — stadyum otoparkı: ön (güney) kaldırım şeridinde 2 × 7 park yeri -------------------
+// Ana giriş (x≈0) yayalara açık kalır; kaldırım lambası / ağaç hizaları (±8.25, ±24.75) boş bırakılır.
+// Sadece görsel: arabalar zaten bu şeride girebiliyor (stadyum araç elipsi 27.6'da biter).
+function buildStadiumParking(kit, lot) {
+  const { d } = lot;
+  const z0 = OUT_RZ + 0.9; // cephe arkası
+  const z1 = d / 2 - 0.1; // lot ön kenarı
+  const zc = (z0 + z1) / 2;
+  const depth = z1 - z0;
+  const lineM = M('#f2f2f2', 0.6);
+  const blueM = M('#1f5fd6', 0.5);
+  const STALL = 2.8;
+  const runs = [[9.6, 5], [26.0, 2]]; // [başlangıç x, yer sayısı] (her iki yan için aynalanır)
+  for (const s of [-1, 1]) {
+    for (const [x0, n] of runs) {
+      const xa = s * x0;
+      const xb = s * (x0 + n * STALL);
+      const mid = (xa + xb) / 2;
+      kit.floor('asfalt', n * STALL, depth, mid, zc, 0.142);
+      for (let i = 0; i <= n; i++) kit.box(0.12, 0.02, depth - 0.4, lineM, s * (x0 + i * STALL), 0.15, zc - 0.2, { cast: false });
+      kit.box(n * STALL, 0.02, 0.12, lineM, mid, 0.15, z0 + 0.1, { cast: false });
+    }
+    // köşe tabelası: mavi "P"
+    const px = s * 23.6 + s * 1.2;
+    kit.box(0.14, 3.2, 0.14, M('#2a2f3a', 0.5, 0.5), px, 0.13, z0 + 0.4);
+    kit.box(1.1, 1.1, 0.08, blueM, px, 3.0, z0 + 0.4, { cast: false });
+    kit.sign(`stadP${s}`, 'P', 0.9, px, 3.55, z0 + 0.46, 0, { color: '#ffffff', font: '900 120px Arial, sans-serif', light: false });
+    kit.sign(`stadPt${s}`, 'OTOPARK', 0.28, px, 2.8, z0 + 0.46, 0, { color: '#ffffff', font: '800 90px Arial, sans-serif', light: false });
+    kit.solid(px, z0 + 0.4, 0.12, 0.12);
+  }
 }

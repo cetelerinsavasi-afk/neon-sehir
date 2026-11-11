@@ -122,3 +122,17 @@ test('index.js: tek soygun/haraç, ekip başlatma ve park satışları (iki mod)
   assert.ok(lock > 0 && lock < exec.indexOf('const totalPower'), 'ekip kilidi güç kontrolünden ve her yazmadan önce');
   assert.ok(lock < exec.indexOf('batch.update('));
 });
+
+// v154 — ekip üyeleri plan belgesinde (memberUids): kur / katıl / ayrıl / çıkar hepsi günceller;
+// katılmada uyarı listesiyle TEK yazım; "bu hedefte ekibin var mı" kontrolü üye listesini kullanır.
+test('v154: memberUids kur/katıl/ayrıl/çıkar ile güncellenir, katılmada tek plan yazımı', () => {
+  const sec = (a, b) => indexSrc.slice(indexSrc.indexOf(a), indexSrc.indexOf(b, indexSrc.indexOf(a)));
+  assert.ok(sec('export const createHeistPlan', 'export const joinHeistPlan').includes('memberUids: [uid]'));
+  const join = sec('export const joinHeistPlan', 'export const leaveHeistPlan');
+  assert.ok(join.includes('memberUids: admin.firestore.FieldValue.arrayUnion(uid)'));
+  // (süresi dolmuş plan dalındaki status:'expired' yazımı hariç)
+  assert.equal((join.match(/planRef\.update\(/g) || []).length - (join.match(/planRef\.update\(\{ status: 'expired' \}\)/g) || []).length, 1, 'katılmada plan belgesine tek yazım');
+  assert.ok(sec('export const leaveHeistPlan', 'export const kickFromHeistPlan').includes('arrayRemove(uid)'));
+  assert.ok(sec('export const kickFromHeistPlan', 'export const cancelHeistPlan').includes('arrayRemove(targetUid)'));
+  assert.ok(sec('async function isAlreadyInActiveHeistPlanForTarget', 'export const').includes('memberUids'));
+});

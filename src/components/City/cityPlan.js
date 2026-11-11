@@ -10,7 +10,7 @@ import * as B from './buildings.js';
 import * as A from './areas.js';
 import { VENUES } from '../../../functions/venueLayouts.js';
 import * as J from './jobBuildings.js';
-import { BUS_STOPS, LIMAN_BAY } from '../../../functions/cityJobsData.js';
+import { BUS_STOPS, LIMAN_BAY, VENDOR_SPOTS } from '../../../functions/cityJobsData.js';
 
 import { P, BLOCK, SIDE, COLS, ROWS, cx, cz, COAST_Z, BOUNDS, LOTS } from './cityLayout.js';
 export { P, BLOCK, SIDE, COLS, ROWS, cx, cz, COAST_Z, BOUNDS };
@@ -40,15 +40,12 @@ const T = {
   depo_dogu: { build: J.buildDepoDogu, name: 'Doğu Lojistik Deposu', icon: '📦', open: true },
   hastane: { build: J.buildHastane, name: 'Hastane', icon: '🏥', open: true },
   benzinlik: { build: J.buildBenzinlik, name: 'Benzinlik', icon: '⛽', open: true },
+  taksi_duragi: { build: J.buildTaksiDuragi, name: 'Taksi Durağı', icon: '🚕', open: true },
 };
 
 // Seyyar satıcılar: mekân değil, sokakta (lot yerel koordinatı)
-const VENDORS_AT = [
-  { key: 'kokorecci', lot: 'casino', x: -8.5, z: 8.5, r: 0 },
-  { key: 'kofteci', lot: 'park', x: -26, z: 6.5, r: 0 },
-  { key: 'donerci', lot: 'ev', x: 6.5, z: 8.5, r: 0 },
-  { key: 'simitci', lot: 'plaza', x: 0, z: 6.5, r: 0 },
-];
+// v154: tek kaynak functions/cityJobsData.js (motokurye alma noktaları da buradan)
+const VENDORS_AT = VENDOR_SPOTS;
 
 const FACE = { s: 0, e: Math.PI / 2, n: Math.PI, w: -Math.PI / 2 };
 

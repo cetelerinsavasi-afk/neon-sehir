@@ -115,3 +115,69 @@ export function pickSpot(rand, { near = null, min = 0, max = Infinity, not = [] 
   const list = pool.length ? pool : ROAD_SPOTS;
   return list[Math.floor(rand() * list.length) % list.length];
 }
+
+// --- v154 MOTOKURYE ------------------------------------------------------------------------
+// Sipariş 6 seyyar satıcıdan birinden alınır, şehirdeki bir mekânın önüne götürülür.
+// Satıcı yerleri şehir planıyla AYNI kaynak (src/components/City/cityPlan.js bunu kullanır).
+// lot: [i0, j0, i1, j1, yön] (cityLayout.js LOTS ile aynı — tests/city/kurye.test.mjs denetler)
+const P_ = 40;
+const BLOCK_ = 32;
+const cxw = (i) => -100 + P_ * i;
+const czw = (j) => -80 + P_ * j;
+const FACE_ = { s: 0, e: Math.PI / 2, n: Math.PI, w: -Math.PI / 2 };
+export const KURYE_LOTS = {
+  camii: [0, 1, 0, 1, 's', 'Camii'], banka: [2, 0, 2, 0, 's', 'Banka'], karakol: [1, 0, 1, 0, 's', 'Karakol'], belediye: [5, 0, 5, 0, 's', 'Belediye'],
+  galeri: [1, 1, 1, 1, 's', 'Araba Galerisi'], silah: [0, 2, 0, 2, 's', 'Silah Mağazası'], modifiye: [1, 2, 1, 2, 's', 'Modifiye Garajı'],
+  casino: [0, 3, 0, 3, 'e', 'Casino'], spor: [4, 0, 4, 0, 's', 'Spor Salonu'], fabrika: [2, 1, 2, 1, 's', 'Fabrika'], netkafe: [3, 1, 3, 1, 's', 'İnternet Kafe'],
+  bar: [4, 1, 4, 1, 's', 'Bar'], cafe: [5, 1, 5, 1, 's', 'Cafe'], ev: [3, 3, 3, 3, 's', 'Evler'], stadyum: [4, 2, 5, 3, 's', 'Stadyum'],
+  park: [2, 2, 3, 2, 's', 'Park'], pist: [1, 3, 2, 3, 's', 'Yarış Pisti'], liman: [0, 4, 1, 4, 's', 'Liman'], hastane: [6, 1, 6, 1, 'w', 'Hastane'],
+  benzinlik: [3, 0, 3, 0, 's', 'Benzinlik'], taksi_duragi: [6, 3, 6, 3, 'w', 'Taksi Durağı'], plaza: [2, 4, 2, 4, 's', 'Plaza'],
+};
+// lot yerel (x, z) → dünya
+function lotWorld(lot, x, z) {
+  const [i0, j0, i1, j1, face] = lot;
+  const mx = (cxw(i0) + cxw(i1)) / 2;
+  const mz = (czw(j0) + czw(j1)) / 2;
+  const a = FACE_[face] || 0;
+  return { x: mx + x * Math.cos(a) + z * Math.sin(a), z: mz - x * Math.sin(a) + z * Math.cos(a) };
+}
+// lotun önündeki yol (kaldırımın hemen dışı, sağ şerit)
+function lotFront(lot) {
+  const [i0, j0, i1, j1, face] = lot;
+  const rot = face === 'e' || face === 'w';
+  const bw = cxw(i1) - cxw(i0) + BLOCK_;
+  const bd = czw(j1) - czw(j0) + BLOCK_;
+  return lotWorld(lot, 0, (rot ? bw : bd) / 2 + 1.6);
+}
+// seyyar satıcılar (lot yerel; r = π/4 adımlı dönüş) — şehirdeki tezgâhların yeri
+export const VENDOR_SPOTS = [
+  { key: 'kokorecci', name: 'Kokoreççi', food: 'kokoreç', lot: 'casino', x: -8.5, z: 8.5, r: 0 },
+  { key: 'donerci', name: 'Balık Ekmekçi', food: 'balık ekmek', lot: 'park', x: -26, z: 6.5, r: 0 },
+  { key: 'kofteci', name: 'Köfteci', food: 'köfte ekmek', lot: 'ev', x: 6.5, z: 8.5, r: 0 },
+  { key: 'simitci', name: 'Simitçi', food: 'simit', lot: 'plaza', x: 0, z: 6.5, r: 0 },
+  { key: 'midyeci', name: 'Midyeci', food: 'midye', lot: 'bar', x: 13, z: 12, r: 0 },
+  { key: 'dondurmaci', name: 'Dondurmacı', food: 'dondurma', lot: 'stadyum', x: 28, z: -28, r: 1 },
+];
+// alma noktası: tezgâhın dünya konumu (motor kaldırıma çıkabilir; yarıçap geniş)
+export const KURYE_PICKUPS = VENDOR_SPOTS.map((v, i) => ({ i, key: v.key, name: v.name, food: v.food, ...lotWorld(KURYE_LOTS[v.lot], v.x, v.z), r: 8 }));
+// teslim noktaları: tüm mekânların önü
+const DROP_KEYS = ['camii', 'banka', 'karakol', 'belediye', 'galeri', 'silah', 'modifiye', 'casino', 'spor', 'fabrika', 'netkafe', 'bar', 'cafe', 'ev', 'stadyum', 'park', 'pist', 'liman', 'hastane', 'benzinlik', 'taksi_duragi'];
+export const KURYE_DROPS = DROP_KEYS.map((k, i) => ({ i, key: k, name: KURYE_LOTS[k][5], ...lotFront(KURYE_LOTS[k]), r: 8 }));
+// ortalama teslim mesafesi (ücret çarpanı ≈ 1 olsun diye)
+export const KURYE_MIN_LEN = 70;
+export const KURYE_REF_LEN = (() => {
+  let s = 0;
+  let n = 0;
+  KURYE_PICKUPS.forEach((a) =>
+    KURYE_DROPS.forEach((b) => {
+      const d = manhattan(a, b);
+      if (d >= KURYE_MIN_LEN) {
+        s += d;
+        n += 1;
+      }
+    })
+  );
+  return n ? s / n : 200;
+})();
+// mesafeye göre ücret çarpanı (kısa ×0,6 … uzun ×1,6)
+export const kuryeMul = (len) => Math.round(Math.min(1.6, Math.max(0.6, len / KURYE_REF_LEN)) * 100) / 100;

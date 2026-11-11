@@ -41,7 +41,6 @@ import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import { StreamCasinoSheet } from '../Casino/StreamCasino';
 import ShopShowcase from '../Shop/ShopShowcase';
 import MenuPanel from '../Venue/MenuPanel';
-import CafeCalmButton from '../Venue/CafeCalmButton';
 import NetCreditRing from '../Venue/NetCreditRing';
 import PianoPanel from '../Piano/PianoPanel';
 import DrumPanel, { drumKey } from '../Piano/DrumPanel';
@@ -59,7 +58,7 @@ import { EQUIP } from '../Gym/gymMeta';
 import '../Gym/Gym.css';
 import { shopAction } from '../../services/gameActions';
 import { IS_ANDROID_WEBVIEW } from '../../lib/platform';
-import { MENU_TYPES, isMenuProduct, netPriceOf, NET_DEVICE_CAP, NET_SEEN_MS, CAFE_CALM_TYPES, CAFE_CALM_AT, CAFE_CALM_SUSPICION } from '../../../functions/venue.js';
+import { MENU_TYPES, isMenuProduct, netPriceOf, NET_DEVICE_CAP, NET_SEEN_MS } from '../../../functions/venue.js';
 import '../Venue/Venue.css';
 import '../Piano/Piano.css';
 import '../Workshop/Workshop.css';
@@ -1338,7 +1337,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
   const cityRegion = useMemo(() => {
     if (!user || isHq || isTeskilat) return null;
     if (venue) {
-      const VK = { camii: 'camii', banka: 'banka', karakol: 'karakol', belediye: 'belediye', gazino: 'casino', araba_galerisi: 'araba_galerisi', silah_magazasi: 'silah_magazasi', modifiye_garaji: 'modifiye_garaji', park: 'park', kokorecci: 'kokorecci', simitci: 'simitci', donerci: 'donerci', kofteci: 'kofteci' };
+      const VK = { camii: 'camii', banka: 'banka', karakol: 'karakol', belediye: 'belediye', gazino: 'casino', araba_galerisi: 'araba_galerisi', silah_magazasi: 'silah_magazasi', modifiye_garaji: 'modifiye_garaji', park: 'park', kokorecci: 'kokorecci', simitci: 'simitci', donerci: 'donerci', kofteci: 'kofteci', midyeci: 'midyeci', dondurmaci: 'dondurmaci' };
       return VK[venue.key] || null;
     }
     if (!houseDoc) return null;
@@ -1969,10 +1968,6 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
               ))}
             </div>
           )}
-          {/* v142 — Kafe & Bar sağ üst: -10 şüphe (çubuk dolu + şüphe ≥ 10 + bugün kullanılmadı) */}
-          {bizType && CAFE_CALM_TYPES.includes(bizType) && mode === 'walk' && player &&
-            (Number(player.cafeSpend) || 0) >= CAFE_CALM_AT &&
-            (Number(player.suspicion) || 0) >= CAFE_CALM_SUSPICION && <CafeCalmButton flash={flash} />}
           {/* v132 — GARSON BOT (sol üst): içeride garson bot + yiyecek/içecek varsa sipariş */}
           {bots.waiterReady && mode === 'walk' && <BotWaiterButton bots={bots} />}
           {/* v137.1 — ev hayvanına yaklaşınca: sev */}

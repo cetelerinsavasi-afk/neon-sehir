@@ -64,7 +64,7 @@ export function onSnapshot(target, a, b, c) {
       } else {
         const s = await build(target).get();
         const docs = s.docs.map((d) => ({ id: d.id, data: () => d.data() }));
-        if (alive) next({ size: s.size, empty: s.empty, docs, forEach: (fn) => docs.forEach(fn) });
+        if (alive) next({ size: s.size, empty: s.empty, docs, forEach: (fn) => docs.forEach(fn), metadata: { fromCache: false } });
       }
     } catch (err) {
       if (alive && onError) onError(err);

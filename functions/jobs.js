@@ -12,7 +12,7 @@
 //   Firestore: iş başına 2 yazma (başla + bitir) — şehirdeki hareket RTDB'de.
 // =============================================================================
 import { JOBS, jobOf, jobPerf, jobReward } from './vehicleKinds.js';
-import { LIMAN_BAY, DEPOTS, HOSPITAL, BUS_STOPS, ROAD_SPOTS, manhattan, busRouteLen } from './cityJobsData.js';
+import { LIMAN_BAY, DEPOTS, HOSPITAL, BUS_STOPS, ROAD_SPOTS, manhattan, busRouteLen, KURYE_PICKUPS, KURYE_DROPS, KURYE_MIN_LEN, kuryeMul } from './cityJobsData.js';
 import { goldTag } from './moneyLog.js';
 
 const isId = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
@@ -39,7 +39,7 @@ const CASES = [
 const PAX = ['Ayşe Hanım', 'Mehmet Bey', 'Turist Hans', 'Kerem', 'Zeynep', 'İş insanı', 'Teyze', 'Öğrenci Ece', 'Ahmet Usta'];
 
 // araçların azami hızı (m/s) — en kısa süre sınırı için (şehir motorundaki değerlerle aynı / biraz üstü)
-const VMAX = { tir: 22, otobus: 20, taksi: 32, polis: 40, ambulans: 30 };
+const VMAX = { tir: 22, otobus: 20, taksi: 32, polis: 40, ambulans: 30, kurye: 34 };
 
 const pick = (a, r = Math.random) => a[Math.floor(r() * a.length) % a.length];
 function spotAway(from, min, max, not = []) {
@@ -83,6 +83,14 @@ export function planJob(job, near = null) {
     const len = manhattan(from, HOSPITAL);
     const [title, desc] = pick(CASES);
     return { task: { type: 'ambulans', from: from.i, title, desc }, mul: 1, len, par: len / 10 + 12, minT: len / VMAX.ambulans + 3 };
+  }
+  if (job === 'kurye') {
+    // v154: 6 satıcıdan rastgele biri → rastgele bir mekân (en az 70 m). Ücret: mesafe çarpanı × performans
+    const from = pick(KURYE_PICKUPS);
+    const pool = KURYE_DROPS.filter((d) => manhattan(d, from) >= KURYE_MIN_LEN);
+    const to = pick(pool.length ? pool : KURYE_DROPS);
+    const len = manhattan(from, to);
+    return { task: { type: 'kurye', from: from.i, to: to.i, food: from.food, client: pick(PAX) }, mul: kuryeMul(len), len, par: len / 9 + 12, minT: len / VMAX.kurye + 2 };
   }
   if (job === 'polis') {
     if (Math.random() < 0.6) {

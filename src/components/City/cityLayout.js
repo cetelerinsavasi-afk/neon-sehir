@@ -26,6 +26,8 @@ export const LOTS = [
   ['depo_dogu', 6, -1, 6, -1, 's'],
   ['hastane', 6, 1, 6, 1, 'w'],
   ['benzinlik', 3, 0],
+  // v154 — taksi durağı (şehrin dışı: doğu dış halka, stadyumun karşısı)
+  ['taksi_duragi', 6, 3, 6, 3, 'w'],
 ];
 
 // lot merkezleri (dünya) — harita eşlemesi için

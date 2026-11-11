@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useDailyActions } from '../../hooks/useDailyActions';
@@ -21,34 +21,31 @@ import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import ResultModal from '../ResultModal/ResultModal';
 import { regionEmojis } from '../../data/regions';
 import { INITIAL_LIFE_DAYS } from '../VehicleCard/VehicleCard';
+import { heistCarOf, heistSceneOf, isVendorHeist } from './heistVideo';
 import './HeistPanel.css';
+
+// v154 — şehir dışında soygun videosu (şehir motorunu sadece video açılınca yükler)
+const HeistVideo = lazy(() => import('../City/HeistVideo'));
 
 // emoji: regions.js'teki TEK kaynaktan (regionEmojis) geliyor — yeni istek:
 // "Soygun'daki tüm mekanları emojilerle görsel olarak daha iyi hale
 // getireceğiz, her mekanın bi emojisi olsun".
 export const HEIST_LABELS = {
+  // v154 — yeni tablo (functions/index.js HEIST_CONFIG ile AYNI olmalı). Modifiye Garajı çıktı.
   banka: { title: 'Banka Soygunu', emoji: regionEmojis.banka, requiredPower: 100000, reward: 500000, suspicionCost: 50 },
-  casino: { title: 'Casino Soygunu', emoji: regionEmojis.casino, requiredPower: 70000, reward: 250000, suspicionCost: 40 },
-  araba_galerisi: {
-    title: 'Galeri Soygunu',
-    emoji: regionEmojis.araba_galerisi,
-    requiredPower: 50000,
-    reward: 125000,
-    suspicionCost: 30,
-  },
-  modifiye_garaji: {
-    title: 'Garaj Soygunu',
-    emoji: regionEmojis.modifiye_garaji,
-    requiredPower: 20000,
-    reward: 25000,
-    suspicionCost: 20,
-  },
-  fabrika: { title: 'Fabrika Soygunu', emoji: regionEmojis.fabrika, requiredPower: 10000, reward: 10000, suspicionCost: 10 },
+  casino: { title: 'Casino Soygunu', emoji: regionEmojis.casino, requiredPower: 80000, reward: 250000, suspicionCost: 40 },
+  araba_galerisi: { title: 'Galeri Soygunu', emoji: regionEmojis.araba_galerisi, requiredPower: 60000, reward: 125000, suspicionCost: 30 },
+  silah_magazasi: { title: 'Silahçı Soygunu', emoji: regionEmojis.silah_magazasi, requiredPower: 40000, reward: 50000, suspicionCost: 20 },
+  fabrika: { title: 'Fabrika Soygunu', emoji: regionEmojis.fabrika, requiredPower: 20000, reward: 25000, suspicionCost: 15 },
+  internet_kafe: { title: 'İnternet Kafe Soygunu', emoji: regionEmojis.internet_kafe, requiredPower: 10000, reward: 10000, suspicionCost: 10 },
+  seyyar_satici_6: { title: 'Dondurmacıya Haraç', emoji: regionEmojis.seyyar_satici_6, requiredPower: 7500, reward: 7000, suspicionCost: 5 },
+  seyyar_satici_5: { title: 'Midyeciye Haraç', emoji: regionEmojis.seyyar_satici_5, requiredPower: 6000, reward: 6000, suspicionCost: 5 },
   seyyar_satici_1: { title: 'Kokoreçciye Haraç', emoji: regionEmojis.seyyar_satici_1, requiredPower: 4500, reward: 5000, suspicionCost: 5 },
   seyyar_satici_2: { title: 'Simitçiye Haraç', emoji: regionEmojis.seyyar_satici_2, requiredPower: 3000, reward: 4000, suspicionCost: 5 },
-  seyyar_satici_3: { title: 'Dönerciye Haraç', emoji: regionEmojis.seyyar_satici_3, requiredPower: 1500, reward: 3000, suspicionCost: 5 },
+  seyyar_satici_3: { title: 'Balık Ekmekçiye Haraç', emoji: regionEmojis.seyyar_satici_3, requiredPower: 1500, reward: 3000, suspicionCost: 5 },
   seyyar_satici_4: { title: 'Köfteciye Haraç', emoji: regionEmojis.seyyar_satici_4, requiredPower: 1000, reward: 2000, suspicionCost: 5 },
 };
+
 
 const fmtGold = (n) => Number(n || 0).toLocaleString('tr-TR');
 
@@ -114,12 +111,22 @@ function suspicionClass(s) {
   return 'heist-suspicion-low';
 }
 
-// v79: şüphe her zaman tam değeriyle gösterilir (eskiden 0-20 arası "%0-20" yazıyordu).
-function suspicionLabel(s) {
-  return `%${Math.round(Number(s) || 0)}`;
-}
 
-function PlanCard({ plan, myUid, onChanged }) {
+// v154 — ekip üyeleri plan belgesinde (memberUids) → "benim ekibim" ilk görüntüde belli
+const isMyPlan = (p, uid, myPlanIds) => p.creatorUid === uid || (Array.isArray(p.memberUids) && p.memberUids.includes(uid)) || myPlanIds.has(p.id);
+const isVendorTarget = (t) => String(t || '').startsWith('seyyar_satici');
+// sunucu captureRiskPercent ile aynı: şüphe yüzdesi, en az %1
+const riskOf = (sus) => Math.max(1, Math.min(100, Math.round(Number(sus) || 0)));
+const nf = (n) => Number(n || 0).toLocaleString('tr-TR');
+const short = (n) => {
+  const v = Number(n || 0);
+  if (v >= 1e6) return `${(v / 1e6).toLocaleString('tr-TR', { maximumFractionDigits: 1 })}M`;
+  if (v >= 1e4) return `${Math.round(v / 1e3).toLocaleString('tr-TR')}B`;
+  return nf(v);
+};
+
+// v154 — sade ekip kartı: avatarlar (güçleriyle), toplam güç çubuğu, tek satır buton
+function PlanCard({ plan, myUid, onChanged, mine, runner }) {
   const { participants } = useHeistPlanParticipants(plan.id);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -131,7 +138,38 @@ function PlanCard({ plan, myUid, onChanged }) {
     if (!editingNote) setNoteDraft(plan.note || '');
   }, [plan.note, editingNote]);
 
-  const handleSaveNote = async () => {
+  // Katılımcıların güç/şüphe değerleri (katılma anındaki kopya) kart görünürken tazelenir
+  useEffect(() => {
+    refreshHeistPlanParticipants(plan.id).catch(() => {});
+    const id = setInterval(() => {
+      if (!document.hidden) refreshHeistPlanParticipants(plan.id).catch(() => {});
+    }, 45000);
+    return () => clearInterval(id);
+  }, [plan.id]);
+
+  const totalPower = participants.reduce((sum, p) => sum + (p.weaponPower || 0), 0);
+  const isMember = mine || participants.some((p) => p.uid === myUid);
+  const isCreator = plan.creatorUid === myUid;
+  const required = HEIST_LABELS[plan.target]?.requiredPower || 0;
+  const ready = required > 0 && totalPower >= required;
+  useEffect(() => {
+    if (participants.some((p) => p.uid === myUid)) noteMyHeistPlan(plan.id, plan.target, true);
+  }, [participants, myUid, plan.id, plan.target]);
+
+  const run = async (fn, mineAfter) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fn();
+      if (mineAfter !== undefined) noteMyHeistPlan(plan.id, plan.target, mineAfter);
+      onChanged?.(res?.data, Boolean(res?.played));
+    } catch (err) {
+      setError(err.message || 'İşlem başarısız.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const saveNote = async () => {
     setNoteBusy(true);
     try {
       await updateHeistPlanNote(plan.id, noteDraft.trim());
@@ -143,138 +181,94 @@ function PlanCard({ plan, myUid, onChanged }) {
     }
   };
 
-  // Katılımcıların güç/şüphe değerleri plana KATILDIKLARI ANDA alınan
-  // donmuş bir kopyaydı — güncel tutmak için, kart görünürken periyodik
-  // olarak (ve açılır açılmaz bir kez) sunucudan tazeliyoruz.
-  useEffect(() => {
-    refreshHeistPlanParticipants(plan.id).catch(() => {});
-    // v73 — maliyet: 15 sn → 45 sn (sunucu da plan başına 40 sn'de bir tazeler)
-    const id = setInterval(() => {
-      if (!document.hidden) refreshHeistPlanParticipants(plan.id).catch(() => {});
-    }, 45000);
-    return () => clearInterval(id);
-  }, [plan.id]);
-
-  const totalPower = participants.reduce((sum, p) => sum + (p.weaponPower || 0), 0);
-  const isMember = participants.some((p) => p.uid === myUid);
-  const isCreator = plan.creatorUid === myUid;
-  const required = HEIST_LABELS[plan.target]?.requiredPower || 0;
-  // v145: ekibinde olduğun plan cihazda hatırlansın (panel açılınca hemen üstte)
-  useEffect(() => {
-    if (isMember) noteMyHeistPlan(plan.id, plan.target, true);
-  }, [isMember, plan.id, plan.target]);
-
-  const run = async (fn, mine) => {
-    setBusy(true);
-    setError(null);
-    try {
-      const res = await fn();
-      if (mine !== undefined) noteMyHeistPlan(plan.id, plan.target, mine);
-      onChanged?.(res?.data);
-    } catch (err) {
-      setError(err.message || 'İşlem başarısız.');
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const creator = participants.find((p) => p.uid === plan.creatorUid);
+  // kurucu her zaman ilk sırada
+  const slots = [...participants].sort((a, b) => Number(b.uid === plan.creatorUid) - Number(a.uid === plan.creatorUid));
+  while (slots.length < 4) slots.push(null);
   return (
-    <div className={`heist-plan-card${isMember ? ' mine' : ''}`}>
-      <div className="hp-plan-head">
-        <b>👑 {creator?.displayName || 'Kurucu'}</b>
-        <span>{participants.length}/4 kişi</span>
-      </div>
-      <div className="hp-plan-power">
-        <div className="sg-meter">
-          <i style={{ width: `${Math.min(100, required > 0 ? (totalPower / required) * 100 : 0)}%` }} />
-        </div>
-        <span className={totalPower >= required ? 'ok' : ''}>
-          ⚔️ {totalPower.toLocaleString('tr-TR')} / {required.toLocaleString('tr-TR')}
-        </span>
-      </div>
-      <ul className="heist-plan-members">
-        {participants.map((p) => (
-          <li key={p.uid}>
-            <span className="heist-plan-member-name">
-              <span className="hp-av">
-                <AvatarSvg avatar={p.avatar} size={26} rounded />
+    <div className={`hp2-team${isMember ? ' mine' : ''}${ready ? ' ready' : ''}`}>
+      {isMember && <span className="hp2-team-tag">{isCreator ? '👑 Ekibin' : '🤝 Ekibin'}</span>}
+      <div className="hp2-crew">
+        {slots.map((p, i) =>
+          p ? (
+            <div key={p.uid} className={`hp2-mem${p.uid === plan.creatorUid ? ' lead' : ''}`}>
+              <span className="hp2-av">
+                <AvatarSvg avatar={p.avatar} size={40} rounded />
+                {p.uid === plan.creatorUid && <i>👑</i>}
+                {isCreator && p.uid !== myUid && (
+                  <button className="hp2-kick" disabled={busy} onClick={() => run(() => kickFromHeistPlan(plan.id, p.uid))} aria-label="Çıkar">
+                    ✕
+                  </button>
+                )}
               </span>
-              <span className="hp-mem-txt">
-                {p.displayName}
-                <small>⚔️ {(p.weaponPower || 0).toLocaleString('tr-TR')}</small>
-              </span>
-            </span>
-            <span className={`heist-suspicion-badge ${suspicionClass(p.suspicion || 0)}`}>🕵️ {suspicionLabel(p.suspicion || 0)}</span>
-            {isCreator && p.uid !== myUid && (
-              <button className="heist-plan-kick" disabled={busy} onClick={() => run(() => kickFromHeistPlan(plan.id, p.uid))} aria-label="Çıkar">
-                ✕
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
-
-      <div className="heist-plan-note">
-        {editingNote ? (
-          <>
-            <textarea
-              className="heist-plan-note-input"
-              maxLength={200}
-              placeholder="Örn: 'Şüphen düşmeden başlatma'…"
-              value={noteDraft}
-              onChange={(e) => setNoteDraft(e.target.value)}
-            />
-            <div className="heist-plan-note-actions">
-              <button
-                className="heist-plan-btn"
-                disabled={noteBusy}
-                onClick={() => {
-                  setNoteDraft(plan.note || '');
-                  setEditingNote(false);
-                }}
-              >
-                Vazgeç
-              </button>
-              <button className="heist-plan-btn primary" disabled={noteBusy} onClick={handleSaveNote}>
-                {noteBusy ? '…' : 'Kaydet'}
-              </button>
+              <b>{p.displayName}</b>
+              <small>
+                ⚔️{short(p.weaponPower)} · <span className={`hp2-sus ${suspicionClass(p.suspicion || 0)}`}>🕵️{Math.round(p.suspicion || 0)}</span>
+              </small>
             </div>
-          </>
-        ) : (
-          <div className="hp-note-row">
-            <p className={`heist-plan-note-text${plan.note ? '' : ' muted'}`}>
-              📝 {plan.note || 'Henüz not yok.'}
-              {plan.note && plan.noteUpdatedBy && <span className="heist-plan-note-author"> — {plan.noteUpdatedBy}</span>}
-            </p>
-            {(isMember || isCreator) && (
-              <button className="heist-plan-note-edit-btn" onClick={() => setEditingNote(true)} aria-label="Not">
-                ✏️
-              </button>
-            )}
-          </div>
+          ) : (
+            <div key={`e${i}`} className="hp2-mem empty">
+              <span className="hp2-av">+</span>
+            </div>
+          )
         )}
       </div>
-
-      <div className="heist-plan-actions">
+      <div className="hp2-bar">
+        <i style={{ width: `${Math.min(100, required > 0 ? (totalPower / required) * 100 : 0)}%` }} />
+        <span>
+          ⚔️ {nf(totalPower)} / {nf(required)}
+        </span>
+      </div>
+      {(plan.note || editingNote) && !editingNote && (
+        <p className="hp2-note" onClick={() => isMember && setEditingNote(true)}>
+          📝 {plan.note}
+        </p>
+      )}
+      {editingNote && (
+        <div className="hp2-note-edit">
+          <input maxLength={200} placeholder="Ekibe kısa not…" value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)} autoFocus />
+          <button disabled={noteBusy} onClick={saveNote}>
+            {noteBusy ? '…' : '✓'}
+          </button>
+          <button
+            disabled={noteBusy}
+            onClick={() => {
+              setNoteDraft(plan.note || '');
+              setEditingNote(false);
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
+      <div className="hp2-acts">
         {!isMember && (
-          <button className="heist-plan-btn primary" disabled={busy || participants.length >= 4} onClick={() => run(() => joinHeistPlan(plan.id), true)}>
+          <button className="hp2-btn go" disabled={busy || participants.length >= 4} onClick={() => run(() => joinHeistPlan(plan.id), true)}>
             {participants.length >= 4 ? 'Dolu' : '🤝 Katıl'}
           </button>
         )}
+        {isCreator && (
+          <button
+            className={`hp2-btn${ready ? ' go pulse' : ''}`}
+            disabled={busy || !ready}
+            // v154: ekibi kuran başlatır → videoyu SADECE o izler (ekip kartındaki avatarlar, kurucu önde)
+            onClick={() => run(() => runner(() => executeHeistPlan(plan.id), { target: plan.target, crew: slots.filter(Boolean).map((p) => ({ name: p.displayName, avatar: p.avatar })) }), false)}
+          >
+            {ready ? '💰 BAŞLAT' : 'Güç yetmiyor'}
+          </button>
+        )}
+        {isMember && !plan.note && !editingNote && (
+          <button className="hp2-btn icon" onClick={() => setEditingNote(true)} aria-label="Not">
+            📝
+          </button>
+        )}
         {isMember && !isCreator && (
-          <button className="heist-plan-btn" disabled={busy} onClick={() => run(() => leaveHeistPlan(plan.id), false)}>
+          <button className="hp2-btn" disabled={busy} onClick={() => run(() => leaveHeistPlan(plan.id), false)}>
             Ayrıl
           </button>
         )}
         {isCreator && (
-          <button className="heist-plan-btn primary" disabled={busy || totalPower < required} onClick={() => run(() => executeHeistPlan(plan.id), false)}>
-            {totalPower < required ? 'Güç yetersiz' : '💰 Başlat'}
-          </button>
-        )}
-        {isCreator && (
-          <button className="heist-plan-btn danger" disabled={busy} onClick={() => run(() => cancelHeistPlan(plan.id), false)}>
-            Planı sil
+          <button className="hp2-btn icon danger" disabled={busy} onClick={() => run(() => cancelHeistPlan(plan.id), false)} aria-label="Planı sil">
+            🗑️
           </button>
         )}
       </div>
@@ -284,58 +278,79 @@ function PlanCard({ plan, myUid, onChanged }) {
 }
 
 // v153: onRun — şehirde haraç animasyonu için soygun çağrısını sarar (fn → sonuç)
+// v154: sade panel — güç yetiyorsa ekipler hiç görünmez, tek büyük buton; yetmiyorsa
+//       önce kendi ekibin (ilk görüntüde), sonra diğer ekipler. Şehirde ve Soygun sekmesinde AYNI.
 export default function HeistPanel({ target, onRun = null }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const { actions } = useDailyActions();
-  const { plans } = useOpenHeistPlans(target);
+  const { plans, loading: plansLoading } = useOpenHeistPlans(target);
   const { weapons } = useWeapons();
   const myActivePlans = useMyActiveHeistPlans();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
-  const [showTeamForming, setShowTeamForming] = useState(false);
+  const [videoJob, setVideoJob] = useState(null);
+  const videoDone = useRef(null);
+
+  // v154 — soygunu başlatan için video. Şehirde (onRun verilmiş) şehrin kendi motoru oynatır;
+  // burada (Mekanlar › Soygun) tam ekran HeistVideo. Dönüş: { data, played }.
+  const runner = async (fn, ctx) => {
+    if (onRun) {
+      const r = await onRun(fn, ctx);
+      return r && 'played' in r ? r : { data: r?.data, played: false };
+    }
+    const canVideo = isVendorHeist(ctx.target) || Boolean(heistSceneOf(ctx.target));
+    if (!canVideo) {
+      const r = await fn();
+      return { data: r?.data, played: false };
+    }
+    const promise = fn(); // sonuç butona basıldığı an sunucuda belli olur
+    const car = heistCarOf(user?.uid);
+    return new Promise((resolve, reject) => {
+      videoDone.current = ({ data, error: e, played }) => {
+        setVideoJob(null);
+        if (e) reject(e);
+        else resolve({ data, played });
+      };
+      setVideoJob({ target: ctx.target, crew: ctx.crew, ...car, promise });
+    });
+  };
 
   if (!user) return null;
-
   const meta = HEIST_LABELS[target];
+  if (!meta) return <p className="hp-note">Bu mekân artık soyulamıyor.</p>;
+  const vendor = isVendorTarget(target);
   const done = Boolean(actions.heist?.[target]) || Boolean(actions.vendorPurchases?.[target]);
-  // KULLANICI REVİZESİ (BUG DÜZELTMESİ): ömrü (lifeDays) 0 olan bir silah —
-  // tamir hakkı kalmış olsa bile — güç hesabına dahil edilmemeli. Ayrıca
-  // 2. el sitesinde satılmış/satışa çıkarılmış (listed: true) bir silah da
-  // artık fiilen elimizde değildir, onun da gücü sayılmamalı (bkz.
-  // functions/index.js getMaxWeaponPower'daki aynı düzeltme — burası
-  // ekranın sunucuyla TUTARLI göstermesi için).
-  const myPower = weapons.reduce(
-    (max, w) => (!w.listed && (w.lifeDays ?? INITIAL_LIFE_DAYS) > 0 ? Math.max(max, w.power || 0) : max),
-    0
-  );
-  // v123: şüphe 50+ iken suç yok (sunucu: functions/policeRules.js CRIME_SUSPICION_LOCK)
-  // v124: ekip kurmak / katılmak serbest; tek başına soygun ve ekip soygununu başlatmak yasak
-  const crimeLocked = Number(player?.suspicion || 0) >= 50;
-  const official = Boolean(player?.belediyeSeat); // v130: belediye görevlisi soygun yapamaz
-  const needsTeam = myPower < meta.requiredPower;
-  // Kısıtlama HEDEFE ÖZEL: bu hedefte zaten bir ekibim varsa yeni bir
-  // tane kuramam, ama başka hedeflerdeki ekiplerim bunu etkilemez.
-  const alreadyInThisTarget = myActivePlans.some((p) => p.target === target);
+  const donated = Boolean(actions.vendorPurchases?.[target]) && !actions.heist?.[target];
+  // ömrü bitmiş / satışa çıkmış silah sayılmaz (sunucu getMaxWeaponPower ile aynı)
+  const myPower = weapons.reduce((max, w) => (!w.listed && (w.lifeDays ?? INITIAL_LIFE_DAYS) > 0 ? Math.max(max, w.power || 0) : max), 0);
+  const sus = Math.round(Number(player?.suspicion || 0));
+  const crimeLocked = sus >= 50; // sunucu: CRIME_SUSPICION_LOCK
+  const official = Boolean(player?.belediyeSeat); // belediye görevlisi soygun yapamaz
+  const canSolo = myPower >= meta.requiredPower;
+  const myPlanIds = new Set(myActivePlans.filter((p) => p.target === target).map((p) => p.planId));
+  const mineOf = (p) => isMyPlan(p, user.uid, myPlanIds);
+  const myPlans = plans.filter(mineOf);
+  const otherPlans = plans.filter((p) => !mineOf(p));
+  const inTeamHere = myPlans.length > 0 || myPlanIds.size > 0;
+  const pw = Math.min(100, meta.requiredPower > 0 ? (myPower / meta.requiredPower) * 100 : 0);
+  const verb = vendor ? 'HARAÇ KES' : 'SOYGUNU YAP';
 
   const handleAttempt = async () => {
     setBusy(true);
     setError(null);
     setResult(null);
     try {
-      const res = onRun ? await onRun(() => attemptHeist(target)) : await attemptHeist(target);
-      setResult(res.data);
-      if (!res.data.started && res.data.reason === 'insufficient_power') {
-        setShowTeamForming(true);
-      }
+      const me = [{ name: player?.displayName || 'Sen', avatar: player?.avatar || null }];
+      const res = await runner(() => attemptHeist(target), { target, crew: me });
+      setResult(res.data ? { ...res.data, _played: res.played } : null);
     } catch (err) {
       setError(err.message || 'Soygun başarısız.');
     } finally {
       setBusy(false);
     }
   };
-
   const handleCreatePlan = async () => {
     setBusy(true);
     setError(null);
@@ -349,82 +364,74 @@ export default function HeistPanel({ target, onRun = null }) {
     }
   };
 
-  // ekibinde olduğum plan en üstte
-  // v145: kurduğum plan hemen (belge alanından), katıldığım plan cihazdaki listeden
-  const myPlanIds = new Set(myActivePlans.map((p) => p.planId));
-  const isMine = (p) => p.creatorUid === user.uid || myPlanIds.has(p.id);
-  const sortedPlans = [...plans].sort((a, b) => Number(isMine(b)) - Number(isMine(a)));
-  const pw = Math.min(100, meta.requiredPower > 0 ? (myPower / meta.requiredPower) * 100 : 0);
+  // durum satırı (kısa): neden yapılamıyor
+  let block = null;
+  if (official) block = '🏛️ Belediye görevlileri soygun yapamaz';
+  else if (done) block = donated ? '✅ Bugün buraya bağış yaptın' : vendor ? '✅ Bugün haraç kestin' : '✅ Bugün burayı soydun';
+  else if (crimeLocked) block = '⛔ Şüphen 50+ · önce şüpheni düşür';
+
   return (
-    <div className="heist-panel">
-      <div className="hp-hero">
-        <div className="hp-big">{meta.emoji}</div>
-        <h2>{meta.title}</h2>
-        <div className="hp-gold">
-          {meta.reward.toLocaleString('tr-TR')} <span className="gold-coin-icon" style={{ width: 22, height: 22 }} />
-        </div>
-        <small>olası ödül</small>
-      </div>
-      <div className="hp-stats">
-        <div className="sg-st">
-          <small>Gerekli güç</small>
-          <b>⚔️ {meta.requiredPower.toLocaleString('tr-TR')}</b>
-        </div>
-        <div className="sg-st">
-          <small>Götürdüğü şüphe</small>
-          <b>🕵️ +{meta.suspicionCost}</b>
+    <div className={`heist-panel hp2${vendor ? ' vendor' : ''}`}>
+      <div className="hp2-hero">
+        <div className="hp2-em">{meta.emoji}</div>
+        <div className="hp2-hero-txt">
+          <h2>{meta.title}</h2>
+          <div className="hp2-chips">
+            <span className="hp2-chip gold">
+              💰 {nf(meta.reward)} <span className="gold-coin-icon" style={{ width: 13, height: 13 }} />
+            </span>
+            <span className="hp2-chip sus">🕵️ +{meta.suspicionCost}</span>
+            {canSolo && !block && <span className={`hp2-chip risk${riskOf(sus) >= 20 ? ' hi' : ''}`}>🚨 %{riskOf(sus)}</span>}
+          </div>
         </div>
       </div>
-      <div className="sg-st">
-        <small>
-          Gücün {myPower.toLocaleString('tr-TR')} / {meta.requiredPower.toLocaleString('tr-TR')}
-        </small>
-        <div className="sg-meter big">
+      <div className={`hp2-power${canSolo ? ' ok' : ''}`}>
+        <div className="hp2-bar">
           <i style={{ width: `${pw}%` }} />
+          <span>
+            ⚔️ {nf(myPower)} / {nf(meta.requiredPower)}
+          </span>
         </div>
+        <em>{canSolo ? 'Gücün yetiyor' : 'Ekip gerekli'}</em>
       </div>
 
-      {crimeLocked && !error && <p className="hp-note bad">⛔ Şüphen 50+ iken suç işleyemezsin. Ekip kurabilir, ekibe katılabilirsin ama soygun başlatılamaz.</p>}
+      {block && <p className="hp2-block">{block}</p>}
 
-      {/* v136: bugün bu mekânı soyduysan / belediye görevlisiysen butonun üstünde kısa not */}
-      {official ? (
-        <p className="hp-note bad">🏛️ Belediye görevlileri soygun yapamaz.</p>
-      ) : (
-        done && <p className="hp-note">✅ {actions.vendorPurchases?.[target] && !actions.heist?.[target] ? 'Bugün buraya bağış yaptın.' : 'Bugün bu mekânı soydun.'}</p>
-      )}
-
-      {needsTeam ? (
-        alreadyInThisTarget ? (
-          <p className="hp-note">✅ Bu hedefte ekibin var, aşağıdan yönet.</p>
-        ) : (
-          <button className="hp-cta sec" disabled={done || busy || official} onClick={handleCreatePlan}>
-            👥 EKİP KUR
-          </button>
-        )
-      ) : (
-        <button className="hp-cta" disabled={done || busy || crimeLocked || official} onClick={handleAttempt}>
-          {done ? (actions.vendorPurchases?.[target] ? 'Bugün buraya bağış yaptın' : 'Bugün zaten denedin') : busy ? 'Soyuluyor…' : '💰 SOYGUN YAP'}
+      {canSolo && !block && (
+        <button className={`hp2-cta${busy ? ' busy' : ''}`} disabled={busy} onClick={handleAttempt}>
+          {busy ? (vendor ? 'Haraç kesiliyor…' : 'Soyuluyor…') : `💰 ${verb}`}
         </button>
       )}
 
-      {result && (
-        <p className={`heist-panel-result ${result.started && !result.caught && !result.caughtBySuspicion && (!result.busted || result.viaPoliceTrap) ? 'success' : ''}`}>
-          {resultMessage(result)}
-        </p>
-      )}
       {error && <p className="heist-panel-error">{error}</p>}
 
-      {result && result.started && (
+      {result && result.started && !result._played && (
         <ResultModal title={resultTitle(result)} message={resultMessage(result)} tone={isResultSuccess(result) ? 'success' : 'fail'} onClose={() => setResult(null)} />
       )}
+      {result && !result.started && <p className="hp2-block">{resultMessage(result)}</p>}
+      {/* video oynadıysa kısa sonuç satırı (ayrıntı videonun sonunda göründü) */}
+      {result && result.started && result._played && <p className={`hp2-block ${isResultSuccess(result) ? 'ok' : 'bad'}`}>{resultMessage(result)}</p>}
+      {videoJob && (
+        <Suspense fallback={<div className="hs-root hv-root" />}>
+          <HeistVideo job={videoJob} onClose={(r) => videoDone.current?.(r)} />
+        </Suspense>
+      )}
 
-      {(needsTeam || showTeamForming || plans.length > 0) && (
-        <div className="heist-plan-list">
-          <p className="heist-plan-list-title">Ekip soygunları ({plans.length})</p>
-          {sortedPlans.map((plan) => (
-            <PlanCard key={plan.id} plan={plan} myUid={user.uid} onChanged={(data) => data && setResult(data)} />
+      {/* güç yetmiyorsa ekipler; güç yetiyorsa sadece (varsa) bu hedefteki kendi ekibin */}
+      {(!canSolo || myPlans.length > 0) && (
+        <div className="hp2-teams">
+          {myPlans.map((plan) => (
+            <PlanCard key={plan.id} plan={plan} myUid={user.uid} mine runner={runner} onChanged={(data, played) => data && setResult({ ...data, _played: played })} />
           ))}
-          {!plans.length && <p className="hp-note">Henüz açık plan yok. İlk ekibi sen kur.</p>}
+          {!canSolo && !inTeamHere && !done && !official && (
+            <button className="hp2-cta sec" disabled={busy} onClick={handleCreatePlan}>
+              👥 EKİP KUR
+            </button>
+          )}
+          {!canSolo && otherPlans.length > 0 && <p className="hp2-sub">Açık ekipler · {otherPlans.length}</p>}
+          {!canSolo &&
+            otherPlans.map((plan) => <PlanCard key={plan.id} plan={plan} myUid={user.uid} runner={runner} onChanged={(data, played) => data && setResult({ ...data, _played: played })} />)}
+          {!canSolo && !plansLoading && plans.length === 0 && <p className="hp2-empty">Henüz ekip yok — ilk ekibi sen kur.</p>}
         </div>
       )}
     </div>

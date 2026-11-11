@@ -268,7 +268,7 @@
               ".validate": "newData.isString() && newData.val().length <= 128"
             },
             "rk": {
-              ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 3"
+              ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 29"
             },
             "t": {
               ".validate": "newData.isNumber() && newData.val() <= now + 1000"

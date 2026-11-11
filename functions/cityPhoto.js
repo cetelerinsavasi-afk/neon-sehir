@@ -29,6 +29,7 @@ const FRESH_C_MS = 10 * 60_000;
 const FRESH_M_MS = 30_000;
 const NEAR_P = 20; // m — çekimdeki konum ile RTDB kaydı arası en fazla
 const NEAR_C = 25;
+const wrapYaw = (a) => Math.round(Math.atan2(Math.sin(a), Math.cos(a)) * 1000) / 1000;
 const EMOTE_KEYS = ['dans', 'selam', 'alkis', 'zipla', 'kalp'];
 const UID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 
@@ -59,6 +60,43 @@ export function cleanCam(c) {
   dy /= l;
   dz /= l;
   return { px: r2(px), py: r2(py), pz: r2(pz), dx: r3(dx), dy: r3(dy), dz: r3(dz), fov: r2(num(c.fov, 20, 100) ?? 60), a: r3(num(c.a, 0.4, 2.5) ?? 1), cw: Math.round(num(c.cw, 200, 2000) ?? 400), ...(c.td ? { td: 1 } : {}) };
+}
+
+// v154 — maç anı (sadece görüntü): futbolcu / hakem / top konumları. Kamera çevresiyle sınırlı,
+// renkler #rrggbb; bozuk girdi atılır. Kimse bu verilerle fotoğrafa "girmez" (gerçek kişi değiller).
+const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+export function cleanFb(fb, cam) {
+  if (!fb || typeof fb !== 'object' || !cam) return null;
+  const near = (x, z) => x !== null && z !== null && Math.hypot(x - cam.px, z - cam.pz) <= 160;
+  const fig = (a) => {
+    if (!Array.isArray(a) || a.length < 2) return null;
+    const x = num(a[0], -450, 450);
+    const z = num(a[1], -450, 450);
+    if (!near(x, z)) return null;
+    return [r2(x), r2(z), a[2] ? 1 : 0, a[3] ? 1 : 0, a[4] ? 1 : 0];
+  };
+  const p = [];
+  const seen = new Set();
+  (Array.isArray(fb.p) ? fb.p.slice(0, 12) : []).forEach((d) => {
+    if (!Array.isArray(d)) return;
+    const side = d[0] ? 1 : 0;
+    const i = Number(d[1]);
+    if (!Number.isInteger(i) || i < 0 || i > 5 || seen.has(`${side}_${i}`)) return;
+    const f = fig(d.slice(2));
+    if (!f) return;
+    seen.add(`${side}_${i}`);
+    p.push([side, i, ...f]);
+  });
+  const r = fig(fb.r);
+  let b = null;
+  if (Array.isArray(fb.b)) {
+    const bx = num(fb.b[0], -450, 450);
+    const by = num(fb.b[1], -2, 20);
+    const bz = num(fb.b[2], -450, 450);
+    if (by !== null && near(bx, bz)) b = [r2(bx), r2(by), r2(bz)];
+  }
+  if (!p.length && !r && !b) return null;
+  return { hc: COLOR_RE.test(fb.hc) ? fb.hc : '#ff3fa0', ac: COLOR_RE.test(fb.ac) ? fb.ac : '#19e8ff', p, ...(r ? { r } : {}), ...(b ? { b } : {}) };
 }
 
 // deps: { db, rtdb: () => Promise<Database>, HttpsError, assertCanSpeak, isProduct(key), now? }
@@ -156,6 +194,7 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
     // arabalar
     const cars = [];
     const carOwners = new Set();
+    const carSlackOf = new Map();
     (Array.isArray(p?.cars) ? p.cars.slice(0, 20) : []).forEach((c) => {
       if (!c || typeof c.o !== 'string' || !UID_RE.test(c.o) || carOwners.has(c.o) || cars.length >= MAX_CARS) return;
       const x = num(c.x, -450, 450);
@@ -164,12 +203,15 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
       const rec = rt.c.get(c.o);
       // v152: ticari araçlar (11-15) ve motorlar (21-24) de fotoğrafa girer
       if (x === null || z === null || !Number.isInteger(v) || v < 1 || v > 30) return;
-      if (!fresh(rec, FRESH_C_MS) || Number(rec.v) !== v || Math.hypot(rec.x - x, rec.z - z) > NEAR_C) return;
+      // v154: giden araba — sunucu kaydı okuyana kadar araba yol alır; hıza göre pay (en çok +45 m)
+      const carSlack = rec ? Math.min(45, Math.abs(Number(rec.s) || 0) * 1.6) : 0;
+      if (!fresh(rec, FRESH_C_MS) || Number(rec.v) !== v || Math.hypot(rec.x - x, rec.z - z) > NEAR_C + carSlack) return;
       carOwners.add(c.o);
+      carSlackOf.set(c.o, carSlack);
       // v152: modifiye (m) ve iş hâli (j: dorse / yolcular / tepe lambası) RTDB kaydından — sahte olamaz
       const m = typeof rec.m === 'string' && rec.m.length <= 700 ? rec.m : '';
       const j = Math.max(0, Math.min(40, Math.floor(Number(rec.j) || 0)));
-      cars.push({ o: c.o, v, x: r2(x), z: r2(z), y: r2(num(c.y, -2, 20) ?? 0), r: r3(num(c.r, -50, 50) ?? 0), st: r2(num(c.st, -1, 1) ?? 0), ...(m ? { m } : {}), ...(j ? { j } : {}) });
+      cars.push({ o: c.o, v, x: r2(x), z: r2(z), y: r2(num(c.y, -2, 20) ?? 0), r: r3(wrapYaw(num(c.r, -1e4, 1e4) ?? 0)), st: r2(num(c.st, -1, 1) ?? 0), ...(m ? { m } : {}), ...(j ? { j } : {}) });
     });
 
     // kişiler
@@ -181,7 +223,9 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
       const rec = rt.p.get(q.uid);
       const x = num(q.x, -450, 450);
       const z = num(q.z, -450, 450);
-      if (x === null || z === null || !fresh(rec, FRESH_P_MS) || Math.hypot(rec.x - x, rec.z - z) > NEAR_P) continue;
+      // v154: araçtaki kişi (şoför / yolcu) aracın payını alır — giderken çekilen fotoğrafta arabadan "düşmesin"
+      const pSlack = typeof q.c === 'string' && carOwners.has(q.c) ? carSlackOf.get(q.c) || 0 : 0;
+      if (x === null || z === null || !fresh(rec, FRESH_P_MS) || Math.hypot(rec.x - x, rec.z - z) > NEAR_P + pSlack) continue;
       seen.add(q.uid);
       const em = q.e && EMOTE_KEYS.includes(q.e.k) && num(q.e.at, 0, 3200) !== null ? { k: q.e.k, at: Math.round(q.e.at) } : null;
       const car = typeof q.c === 'string' && carOwners.has(q.c) ? { c: q.c, k: Math.round(num(q.k, 0, 3) ?? 0) } : {};
@@ -238,7 +282,8 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
     } catch {
       sp = null; // reklam panosu varsayılan yazıyla çizilir
     }
-    const att = { type: 'cityPhoto', cam, people: picked, cars, vert: true, ...(tod ? { tod } : {}), ...(sp ? { sp } : {}) };
+    const fb = cleanFb(p?.fb, cam);
+    const att = { type: 'cityPhoto', cam, people: picked, cars, vert: true, ...(tod ? { tod } : {}), ...(sp ? { sp } : {}), ...(fb ? { fb } : {}) };
     const body = JSON.stringify({ uid, at: t, att });
     if (body.length > 120_000) fail('resource-exhausted', 'Fotoğraf çok kalabalık.');
     return { shot: body, sig: await sign(body), att };

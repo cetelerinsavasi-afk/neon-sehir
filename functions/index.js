@@ -1,3 +1,4 @@
+import { MACHINE_BASE_PRICE, MACHINE_PROD_RANGE, WORKERLESS_RANGE, TIERED_MACHINE_TYPES, tieredMachinePrice, tieredFleetValue } from './factoryMachineRules.js';
 import { onCall as onCallRaw, onRequest as onRequestRaw, HttpsError } from 'firebase-functions/v2/https';
 import { onSchedule as onScheduleRaw } from 'firebase-functions/v2/scheduler';
 import { onDocumentCreated, onDocumentDeleted, onDocumentUpdated, onDocumentWritten } from 'firebase-functions/v2/firestore';
@@ -787,16 +788,16 @@ const FACTORY_MAX_SALARY = 5000;
 const MACHINE_TYPES = {
   mining: { label: 'Mining Makinesi', needsWorker: false, min: 0.01, max: 0.1, unit: 'crypto' },
   // v94: tamir makinesi 100.000 → 50.000, işçiyle 1–2000 (eskiden 1–3000)
-  tamirMalzemesi: { label: 'Tamir Malzemesi Makinesi', needsWorker: true, price: 50000, min: 1, max: 2000 },
-  silahUpgrade: { label: 'Silah Geliştirme Malzemesi Makinesi', needsWorker: true, price: 50000, min: 1, max: 200 },
+  // v154: günlük üretim 1,5 katı (functions/factoryMachineRules.js) · fiyat = taban (aynı türden her makine +1.000)
+  tamirMalzemesi: { label: 'Tamir Malzemesi Makinesi', needsWorker: true, price: MACHINE_BASE_PRICE.tamirMalzemesi, min: MACHINE_PROD_RANGE.tamirMalzemesi[0], max: MACHINE_PROD_RANGE.tamirMalzemesi[1] },
+  silahUpgrade: { label: 'Silah Geliştirme Malzemesi Makinesi', needsWorker: true, price: MACHINE_BASE_PRICE.silahUpgrade, min: MACHINE_PROD_RANGE.silahUpgrade[0], max: MACHINE_PROD_RANGE.silahUpgrade[1] },
   // Depo ve Vites Geliştirme makineleri birleştirildi — ikisi de aynı
   // malzemeyi (arabaGelistirme) üretiyordu, artık TEK makine.
-  arabaGelistirme: { label: 'Araba Geliştirme Malzemesi Makinesi', needsWorker: true, price: 50000, min: 1, max: 40 },
+  arabaGelistirme: { label: 'Araba Geliştirme Malzemesi Makinesi', needsWorker: true, price: MACHINE_BASE_PRICE.arabaGelistirme, min: MACHINE_PROD_RANGE.arabaGelistirme[0], max: MACHINE_PROD_RANGE.arabaGelistirme[1] },
   yasakliMadde: { label: 'Yasaklı Madde Üretim Makinesi', needsWorker: true, price: 100000, min: 1, max: 10 },
 };
 const VALID_MACHINES = Object.keys(MACHINE_TYPES);
-// v94 — işçi gelmezse (sahip çalıştırınca) 2/10 verim: günlük üretim aralığı
-const WORKERLESS_RANGE = { tamirMalzemesi: [1, 400], silahUpgrade: [1, 40], arabaGelistirme: [1, 8] };
+// v154 — işçi gelmezse (sahip çalıştırınca) 1/3 verim: WORKERLESS_RANGE (functions/factoryMachineRules.js)
 
 // ---------------------------------------------------------------------------
 // ARAÇ/SİLAH ÖMRÜ + TAMİR SİSTEMİ — her araç/silah satın alındığı andan
@@ -893,6 +894,8 @@ function computeFactoryValue(machinesByType, cryptoPrice) {
     const count = machinesByType[type] || 0;
     if (type === 'mining') {
       value += miningFleetValue(count, cryptoPrice);
+    } else if (TIERED_MACHINE_TYPES.includes(type)) {
+      value += tieredFleetValue(type, count); // v154: aynı türden her makine +1.000
     } else {
       value += count * (MACHINE_TYPES[type].price || 0);
     }
@@ -1465,13 +1468,16 @@ export const buyFactoryMachine = onCall(async (request) => {
       tx.get(userRef),
       tx.get(factoryRef),
       // v137 maliyet: makineler tek tek okunmaz, sadece SAYILIR (1.000 makineye kadar 1 okuma)
-      machineType === 'mining' ? tx.get(machinesRef.where('type', '==', 'mining').count()) : null,
+      // v154: malzeme makineleri de aynı türün sayısına göre fiyatlanır (aynı tek sayım okuması)
+      machineType === 'mining' || TIERED_MACHINE_TYPES.includes(machineType) ? tx.get(machinesRef.where('type', '==', machineType).count()) : null,
     ]);
     if (!factorySnap.exists) {
       throw new HttpsError('failed-precondition', 'Önce bir fabrika kurmalısın.');
     }
     if (machineType === 'mining') {
       price = await miningMachinePrice(Number(miningCountSnap.data().count || 0));
+    } else if (TIERED_MACHINE_TYPES.includes(machineType)) {
+      price = tieredMachinePrice(machineType, Number(miningCountSnap.data().count || 0));
     } else {
       price = MACHINE_TYPES[machineType].price;
     }
@@ -3181,7 +3187,7 @@ async function runDailyResetBody(dateKey, dr) {
         // (min-max'tan bağımsız) formülleri kullanılıyor.
         let qty;
         if (WORKERLESS_RANGE[machine.type]) {
-          // v94: işçisiz (2/10 verim) — tamir 1–400, silah 1–40, araba 1–8
+          // v154: işçisiz (1/3 verim) — tamir 1–1000, silah 1–100, araba 1–20
           const [lo, hi] = WORKERLESS_RANGE[machine.type];
           qty = Math.floor(randomInRange(lo, hi + 1));
         } else if (machine.type === 'yasakliMadde') {
@@ -6031,7 +6037,7 @@ export const claimPoliceSalary = onCall(async (request) => {
 //   • vendorId artık listeyle doğrulanır (eskiden her metin kabul ediliyordu).
 // ---------------------------------------------------------------------------
 const VENDOR_COST = VENDOR_DAILY_COST;
-const VENDOR_STAT_KEY = { seyyar_satici_1: 'kk', seyyar_satici_2: 'sm', seyyar_satici_3: 'dn', seyyar_satici_4: 'kf' };
+const VENDOR_STAT_KEY = { seyyar_satici_1: 'kk', seyyar_satici_2: 'sm', seyyar_satici_3: 'dn', seyyar_satici_4: 'kf', seyyar_satici_5: 'md', seyyar_satici_6: 'dd' };
 
 export const buyFromVendor = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -6127,16 +6133,19 @@ export const buyFromVendor = onCall(async (request) => {
 //     %50 sana) bölüştürülür.
 // ---------------------------------------------------------------------------
 const HEIST_CONFIG = {
+  // v154 — yeni soygun tablosu (kullanıcı listesi). Modifiye Garajı listeden ÇIKTI;
+  // Silahçı ve İnternet Kafe eklendi; 2 yeni satıcı (Midyeci, Dondurmacı).
   banka: { suspicionCost: 50, reward: 500000, requiredPower: 100000 },
-  casino: { suspicionCost: 40, reward: 250000, requiredPower: 70000 },
-  araba_galerisi: { suspicionCost: 30, reward: 125000, requiredPower: 50000 },
-  modifiye_garaji: { suspicionCost: 20, reward: 25000, requiredPower: 20000 },
-  fabrika: { suspicionCost: 10, reward: 10000, requiredPower: 10000 },
-  // Ödüller (kullanıcı revizesi) — Kokoreçci/Simitçi/Dönerci/Köfteci
-  // ödülleri güncellendi, gereken güç eşiklerine dokunulmadı. v141: hepsi +1000.
+  casino: { suspicionCost: 40, reward: 250000, requiredPower: 80000 },
+  araba_galerisi: { suspicionCost: 30, reward: 125000, requiredPower: 60000 },
+  silah_magazasi: { suspicionCost: 20, reward: 50000, requiredPower: 40000 },
+  fabrika: { suspicionCost: 15, reward: 25000, requiredPower: 20000 },
+  internet_kafe: { suspicionCost: 10, reward: 10000, requiredPower: 10000 },
+  seyyar_satici_6: { suspicionCost: 5, reward: 7000, requiredPower: 7500 }, // Dondurmacı
+  seyyar_satici_5: { suspicionCost: 5, reward: 6000, requiredPower: 6000 }, // Midyeci
   seyyar_satici_1: { suspicionCost: 5, reward: 5000, requiredPower: 4500 }, // Kokoreçci
   seyyar_satici_2: { suspicionCost: 5, reward: 4000, requiredPower: 3000 }, // Simitçi
-  seyyar_satici_3: { suspicionCost: 5, reward: 3000, requiredPower: 1500 }, // Dönerci
+  seyyar_satici_3: { suspicionCost: 5, reward: 3000, requiredPower: 1500 }, // Balık Ekmekçi (eski Dönerci)
   seyyar_satici_4: { suspicionCost: 5, reward: 2000, requiredPower: 1000 }, // Köfteci
 };
 
@@ -6938,6 +6947,12 @@ async function isAlreadyInActiveHeistPlanForTarget(uid, target) {
     .get();
   for (const doc of openSnap.docs) {
     if (doc.data().creatorUid === uid) return true;
+    // v154: üye listesi plan belgesindeyse ek okuma yok (eski planlarda yedek yol)
+    const mu = doc.data().memberUids;
+    if (Array.isArray(mu)) {
+      if (mu.includes(uid)) return true;
+      continue;
+    }
     const pSnap = await doc.ref.collection('participants').doc(uid).get();
     if (pSnap.exists) return true;
   }
@@ -6988,6 +7003,8 @@ export const createHeistPlan = onCall(async (request) => {
     target,
     creatorUid: uid,
     status: 'open',
+    // v154: üyeler plan belgesinde de — istemci "benim ekibim"i ek okuma yapmadan bilir
+    memberUids: [uid],
     note: '',
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
     expiresAt: admin.firestore.Timestamp.fromMillis(Date.now() + HEIST_PLAN_DURATION_MS),
@@ -7252,9 +7269,11 @@ export const joinHeistPlan = onCall(async (request) => {
     if (policeRep !== null) await maybeWarn(uid, policeRep);
   }
 
-  if (warnedUids.size > (plan.warnedUids || []).length) {
-    await planRef.update({ warnedUids: Array.from(warnedUids) });
-  }
+  // v154: üye listesi (memberUids) — uyarı listesiyle TEK yazımda
+  await planRef.update({
+    memberUids: admin.firestore.FieldValue.arrayUnion(uid),
+    ...(warnedUids.size > (plan.warnedUids || []).length ? { warnedUids: Array.from(warnedUids) } : {}),
+  });
 
   await checkHeistReady(planRef).catch((e) => console.warn('heist ready', e?.message));
   return { ok: true };
@@ -7266,7 +7285,7 @@ export const leaveHeistPlan = onCall(async (request) => {
   const planRef = db.collection('heistPlans').doc(planId);
   await planRef.collection('participants').doc(uid).delete();
   // Çıkan oyuncu bu plana bir daha katılamaz.
-  await planRef.update({ removedUids: admin.firestore.FieldValue.arrayUnion(uid) });
+  await planRef.update({ removedUids: admin.firestore.FieldValue.arrayUnion(uid), memberUids: admin.firestore.FieldValue.arrayRemove(uid) });
   await checkHeistReady(planRef).catch(() => {});
   return { ok: true };
 });
@@ -7287,7 +7306,7 @@ export const kickFromHeistPlan = onCall(async (request) => {
   }
   await planRef.collection('participants').doc(targetUid).delete();
   // Atılan oyuncu bu plana bir daha katılamaz.
-  await planRef.update({ removedUids: admin.firestore.FieldValue.arrayUnion(targetUid) });
+  await planRef.update({ removedUids: admin.firestore.FieldValue.arrayUnion(targetUid), memberUids: admin.firestore.FieldValue.arrayRemove(targetUid) });
   await checkHeistReady(planRef).catch(() => {});
   return { ok: true };
 });
@@ -7328,6 +7347,11 @@ export const executeHeistPlan = onCall(async (request) => {
   }
 
   const config = HEIST_CONFIG[plan.target];
+  // v154: listeden çıkan hedef (Modifiye Garajı) — eski açık plan başlatılamaz;
+  // ekip ayrılabilir, plan 24 saatte kendiliğinden kapanır.
+  if (!config) {
+    throw new HttpsError('failed-precondition', 'Bu mekân artık soyulamıyor. Ekipten ayrılabilirsin.');
+  }
   const participantsSnap = await planRef.collection('participants').get();
   const participants = participantsSnap.docs.map((d) => d.data());
   if (participants.length === 0) {

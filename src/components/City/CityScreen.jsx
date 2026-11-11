@@ -32,7 +32,8 @@ import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import { VENUES } from '../../../functions/venueLayouts.js';
 import { VENDORS, VENDOR_COST } from '../../../functions/vendorData.js';
 import HeldIcon from '../HouseScreen/HeldIcon';
-import HeistPanel from '../HeistPanel/HeistPanel';
+import HeistPanel, { HEIST_LABELS } from '../HeistPanel/HeistPanel';
+import { heistCarOf, heistOutcomeOf, heistSceneOf, rememberHeistCar } from '../HeistPanel/heistVideo';
 import PhoneScreen from '../Phone/PhoneScreen';
 import PlayerCard from '../PlayerCard/PlayerCard';
 import ReportBlockSheet from '../ReportBlockSheet/ReportBlockSheet';
@@ -58,6 +59,11 @@ import './City.css';
 const fmt = (n) => Number(n || 0).toLocaleString('tr-TR');
 // v149 — stadyumun içindeyken sağ üstteki "Futbol" düğmesiyle açılan panel
 const FutbolFullScreen = lazy(() => import('../FutbolScreen/FutbolFullScreen'));
+// v154 — fabrika ve yarış pisti sayfaları şehrin İÇİNDE açılır (şehir kapanmaz)
+const FactoryScreen = lazy(() => import('../FactoryScreen/FactoryScreen'));
+const RaceTrackScreen = lazy(() => import('../RaceTrackScreen/RaceTrackScreen'));
+// kapıdan girilince şehir içinde panel olarak açılan mekânlar
+const IN_CITY_REGIONS = { fabrika: '🏭 Fabrika', yaris_pisti: '🏁 Yarış Pisti' };
 const VENDOR_BY_VENUE = Object.fromEntries(Object.entries(VENDORS).map(([id, v]) => [v.venue, { id, ...v }]));
 const BUFE_MENU = [
   { id: 'sosisli', price: 200 },
@@ -170,7 +176,7 @@ function GarageSheet({ onPick, onClose, onGallery }) {
             <button key={v.id} className={`cs-car${dead ? ' dead' : ''}`} disabled={dead} onClick={() => !dead && onPick(c, v)}>
               <CarImg catalogId={c.id} mods={v.mods || null} />
               <b>{v.customName || c.name}</b>
-              <span>{dead ? '⛔ Ömrü bitti' : c.job ? `💼 ${JOBS[c.job]?.name || 'Meslek'}` : `👥 ${c.seats || ({ 1: 4, 2: 4, 3: 4, 4: 2, 5: 4, 6: 2, 7: 2, 8: 2, 9: 1, 10: 2 })[c.id] || 2}`}</span>
+              <span>{dead ? '⛔ Ömrü bitti' : c.job && c.kind !== 'motor' ? `💼 ${JOBS[c.job]?.name || 'Meslek'}` : `👥 ${c.seats || ({ 1: 4, 2: 4, 3: 4, 4: 2, 5: 4, 6: 2, 7: 2, 8: 2, 9: 1, 10: 2 })[c.id] || 2}`}</span>
             </button>
           );
         })}
@@ -179,7 +185,14 @@ function GarageSheet({ onPick, onClose, onGallery }) {
   );
 }
 
-export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion }) {
+// v154 — maç seçici: "Anadolu Yıldızları" → "Anadolu Y." (ilk kelime tam, kalanların baş harfi)
+function shortTeam(name) {
+  const w = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (w.length < 2) return w[0] || '—';
+  return `${w[0]} ${w.slice(1).map((x) => `${x[0].toLocaleUpperCase('tr-TR')}.`).join(' ')}`;
+}
+
+export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnterRace, raceFull = false }) {
   const { user, loading: authLoading } = useAuth();
   // v149 — misafir (giriş yapmamış) da şehri gezer: yürür, oturur, mekân kapılarından girer.
   // Ağ (diğer oyuncular / sohbet) yok, alışveriş · araba · fotoğraf giriş ister.
@@ -205,6 +218,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion }) {
   const [zone, setZone] = useState(null);
   const [panel, setPanel] = useState(null);
   const [haracHide, setHaracHide] = useState(false); // v153: animasyon oynarken haraç penceresi gizli
+  const [heistOn, setHeistOn] = useState(false); // v154: soygun videosu oynarken şehir arayüzü gizli
   const [toast, setToast] = useState(null);
   const [msgs, setMsgs] = useState([]);
   const [run, setRun] = useState(false);
@@ -213,6 +227,12 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion }) {
   const [carCam, setCarCam] = useState('out'); // v149 — araba içi kamera
   // v149 — stadyum: içindeyken Futbol düğmesi, maç saatinde maç seçici (her cihazda ayrı)
   const [inStadium, setInStadium] = useState(false);
+  const [inPist, setInPist] = useState(false); // v154: yarış pisti alanı (tribün / pit)
+  // v154: şehir açıkken yarış ekranı / yarış balonu şehrin üstünde görünsün
+  useEffect(() => {
+    document.body.classList.add('ns-city-open');
+    return () => document.body.classList.remove('ns-city-open');
+  }, []);
   const [matchIdx, setMatchIdx] = useState(0);
   const [, setScoreTick] = useState(0);
   const toggleCarCam = () => {
@@ -325,6 +345,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion }) {
         onTick: (s) => {
           hudRef.current = s;
           setInStadium((v) => (v === (s.area === 'stadyum') ? v : s.area === 'stadyum'));
+          setInPist((v) => (v === (s.area === 'pist') ? v : s.area === 'pist'));
           drawMiniRef.current?.();
           setHud((h) => {
             const d = s.drive;
@@ -433,9 +454,9 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion }) {
   useEffect(() => {
     const e = engineRef.current;
     if (!e || !ready) return;
-    if (panel?.kind === 'phone' || panel?.kind === 'futbol') e.pause();
+    if (panel?.kind === 'phone' || panel?.kind === 'futbol' || raceFull) e.pause();
     else e.resume();
-  }, [panel, ready]);
+  }, [panel, ready, raceFull]);
 
   // --- v149 STADYUM: sponsor panoları, maç seçici, saha kilidi ---------------------------
   const { sponsors, matches, matchHour } = useStadiumMatches(inStadium && Boolean(user));
@@ -682,6 +703,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion }) {
     flash(r.ok ? `🚗 ${c.name}` : r.reason);
     // v151: ticari araçsa üstte "İşe başla"
     if (r.ok) {
+      rememberHeistCar(uid, c.id, veh?.mods || null); // v154: soygun videosundaki kaçış arabası
       const v = veh && c.job ? { id: veh.id, catalogId: c.id, job: c.job } : null;
       setMyVeh(v);
       jobRef.current?.setVehicle(v);
@@ -827,7 +849,11 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion }) {
   let actions = null;
   if (zone && !driving && !riding && !haracHide) {
     const list = [];
-    if (zone.kind === 'door') list.push({ label: zone.label || `${zone.title.split(' ')[0]} İçeri gir`, cls: 'take', free: true, on: () => onEnterRegion?.(zone.region) });
+    // v154: fabrika / yarış pisti → sayfası şehrin içinde açılır (şehir kapanmaz)
+    const openIn = (rid) => setPanel({ kind: 'region', region: rid });
+    if (zone.kind === 'door') list.push({ label: zone.label || `${zone.title.split(' ')[0]} İçeri gir`, cls: 'take', free: true, on: () => (IN_CITY_REGIONS[zone.region] ? openIn(zone.region) : onEnterRegion?.(zone.region)) });
+    // v154: soyulabilir mekânın kapısında "Soygun yap" → aynı soygun paneli şehrin içinde
+    if (zone.kind === 'door' && HEIST_LABELS[zone.region]) list.push({ label: '💰 Soygun yap', cls: 'heist', on: () => setPanel({ kind: 'heist', target: zone.region, title: zone.title }) });
     if (zone.kind === 'vendor') {
       const v = vendorOf(zone);
       if (!vendorDone(v)) {
@@ -838,7 +864,9 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion }) {
     }
     if (zone.kind === 'park' && zone.act === 'bufe') list.push({ label: '🌭 Büfe', on: () => setPanel({ kind: 'bufe' }) });
     if (zone.kind === 'park' && zone.act === 'npc') list.push({ label: '🕶️ Şüpheli adam', on: () => setPanel({ kind: 'shady' }) });
-    if (zone.kind === 'pist') list.push({ label: '🏁 Yarış Pisti', cls: 'take', free: true, on: () => onEnterRegion?.('yaris_pisti') });
+    if (zone.kind === 'pist') list.push({ label: '🏁 Yarış Pisti', cls: 'take', on: () => openIn('yaris_pisti') });
+    // v154: tribünde / pitte otururken de yarışlara katılınabilsin
+    if (zone.kind === 'seated' && inPist) list.push({ label: '🏁 Yarış Pisti', cls: 'take', on: () => openIn('yaris_pisti') });
     if (zone.kind === 'atm') list.push({ label: '🏧 Banka', cls: 'take', on: () => setPanel({ kind: 'phone', app: 'banka' }) });
     if (zone.kind === 'car') {
       list.push({ label: '🚗 Bin', cls: 'take', on: () => engineRef.current.enterCar() });
@@ -858,7 +886,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion }) {
   const cardInfo = card ? namesRef.current.get(card) : null;
 
   return (
-    <div className={`hs-root cs-root${driving ? ' driving' : ''}`}>
+    <div className={`hs-root cs-root${driving ? ' driving' : ''}${heistOn ? ' cs-heist-on' : ''}`}>
       <div className="hs-stage" ref={stageRef} />
       {!ready && !fatal && (
         <div className="hs-loading cs-loading">
@@ -883,7 +911,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion }) {
               <div className="cs-match-mid">
                 <b>
                   <i style={{ background: curMatch.homeColor }} />
-                  {curMatch.homeName} <em>vs</em> {curMatch.awayName}
+                  {shortTeam(curMatch.homeName)} <em>vs</em> {shortTeam(curMatch.awayName)}
                   <i style={{ background: curMatch.awayColor }} />
                 </b>
                 <small>
@@ -1106,7 +1134,54 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion }) {
           </div>
         </Sheet>
       )}
-      {panel?.kind === 'heist' && (() => {
+      {panel?.kind === 'region' && IN_CITY_REGIONS[panel.region] && (
+        <div className="cs-region-sheet">
+          <Sheet title={IN_CITY_REGIONS[panel.region]} onClose={() => setPanel(null)} closeLabel="Kapat">
+            <Suspense fallback={<div className="cs-garage-empty">…</div>}>
+              {panel.region === 'fabrika' ? (
+                <FactoryScreen />
+              ) : (
+                <RaceTrackScreen
+                  onEnterRace={(roomId, o) => {
+                    setPanel(null);
+                    onEnterRace?.(roomId, o);
+                  }}
+                />
+              )}
+            </Suspense>
+          </Sheet>
+        </div>
+      )}
+      {panel?.kind === 'heist' && panel.target && (() => {
+        // v154: mekân soygunu (banka, casino, galeri, silahçı, fabrika, net kafe) — şehrin içinde.
+        // Soygunu başlatan videoyu şehrin kendi motorunda izler (Firestore yok); bitince panele döner.
+        const runCityHeist = async (fn, ctx) => {
+          const eng = engineRef.current;
+          setHeistOn(true);
+          try {
+            const res = await fn();
+            const oc = heistOutcomeOf(res?.data);
+            const scene = heistSceneOf(ctx?.target);
+            if (!oc || !scene || !eng?.heist) return { data: res?.data, played: false };
+            const car = heistCarOf(uid);
+            const played = await new Promise((resolve) => {
+              const ok = eng.heist.start({ target: scene, crew: ctx.crew, outcome: oc.outcome, reward: oc.amount, ...car, onDone: () => resolve(true) });
+              if (!ok) resolve(false);
+            });
+            return { data: res?.data, played };
+          } finally {
+            setHeistOn(false);
+          }
+        };
+        return (
+          <div className="cs-heist-sheet">
+            <Sheet title={`${panel.title} · Soygun`} onClose={() => !heistOn && setPanel(null)} closeLabel="Kapat">
+              <HeistPanel target={panel.target} onRun={runCityHeist} />
+            </Sheet>
+          </div>
+        );
+      })()}
+      {panel?.kind === 'heist' && panel.zone && (() => {
         const v = vendorOf(panel.zone);
         if (!v) return null;
         // v153: haraç şehirde kesilir — sistem aynı (HeistPanel), sadece animasyon eklendi

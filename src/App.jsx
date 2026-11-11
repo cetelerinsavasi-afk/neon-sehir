@@ -791,10 +791,14 @@ function GameShell() {
       )}
 
       {city && (
+        // v154: şehir açıkken yarış ekranı ve yarış balonu şehrin üstünde (ns-city-open)
         <CityScreen
           key={city.k}
           spawn={city.spawn}
           onClose={() => setCity(null)}
+          // v154: şehirdeki pist panelinden yarışa giriş → yarış ekranı şehrin üstünde, şehir durur
+          onEnterRace={(roomId, o) => openRace(roomId, { expand: true, ...(o || {}) })}
+          raceFull={Boolean(effectiveRaceRoomId && raceExpanded)}
           onEnterRegion={(rid) => {
             // kapıdan içeri: şehir kapanır (araba kalkar), mekân/liste mevcut yoldan açılır
             setCity(null);

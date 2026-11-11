@@ -14,9 +14,10 @@ import { PET_ART } from '../../lib/cosmeticsArt';
 import { buildCity, BOUNDS, COAST_Z, cx, cz, BLOCK } from './cityPlan.js';
 import { buildVehicle, hasVehicle, seatedPerson, vehicleConfig } from './vehicles.js';
 import { buildCockpit } from './cockpit.js';
+import { createCityHeist } from './cityHeist.js'; // v154 — soygun dizisi (sinematik)
 import { createJobWorld } from './jobWorld.js';
 import { EngineSound } from './sound.js';
-import { createStadiumMatch } from './stadiumMatch.js';
+import { createStadiumMatch, matchAvatar } from './stadiumMatch.js';
 
 const IS_ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
 const IS_MOBILE = IS_ANDROID || (typeof navigator !== 'undefined' && /iPhone|iPad|Mobile/i.test(navigator.userAgent || ''));
@@ -1221,14 +1222,24 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     if (st.a) f.setAvatar(st.a);
     // v147.1 — akıcı hareket: her konum sunucu zamanıyla (t) tampona girer; ekranda
     // ~0,4 sn geriden iki kayıt arasında ara değer çizilir (takılma/ışınlanma yok)
-    const t = Number(st.t) || Date.now();
+    // v154 — SAAT FARKI: sunucu zamanı (t) bu cihazın saatine çevrilir (bilgisayar saati kayıksa
+    // eskiden gecikme hiç ölçülmüyor, figür ilk konumda takılı kalıp zıplıyordu). Fark = son 8 sn'nin
+    // en küçük (yerel − sunucu) değeri; kalan "lat" sadece gerçek ağ gecikmesi.
+    const lt = Date.now();
+    const tsrv = Number(st.t) || lt;
     const last = r.buf[r.buf.length - 1];
-    if (!last || t > last.t) {
+    if (!last || tsrv > last.srv) {
+      const offs = (r.offs ||= []);
+      offs.push({ at: lt, v: lt - tsrv });
+      while (offs.length > 1 && lt - offs[0].at > 8000) offs.shift();
+      let minOff = Infinity;
+      for (const o of offs) if (o.v < minOff) minOff = o.v;
+      const t = tsrv + minOff;
       if (last && Math.hypot(st.x - last.x, st.z - last.z) > 12) r.buf.length = 0; // ışınlandı
-      r.buf.push({ t, x: st.x, z: st.z });
+      r.buf.push({ t, srv: tsrv, x: st.x, z: st.z });
       if (r.buf.length > 8) r.buf.shift();
-      const lat = Date.now() - t; // sadece YENİ kayıtta (eski kaydın yaşı gecikme değildir)
-      if (lat > -2000 && lat < 10000) r.lat = r.lat == null ? lat : r.lat + (lat - r.lat) * (lat < r.lat ? 0.5 : 0.15);
+      const lat = lt - t; // ≥ 0: en kısa gecikmenin üstündeki titreme
+      r.lat = r.lat == null ? lat : r.lat + (lat - r.lat) * (lat < r.lat ? 0.5 : 0.15);
     }
     if (!r.buf.length || r.buf.length === 1) {
       f.x = st.x;
@@ -1272,10 +1283,24 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     }
     // v149: kaydın ölçüldüğü an — gönderenin (sunucuya göre düzeltilmiş) saati. Sunucu damgası
     // (t) ağ gecikmesiyle oynar; her kayıtta araba ileri-geri sıçrıyordu ("yarım saniyede bir takılma").
-    const ts = Number(st.t) || Date.now();
+    // v154 — SAAT FARKI DÜZELTMESİ (bilgisayarda "ışınlanan araba"): kaydın zamanı gönderenin
+    // saatiyle ölçülür, tahmin alıcının saatiyle yapılır. Telefonların saati aynıdır ama bilgisayar
+    // saati sık sık birkaç saniye kayıktır → tahmin ya hiç çalışmıyor (araba sadece kayıt gelince
+    // zıplıyor) ya da hep ileri gidip geri sıçrıyordu. Artık her uzak araba için "benim saatim −
+    // onun saati" farkı gelen kayıtlardan ölçülür (son 8 sn'nin en küçüğü = saat farkı + en kısa
+    // ağ gecikmesi) ve kayıt zamanı BENİM saatime çevrilir. Saatler ne kadar kayık olursa olsun doğru.
+    const lt = Date.now();
+    const ts = Number(st.t) || lt;
     const ct = Number(st.ct);
-    const t = Number.isFinite(ct) && Math.abs(ct - ts) < 4000 ? Math.min(ct, ts) : ts;
-    if (c.t && t <= c.t) return; // eski / aynı kayıt
+    const src = Number.isFinite(ct) && ct > 0 ? ct : ts;
+    if (c.src && src <= c.src) return; // eski / aynı kayıt (gönderenin kendi saatine göre)
+    const offs = (c.offs ||= []);
+    offs.push({ at: lt, v: lt - src });
+    while (offs.length > 1 && lt - offs[0].at > 8000) offs.shift();
+    let minOff = Infinity;
+    for (const o of offs) if (o.v < minOff) minOff = o.v;
+    const t = src + minOff; // ölçüm anı, BU cihazın saatiyle
+    c.src = src;
     // ekranda şu an çizilen konum (dönüş hızı güncellenmeden ÖNCE — yoksa her kayıtta sıçrar)
     const before = predictCar(c);
     // v147.1 — TAHMİN: son kayıttan (konum + hız + dönüş hızı) arabanın ŞU AN nerede
@@ -1404,7 +1429,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         f.moving = false;
         show = vis && carObj.v.open;
       } else {
-        const p = sampleAt(r, Date.now() - clamp((r.lat || 120) + 380, 380, 1100));
+        // v154: lat artık saat farkından arınmış titreme (≈0); eski gecikme bütçesi (~0,5 sn) korunur
+        const p = sampleAt(r, Date.now() - clamp((r.lat || 0) + 480, 480, 1100));
         const dx = p.x - f.x;
         const dz = p.z - f.z;
         const d = Math.hypot(dx, dz);
@@ -1588,6 +1614,39 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const roofY = cab && c.v.closed ? Math.min(cab.Bp[1], cab.Cp[1]) - 0.16 : Infinity;
     c.v[key] = { eye: new V(-sp[2] * (c.v.moto ? 1 : 0.92), Math.min(sp[1] + up, roofY), sp[0] - back) };
     return c.v[key];
+  }
+  // v154 — YOLCU İÇ KAMERASI: koltuğa göre ayrı göz noktası.
+  //  · otomobil ön yolcu: sürücünün aynası (sağ koltuk), ayrıntılı kokpitle
+  //  · otomobil arka yolcu: ön koltukların arasından, kokpitle
+  //  · otobüs / minibüs: ön kapının yanında ayakta, ön camdan bakar (herkes aynı yerden)
+  //  · motor: sürücünün kafasının üstünden ve biraz geriden
+  // dönüş: { eye, rig } — rig: sürücünün kokpiti bu yolcuya da gösterilsin mi
+  function passengerView(c, k) {
+    const key = `pv${k}`;
+    if (c.v[key]) return c.v[key];
+    const d0 = cockpitOf(c, 0).eye;
+    const base = cockpitOf(c, k).eye;
+    const seats = c.v.def?.seats || 2;
+    let pv;
+    if (c.v.moto) {
+      pv = { eye: new V(base.x, base.y + 0.42, base.z - 0.22), rig: false };
+    } else if (seats > 4 && c.v.len > 5.2) {
+      // otobüs: göz şoförün sağ arkasında, ayakta (tavanın altında kalır)
+      const cab = c.v.cabin;
+      const y = cab ? Math.min(cab.floor + 1.45, cab.roof - 0.32) : d0.y + 0.32;
+      pv = { eye: new V(-d0.x * 0.55, y, d0.z - 0.55), rig: false, bus: true };
+    } else if (c.v.len > 5.6) {
+      // tır / ambulans / karavan: ön yolcu sürücünün aynası, arkadakiler kendi koltuğundan
+      pv = k === 1 ? { eye: new V(-d0.x, d0.y, d0.z), rig: true } : { eye: base, rig: false };
+    } else if (k === 1) {
+      pv = { eye: new V(-d0.x, d0.y, d0.z), rig: true };
+    } else {
+      // arka koltuk: ortaya yakın, biraz yüksek → iki ön koltuğun arasından yol görünür
+      const side = Math.sign(base.x || 1);
+      pv = { eye: new V(side * Math.min(0.22, Math.abs(d0.x) * 0.6), d0.y + 0.05, d0.z - 0.95), rig: true };
+    }
+    c.v[key] = pv;
+    return pv;
   }
   // v153 — ayrıntılı birinci şahıs kokpit (motorda yok). Aracın kendi kaba iç parçaları gizlenir.
   function cockpitRig(c, ck) {
@@ -1897,6 +1956,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     let yawRate = (vF0 * Math.tan(delta)) / c.v.wb;
     if (hand && Math.abs(vF0) > 3) yawRate *= 1.45;
     c.yaw += yawRate * dt;
+    // v154: yön (-π, π] aralığında kalsın — sınırsız büyüyünce fotoğrafta araba ters dönüyordu
+    // (sunucu ±50'yi aşan yönü 0 sayar) ve RTDB kuralı (±1000) aşılınca araba yayını kesiliyordu
+    if (c.yaw > Math.PI || c.yaw < -Math.PI) c.yaw = Math.atan2(Math.sin(c.yaw), Math.cos(c.yaw));
     // 2) hız yeni yöne göre ileri / yan bileşen
     fx = Math.sin(c.yaw);
     fz = Math.cos(c.yaw);
@@ -2019,7 +2081,24 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     });
     c.pax = [];
     const pts = v.seatPts || [];
-    if (!n || pts.length < 2 || v.moto) return;
+    // v154: motokurye — siparişi alınca arkada kurye çantası (diğer oyuncular da görür)
+    if (v.moto) {
+      if (!v.kuryeBox) {
+        const g = new THREE.Group();
+        const box = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.42, 0.46), new THREE.MeshStandardMaterial({ color: '#e8262f', roughness: 0.6 }));
+        box.castShadow = true;
+        const lid = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.05, 0.48), new THREE.MeshStandardMaterial({ color: '#ffd23f', roughness: 0.5 }));
+        lid.position.y = 0.23;
+        g.add(box, lid);
+        const sp = pts[0] || [0, 0.8, 0];
+        g.position.set(sp[0] - 0.62, sp[1] + 0.12, 0);
+        v.body.add(g);
+        v.kuryeBox = g;
+      }
+      v.kuryeBox.visible = n > 0;
+      return;
+    }
+    if (!n || pts.length < 2) return;
     // arkadan öne (gerçek yolcular öndeki koltuklardan başlar)
     const order = pts.map((_, i) => i).slice(1).reverse();
     order.slice(0, n).forEach((k, i) => {
@@ -2095,6 +2174,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   }
   function handleTap(e) {
     if (driving) return;
+    if (heist?.active) return; // v154: soygun dizisi oynarken dokunma yok
     if (self.ride) return;
     setNdc(e);
     ray.setFromCamera(ndc, camera);
@@ -2224,6 +2304,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   const head = new V();
   // v153 — haraç animasyonu (sadece bu cihazda; diğer oyuncular görmez)
   let harac = null;
+  let heist = null; // v154 — soygun dizisi (aşağıda api'den önce kurulur)
   const haracCam = { k: 0, x: 0, z: 0 };
   const coinTex = (() => {
     const mk = (w, h, draw) => {
@@ -2576,6 +2657,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   }
   function placeCamera(dt) {
     camera.userData.billboardYaw = null;
+    if (heist?.active && heist.cam(dt)) return; // v154
     {
       const ic = view !== '2d' && carCam === 'in' ? (driving && myCar ? myCar : !driving ? rideCar() : null) : null;
       setInterior(ic);
@@ -2598,18 +2680,19 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     if (interiorCar && ((driving && myCar) || rc)) {
       // v149 — araba içinden: koltuktaki göz hizası, arabanın yönüne göre serbest bakış
       const c = interiorCar;
-      const ck = cockpitOf(c, driving ? 0 : self.ride.k || 1);
+      // v154: yolcunun ayrı göz noktası (passengerView); kokpit ön/arka yolcuya da gösterilir
+      const pv = driving ? null : passengerView(c, self.ride.k || 1);
+      const ck = driving ? cockpitOf(c, 0) : pv;
       me.group.visible = false;
-      // v153: kokpit sadece sürücü koltuğunda (yolcu, aracın kendi iç modelini görür)
-      const rig = driving ? cockpitRig(c, ck) : null;
+      const rig = driving || pv.rig ? cockpitRig(c, cockpitOf(c, 0)) : null;
       if (rig) {
         if (!rig.group.visible) showRig(c, true);
         const vmax = c.v.def.phys.vmax || 30;
         const spdR = Math.hypot(c.vx || 0, c.vz || 0);
         rig.update(dt, {
           steer: c.steer || 0,
-          kmh: driveStat.kmh || 0,
-          gear: driveStat.gear || 'N',
+          kmh: driving ? driveStat.kmh || 0 : Math.round(Math.abs(c.spd || 0) * 3.6),
+          gear: driving ? driveStat.gear || 'N' : Math.abs(c.spd || 0) > 0.3 ? 'D' : 'N',
           rpm: Math.min(7.8, 0.9 + ((spdR / vmax) * 5 % 1) * 5.5 + (driveStat.gear === 'N' ? 0 : 0.6)),
           vmaxKmh: Math.max(60, Math.ceil((vmax * 3.6) / 20) * 20),
           heading: c.yaw,
@@ -2638,8 +2721,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       // hızlanınca hafif başın geri gitmesi / virajda dönüş yönüne bakış
       const lookAhead = clamp(dyw * 0.9, -0.25, 0.25);
       const cy = inYawSm + inLook.yaw + lookAhead;
-      const rigOn = Boolean(driving && c.v.rig?.group.visible);
-      const pitch = inLook.pitch + (rigOn ? -0.02 : 0.04); // v151: ufka yakın; v153 kokpitte gösterge görünsün
+      const rigOn = Boolean(rig && c.v.rig?.group.visible);
+      // v151: ufka yakın; v153 kokpitte gösterge görünsün; v154 otobüs yolcusu yola biraz aşağı bakar
+      const pitch = inLook.pitch + (rigOn ? -0.02 : pv?.bus ? -0.08 : 0.04);
       const cp = Math.cos(pitch);
       const roll = clamp(-(c.roll || 0) * 0.7, -0.08, 0.08);
       camera.up.set(Math.cos(cy) * Math.sin(roll), Math.cos(roll), -Math.sin(cy) * Math.sin(roll));
@@ -2848,6 +2932,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     updateRemoteCars(dt);
     if (driving && myCar) stepDrive(dt);
     else if (self.ride) stepRide(dt);
+    else if (heist?.active) heist.step(dt, now); // v154: soygun dizisi oyuncuyu ve kamerayı yönetir
     else stepWalk(dt);
     // park halindeki araba / çağırma animasyonu
     if (myCar) {
@@ -3042,6 +3127,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     // v151: meslek hedefi / bot yolcular / şüpheli araç
     jobWorld?.update(Math.min(0.1, dbgDt), camera, performance.now(), self.x, self.z, w, h);
     ring.material.opacity = 0.6 + Math.sin(clock.elapsedTime * 6) * 0.25;
+    heist?.render(w, h); // v154
   }
 
   // --- görüş mesafesi + otomatik grafik ------------------------------------------------
@@ -3077,6 +3163,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   let slowWins = 0;
   let fastWins = 0;
   let lastTierAt = 0;
+  let raiseSaved = false; // v154: bu oturumda "sonraki açılışta kaliteyi artır" kaydedildi
   let lastRenderAt = 0;
   let frameNo = 0;
   function perfSample(iv) {
@@ -3100,7 +3187,14 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       fastWins = 0;
     }
     if (slowWins >= 2 && tier < CITY_TIERS.length - 1) setTier(tier + 1, now);
-    else if (fastWins >= 8 && tier > 0 && now - lastTierAt > 20000 && !(IS_MOBILE && tier <= 1)) setTier(tier - 1, now);
+    else if (fastWins >= 8 && tier > 0 && now - lastTierAt > 20000 && !(IS_MOBILE && tier <= 1) && !raiseSaved) {
+      // v154 — DONMA DÜZELTMESİ: oyun sırasında kalite ARTIRILMAZ. Her seviye değişimi ışık
+      // sayısını / gölgeleri değiştirip tüm shader'ları yeniden derletiyordu (telefonda 0,5–1 sn
+      // donma) ve "hızlı → kaliteyi artır → yavaş → düşür" döngüsü 30–40 sn'de bir tekrar ediyordu.
+      // Artık: zorlanınca bir kez düşer; rahatsa bir üst seviye SONRAKİ açılışta denenir.
+      raiseSaved = true;
+      saveCityTier(tier - 1);
+    }
   }
   function setTier(t, now) {
     tier = t;
@@ -3169,6 +3263,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const dir = new V();
     camera.getWorldDirection(dir);
     const r3 = (v) => Math.round(v * 1000) / 1000;
+    const wy = (v) => r3(Math.atan2(Math.sin(v || 0), Math.cos(v || 0)));
     const cam = { px: r2(camera.position.x), py: r2(camera.position.y), pz: r2(camera.position.z), dx: r3(dir.x), dy: r3(dir.y), dz: r3(dir.z), fov: camera.fov, a: r3(camera.aspect), cw: Math.round(container.clientWidth || 400), td: view === '2d' ? 1 : 0 };
     const people = [figShot(myUid, me, driving && myCar ? { c: myUid, k: 0 } : self.ride ? { c: self.ride.owner, k: self.ride.k || 1 } : {})];
     [...remotes.values()]
@@ -3181,12 +3276,14 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         people.push(figShot(r.uid, r.fig, st.p === 'd' ? { c: r.uid, k: 0 } : st.p === 'r' ? { c: st.ro, k: st.rk || 1 } : {}));
       });
     const cars = [];
-    if (myCar) cars.push({ o: myUid, v: myCar.id, x: r2(myCar.x), z: r2(myCar.z), y: r2(myCar.y), r: r3(myCar.yaw), st: r2(myCar.steer || 0) });
+    if (myCar) cars.push({ o: myUid, v: myCar.id, x: r2(myCar.x), z: r2(myCar.z), y: r2(myCar.y), r: wy(myCar.yaw), st: r2(myCar.steer || 0) });
     rcars.forEach((c, uid) => {
       if (!c.v.root.visible || Math.hypot(c.x - self.x, c.z - self.z) > VIS_DIST) return;
-      cars.push({ o: uid, v: c.id, x: r2(c.x), z: r2(c.z), y: r2(c.y), r: r3(c.yaw), st: r2(c.steer || 0) });
+      cars.push({ o: uid, v: c.id, x: r2(c.x), z: r2(c.z), y: r2(c.y), r: wy(c.yaw), st: r2(c.steer || 0) });
     });
-    return { cam, people, cars: cars.slice(0, 8), tod };
+    // v154: stadyumda maç oynanırken futbolcular + top da kareye girer
+    const fb = stadium?.snap?.() || null;
+    return { cam, people, cars: cars.slice(0, 8), tod, ...(fb ? { fb } : {}) };
   }
   function drawShotLabels(ctx, W, H, s, list) {
     const font = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
@@ -3266,6 +3363,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   async function renderAtt(att, w, h) {
     const tmpFigs = [];
     const tmpCars = new Map();
+    const fbFigs = [];
+    let fbBall = null;
     try {
       (att.cars || []).slice(0, 8).forEach((c) => {
         if (!hasVehicle(c.v)) return;
@@ -3292,20 +3391,45 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         f.shot = p;
         tmpFigs.push(f);
       });
+      // v154: maç anı (futbolcular, hakem, top) — fotoğraftaki konumlarıyla
+      const fb = att.fb && typeof att.fb === 'object' ? att.fb : null;
+      if (fb) {
+        const mk = (id, av, d) => {
+          const f = new Fig(scene, layer, { id, name: '', avatar: av, npc: true });
+          f.label.style.display = 'none';
+          f.group.visible = false;
+          f.fb = d;
+          fbFigs.push(f);
+        };
+        (Array.isArray(fb.p) ? fb.p.slice(0, 12) : []).forEach((d, i) => mk(`shot_fb_${i}`, matchAvatar(d[0] ? 'away' : 'home', d[1] | 0, fb.hc, fb.ac), d.slice(2)));
+        if (Array.isArray(fb.r)) mk('shot_fb_ref', matchAvatar('ref', 0), fb.r);
+        if (Array.isArray(fb.b)) {
+          fbBall = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 10), new THREE.MeshStandardMaterial({ color: '#f4f4f4', roughness: 0.5 }));
+          fbBall.position.set(Number(fb.b[0]) || 0, Number(fb.b[1]) || 0, Number(fb.b[2]) || 0);
+          fbBall.visible = false;
+          scene.add(fbBall);
+        }
+      }
       const t0 = Date.now();
-      while (tmpFigs.some((f) => !f.tex.ready) && Date.now() - t0 < 5000) await sleep(80);
+      while ([...tmpFigs, ...fbFigs].some((f) => !f.tex.ready) && Date.now() - t0 < 5000) await sleep(80);
       if (tmpFigs.some((f) => f.pet)) await sleep(60); // evcil hayvan dokuları
       // v153: stadyum reklamları fotoğrafın çekildiği andaki sponsorlar (eski fotoğraf: varsayılan)
       const stM = stadLot?.info?.match;
       const liveAds = stM?.getSponsors?.() ?? null;
       if (stM?.setSponsors) stM.setSponsors(Array.isArray(att.sp) ? att.sp.slice(0, 8).map((x) => String(x).slice(0, 40)) : null);
       try {
-        return shoot(att, w, h, tmpFigs, tmpCars);
+        return shoot(att, w, h, tmpFigs, tmpCars, fbFigs, fbBall);
       } finally {
         if (stM?.setSponsors && !snapshot) stM.setSponsors(liveAds);
       }
     } finally {
       tmpFigs.forEach((f) => f.dispose(scene));
+      fbFigs.forEach((f) => f.dispose(scene));
+      if (fbBall) {
+        scene.remove(fbBall);
+        fbBall.geometry.dispose();
+        fbBall.material.dispose();
+      }
       tmpCars.forEach((c) => {
         scene.remove(c.v.root);
         c.v.root.traverse((o) => {
@@ -3317,7 +3441,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       });
     }
   }
-  function shoot(att, w, h, tmpFigs, tmpCars) {
+  function shoot(att, w, h, tmpFigs, tmpCars, fbFigs = [], fbBall = null) {
     const cam = att.cam || {};
     const hidden = [];
     const hide = (o) => {
@@ -3337,6 +3461,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     remotes.forEach((r) => hideFig(r.fig));
     rcars.forEach((c) => hide(c.v.root));
     if (myCar) hide(myCar.v.root);
+    stadium?.liveObjects?.().forEach(hide);
     hide(ring);
     hide(callRing);
     const hsI = headSpot.intensity;
@@ -3427,7 +3552,18 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         n.update(0, camera, now);
         labels.push({ f: n, says: [] });
       });
-      placeSky();
+      fbFigs.forEach((f) => {
+        const [x, z, l, m, wp] = f.fb;
+        f.x = Number(x) || 0;
+        f.z = Number(z) || 0;
+        f.y = groundY(f.x, f.z);
+        f.facingLeft = Boolean(l);
+        f.moving = Boolean(m);
+        f.walkT = wp ? 0.16 : 0;
+        f.group.visible = true;
+        f.update(0, camera, now);
+      });
+      if (fbBall) fbBall.visible = true;
       renderer.render(scene, camera);
       const c2 = document.createElement('canvas');
       c2.width = w;
@@ -3442,6 +3578,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       return c2.toDataURL('image/jpeg', 0.86);
     } finally {
       tmpFigs.forEach((f) => (f.group.visible = false));
+      fbFigs.forEach((f) => (f.group.visible = false));
+      if (fbBall) fbBall.visible = false;
       tmpCars.forEach((c) => (c.v.root.visible = false));
       hidden.forEach((o) => (o.visible = true));
       headSpot.intensity = hsI;
@@ -3476,7 +3614,31 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     }
   }
 
+  // v154 — soygun dizisi (sadece canlı ekranda; fotoğraf motorunda yok)
+  heist = snapshot
+    ? null
+    : createCityHeist({
+        scene,
+        layer,
+        container,
+        camera,
+        Fig,
+        me,
+        self,
+        zones,
+        city,
+        groundY: (x, z) => groundY(x, z),
+        placeLabel: (...a) => placeLabel(...a),
+        headMat,
+        snapCam: () => {
+          first = true;
+          camGlide = null;
+        },
+        isBusy: () => Boolean(harac || driving || self.ride || self.seat),
+      });
+
   const api = {
+    heist,
     photoState,
     renderAtt,
     getPerf: () => ({ tier, name: CITY_TIERS[tier].name, dpr: renderer.getPixelRatio() }),
@@ -3708,6 +3870,23 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     lots: city.lots.map((l) => ({ type: l.type, outer: l.outer, x0: l.mx - l.bw / 2, x1: l.mx + l.bw / 2, z0: l.mz - l.bd / 2, z1: l.mz + l.bd / 2, name: l.def?.name, icon: l.def?.icon, door: zones.find((z) => z.kind === 'door' && z.type === l.type) || null })),
     zones,
     stats: () => ({ calls: renderer.info.render.calls, tris: renderer.info.render.triangles }),
+    // v154 — tanı (sadece geliştirme): en yakın koltuklar
+    dbgSeats: (n = 4) => (import.meta.env?.DEV ? seats.map((st) => ({ x: +st.x.toFixed(2), y: +st.y.toFixed(2), z: +st.z.toFixed(2), d: +Math.hypot(st.x - self.x, st.z - self.z).toFixed(2) })).sort((a, b) => a.d - b.d).slice(0, n) : []),
+    // v154 — tanı (sadece geliştirme): uzak arabaların ekrandaki konumu
+    // v154 — tanı (sadece geliştirme): arabayı taşı (meslek testleri)
+    dbgMoveCar: (x, z, yaw) => {
+      if (!import.meta.env?.DEV || !myCar) return false;
+      myCar.x = x;
+      myCar.z = z;
+      if (yaw != null) myCar.yaw = yaw;
+      myCar.vx = 0;
+      myCar.vz = 0;
+      first = true;
+      return true;
+    },
+    dbgCars: () => (import.meta.env?.DEV ? [...rcars].map(([u, c]) => ({ u, x: c.x, z: c.z })) : []),
+    // v154 — tanı: bellek / derlenmiş shader sayısı (donma ve çökme takibi)
+    memInfo: () => ({ geo: renderer.info.memory.geometries, tex: renderer.info.memory.textures, prog: renderer.info.programs?.length || 0 }),
     // v153 — haraç animasyonu: başla (silah doğrult) → sunucu cevabı → bitir (para / polis)
     haracBegin(venueKey) {
       if (harac || driving || self.ride || self.seat) return false;
@@ -3744,6 +3923,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     haracActive: () => Boolean(harac),
     dispose() {
       haracFinish();
+      try {
+        heist?.stop(); // v154
+      } catch {
+        /* yoksay */
+      }
       cancelAnimationFrame(raf);
       try {
         stadium?.dispose();

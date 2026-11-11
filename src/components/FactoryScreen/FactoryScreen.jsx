@@ -35,6 +35,7 @@ import { machineTax, withMachineTax } from '../../../functions/tax.js';
 import { useBelediyeRates } from '../../hooks/useBelediyeRates';
 import { fmtRate, MACHINE_RATE_KEY } from '../../../functions/belediyeRates.js';
 import { trMidnightNote } from '../../lib/istanbulTime';
+import { tieredMachinePrice, prodRangeLabel, TIERED_MACHINE_TYPES } from '../../../functions/factoryMachineRules.js';
 
 const FACTORY_CREATE_COST = 100000;
 const MACHINE_PRICES = { tamirMalzemesi: 50000, silahUpgrade: 50000, arabaGelistirme: 50000, yasakliMadde: 100000 };
@@ -67,8 +68,11 @@ function MachineCost({ price, type, rates }) {
   );
 }
 
-function machinePrice(type, cryptoPrice, ownedMiningCount = 0) {
+// v154: malzeme makineleri aynı türden sahip olunan her makine için +1.000 (owned = o türden sayı)
+function machinePrice(type, cryptoPrice, owned = 0) {
+  if (TIERED_MACHINE_TYPES.includes(type)) return tieredMachinePrice(type, owned);
   if (type !== 'mining') return MACHINE_PRICES[type];
+  const ownedMiningCount = owned;
   // Sunucudaki miningMachinePrice ile AYNI kademeli formül: her 10
   // makinede +0.2x (0-9: 2.0x, 10-19: 2.2x, 20-29: 2.4x, ...). Eskiden
   // burada her 100 makinede +2x olan eski formül vardı — sunucu
@@ -79,9 +83,7 @@ function machinePrice(type, cryptoPrice, ownedMiningCount = 0) {
 
 function machineProductionRangeLabel(type) {
   if (type === 'yasakliMadde') return '1-10';
-  if (type === 'silahUpgrade') return '1-200';
-  if (type === 'tamirMalzemesi') return '1-2000';
-  return '1-40';
+  return prodRangeLabel(type); // v154: 1,5 katı (tamir 1-3.000 · silah 1-300 · araba 1-60)
 }
 
 // ---------------------------------------------------------------------------
@@ -179,7 +181,7 @@ function CreateFactoryModal({ onClose, isEmployed }) {
 // ---------------------------------------------------------------------------
 // Makine satın alma modalı (sadece fabrika sahibi)
 // ---------------------------------------------------------------------------
-function BuyMachineModal({ onClose, ownedMiningCount }) {
+function BuyMachineModal({ onClose, ownedCounts = {} }) {
   const { prices } = useInvestmentPrices();
   const rates = useBelediyeRates();
   const [busy, setBusy] = useState(null);
@@ -214,7 +216,8 @@ function BuyMachineModal({ onClose, ownedMiningCount }) {
         </div>
         <div className="factory-machine-list">
           {types.map((type) => {
-            const price = machinePrice(type, prices.cryptoPrice, ownedMiningCount);
+            // v154: bu pencerede yeni alınanlar da sayılır (fiyat her alımda +1.000)
+            const price = machinePrice(type, prices.cryptoPrice, (ownedCounts[type] || 0) + (bought[type] || 0));
             return (
               <div key={type} className="factory-machine-buy-card">
                 <span className="factory-machine-emoji">{MACHINE_EMOJI[type]}</span>
@@ -634,7 +637,7 @@ function OwnerView({ factory, machines, player, myUid }) {
         <span className="factory-machine-name">{MACHINE_LABELS[m.type]}</span>
         {ownerTriggeredToday && (
           <span className="factory-machine-status">
-            ⏳ İşçi bugün gelmezse 00:00'da{trMid} senin adına (2/10 verimle) üretilecek.
+            ⏳ İşçi bugün gelmezse 00:00'da{trMid} senin adına (1/3 verimle) üretilecek.
           </span>
         )}
         {m.workerId === myUid ? (
@@ -752,7 +755,7 @@ function OwnerView({ factory, machines, player, myUid }) {
           {runBusy ? '…' : machinesAlreadyRunToday ? 'Bugün Çalıştırıldı' : 'Makineleri Çalıştır'}
         </button>
         <p className="factory-hint small">
-          Bugün henüz çalışan bir işçisi olmayan makineleri sen çalıştırmış olursun (2/10 verimle);
+          Bugün henüz çalışan bir işçisi olmayan makineleri sen çalıştırmış olursun (1/3 verimle);
           işçi gün içinde gelip üretirse işçinin üretimi geçerli olur. Üretilen mallar gece
           00:00'da{trMid || ' (Türkiye saati)'} envanterine eklenir.
         </p>
@@ -835,7 +838,7 @@ function OwnerView({ factory, machines, player, myUid }) {
       {showBuy && (
         <BuyMachineModal
           onClose={() => setShowBuy(false)}
-          ownedMiningCount={machines.filter((m) => m.type === 'mining').length}
+          ownedCounts={machines.reduce((a, m) => ((a[m.type] = (a[m.type] || 0) + 1), a), {})}
         />
       )}
       {showNameEdit && <FactoryNameModal factory={factory} onClose={() => setShowNameEdit(false)} />}

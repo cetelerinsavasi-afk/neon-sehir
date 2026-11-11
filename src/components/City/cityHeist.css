@@ -1,0 +1,91 @@
+/* v154 — soygun dizisi (cityHeist.js) arayüzü — prototipten birebir */
+.hx-root{position:absolute;inset:0;z-index:3;pointer-events:none;overflow:hidden;color:#fff}
+.hx-fx{position:absolute;inset:0}
+.hx-bar{position:absolute;left:0;right:0;height:0;background:#000;transition:height .6s cubic-bezier(.2,.8,.2,1);z-index:2}
+.hx-bar.top{top:0}
+.hx-bar.bot{bottom:0}
+.hx-root.on .hx-bar{height:9.5%}
+.hx-root.ended .hx-bar{height:0}
+.hx-fade{position:absolute;inset:0;background:#000;opacity:0;transition:opacity .28s linear;z-index:3}
+.hx-fade.on{opacity:1}
+.hx-fade.on.dim{opacity:.72}
+.hx-flash{position:absolute;inset:0;opacity:0;z-index:1}
+.hx-flash.siren{opacity:1;animation:hx-siren .34s step-end infinite}
+.hx-flash.alarm{opacity:1;background:radial-gradient(ellipse at center,#0000 58%,#ff142d59);animation:hx-alarm .5s ease-in-out infinite alternate}
+@keyframes hx-siren{0%{background:radial-gradient(at 0 0,#ff1e4670,#0000 60%),radial-gradient(at 100% 100%,#ff1e4640,#0000 55%)}50%{background:radial-gradient(at 100% 0,#286eff70,#0000 60%),radial-gradient(at 0 100%,#286eff40,#0000 55%)}}
+@keyframes hx-alarm{0%{opacity:.25}to{opacity:1}}
+.hx-title{position:absolute;inset:0;z-index:4;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;text-align:center;opacity:0;transition:opacity .5s;padding:0 20px}
+.hx-title.on{opacity:1}
+.hx-title small{font-size:12px;letter-spacing:.5em;color:#19e8ff;text-shadow:0 0 12px #19e8ffb0;padding-left:.5em}
+.hx-title b{font-size:clamp(26px,6.2vw,58px);font-weight:900;letter-spacing:.06em;line-height:1.05;text-shadow:0 0 26px #ff2d8a99,0 3px 0 #5c0a30}
+.hx-title i{font-style:normal;font-size:13px;letter-spacing:.18em;color:#ffd84a}
+.hx-hud{position:absolute;z-index:2;top:calc(9.5% + 10px);left:12px;display:flex;gap:8px;opacity:0;transition:opacity .3s}
+.hx-hud.on{opacity:1}
+.hx-root.ended .hx-hud,.hx-root.ended .hx-cast,.hx-root.ended .hx-cap,.hx-root.ended .hx-tools,.hx-root.ended .hx-prog{display:none}
+.hx-hud>span{padding:5px 11px;border-radius:999px;background:#080a12c7;border:1px solid rgba(255,255,255,.14);font-size:13px;font-variant-numeric:tabular-nums}
+.hx-hud b{font-weight:800}
+.hx-clock.hot{border-color:#ff3b5c;color:#ff8fa3;animation:hx-pulse .5s ease-in-out infinite alternate}
+.hx-loot{display:none}
+.hx-loot.on{display:inline-block;border-color:#ffd84a80!important;color:#ffe9a8}
+@keyframes hx-pulse{to{box-shadow:0 0 14px #ff2850b0}}
+.hx-tools{position:absolute;z-index:5;top:calc(9.5% + 10px);right:12px;display:flex;gap:6px;pointer-events:auto}
+.hx-tools button{border:1px solid rgba(255,255,255,.16);background:#080a12c7;border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;color:#dfe6f3}
+.hx-cast{position:absolute;z-index:2;left:14px;bottom:calc(9.5% + 14px);display:flex;align-items:center;gap:10px;opacity:0;transform:translate(-16px)}
+.hx-cast.on{animation:hx-cast 2.6s ease-out forwards}
+@keyframes hx-cast{0%{opacity:0;transform:translate(-16px)}10%,82%{opacity:1;transform:none}to{opacity:0;transform:translate(6px)}}
+.hx-cast img{width:46px;height:46px;border-radius:50%;object-fit:cover;object-position:50% 12%;background:#10131c;border:2px solid #19e8ff;box-shadow:0 0 14px #19e8ff70}
+.hx-cast small{display:block;font-size:10px;letter-spacing:.3em;color:#19e8ff}
+.hx-cast b{font-size:19px;font-weight:900;letter-spacing:.02em;text-shadow:0 2px 8px #000}
+.hx-cap{position:absolute;z-index:2;left:50%;bottom:calc(9.5% + 16px);transform:translate(-50%);padding:6px 14px;border-radius:10px;background:#080a12cc;font-size:13px;font-weight:700;white-space:nowrap;opacity:0;transition:opacity .25s;max-width:92%;overflow:hidden;text-overflow:ellipsis}
+.hx-cap.on{opacity:1}
+.hx-prog{position:absolute;z-index:2;left:50%;top:62%;transform:translate(-50%);width:min(260px,70%);display:none;flex-direction:column;gap:6px;align-items:center}
+.hx-prog.on{display:flex}
+.hx-prog span{font-size:12px;font-weight:800;text-shadow:0 1px 4px #000}
+.hx-prog i{display:block;width:100%;height:8px;border-radius:99px;background:#0009;border:1px solid rgba(255,255,255,.25);overflow:hidden}
+.hx-prog u{display:block;height:100%;width:0;background:linear-gradient(90deg,#19e8ff,#ffd84a);transition:width .16s linear}
+.hx-float{position:absolute;left:0;top:0;white-space:nowrap;font-weight:900;will-change:transform,opacity}
+.hx-float.gold{font-size:28px;color:#ffd84a;text-shadow:0 0 12px #ffc828d9,0 2px 0 #7a4d00}
+.hx-float.police{font-size:26px;color:#ff3b5c;text-shadow:0 0 14px #ff2850f2,0 2px 0 #4a0010;animation:hx-blink .32s step-end infinite}
+.hx-float.talk{font-size:14px;font-style:italic;color:#fff;text-shadow:0 2px 6px #000,0 0 2px #000}
+@keyframes hx-blink{50%{color:#6aa8ff;text-shadow:0 0 14px #3c78fff2,0 2px 0 #001a4a}}
+.hx-result{position:absolute;z-index:6;left:50%;top:50%;width:min(360px,90%);transform:translate(-50%,-46%) scale(.94);opacity:0;transition:transform .35s cubic-bezier(.2,1.2,.3,1),opacity .3s;pointer-events:auto;border-radius:18px;background:#0c101cf0;border:1px solid rgba(255,255,255,.12);box-shadow:0 20px 60px #000c;overflow:hidden}
+.hx-result.on{opacity:1;transform:translate(-50%,-50%)}
+.hx-res-top{padding:18px 16px 14px;text-align:center}
+.hx-result.ok .hx-res-top{background:linear-gradient(180deg,#ffd84a2e,#0000)}
+.hx-result.bad .hx-res-top{background:linear-gradient(180deg,#ff2d5033,#0000)}
+.hx-res-top small{font-size:10px;letter-spacing:.4em;color:#9fb0c8}
+.hx-res-top h2{margin:6px 0 4px;font-size:26px;font-weight:900;letter-spacing:.04em}
+.hx-result.ok h2{color:#ffd84a;text-shadow:0 0 18px #ffc82880}
+.hx-result.bad h2{color:#ff5c78;text-shadow:0 0 18px #ff285080}
+.hx-res-top p{margin:0;font-size:14px;font-weight:700;color:#e8edf6}
+.hx-result ul{list-style:none;margin:0;padding:4px 12px 8px;display:flex;flex-direction:column;gap:6px}
+.hx-result li{display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:12px;background:#ffffff0d}
+.hx-result li.cop{background:#286eff2e;outline:1px solid #5a94ff80}
+.hx-result li img{width:34px;height:34px;border-radius:50%;object-fit:cover;object-position:50% 12%;background:#10131c}
+.hx-result li span{flex:1;min-width:0}
+.hx-result li b{display:block;font-size:13px}
+.hx-result li small{font-size:9px;letter-spacing:.2em;color:#8fa0b8}
+.hx-result li em{font-style:normal;font-weight:800;font-size:14px;font-variant-numeric:tabular-nums}
+.hx-result em.plus{color:#6fe39a}
+.hx-result em.minus{color:#ff7a8f}
+.hx-result em.unk{color:#8fa0b8;font-size:16px;min-width:22px;text-align:center}
+.hx-res-btn{display:flex;gap:8px;padding:6px 12px 14px}
+.hx-res-btn button{flex:1;padding:11px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:#ffffff0f;font-weight:800;font-size:13px;color:#e8edf6}
+.hx-res-btn button.pri{background:#19e8ff;color:#04222a;border-color:#19e8ff}
+.hx-active .cs-maplabel{display:none!important}
+/* v154 — şehir dışı soygun videosu kabı (HeistVideo) + şehirde video sırasında arayüz gizli */
+.hv-root { z-index: 400; background: #000; }
+.hv-loading p { letter-spacing: 0.12em; font-weight: 800; }
+.hv-skip {
+  position: absolute;
+  right: 14px;
+  bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+  z-index: 6;
+  padding: 9px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-weight: 800;
+}
+.cs-root.cs-heist-on > :not(.hs-stage) { display: none !important; }

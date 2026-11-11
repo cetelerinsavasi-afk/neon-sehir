@@ -67,8 +67,17 @@ async function recompute() {
   const gen = store.gen;
   if (!uid) return;
   const t = Date.now();
+  // v154: plan belgesinde üye listesi (memberUids) varsa okuma yok
+  // (bu cihazdan az önce katıl / ayrıl yapıldıysa sunucu yazımı gelene kadar yerel bilgi geçerli)
+  store.open.forEach((p) => {
+    if (!Array.isArray(p.memberUids)) return;
+    const m = store.member.get(p.id);
+    const v = p.memberUids.includes(uid);
+    if (m?.local && t - m.at < 20000 && m.v !== v) return;
+    store.member.set(p.id, { v, at: t });
+  });
   const need = store.open.filter((p) => {
-    if (p.creatorUid === uid) return false;
+    if (p.creatorUid === uid || Array.isArray(p.memberUids)) return false;
     const m = store.member.get(p.id);
     return !m || (!m.v && t - m.at > NEG_TTL_MS);
   });
@@ -104,7 +113,7 @@ function start(uid) {
   store.unsub = onSnapshot(
     q,
     (snap) => {
-      store.open = snap.docs.map((d) => ({ id: d.id, target: d.data().target, creatorUid: d.data().creatorUid }));
+      store.open = snap.docs.map((d) => ({ id: d.id, target: d.data().target, creatorUid: d.data().creatorUid, memberUids: d.data().memberUids }));
       recompute();
     },
     () => {}
@@ -119,9 +128,9 @@ function stopIfIdle() {
 // Bu cihazdan katıl / ayrıl / kur / sil yapılınca hemen işaretle (beklemeden üste çıksın)
 export function noteMyHeistPlan(planId, target, isMine) {
   if (!store.uid || !planId) return;
-  store.member.set(planId, { v: Boolean(isMine), at: Date.now() });
+  store.member.set(planId, { v: Boolean(isMine), at: Date.now(), local: true });
   if (isMine) {
-    if (!store.open.some((p) => p.id === planId)) store.open = [...store.open, { id: planId, target, creatorUid: null }];
+    if (!store.open.some((p) => p.id === planId)) store.open = [...store.open, { id: planId, target, creatorUid: null, memberUids: null }];
     if (!store.plans.some((p) => p.planId === planId)) setPlans([...store.plans, { planId, target }]);
   } else {
     setPlans(store.plans.filter((p) => p.planId !== planId));

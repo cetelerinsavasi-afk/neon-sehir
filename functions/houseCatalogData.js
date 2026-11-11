@@ -203,6 +203,9 @@ export const HOUSE_PRODUCTS = {
   kokorec: { label: 'Kokoreç', emoji: '🌯' },
   doner: { label: 'Döner', emoji: '🥙' },
   kofte: { label: 'Köfte Ekmek', emoji: '🍔' },
+  // v154 — yeni seyyar satıcılar
+  balikekmek: { label: 'Balık Ekmek', emoji: '🐟' },
+  midye: { label: 'Midye Dolma', emoji: '🦪' },
   tabanca: { label: 'Tabanca', emoji: '🔫' },
   tufek: { label: 'Tüfek', emoji: '🔫' },
   pompali: { label: 'Pompalı', emoji: '🔫' },
@@ -239,6 +242,10 @@ export const HOUSE_TAKEABLES = {
   donerarabasi: ['doner', 'ayran'],
   simittezgahi: ['simit', 'cay'],
   koftearabasi: ['kofte', 'ayran'],
+  // v154 — sadece oyunun satıcı mekânlarında (satışa çıkmaz)
+  balikekmekarabasi: ['balikekmek', 'ayran'],
+  midyetezgahi: ['midye'],
+  dondurmaarabasi: ['dondurma'],
 };
 
 // v127 — oyunun mekânlarında (Belediye, Banka, Karakol…) da kullanılan ücretsiz eşyalar:

@@ -915,6 +915,69 @@ ART.doner = (g) => {
   g.restore();
 };
 
+// v154 — yeni seyyar satıcılar: yarım ekmek arası balık, tabakta midye dolma
+ART.balikekmek = (g) =>
+  halfBread(g, (x) => {
+    // marul + ızgara uskumru (gümüş, koyu sırt) + soğan halkaları
+    x.beginPath();
+    x.moveTo(-50, -2);
+    for (let k = -50; k <= 50; k += 10) x.lineTo(k, k % 20 === 0 ? -12 : -4);
+    x.lineTo(50, 2);
+    x.closePath();
+    fillOut(x, '#5fae3d', 2);
+    x.beginPath();
+    x.ellipse(-4, -10, 46, 9, 0, 0, Math.PI * 2);
+    fillOut(x, lin(x, 0, -19, 0, -1, [[0, '#4b5563'], [0.45, '#94a3b8'], [1, '#e2e8f0']]), 2.5);
+    x.beginPath();
+    x.moveTo(40, -10);
+    x.lineTo(54, -20);
+    x.lineTo(54, 0);
+    x.closePath();
+    fillOut(x, '#475569', 2);
+    x.strokeStyle = 'rgba(30,30,30,0.55)';
+    x.lineWidth = 2;
+    [-30, -14, 2, 18].forEach((px) => {
+      x.beginPath();
+      x.moveTo(px, -17);
+      x.lineTo(px + 6, -5);
+      x.stroke();
+    });
+    x.strokeStyle = '#f4f1e6';
+    x.lineWidth = 2.5;
+    [-36, 10].forEach((px) => {
+      x.beginPath();
+      x.arc(px, -2, 6, Math.PI, 0);
+      x.stroke();
+    });
+  });
+ART.midye = (g) => {
+  // kâğıt tabakta 3 midye dolma + limon dilimi
+  g.save();
+  g.translate(64, 70);
+  g.beginPath();
+  g.ellipse(0, 18, 52, 16, 0, 0, Math.PI * 2);
+  fillOut(g, '#f8fafc', 2.5);
+  [[-28, 4, -0.4], [0, -2, 0], [28, 4, 0.4]].forEach(([x, y, r]) => {
+    g.save();
+    g.translate(x, y);
+    g.rotate(r);
+    g.beginPath();
+    g.ellipse(0, 0, 18, 26, 0, 0, Math.PI * 2);
+    fillOut(g, lin(g, -18, 0, 18, 0, [[0, '#111827'], [0.5, '#374151'], [1, '#111827']]), 2.5);
+    g.beginPath();
+    g.ellipse(0, -2, 12, 19, 0, 0, Math.PI * 2);
+    fillOut(g, '#e7c58b', 1.5);
+    g.fillStyle = '#9a6b2f';
+    for (let i = 0; i < 6; i++) g.fillRect(-6 + (i % 3) * 5, -10 + Math.floor(i / 3) * 9, 2, 2);
+    g.restore();
+  });
+  g.beginPath();
+  g.arc(40, 22, 11, Math.PI, 0);
+  g.closePath();
+  fillOut(g, '#facc15', 2);
+  g.restore();
+};
+
 // Ürünün 128×128 tuvali (önbellekli)
 // v132.1 — bankadan alınan sıra numarası: elde beyaz kâğıt, üstünde numara
 function drawQueueTicket(g, num) {

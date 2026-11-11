@@ -201,7 +201,8 @@ export function buildPist(kit, lot) {
       const n = Math.floor((PI * rr) / 1.0);
       for (let i = 0; i < n; i++) {
         const a = (i / n) * PI - PI / 2;
-        kerb(side * (L / 2 + Math.cos(a) * rr), cz + Math.sin(a) * rr, -a + PI / 2, i);
+        // v154: sol virajda teğet aynalanır (eskiden iki virajda aynı açı → sol viraj kerbleri çapraz/bozuktu)
+        kerb(side * (L / 2 + Math.cos(a) * rr), cz + Math.sin(a) * rr, side > 0 ? -a + PI / 2 : a + PI / 2, i);
       }
     }
   }
@@ -212,7 +213,8 @@ export function buildPist(kit, lot) {
       g.fillRect((x * W) / 4, (y * H) / 16, W / 4, H / 16);
     }
   }, { repeat: false });
-  kit.mesh(new THREE.PlaneGeometry(1.2, TW), new THREE.MeshStandardMaterial({ map: chk, roughness: 0.7 }), 6, 0.19, cz + R, 0, { cast: false, rx: -PI / 2, rz: PI / 2 });
+  // v154: dama pisti ENİNE keser (start kemerinin altında); eskiden pist boyunca uzanıyordu
+  kit.mesh(new THREE.PlaneGeometry(1.2, TW), new THREE.MeshStandardMaterial({ map: chk, roughness: 0.7 }), 6, 0.19, cz + R, 0, { cast: false, rx: -PI / 2 });
   // ışıklı skor panosu + start kemeri
   kit.box(0.3, 4.8, 0.3, M('#2a2d33', 0.4, 0.7), 6, 0, cz + R + TW / 2 + 0.8);
   kit.box(0.3, 4.8, 0.3, M('#2a2d33', 0.4, 0.7), 6, 0, cz + R - TW / 2 - 0.8);
@@ -223,11 +225,40 @@ export function buildPist(kit, lot) {
   kit.box(24, 0.25, 3.6, M('#2a2e38', 0.5, 0.4), -5.4, 4.2, -d / 2 + 1.6);
   for (let i = 0; i < 5; i++) kit.box(0.2, 4.2, 0.2, M('#3a3e47', 0.4, 0.6), -16.4 + i * 5.5, 0, -d / 2 + 0.2);
   kit.box(23, 0.08, 0.08, glowMat('#ff3a2a', 2.4), -5.4, 4.1, -d / 2 + 3.4, { cast: false });
-  // pit binası
-  kit.box(9, 3.6, 3.2, M('#1e2129', 0.5, 0.3), 19, 0, -d / 2 + 2);
-  kit.mesh(new THREE.PlaneGeometry(7.6, 2.2), glowMat('#ffe9c4', 0.9), 19, 1.5, -d / 2 + 3.62, 0, { cast: false });
-  kit.sign('pit', 'PIT', 0.8, 19, 3.1, -d / 2 + 3.65, 0, { color: '#ffffff', glow: '#ff3a2a', font: '900 100px Arial, sans-serif', light: false });
-  kit.mass(9, 3.6, 3.2, 19, -d / 2 + 2);
+  // v154 — PIT LOUNGE: yarışçıların dinlenme alanı (açık önlü, çatılı salon; oturulur).
+  // Önü piste bakar; içeride koltuklar, bar masası, TV, içecek dolabı. Yanında "🏁 Yarış Pisti".
+  {
+    const px = 19;
+    const back = -d / 2 + 0.4; // arka duvar
+    const front = -d / 2 + 5.6; // açık ön kenar
+    const pd = front - back;
+    const pz = (back + front) / 2;
+    kit.floor('epoksi_siyah', 9, pd, px, pz, 0.16);
+    kit.wallBox('beton_blok', 9.2, 3.6, 0.3, px, 0, back, { tint: '#2a2d35' });
+    for (const sx of [-1, 1]) kit.wallBox('beton_blok', 0.3, 3.6, pd, px + sx * 4.6, 0, pz, { tint: '#2a2d35' });
+    kit.box(9.8, 0.3, pd + 0.8, M('#1a1d24', 0.5, 0.4), px, 3.6, pz + 0.3);
+    kit.box(9.8, 0.08, 0.08, glowMat('#ff3a2a', 2.6), px, 3.55, front + 0.68, { cast: false });
+    kit.sign('pitlounge', 'PIT LOUNGE', 0.62, px, 3.05, front + 0.72, 0, { color: '#ffffff', glow: '#ff3a2a', font: '900 100px Arial, sans-serif', light: false });
+    // duvarlar (çarpışma): arka + iki yan
+    kit.solid(px, back, 4.6, 0.25);
+    for (const sx of [-1, 1]) kit.solid(px + sx * 4.6, pz, 0.25, pd / 2);
+    // içerisi: koltuklar (oturulur), sehpa, bar masası + tabureler, TV, içecek dolabı
+    kit.item('sofa2', px - 2.2, back + 0.9, 0, 0);
+    kit.item('armchair', px - 3.6, pz + 0.6, 2, 0);
+    kit.item('tvwall', px - 2.2, back + 0.25, 0, 0, { solid: false });
+    kit.item('bartable', px + 1.6, pz + 0.4, 0, 0);
+    kit.item('stool', px + 0.9, pz + 0.4, 0, 0);
+    kit.item('stool', px + 2.3, pz + 0.4, 0, 0);
+    kit.item('stool', px + 1.6, pz + 1.1, 0, 0);
+    kit.item('drinkfridge', px + 3.8, back + 0.6, 0, 0);
+    kit.item('toolchest', px + 2.2, back + 0.6, 0, 0);
+    kit.item('tires', px + 3.9, front - 0.8, 0, 0);
+    kit.item('neon3', px + 0.2, back + 0.2, 0, 0, { solid: false });
+    kit.light(px, 3.1, pz, '#ffe9c4', 5, 10);
+    kit.pool(px, front + 0.6, '#ff3a2a', 7, 0.17, 0.4);
+    // pitin önü: "🏁 Yarış Pisti" (yarışlara buradan katılınır)
+    kit.zone({ x: px, z: front + 0.8, r: 3.2, kind: 'pist', title: '🏁 Pit · Yarış', icon: '🏁' });
+  }
   // lastik bariyerler + koniler
   for (const x of [-w / 2 + 1.6, w / 2 - 1.6]) for (let z = -6; z <= 8; z += 1.4) kit.item('tires', x, cz + z, 0, 0);
   kit.item('cone', 0, cz, 0, 0);
@@ -238,7 +269,11 @@ export function buildPist(kit, lot) {
   kit.light(-12, 6, cz, '#eef4ff', 8, 22);
   kit.light(12, 6, cz, '#eef4ff', 8, 22);
   kit.zone({ x: 2, z: d / 2 - 1.2, r: 3, kind: 'pist', title: '🏁 Yarış Pisti', icon: '🏁' });
-  kit.solid(0, -d / 2 + 1.6, 12, 1.4); // tribün
+  // v154: pist alanı — tribünde / pitte otururken de "🏁 Yarış Pisti" butonu çıksın
+  kit.area(0, 0, w * 0.62, d * 0.62, 'pist'); // elips: köşedeki pit ve tribün de içinde
+  // v154: tribünün çarpışması tribünün kendisi kadar (-17,4…6,6) — eskiden x=12'ye kadar uzanıp
+  // tribün ile pit arasındaki geçidi görünmez duvarla kapatıyordu
+  kit.solid(-5.4, -d / 2 + 1.6, 12, 1.4); // tribün
   // pistte dönen arabalar için yol (motor kullanır)
   const track = { L, R, cz, w, d };
   return { mapLabel: { text: 'YARIŞ PİSTİ', y: 7, z: cz }, track };

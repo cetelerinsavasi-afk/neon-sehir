@@ -316,3 +316,213 @@
   opacity: 0.45;
   cursor: default;
 }
+
+/* ============================================================================
+   v154 — SADE SOYGUN / HARAÇ PANELİ (şehirde ve Mekanlar › Soygun'da aynı)
+   ============================================================================ */
+.hp2 { gap: 10px; }
+.hp2-hero {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 46, 140, 0.45);
+  background: radial-gradient(130% 120% at 0 0, rgba(255, 46, 140, 0.26), var(--panel));
+}
+.hp2.vendor .hp2-hero {
+  border-color: rgba(255, 210, 63, 0.45);
+  background: radial-gradient(130% 120% at 0 0, rgba(255, 210, 63, 0.2), var(--panel));
+}
+.hp2-em {
+  flex: 0 0 auto;
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  font-size: 40px;
+  background: rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+.hp2-hero-txt { min-width: 0; }
+.hp2-hero h2 { margin: 0 0 6px; font-size: 17px; color: var(--text); }
+.hp2-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.hp2-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 800;
+  background: rgba(255, 255, 255, 0.07);
+  font-variant-numeric: tabular-nums;
+}
+.hp2-chip.gold { color: #f2b632; background: rgba(242, 182, 50, 0.14); }
+.hp2-chip.sus { color: #ffb3d4; background: rgba(255, 46, 140, 0.14); }
+.hp2-chip.risk { color: #9be7ff; background: rgba(25, 232, 255, 0.12); }
+.hp2-chip.risk.hi { color: #ff8a8a; background: rgba(239, 68, 68, 0.16); }
+.hp2-power { display: flex; align-items: center; gap: 8px; }
+.hp2-power em { font-style: normal; font-size: 11px; font-weight: 800; color: #67e8f9; white-space: nowrap; }
+.hp2-power.ok em { color: #34d399; }
+.hp2-bar {
+  position: relative;
+  flex: 1;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+.hp2-bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--neon-cyan), var(--neon-pink));
+  transition: width 0.4s ease;
+}
+.hp2-power.ok .hp2-bar i, .hp2-team.ready .hp2-bar i { background: linear-gradient(90deg, #10b981, #34d399); }
+.hp2-bar span {
+  position: relative;
+  display: block;
+  text-align: center;
+  line-height: 22px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  font-variant-numeric: tabular-nums;
+}
+.hp2-block {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-dim);
+}
+.hp2-cta {
+  width: 100%;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px solid var(--neon-pink);
+  background: linear-gradient(180deg, rgba(255, 46, 140, 0.55), rgba(255, 46, 140, 0.2));
+  color: #fff;
+  font-weight: 900;
+  font-size: 17px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  box-shadow: 0 0 22px rgba(255, 46, 140, 0.3);
+  animation: hp2-glow 2.2s ease-in-out infinite;
+}
+.hp2.vendor .hp2-cta:not(.sec) {
+  border-color: #ffd23f;
+  background: linear-gradient(180deg, rgba(255, 210, 63, 0.5), rgba(255, 140, 30, 0.2));
+  box-shadow: 0 0 22px rgba(255, 210, 63, 0.25);
+}
+.hp2-cta.sec {
+  border-color: var(--neon-cyan);
+  background: linear-gradient(180deg, rgba(25, 232, 255, 0.28), rgba(25, 232, 255, 0.08));
+  box-shadow: none;
+  animation: none;
+  font-size: 15px;
+}
+.hp2-cta:disabled { opacity: 0.6; animation: none; cursor: default; }
+@keyframes hp2-glow {
+  50% { box-shadow: 0 0 34px rgba(255, 46, 140, 0.5); }
+}
+.hp2-teams { display: flex; flex-direction: column; gap: 10px; }
+.hp2-sub { margin: 4px 2px 0; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
+.hp2-empty { margin: 0; text-align: center; font-size: 12px; color: var(--text-dim); }
+.hp2-team {
+  position: relative;
+  padding: 12px 10px 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.hp2-team.mine { border-color: rgba(25, 232, 255, 0.55); background: rgba(25, 232, 255, 0.06); }
+.hp2-team-tag {
+  position: absolute;
+  top: -9px;
+  left: 10px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  background: #0b2a33;
+  color: #67e8f9;
+  border: 1px solid rgba(25, 232, 255, 0.5);
+}
+.hp2-crew { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.hp2-mem { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 0; }
+.hp2-mem b { max-width: 100%; font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hp2-mem small { font-size: 10px; color: var(--text-dim); white-space: nowrap; }
+.hp2-av {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.12);
+}
+.hp2-mem.lead .hp2-av { box-shadow: 0 0 0 2px #ffd23f; }
+.hp2-mem.empty .hp2-av { color: rgba(255, 255, 255, 0.25); font-size: 20px; box-shadow: 0 0 0 2px dashed rgba(255, 255, 255, 0.12); border: 2px dashed rgba(255, 255, 255, 0.14); }
+.hp2-av > i { position: absolute; top: -8px; right: -4px; font-style: normal; font-size: 13px; }
+.hp2-kick {
+  position: absolute;
+  bottom: -4px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 0;
+  background: #ef4444;
+  color: #fff;
+  font-size: 10px;
+  line-height: 18px;
+  padding: 0;
+  cursor: pointer;
+}
+.hp2-sus.heist-suspicion-high { color: #ff8a8a; }
+.hp2-sus.heist-suspicion-mid { color: #fbbf24; }
+.hp2-note { margin: 0; font-size: 12px; color: var(--text-dim); cursor: pointer; overflow-wrap: anywhere; }
+.hp2-note-edit { display: flex; gap: 6px; }
+.hp2-note-edit input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.hp2-note-edit button { width: 36px; border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.15); background: rgba(255, 255, 255, 0.06); color: var(--text); }
+.hp2-acts { display: flex; gap: 6px; }
+.hp2-btn {
+  flex: 1;
+  padding: 10px 8px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-weight: 800;
+  font-size: 13px;
+  cursor: pointer;
+}
+.hp2-btn.icon { flex: 0 0 44px; }
+.hp2-btn.go { border-color: var(--neon-cyan); background: rgba(25, 232, 255, 0.18); }
+.hp2-btn.go.pulse { border-color: var(--neon-pink); background: rgba(255, 46, 140, 0.3); animation: hp2-glow 1.6s ease-in-out infinite; }
+.hp2-btn.danger { border-color: rgba(239, 68, 68, 0.45); }
+.hp2-btn:disabled { opacity: 0.55; cursor: default; animation: none; }
+.hp2-block.ok { color: #34d399; background: rgba(16, 185, 129, 0.1); }
+.hp2-block.bad { color: #ff8a8a; background: rgba(239, 68, 68, 0.1); }

@@ -866,8 +866,10 @@ export function buildFiller(kit, lot, seed, { tall = 1, plaza = false } = {}) {
 export const VENDOR_STYLE = {
   kokorecci: { cart: 'kokorecarabasi', neon: 'neon_kokorec', glow: '#ff9f45', npc: 'npc_kokorecci' },
   simitci: { cart: 'simittezgahi', neon: 'neon_simit', glow: '#ffcf7a', npc: 'npc_simitci' },
-  donerci: { cart: 'donerarabasi', neon: 'neon_doner', glow: '#ff6a3a', npc: 'npc_donerci' },
+  donerci: { cart: 'balikekmekarabasi', neon: 'neon_balik', glow: '#5aa8ff', npc: 'npc_donerci' }, // v154: Balık Ekmekçi
   kofteci: { cart: 'koftearabasi', neon: 'neon_kofte', glow: '#ff7ad9', npc: 'npc_kofteci' },
+  midyeci: { cart: 'midyetezgahi', neon: 'neon_midye', glow: '#2dd4bf', npc: 'npc_midyeci' }, // v154
+  dondurmaci: { cart: 'dondurmaarabasi', neon: 'neon_dondurma', glow: '#ff7aa8', npc: 'npc_dondurmaci' }, // v154
 };
 export function buildVendor(kit, key, venue) {
   const st = VENDOR_STYLE[key];

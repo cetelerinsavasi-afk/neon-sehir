@@ -1312,6 +1312,35 @@ function buildBusModel(n) {
     b.position.set(w - 0.02, x + R / 2 - (g ? 0 : 0.17), 0),
     i.add(b),
     [-1, 1].forEach((ft) => box(i, 0.08, R + 0.3, 0.1, w - 0.04, x + R / 2 - 0.15, ft * (c / 2 - 0.05), u)));
+  // v154 — iç kabuk: alt gövde dolu kutu olduğu için içeriden zemin boya renginde, tavan
+  // (tek yüzlü) görünmüyordu. Koyu zemin + açık tavan + ışık şeritleri + tutunma direkleri.
+  {
+    const iw = c - 0.16;
+    const il = w - C - 0.3;
+    const icx = (w + C) / 2;
+    box(i, il, 0.02, iw, icx, x + 0.02, 0, mat("#2b2f38", 0.95));
+    box(i, il, 0.02, 0.5, icx, x + 0.035, 0, mat("#3a3f4a", 0.9));
+    if (!t.deck2) {
+      const ceil = new THREE.Mesh(new THREE.PlaneGeometry(il, iw), mat("#d9dde4", 0.9));
+      ceil.rotation.x = PI / 2;
+      ceil.position.set(icx, _ - 0.09, 0);
+      i.add(ceil);
+      const strip = new THREE.MeshBasicMaterial({ color: "#f4f7ff", toneMapped: false });
+      [-1, 1].forEach((ft) => {
+        const s2 = new THREE.Mesh(new THREE.PlaneGeometry(il - 0.4, 0.08), strip);
+        s2.rotation.x = PI / 2;
+        s2.position.set(icx, _ - 0.1, ft * (iw / 2 - 0.35));
+        i.add(s2);
+      });
+      const pole = mat("#ffd23f", 0.3, 0.6);
+      const ph = _ - x - 0.1;
+      for (let px = w - 1.6; px > C + 0.6; px -= 2.6) [-1, 1].forEach((ft) => cyl(i, 0.025, 0.025, ph, px, x + ph / 2, ft * 0.32, pole, 8));
+      [-1, 1].forEach((ft) => {
+        const rail = cyl(i, 0.02, 0.02, il - 0.6, icx, _ - 0.28, ft * 0.32, pole, 8);
+        rail.rotation.z = PI / 2;
+      });
+    }
+  }
   let S = b.clone();
   if (((S.position.x = C + 0.03), i.add(S), t.deck2 || rbox(i, l - g + 0.02, 0.14, c + 0.02, 0.06, (w + C) / 2, _, 0, u), t.deck2)) {
     rbox(i, l - g, 0.16, c, 0.05, (w + C) / 2, _, 0, u);
@@ -1577,7 +1606,7 @@ function buildBusModel(n) {
     e.root.traverse((ft) => {
       ft.isMesh && !ft.material.transparent && ((ft.castShadow = true), (ft.receiveShadow = true));
     }),
-    { ...e, def: { name: t.name, seats: t.seats, phys: { vmax: t.vmax, acc: 3.2, grip: 5, steer: 0.82 } }, len: l, wb: ae - rt, halfW: c / 2, seatPts, seat: seatPts[0], open: true }
+    { ...e, def: { name: t.name, seats: t.seats, phys: { vmax: t.vmax, acc: 3.2, grip: 5, steer: 0.82 } }, len: l, wb: ae - rt, halfW: c / 2, seatPts, seat: seatPts[0], open: true, cabin: { floor: x, roof: t.deck2 ? x + 2.2 : _ } }
   );
 }
 let TRUCK_TRAILERS = {

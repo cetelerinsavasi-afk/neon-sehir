@@ -305,3 +305,7 @@
 .cs-harac-siren { position: absolute; inset: 0; z-index: 2; pointer-events: none; background: radial-gradient(at 0 0, #ff1e4680, #0000 60%), radial-gradient(at 100% 100%, #ff1e4640, #0000 55%); }
 .cs-harac-siren.blue { background: radial-gradient(at 100% 0, #286eff80, #0000 60%), radial-gradient(at 0 100%, #286eff40, #0000 55%); }
 .cs-heist-sheet.hide { opacity: 0; pointer-events: none; }
+
+/* v154 — şehir açıkken yarış ekranı ve yarış balonu şehrin üstünde (şehir arkada durur) */
+body.ns-city-open .race-fullscreen { z-index: 96; }
+body.ns-city-open .race-bubble { z-index: 96; }

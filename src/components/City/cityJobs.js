@@ -9,9 +9,10 @@
 //   taksi   : el sallayan müşteriye git → varış noktasına götür
 //   ambulans: vaka yerine git (sedyeye alma 3 sn) → hastane acil girişi
 //   polis   : kaçan şüpheliyi kovala (yanında 3 sn kal) ya da 3 noktada devriye
+//   kurye   : (v154, her motor) satıcıya git (sipariş hazırlanıyor 2 sn) → mekânın önüne teslim et
 // Hız: hedefe yakın + neredeyse durmuş (< 1,4 m/s). Çarpma (> 5 m/s) kazancı düşürür.
 // =============================================================================
-import { LIMAN_BAY, DEPOTS, HOSPITAL, BUS_STOPS, ROAD_SPOTS } from '../../../functions/cityJobsData.js';
+import { LIMAN_BAY, DEPOTS, HOSPITAL, BUS_STOPS, ROAD_SPOTS, KURYE_PICKUPS, KURYE_DROPS } from '../../../functions/cityJobsData.js';
 import { JOBS } from '../../../functions/vehicleKinds.js';
 
 const STOP_V = 1.4;
@@ -115,7 +116,7 @@ const ERR = {
 
 export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
   let veh = null; // { id, catalogId }
-  let job = null; // tir | otobus | taksi | polis | ambulans
+  let job = null; // tir | otobus | taksi | polis | ambulans | kurye
   let run = null; // sunucunun işi
   let st = null; // yerel durum
   let active = false;
@@ -123,8 +124,47 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
   let left = null;
   let daily = null;
   let lastHitAt = 0;
-  const now = () => performance.now() / 1000;
+  // v154: duvar saati (sayfa yenilenip iş kaldığı yerden sürerse süre ölçümü bozulmasın)
+  const now = () => Date.now() / 1000;
   const E = () => engine();
+
+  // --- v154: yarım kalan iş cihazda saklanır (oyun kapanır / yenilenirse kaldığı yerden) ---------
+  // Sunucu işi araç belgesinde zaten tutuyor (yeni iş başlatılana kadar); burada sadece ilerleme.
+  // Firestore'a ek okuma / yazma yok.
+  const SAVE_KEY = 'ns_jobRun_v1';
+  const SAVE_MAX_S = 45 * 60; // 45 dk'dan eski kayıt devam ettirilmez
+  let savedAt = 0;
+  let savedSig = '';
+  function save(force = false) {
+    if (!run || !st || !veh) return;
+    const t = now();
+    // aşama / durak / kontrol noktası değişince HEMEN, yoksa 2 sn'de bir
+    const sig = `${run.id}|${st.phase}|${st.idx ?? ''}|${st.pi ?? ''}|${st.hits || 0}`;
+    if (!force && sig === savedSig && t - savedAt < 2) return;
+    savedAt = t;
+    savedSig = sig;
+    try {
+      localStorage.setItem(SAVE_KEY, JSON.stringify({ vid: veh.id, at: t, run, st }));
+    } catch {
+      /* depolama kapalı olabilir */
+    }
+  }
+  function clearSave() {
+    try {
+      localStorage.removeItem(SAVE_KEY);
+    } catch {
+      /* yoksay */
+    }
+  }
+  function loadSave() {
+    try {
+      const v = JSON.parse(localStorage.getItem(SAVE_KEY) || 'null');
+      if (!v || v.vid !== veh?.id || !v.run?.id || !v.st || now() - Number(v.at) > SAVE_MAX_S) return null;
+      return v;
+    } catch {
+      return null;
+    }
+  }
 
   function ui(extra = {}) {
     onUi?.({
@@ -201,6 +241,15 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
   // --- iş başlat -----------------------------------------------------------------------
   async function begin() {
     if (!active || !veh || busy) return;
+    // v154: yarım kalan iş varsa kaldığı yerden (sunucu aynı işi bekliyor)
+    const sv = loadSave();
+    if (sv) {
+      run = sv.run;
+      st = sv.st;
+      restore();
+      onToast?.('↩️ Yarım kalan iş kaldığı yerden devam ediyor');
+      return;
+    }
     const p = E()?.jobProbe();
     busy = true;
     st = { title: 'İş aranıyor…', sub: '', hits: 0 };
@@ -246,6 +295,13 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
       st.sub = `🧍 ${st.from.name} — kaldırımda el sallıyor`;
       people([{ id: 'pax', x: st.from.sx, z: st.from.sz, wave: true, seed: T.from * 3.1 }]);
       target({ x: st.from.x, z: st.from.z, name: T.pax, icon: '🧍', color: '#3ad07a', r: 7 });
+    } else if (T.type === 'kurye') {
+      st.phase = 'toVendor';
+      st.from = KURYE_PICKUPS[T.from] || KURYE_PICKUPS[0];
+      st.to = KURYE_DROPS[T.to] || KURYE_DROPS[0];
+      st.title = `🛵 Sipariş: ${T.food} · ${st.from.name}`;
+      st.sub = `${st.from.name} tezgâhına git → ${st.to.name} (${T.client})`;
+      target({ x: st.from.x, z: st.from.z, name: `${st.from.name} — siparişi al`, icon: '🥡', color: '#ffd23f', r: 8 });
     } else if (T.type === 'ambulans') {
       st.phase = 'toPatient';
       st.from = spot(T.from);
@@ -274,6 +330,65 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
       st.title = '🚓 Devriye';
       patrolTarget();
     }
+    save(true);
+    ui();
+  }
+
+  // v154: kaydedilen aşamaya göre dünyayı (hedef, yolcular, dorse) yeniden kur
+  function restore() {
+    const T = run.task;
+    clearWorld();
+    setPax(0);
+    if (T.type === 'tir') {
+      if (st.phase === 'pickup' || st.phase === 'loading') {
+        st.phase = 'pickup';
+        target({ ...LIMAN_BAY, name: 'Liman — Yükleme', icon: '⚓', color: '#ffd23f', r: 6 });
+      } else {
+        setPax(1);
+        if (st.phase === 'deliver') target({ ...st.depot, icon: '📦', color: '#19e8ff' });
+      }
+    } else if (T.type === 'otobus') {
+      setPax(st.onboard || 0);
+      busPeople();
+      if (st.phase === 'drive') busTarget();
+    } else if (T.type === 'taksi') {
+      if (st.phase === 'toCustomer') {
+        people([{ id: 'pax', x: st.from.sx, z: st.from.sz, wave: true, seed: T.from * 3.1 }]);
+        target({ x: st.from.x, z: st.from.z, name: T.pax, icon: '🧍', color: '#3ad07a', r: 7 });
+      } else {
+        setPax(1);
+        target({ x: st.to.x, z: st.to.z, name: `${st.to.name} (varış)`, icon: '🏁', color: '#ff2e8c', r: 7 });
+      }
+    } else if (T.type === 'kurye') {
+      if (st.phase === 'toVendor' || st.phase === 'pickup') {
+        st.phase = 'toVendor';
+        target({ x: st.from.x, z: st.from.z, name: `${st.from.name} — siparişi al`, icon: '🥡', color: '#ffd23f', r: 8 });
+      } else {
+        setPax(1); // arkadaki kurye çantası
+        target({ x: st.to.x, z: st.to.z, name: `${st.to.name} — teslimat`, icon: '📦', color: '#ff2e8c', r: 8 });
+      }
+    } else if (T.type === 'ambulans') {
+      if (st.phase === 'toPatient' || st.phase === 'loading') {
+        st.phase = 'toPatient';
+        people([
+          { id: 'hasta', x: st.from.sx, z: st.from.sz, lie: true, seed: T.from * 1.7 },
+          { id: 'yakin', x: st.from.sx + st.from.fz * 1.4, z: st.from.sz - st.from.fx * 1.4, wave: true, seed: T.from * 2.9 },
+        ]);
+        target({ x: st.from.x, z: st.from.z, name: `Vaka: ${T.title}`, icon: '🚨', color: '#ff3b3b', r: 7 });
+      } else {
+        setPax(1);
+        if (st.phase === 'toHospital') target({ ...HOSPITAL, icon: '🏥', color: '#ff3b3b' });
+      }
+    } else if (T.type === 'polis' && T.mode === 'chase') {
+      // kovalamaca baştan (şüpheli ilk görüldüğü yerden), süre devam eder
+      const sp = spot(T.from);
+      st.catchT = 0;
+      E()?.jobSuspect({ car: T.car, x: sp.x, z: sp.z, yaw: Math.atan2(-sp.fz, sp.fx) });
+      target({ x: sp.x, z: sp.z, name: 'Şüpheli', icon: '🚗', color: '#ff2e8c', r: 4, follow: true });
+    } else if (T.type === 'polis') {
+      patrolTarget();
+    }
+    save(true);
     ui();
   }
   function busPeople() {
@@ -304,6 +419,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
   async function finish(t) {
     if (!run || busy) return;
     busy = true;
+    clearSave(); // v154
     const runId = run.id;
     const hits = st.hits;
     clearWorld();
@@ -422,6 +538,31 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
         st.sub = `🏁 ${st.to.name} · ⏱️ ${fmtT(tnow - st.t0)}${T.rush ? ` / acil ${fmtT(run.par)}` : ''} · 💥 ${st.hits}`;
         if (near(p, st.to, 7)) return finish(tnow - st.t0);
       }
+    } else if (T.type === 'kurye') {
+      if (st.phase === 'toVendor') {
+        if (near(p, st.from, 8)) {
+          st.phase = 'pickup';
+          st.phaseT = 0;
+          target(null);
+        }
+      } else if (st.phase === 'pickup') {
+        if (p.speed > STOP_V) st.phaseT = Math.max(0, st.phaseT - dt);
+        else st.phaseT += dt;
+        st.sub = `🥡 ${st.from.name}: “${T.food} hazırlanıyor…”`;
+        st.bar = st.phaseT / 2;
+        if (st.phaseT >= 2) {
+          setPax(1);
+          st.phase = 'deliver';
+          st.t0 = tnow;
+          st.bar = null;
+          st.title = `📦 ${T.food} → ${st.to.name}`;
+          target({ x: st.to.x, z: st.to.z, name: `${st.to.name} — teslimat`, icon: '📦', color: '#ff2e8c', r: 8 });
+          onToast?.(`✅ Sipariş çantada! ${st.to.name}'a götür — sıcak kalsın 🔥`);
+        }
+      } else if (st.phase === 'deliver') {
+        st.sub = `📦 ${st.to.name} · ⏱️ ${fmtT(tnow - st.t0)} / hedef ${fmtT(run.par)} · 💥 ${st.hits}`;
+        if (near(p, st.to, 8)) return finish(tnow - st.t0);
+      }
     } else if (T.type === 'ambulans') {
       if (st.phase === 'toPatient') {
         st.sub = `${T.desc} — ${st.from.name} · ⏱️ ${fmtT(tnow - st.t0)}`;
@@ -475,6 +616,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
         if (d > 330) {
           onToast?.('😤 Şüpheli kaçtı… merkez yeni ihbar gönderiyor');
           call({ op: 'jobCancel', vehicleId: veh.id }).catch(() => {});
+          clearSave();
           clearWorld();
           run = null;
           setTimeout(() => active && !run && begin(), 2500);
@@ -491,6 +633,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
         patrolTarget();
       }
     }
+    save();
     ui();
     return undefined;
   }
@@ -506,6 +649,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
 
   function stop(silent = false) {
     const had = Boolean(run);
+    clearSave(); // v154: oyuncu işi bıraktı
     active = false;
     clearWorld();
     E()?.setJob({ on: false });

@@ -442,6 +442,148 @@ I('koftearabasi', 'dukkan', 'Köfte Arabası', '🍔', (g) => {
   };
 }, { box: [0.85, 0.45] });
 
+// =============================================================================
+// v154 — YENİ SEYYAR SATICILAR (sadece oyunun mekânlarında / şehirde — mağazada satılmaz)
+// =============================================================================
+// ── BALIK EKMEK ARABASI: lacivert gövde, mavi-beyaz tente, ızgarada uskumru + duman
+I('balikekmekarabasi', 'dukkan', 'Balık Ekmek Arabası', '🐟', (g) => {
+  const W = 1.6;
+  const D = 0.8;
+  const top = cartBase(g, W, D, '#1e3a8a');
+  Pl(g, 1.3, 0.24, K('#ffffff', { map: signTex('BALIK EKMEK', '#eff6ff', '#1d4ed8', '#1e3a8a') }), 0, 0.62, D / 2 + 0.002);
+  // ızgara (sol)
+  const gx = -0.28;
+  B(g, 0.9, 0.16, 0.5, '#1d1e22', gx, top, -0.05, { r: 0.6, m: 0.4 });
+  const coal = B(g, 0.84, 0.02, 0.44, K('#ff5a1a', { e: '#ff3d00', ei: 1.2 }), gx, top + 0.14, -0.05);
+  coal.castShadow = false;
+  for (let i = 0; i < 9; i++) B(g, 0.012, 0.012, 0.48, STEEL(), gx - 0.4 + i * 0.1, top + 0.17, -0.05);
+  // balıklar (gümüş gövde, koyu sırt, kuyruk)
+  const skin = M('#aeb8c4', 0.35, 0.5);
+  const back = M('#334155', 0.5, 0.3);
+  for (let i = 0; i < 4; i++) {
+    const fz = -0.22 + i * 0.12;
+    const f = Sp(g, 0.05, skin, gx, top + 0.2, fz, null, 10);
+    f.scale.set(3.6, 0.55, 0.8);
+    const b = Sp(g, 0.03, back, gx, top + 0.22, fz, null, 8);
+    b.scale.set(5.2, 0.4, 0.9);
+    const tail = B(g, 0.06, 0.012, 0.07, back, gx + 0.2, top + 0.19, fz);
+    tail.rotation.y = 0.5;
+  }
+  const smoke = [];
+  for (let i = 0; i < 5; i++) {
+    const s = Sp(g, 0.09, K('#d9dde3', { op: 0.3 }), gx + (i - 2) * 0.12, top + 0.4, -0.05, null, 10);
+    s.castShadow = false;
+    smoke.push(s);
+  }
+  // ekmekler + soğan/marul kaseleri + limon
+  loaf(g, 0.36, top + 0.0, 0.08, 0.1, 0.24);
+  loaf(g, 0.48, top + 0.0, 0.18, -0.15, 0.24);
+  bowl(g, 0.6, top, -0.2, '#f4f1e6');
+  bowl(g, 0.42, top, -0.22, '#3f8f3a');
+  for (let i = 0; i < 3; i++) Sp(g, 0.035, M('#facc15', 0.5), 0.66 + (i % 2) * 0.05, top + 0.03, 0.05 + i * 0.06, null, 8);
+  const yTop = cartRoof(g, W, D, top, K('#1d4ed8', { r: 0.45 }), 'BALIK', '#1e3a8a');
+  awning(g, W + 0.3, 0.6, yTop - 0.02, D / 2 + 0.17, '#2563eb', '#f8fafc');
+  return {
+    tick(t) {
+      smoke.forEach((s, i) => {
+        const k = (t * 0.35 + i / smoke.length) % 1;
+        s.position.y = top + 0.3 + k * 1.2;
+        s.position.x = gx + (i - 2) * 0.1 + Math.sin(t + i) * 0.06;
+        const sc = 0.6 + k * 1.6;
+        s.scale.set(sc, sc, sc);
+        s.material.opacity = 0.34 * (1 - k);
+      });
+      coal.material.emissiveIntensity = 1.0 + Math.sin(t * 8) * 0.25;
+    },
+    light: { x: -0.3, y: 1.4, z: 0.6, color: '#ffc58f', intensity: 1.6, distance: 4 },
+    on: true,
+    setOn() {},
+    noToggle: true,
+  };
+}, { box: [0.85, 0.45], venueOnly: true });
+
+// ── MİDYE TEZGÂHI: turkuaz gövde, sarı tente, tepside dizili midye dolmalar + limon kasası
+I('midyetezgahi', 'dukkan', 'Midye Tezgâhı', '🦪', (g) => {
+  const W = 1.5;
+  const D = 0.76;
+  const top = cartBase(g, W, D, '#0f766e');
+  Pl(g, 1.2, 0.24, K('#ffffff', { map: signTex('MİDYE DOLMA', '#f0fdfa', '#0f766e', '#134e4a') }), 0, 0.62, D / 2 + 0.002);
+  // yuvarlak bakır tepsi
+  Cy(g, 0.42, 0.04, K('#b87333', { r: 0.35, m: 0.8 }), -0.2, top, -0.04, null, 28);
+  const shell = M('#1f2430', 0.35, 0.3);
+  const rice = M('#e7c58b', 0.8);
+  for (let r = 0; r < 3; r++) {
+    const n = [1, 7, 13][r];
+    const rad = [0, 0.13, 0.27][r];
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * PI * 2;
+      const mx = -0.2 + Math.cos(a) * rad;
+      const mz = -0.04 + Math.sin(a) * rad;
+      const s1 = Sp(g, 0.045, shell, mx, top + 0.05, mz, null, 8);
+      s1.scale.set(1.3, 0.45, 0.8);
+      s1.rotation.y = a;
+      const s2 = Sp(g, 0.036, rice, mx, top + 0.07, mz, null, 8);
+      s2.scale.set(1.2, 0.35, 0.7);
+      s2.rotation.y = a;
+    }
+  }
+  // limon kasası (sağ)
+  B(g, 0.36, 0.12, 0.3, '#a16207', 0.48, top, 0.0, { r: 0.85 });
+  const lem = M('#facc15', 0.5);
+  for (let i = 0; i < 8; i++) Sp(g, 0.04, lem, 0.38 + (i % 4) * 0.07, top + 0.14, -0.06 + Math.floor(i / 4) * 0.1, null, 8);
+  // su şişeleri
+  for (let i = 0; i < 3; i++) Cy(g, 0.028, 0.18, K('#bfe3ff', { op: 0.6, r: 0.1 }), 0.62, top, -0.24 + i * 0.07, null, 10);
+  const yTop = cartRoof(g, W, D, top, K('#14b8a6', { r: 0.45 }), 'MİDYE', '#0f766e');
+  awning(g, W + 0.3, 0.55, yTop - 0.02, D / 2 + 0.17, '#facc15', '#fefce8');
+  return { light: { x: 0, y: 1.6, z: 0.6, color: '#fff3c4', intensity: 1.4, distance: 4 }, on: true, setOn() {}, noToggle: true };
+}, { box: [0.8, 0.43], venueOnly: true });
+
+// ── DONDURMA ARABASI (Maraş usulü): beyaz-kırmızı gövde, kapaklı bakır kazanlar, külah kulesi
+I('dondurmaarabasi', 'dukkan', 'Dondurma Arabası', '🍦', (g) => {
+  const W = 1.5;
+  const D = 0.76;
+  const top = cartBase(g, W, D, '#f8fafc');
+  Pl(g, 1.2, 0.24, K('#ffffff', { map: signTex('DONDURMA', '#fff1f2', '#e11d48', '#881337') }), 0, 0.62, D / 2 + 0.002);
+  // üç bakır kazan + kapakları
+  const copper = K('#c2702f', { r: 0.3, m: 0.85 });
+  const lids = [];
+  [-0.42, -0.1, 0.22].forEach((x, i) => {
+    Cy(g, 0.13, 0.22, copper, x, top, -0.08, null, 18);
+    const fill = Cy(g, 0.12, 0.02, ['#fdf6e3', '#f9a8d4', '#7c4a2d'][i], x, top + 0.215, -0.08, null, 18);
+    fill.castShadow = false;
+    const lid = sub(g, x, top + 0.24, -0.08);
+    Cy(lid, 0.135, 0.03, copper, 0, 0, 0, null, 18);
+    Sp(lid, 0.03, copper, 0, 0.05, 0, null, 8);
+    lids.push(lid);
+  });
+  // külah kulesi
+  const cone = M('#d6a35c', 0.8);
+  for (let i = 0; i < 5; i++) {
+    const c = Cy(g, 0.035, 0.12, cone, 0.52, top + i * 0.06, 0.12, null, 10, 0.005);
+    c.rotation.x = PI;
+    c.position.y = top + 0.12 + i * 0.06;
+  }
+  // uzun dondurma kepçesi (sopa)
+  const stick = Cy(g, 0.012, 0.9, STEEL(), 0.36, top + 0.1, -0.2, null, 6);
+  stick.rotation.z = 0.5;
+  const yTop = cartRoof(g, W, D, top, K('#e11d48', { r: 0.45 }), 'DONDURMA', '#be123c');
+  awning(g, W + 0.3, 0.55, yTop - 0.02, D / 2 + 0.17, '#e11d48', '#ffffff');
+  return {
+    tick(t) {
+      // kapaklar sırayla hafif kalkıp iner (dondurmacı şovu)
+      lids.forEach((l, i) => {
+        const k = Math.max(0, Math.sin(t * 1.4 - i * 1.3));
+        l.position.y = top + 0.24 + k * 0.08;
+        l.rotation.z = k * 0.25;
+      });
+    },
+    light: { x: 0, y: 1.6, z: 0.6, color: '#fff6f0', intensity: 1.4, distance: 4 },
+    on: true,
+    setOn() {},
+    noToggle: true,
+  };
+}, { box: [0.8, 0.43], venueOnly: true });
+
 // ── PLASTİK MASA (kare) ve PLASTİK TABURE
 I('plastikmasa', 'masa', 'Plastik Masa', '🪑', (g, ctx) => {
   const c = ctx.tint?.c || '#f2f1ec';
@@ -487,6 +629,10 @@ const NEONS = [
   ['neon_doner', 'Neon "DÖNER" Tabelası', 'DÖNER'],
   ['neon_simit', 'Neon "SİMİT" Tabelası', 'SİMİT'],
   ['neon_kofte', 'Neon "KÖFTE" Tabelası', 'KÖFTE'],
+  // v154 — yeni satıcılar (sadece oyunun mekânlarında)
+  ['neon_balik', 'Neon "BALIK EKMEK" Tabelası', 'BALIK EKMEK', true],
+  ['neon_midye', 'Neon "MİDYE" Tabelası', 'MİDYE', true],
+  ['neon_dondurma', 'Neon "DONDURMA" Tabelası', 'DONDURMA', true],
 ];
 
 // ── SADECE MEKÂNDA: yol, yaya geçidi, deniz
@@ -531,6 +677,6 @@ I('vz_deniz', 'dis', 'Deniz (18 m)', '🌊', (g) => {
 
 export function v145CatalogEntries({ neonBuild }) {
   const out = OUT.map((d) => ({ ...d }));
-  NEONS.forEach(([k, name, text]) => out.push({ k, name, cat: 'duvar', icon: '🟥', tints: 'neon', build: neonBuild(text, 'bold 120px sans-serif'), wall: true, nobox: true }));
+  NEONS.forEach(([k, name, text, venueOnly]) => out.push({ k, name, cat: 'duvar', icon: '🟥', tints: 'neon', build: neonBuild(text, 'bold 120px sans-serif'), wall: true, nobox: true, ...(venueOnly ? { venueOnly: true } : {}) }));
   return out;
 }

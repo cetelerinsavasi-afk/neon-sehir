@@ -17,10 +17,11 @@ import './MekanlarScreen.css';
 // emojisi olması (bkz. HEIST_LABELS).
 
 // v132.1 — hedefler büyüklüğe göre gruplanır (görsel liste)
+// v154: yeni liste (Modifiye çıktı, Silahçı + İnternet Kafe + 2 satıcı girdi)
 const GROUPS = [
-  ['Büyük vurgun', ['banka', 'casino', 'araba_galerisi']],
-  ['Orta boy iş', ['modifiye_garaji', 'fabrika']],
-  ['Sokak haracı', ['seyyar_satici_1', 'seyyar_satici_2', 'seyyar_satici_3', 'seyyar_satici_4']],
+  ['Büyük vurgun', ['banka', 'casino', 'araba_galerisi', 'silah_magazasi']],
+  ['Orta boy iş', ['fabrika', 'internet_kafe']],
+  ['Sokak haracı', ['seyyar_satici_6', 'seyyar_satici_5', 'seyyar_satici_1', 'seyyar_satici_2', 'seyyar_satici_3', 'seyyar_satici_4']],
 ];
 // oyundaki en yüksek silah gücü (Gücün çubuğu bu değerde dolar)
 const MAX_POWER = 40000;

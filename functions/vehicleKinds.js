@@ -38,7 +38,10 @@ export const JOBS = {
   taksi: { id: 13, name: 'Taksi', icon: '🚕', daily: 10, avg: 1000, unit: 'yolcu', verb: 'Yolcu' },
   polis: { id: 14, name: 'Polis', icon: '🚓', daily: 10, avg: 4000, unit: 'görev', verb: 'Görev' },
   ambulans: { id: 15, name: 'Ambulans', icon: '🚑', daily: 10, avg: 3000, unit: 'hasta', verb: 'Hasta' },
+  // v154: motokurye — HER motorla (21-24); satıcıdan al → mekâna götür. Ücret mesafeyle artar.
+  kurye: { id: 21, name: 'Motokurye', icon: '🛵', daily: 10, avg: 500, unit: 'sipariş', verb: 'Teslimat', motor: true },
 };
+// v154: motorlar motokurye mesleği yapar (katalogda job: 'kurye')
 export const jobOf = (catalogId) => VEHICLE_CATALOG[Number(catalogId)]?.job || null;
 
 // Performans çarpanı: hız (hedef süreye göre) × hasar. Ortalama sürüşte ≈ 1.

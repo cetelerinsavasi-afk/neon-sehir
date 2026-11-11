@@ -303,7 +303,7 @@ export default function CetemTab({ d }) {
         </div>
         <KasaLine state={d.state} isToday={d.stateToday} kasa={d.kasaShown} live={d.kasaLive} />
         {/* v146 — çete zümrüdü: dağıtılamaz, geri çekilemez; sadece karargah mobilyası */}
-        {d.state && Number(d.state.gem || 0) > 0 && <div className="gx-free-line">💎 Zümrüt <b>{fmt(d.state.gem)}</b> <span className="dim gx-mini">· karargah mobilyası için</span></div>}
+        {d.state && Number(d.state.gem || 0) > 0 && <div className="gx-free-line">💎 Zümrüt <b>{fmt(d.state.gem)}</b></div>}
         {!d.gang.babaId && <div className="gx-baba-vacant">👑 Mafya Babası koltuğu boş · 00:00'da en yüksek prestijli üye geçer</div>}
         {d.handover && d.handover.fromId === actorId && <HandoverStatus h={d.handover} />}
         {/* v146: üst satır bağışlar (2), alt satır yönetim (dağıt · kendime · gönder) */}

@@ -39,6 +39,13 @@ export function httpsCallable(functions, name) {
     const request = { auth: { uid: new URLSearchParams(location.search).get('uid') || PREVIEW_UID }, data };
     try {
       if (name === 'gangAction') return { data: await system.handleAction(request) };
+      // v154 önizleme: soygun sonucu ?res=ok|caught|busted (video testleri)
+      if (name === 'attemptHeist' || name === 'executeHeistPlan') {
+        const want = new URLSearchParams(location.search).get('res') || 'ok';
+        await new Promise((r) => setTimeout(r, 600));
+        if (name === 'attemptHeist') return { data: want === 'ok' ? { started: true, reward: 50000 } : { started: true, caught: true, penalty: 50000, reward: 50000 } };
+        return { data: { started: true, totalReward: 500000, ...(want === 'busted' ? { busted: true } : want === 'caught' ? { caughtBySuspicion: true } : {}) } };
+      }
       // v127 Belediye (önizleme: gerçek functions/belediye.js — preview/belediye-app.jsx kurar)
       if (name === 'belediyeAction' && window.__belediye) return { data: await window.__belediye.handle(request.auth.uid, data) };
       // v136 seçim (önizleme: gerçek functions/politics.js — preview/politics-app.jsx kurar)

@@ -22,10 +22,10 @@ export const VEHICLE_CATALOG = {
   14: { name: 'Polis Aracı', kind: 'ticari', job: 'polis', gearLevel: 4, baseTank: 100, price: 400000, storage: 5, turboCount: 0 },
   15: { name: 'Ambulans', kind: 'ticari', job: 'ambulans', gearLevel: 2, baseTank: 120, price: 300000, storage: 10, turboCount: 0 },
   // v151 — MOTORLAR (mobilyadaki 4 motor, artık şehirde sürülür). Tamir / geliştirme YOK, modifiye VAR.
-  21: { name: 'Scooter', kind: 'motor', gearLevel: 1, baseTank: 10, price: 15000, storage: 0, turboCount: 0 },
-  22: { name: 'Cross Motor', kind: 'motor', gearLevel: 2, baseTank: 12, price: 35000, storage: 0, turboCount: 0 },
-  23: { name: 'Chopper', kind: 'motor', gearLevel: 2, baseTank: 20, price: 60000, storage: 0, turboCount: 0 },
-  24: { name: 'Spor Motor', kind: 'motor', gearLevel: 3, baseTank: 18, price: 95000, storage: 0, turboCount: 0 },
+  21: { name: 'Scooter', kind: 'motor', job: 'kurye', gearLevel: 1, baseTank: 10, price: 15000, storage: 0, turboCount: 0 },
+  22: { name: 'Cross Motor', kind: 'motor', job: 'kurye', gearLevel: 2, baseTank: 12, price: 35000, storage: 0, turboCount: 0 },
+  23: { name: 'Chopper', kind: 'motor', job: 'kurye', gearLevel: 2, baseTank: 20, price: 60000, storage: 0, turboCount: 0 },
+  24: { name: 'Spor Motor', kind: 'motor', job: 'kurye', gearLevel: 3, baseTank: 18, price: 95000, storage: 0, turboCount: 0 },
 };
 
 // Fiyatlar (kullanıcı revizesi) — tamir/geliştirme malzemesi miktarı
