@@ -585,14 +585,45 @@ export function mergeInPlace(root, skip = new Set()) {
 export function dropVenueInt(v) {
   if (v.intOn === false) return;
   [...v.int.group.children].forEach((m) => {
-    if (!m.userData.merged) return;
+    if (!m.userData.merged && !m.userData.rb) return;
     v.int.group.remove(m);
-    m.geometry.dispose();
+    if (m.userData.merged) m.geometry.dispose();
   });
   v.intOn = false;
 }
+// v158.1 — yalıtılmış mekânın (çete karargahı) içi BÜTÜNÜYLE yenilenir: zemin, tavan, iç duvarlar, kökler,
+// eşyalar. Eskiden yenilemede sadece birleşik parçalar eklenip ilk kurulumun zemini / tavanı yerinde
+// kalıyordu → iki zemin üst üste (farklı dokular) titreşip "devamlı değişiyordu"; duvar seçimi de görünmüyordu.
+export function swapVenueInt(v) {
+  if (!v.rebuild) return;
+  const P2 = v.rebuild();
+  const walls = [...P2.lowInner, ...(P2.stubs || [])];
+  mergeInPlace(P2.int.group, new Set(walls));
+  P2.lowInner.forEach((g) => mergeInPlace(g));
+  (P2.stubs || []).forEach((g) => {
+    g.visible = true;
+    mergeInPlace(g);
+  });
+  P2.lowInner.forEach((g, i) => (g.visible = v.lowInner[i] ? v.lowInner[i].visible : true));
+  (P2.stubs || []).forEach((g, i) => (g.visible = v.stubs?.[i] ? v.stubs[i].visible : false));
+  // eski iç: ışık / çarpışma işaretleri (boş Object3D) kalır, görünen her şey gider
+  [...v.int.group.children].forEach((m) => {
+    if (m.type === 'Object3D') return;
+    v.int.group.remove(m);
+    m.traverse((o) => o.isMesh && o.userData.merged && o.geometry.dispose());
+  });
+  [...P2.int.group.children].forEach((m) => {
+    if (m.type === 'Object3D') return;
+    if (!walls.includes(m)) m.userData.rb = true;
+    v.int.group.add(m);
+  });
+  v.lowInner = P2.lowInner;
+  v.stubs = P2.stubs || [];
+  v.intOn = true;
+}
 export function buildVenueInt(v) {
   if (v.intOn !== false || !v.rebuild) return;
+  if (v.isolated) return swapVenueInt(v);
   const P2 = v.rebuild();
   mergeInPlace(P2.int.group, new Set([...P2.lowInner, ...(P2.stubs || [])]));
   [...P2.int.group.children].forEach((m) => {

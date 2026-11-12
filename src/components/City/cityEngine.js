@@ -19,7 +19,7 @@ import { createJobWorld } from './jobWorld.js';
 import { EngineSound } from './sound.js';
 import { createStadiumMatch, matchAvatar } from './stadiumMatch.js';
 // v157 — genişletilmiş dünya (otoyol, Kervankent, köyler, orman, kumsal) + girilebilir mekânlar
-import { bakeGeo, canonMat, makeLod, lodTag, dropVenueInt, buildVenueInt, prepareCityWorldSync, finishCityWorld, mergeCityWorld, mergeVenue, mergeInPlace, buildAnimals, CITY_GRID, VENUE_GAME_KEY, toRoom, fromRoom, VROOM, nearest as hwyNearest, inTunnel, frameAt as hwyFrameAt } from './world/outerWorld.js';
+import { bakeGeo, canonMat, makeLod, lodTag, dropVenueInt, buildVenueInt, swapVenueInt, prepareCityWorldSync, finishCityWorld, mergeCityWorld, mergeVenue, mergeInPlace, buildAnimals, CITY_GRID, VENUE_GAME_KEY, toRoom, fromRoom, VROOM, nearest as hwyNearest, inTunnel, frameAt as hwyFrameAt } from './world/outerWorld.js';
 import { NEW_VENUES } from './world/layouts.js';
 import { HQ_CACHE } from './world/venues.js';
 import { Kit } from './kit.js';
@@ -2593,7 +2593,23 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     }
     ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   }
-  function walkTo(x, z) {
+  // v158.1 — karargah şehirden bağımsız: içerideyken dokunuş odanın içinde kalır (kapının ötesine
+  // dokununca kapının önüne yürünür), dışarıdayken karargahın üstüne dokununca kapısına yürünür
+  function hqTarget(x, z) {
+    if (isoV) {
+      const p = toRoom(isoV, x, z);
+      const m = 0.55;
+      return fromRoom(isoV, clamp(p.x, -VROOM.W / 2 + m, VROOM.W / 2 - m), clamp(p.z, -VROOM.D / 2 + m, VROOM.D / 2 - m));
+    }
+    for (const v of W.venues) {
+      if (!v.isolated) continue;
+      const p = toRoom(v, x, z);
+      if (Math.abs(p.x) < VROOM.W / 2 + 0.8 && Math.abs(p.z) < VROOM.D / 2 + 0.8) return fromRoom(v, v.doorX ?? 0, VROOM.D / 2 + 1.7);
+    }
+    return { x, z };
+  }
+  function walkTo(x0, z0) {
+    const { x, z } = hqTarget(x0, z0);
     const f = freeNear(x, z);
     if (!f) return false;
     // v157.3: yol bulunamasa da (şehir ızgarası dışı, kapalı alan) dokunulan yere doğru yürünür
@@ -2620,7 +2636,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     // önce bir binaya dokunduysa kapısına yürü
     // v157.3: girilebilir mekânların kabuğu dokunuşu yutmaz — mekânın içine / arkasına dokununca
     // oraya (kapıdan dolaşarak) yürünür; eskiden dokunuş duvarın önünde kalıyordu
-    const hits = ray.intersectObjects(blockers, false).filter((h) => !h.object.userData.venueShell);
+    // v158.1: karargahın içindeyken şehir gizli — gizli binalara / yere dokunuş sayılmaz
+    const hits = isoV ? [] : ray.intersectObjects(blockers, false).filter((h) => !h.object.userData.venueShell);
     // v157: yokuşta / kumsalda dokunulan yer: önce oyuncunun yüksekliğinde düzlem, sonra o noktanın zemini
     const ground = new THREE.Plane(new V(0, 1, 0), -(Math.max(me.y, -1) + 0.1));
     const gp = new V();
@@ -2961,6 +2978,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     let hit = null;
     if (!curVenue && camera.position.y > 2.2) {
       for (const v of W.venues) {
+        if (v.isolated) continue; // v158.1: karargahın ön cephesi hiç kesilmez (dışarıdan içerisi görünmesin)
         if ((camera.position.x - v.wx) ** 2 + (camera.position.z - v.wz) ** 2 > 40 * 40) continue;
         const cp = toRoom(v, camera.position.x, camera.position.z);
         if (Math.abs(cp.x) < VROOM.W / 2 + 1.5 && cp.z > VROOM.D / 2 - 0.2 && cp.z < VROOM.D / 2 + 5) {
@@ -3569,7 +3587,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     W.venues.forEach((v) => {
       // v158: içerisi sadece görülebildiğinde çizilir — içindeyken, camlı cephede uzaktan, kapalı
       // binada ancak kapıya yakınken (eskiden 45–70 m'deki her binanın içi çiziliyordu)
-      const iv = v === curVenue ? 1e9 : v.vitrine ? (IS_MOBILE ? 45 : 70) : IS_MOBILE ? 24 : 32;
+      // v158.1: karargahın içi sadece içerideyken çizilir
+      const iv = v === curVenue ? 1e9 : v.isolated ? 0 : v.vitrine ? (IS_MOBILE ? 45 : 70) : IS_MOBILE ? 24 : 32;
       const near = (camera.position.x - v.wx) ** 2 + (camera.position.z - v.wz) ** 2 < iv * iv;
       if (v.int.group.visible !== near) {
         v.int.group.visible = near;
@@ -4606,10 +4625,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       }
       if (design !== undefined) {
         HQ_CACHE.designs[slot] = design || null;
-        if (v.intOn !== false) {
-          dropVenueInt(v);
-          buildVenueInt(v);
-        }
+        // v158.1: iç bütünüyle değişir (eskiden ikinci bir zemin eklenip eskisiyle titreşiyordu)
+        if (v.intOn !== false) swapVenueInt(v);
       }
       return true;
     },

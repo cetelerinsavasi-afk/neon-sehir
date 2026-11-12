@@ -1147,6 +1147,18 @@ export function buildHqVenue(lot, slot) {
   // v158 — karargah HARİTADAN BAĞIMSIZ: kapı kapalı ve geçilmez; içeri "İçeri gir", dışarı "Şehre çık"
   // düğmesiyle geçilir. İçerideyken şehir çizilmez (ayrı bir iç mekân gibi), dışarıdan içerisi görünmez.
   P.base.solid(DOOR.x, FRONT - T / 2, 1.6, T / 2 + 0.08);
+  // v158.1: kapı hep kapalı (yaklaşınca açılmaz) ve arkası opak — dışarıdan içerisi görünmez
+  P.doors.forEach((dr) => {
+    if (dr?.userData.ctl) dr.userData.ctl.tick = undefined;
+    dr?.traverse((o) => o.userData.doorVoid && (o.visible = true));
+  });
+  // içeriden de kapalı bir kapı görünür (duvardaki boşluktan dışarısı görünmesin)
+  const inDoor = P.int.item('door_metal', DOOR.x, ROOM.D / 2 - 0.02, 4, 0, { solid: false, y: 0.16 });
+  if (inDoor) {
+    if (inDoor.userData.ctl) inDoor.userData.ctl.tick = undefined;
+    P.int.group.remove(inDoor);
+    P.lowInner[0].add(inDoor);
+  }
   const out = finish(P, `hq${slot}`, venue, { x: DOOR.x, z: FRONT + 1.2 });
   out.isolated = true;
   return out;

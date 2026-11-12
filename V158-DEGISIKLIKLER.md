@@ -1,3 +1,11 @@
+# v158.1 — karargah düzeltmeleri
+
+- Karargah zemini artık titremiyor / değişmiyor: karargah tasarımı yüklenince eski zeminin üstüne ikinci bir zemin ekleniyordu (iki doku üst üste titreşiyordu). Artık iç mekân bütünüyle yenileniyor; seçtiğin duvar da görünüyor. Zemin parçaları da zeminden biraz yukarıda (telefonda titreşmesin)
+- Karargah kapısı hiç açılmıyor: yaklaşınca içerisi görünmüyor, ön cephe kamera yaklaşınca kesilmiyor, karargahın içi sadece içerideyken çiziliyor
+- İçeriden de kapı kapalı görünüyor (duvardaki boşluktan dışarısı görünmüyor)
+- İçerideyken kapının ötesine / duvarların dışına dokununca anlamsız yerlere yürümüyor: oda içinde en yakın noktaya (kapının ötesi → kapının önü) yürünüyor
+- Dışarıdayken karargahın çatısına / duvarına dokununca kapısının önüne yürünüyor (girmek için "🚪 İçeri gir")
+
 # v158
 
 ## Ev / karargah
