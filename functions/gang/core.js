@@ -337,7 +337,22 @@ export function createCore(deps) {
     await ctx.ref.gangRoster(gangId).set({ members, count: snap.size, updatedAtMs: ctx.now });
     // v39: Çeteler listesindeki üye sayısı gerçek sayıyla eşit kalsın
     const g = await ctx.ref.gang(gangId).get();
-    if (g.exists && g.data().status === 'active' && Number(g.data().memberCount) !== snap.size) await ctx.ref.gang(gangId).update({ memberCount: snap.size });
+    if (!g.exists || g.data().status !== 'active') return;
+    const patch = {};
+    if (Number(g.data().memberCount) !== snap.size) patch.memberCount = snap.size;
+    // v157.9: kıdemli kadro (Baba + Sağ Kollar + Kıdemliler, en çok 7) çete belgesinde herkese açık —
+    // karargahtaki çete profili üye olmayanlara bunu gösterir (roster sadece üyelere açık)
+    const seniors = seniorsOf(members);
+    if (JSON.stringify(g.data().seniors || null) !== JSON.stringify(seniors)) patch.seniors = seniors;
+    if (Object.keys(patch).length) await ctx.ref.gang(gangId).update(patch);
+  }
+  const SENIOR_ORDER = { baba: 0, sagkol: 1, kidemli: 2 };
+  function seniorsOf(members) {
+    return Object.entries(members)
+      .filter(([, m]) => m.rank in SENIOR_ORDER)
+      .sort(([ia, a], [ib, b]) => SENIOR_ORDER[a.rank] - SENIOR_ORDER[b.rank] || b.prestige - a.prestige || a.joinedAtMs - b.joinedAtMs || (ia < ib ? -1 : 1))
+      .slice(0, 7)
+      .map(([uid, m]) => ({ uid, name: m.name, rank: m.rank, avatar: m.avatar || null, prestige: m.prestige }));
   }
   async function refreshIntelRoster(ctx) {
     const snap = await ctx.ref.rosterCol().get();
@@ -688,6 +703,7 @@ export function createCore(deps) {
     announce,
     announceMgmt,
     refreshGangRoster,
+    seniorsOf,
     underVote,
     effRank,
     withEffRank,

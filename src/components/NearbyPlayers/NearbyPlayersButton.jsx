@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useState } from 'react';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import PlayerCard from '../PlayerCard/PlayerCard';
@@ -40,7 +41,8 @@ export default function NearbyPlayersButton({ others = [], collectionName, varia
         👥{others.length > 0 && <span className="nearby-count">{others.length}</span>}
       </button>
 
-      {open && !target && (
+      {open && !target &&
+        createPortal(
         <div className="nearby-backdrop" onClick={() => setOpen(false)}>
           <div className="nearby-sheet" onClick={(e) => e.stopPropagation()}>
             <p className="nearby-title">Yakındakiler</p>
@@ -81,8 +83,9 @@ export default function NearbyPlayersButton({ others = [], collectionName, varia
               Kapat
             </button>
           </div>
-        </div>
-      )}
+        </div>,
+          document.body
+        )}
 
       {target && (
         <PlayerCard

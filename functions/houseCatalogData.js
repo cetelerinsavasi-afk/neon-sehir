@@ -22,6 +22,7 @@ export const ITEM_PRICES = {
   // MASALAR
   tround: g(8000), tdining: g(12000), tcoffee: g(24000), desk: g(45000), tside: g(15000),
   cafetable: g(30000), bartable: g(25000), officedesk: g(90000),
+  barreltable: g(20000), // v157.9: Fıçı Masa artık ücretli (eskiden ücretsizdi)
   // MUTFAK
   kcounter: g(9000), ksink: g(18000), stove: g(45000), fridge: z(5), kisland: z(1), kupper: g(12000), kcoffee: z(2),
   // BANYO

@@ -340,9 +340,10 @@ export const NEW_VENUES = {
       it('of_el4', 'door_metal', 6.2, -6.95),
       it('of_w1', 'waitseats', -8.3, 0.6, 2),
       it('of_w2', 'waitseats', -8.3, 3.0, 2),
-      it('of_s1', 'sofa2', 6.0, 1.0, 6),
-      it('of_a1', 'armchair', 7.9, 3.2, 6),
-      it('of_tb', 'cafetable', 6.0, 3.0),
+      // v157.9: bekleme köşesi — koltuk sağ duvara yaslı, önünde cam sehpa, karşısında berjer
+      it('of_s1', 'sofa2', 8.2, 1.4, 6),
+      it('of_tb', 'tcoffee', 6.7, 1.4, 2),
+      it('of_a1', 'armchair', 5.2, 1.4, 2),
       it('of_wc', 'watercooler', 8.4, -2.6, 6),
       it('of_clk', 'clock', -9, -3.0, 2),
       it('of_pl1', 'plantb', -8.3, 5.9),

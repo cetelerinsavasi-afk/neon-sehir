@@ -163,8 +163,8 @@ function lotFront(lot) {
 export const VENDOR_SPOTS = [
   { key: 'kokorecci', name: 'Kokoreççi', food: 'kokoreç', lot: 'casino', x: -8.5, z: 8.5, r: 0 },
   { key: 'donerci', name: 'Balık Ekmekçi', food: 'balık ekmek', lot: 'park', x: -26, z: 6.5, r: 0 },
-  { key: 'kofteci', name: 'Köfteci', food: 'köfte ekmek', lot: 'ev', x: -12.2, z: 14.3, r: 0, compact: true }, // v157: ev + garaj kapısını kapatmasın; v157.4: masasız (yola taşıyordu)
-  { key: 'simitci', name: 'Simitçi', food: 'simit', lot: 'plaza', x: 0, z: 6.5, r: 0 },
+  { key: 'kofteci', name: 'Köfteci', food: 'köfte ekmek', lot: 'pist', x: -16.5, z: 14.3, r: 0, along: true }, // v157.9: yarış pistinin kaldırımı; masalar kaldırım boyunca
+  { key: 'simitci', name: 'Simitçi', food: 'simit', lot: 'plaza', x: 8, z: 14.3, r: 0, along: true }, // v157.9: blok müstakil evler oldu → ön kaldırım (durağın yanı)
   { key: 'midyeci', name: 'Midyeci', food: 'midye', lot: 'bar', x: 13, z: 12, r: 0 },
   { key: 'dondurmaci', name: 'Dondurmacı', food: 'dondurma', lot: 'stadyum', x: 28, z: -28, r: 1 },
 ];

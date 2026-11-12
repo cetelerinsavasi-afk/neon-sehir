@@ -843,8 +843,13 @@ B.cete = (kit, p, ctx) => {
   for (let k = 0; k < 10; k++) {
     const x = -55 + rnd() * 110;
     const z = (rnd() - 0.5) * 6;
-    const sl = kit.box(1.4 + rnd() * 1.6, 0.12, 1 + rnd(), concD, x, Y, z, { ry: rnd() * 3, cast: false });
-    sl.rotation.z = (rnd() - 0.5) * 0.12;
+    const w0 = 1.4 + rnd() * 1.6;
+    const d0 = 1 + rnd();
+    const ry0 = rnd() * 3;
+    const tz = (rnd() - 0.5) * 0.12;
+    if ([-44, 0, 44].some((hx) => Math.abs(x - hx) < 8)) continue; // v157.9: karargah kapılarının önü boş (ayağa takılan beton levha yok)
+    const sl = kit.box(w0, 0.12, d0, concD, x, Y, z, { ry: ry0, cast: false });
+    sl.rotation.z = tz;
   }
   const weed = M('#5f6b3a', 0.95);
   for (let k = 0; k < 70; k++) {
@@ -862,7 +867,7 @@ B.cete = (kit, p, ctx) => {
     const v = buildHqVenue(vlot, slot);
     v.rebuild = () => buildHqVenue(vlot, slot);
     const ry = s > 0 ? PI : 0; // +z yan: önü −z'ye (yola)
-    v.root.position.set(x, Y, s * 10.8);
+    v.root.position.set(x, Y - 0.17, s * 10.8); // v157.9: beton zemin yürüme kotuyla aynı (ayak betona gömülmesin)
     v.root.rotation.y = ry;
     kit.group.add(v.root);
     v.padRy = ry;
@@ -896,19 +901,20 @@ B.cete = (kit, p, ctx) => {
     kit.solid(x, z, 1.1, 2.4, r);
   });
   // lastik / varil / kasa yığınları
-  [[-32.5, -11], [32, 10.5], [-12.5, -10.5], [60, 12], [-60, -12]].forEach(([x, z], i) => {
+  [[-32.5, -11], [-12.5, -10.5], [60, 12], [-60, -12]].forEach(([x, z], i) => {
     kit.item('tires', x, z, 0, 0, { y: Y });
     kit.item('tires', x + 0.7, z + 0.4, 0, 0, { y: Y });
     if (i % 2) kit.item('tires', x - 0.5, z - 0.6, 0, 0, { y: Y });
   });
-  [[-18, 11], [12, -10.5], [36, -7.2], [-46, -7.2]].forEach(([x, z], i) => {
+  // v157.9: karargahların önündeki kasa / palet yığınları kalktı (sadece aradaki boşluklarda)
+  [[-18, 11], [-24, -11]].forEach(([x, z], i) => {
     kit.item('crates', x, z, i, 0, { y: Y });
     kit.item('pallets', x + 2.4, z, 0, 0, { y: Y });
   });
   kit.item('container', 64, 0, 2, 3, { y: Y });
   kit.item('forklift', 27, 10.8, 5, 0, { y: Y });
   // yanan variller (titrek ateş)
-  [[-30, 9], [12, -7.4], [40, 7.4], [-58, 0]].forEach(([x, z], i) => {
+  [[-30, 9], [-58, 0]].forEach(([x, z], i) => {
     kit.item('barrel', x, z, 0, 0, { y: Y });
     const f = kit.mesh(new THREE.ConeGeometry(0.32, 0.9, 7), new THREE.MeshBasicMaterial({ color: '#ff8a2a', transparent: true, opacity: 0.85 }), x, Y + 1.25, z, 0, { cast: false, dyn: true });
     kit.ticks.push({ obj: f, ctl: { tick: (t) => {

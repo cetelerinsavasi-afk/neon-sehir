@@ -469,3 +469,5 @@ body.ns-city-open .race-bubble { z-index: 96; }
   .cs-root.cs-vbtn .cs-venue-layer .v3-menu { top: calc(224px + var(--hs-safe-t, 0px)); }
   .cs-root.cs-vbtn .cs-venue-layer .v3-menu.right { top: calc(278px + var(--hs-safe-t, 0px)); }
 }
+/* v157.9: yatay ekranda sağ sütun alt çubuğun yanına (kenarda) iner — üstte haritaya değmesin */
+.cs-root.cs-land:not(.driving) .hs-side.cs-right, .cs-root.cs-land .cs-left { bottom: calc(12px + var(--hs-safe-b, 0px)); }

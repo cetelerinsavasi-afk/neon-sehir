@@ -82,7 +82,9 @@ export function buildCity() {
       if (used.has(`${i},${j}`)) continue;
       const outer = i >= COLS || j < 0;
       const far = i > COLS || j < -1;
-      lotDefs.push({ type: i === 2 && j === 4 ? 'plaza' : 'filler', i0: i, j0: j, i1: i, j1: j, face: 's', outer, far });
+      // v157.9: simitçinin bloğu (eski plaza) da müstakil evler; satıcı kaydı 'plaza' adıyla kalır
+      if (i === 2 && j === 4) lotDefs.push({ type: 'mustakil', alias: 'plaza', alt: 2, i0: i, j0: j, i1: i, j1: j, face: 's', outer, far });
+      else lotDefs.push({ type: 'filler', i0: i, j0: j, i1: i, j1: j, face: 's', outer, far });
     }
   }
 
@@ -149,7 +151,7 @@ export function buildCity() {
     kit.group.position.set(mx, 0, mz);
     kit.group.rotation.y = ry;
     const rot = l.face === 'e' || l.face === 'w';
-    const lot = { w: (rot ? bd : bw) - SIDE * 2, d: (rot ? bw : bd) - SIDE * 2 };
+    const lot = { w: (rot ? bd : bw) - SIDE * 2, d: (rot ? bw : bd) - SIDE * 2, ...(l.alt ? { alt: l.alt } : {}) };
     let info = {};
     const def = T[l.type];
     if (def) info = def.build(kit, lot) || {};
@@ -188,14 +190,14 @@ export function buildCity() {
 
   // --- seyyar satıcılar --------------------------------------------------------
   VENDORS_AT.forEach((v) => {
-    const host = lots.find((l) => l.type === v.lot);
+    const host = lots.find((l) => l.type === v.lot || l.alias === v.lot);
     if (!host) return;
     const k = new Kit(`vendor_${v.key}`);
     kits.push(k);
     k.group.position.set(v.x, 0, v.z);
     k.group.rotation.y = (v.r * Math.PI) / 4;
     host.kit.group.add(k.group);
-    B.buildVendor(k, v.key, VENUES[v.key], { compact: Boolean(v.compact) });
+    B.buildVendor(k, v.key, VENUES[v.key], { compact: Boolean(v.compact), along: Boolean(v.along) });
     k.label(VENUES[v.key].name.toUpperCase(), 0, 4.2, 0, 'vendor');
   });
 

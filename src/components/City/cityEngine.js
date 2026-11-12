@@ -408,6 +408,47 @@ class Fig {
 
 // --- yaya isimleri / avatarları ------------------------------------------------
 // =============================================================================
+// v157.9 — TELEFON BELLEĞİ: sahnedeki (henüz GPU'ya yüklenmemiş) geometriler inceltilir.
+//  • dokusuz malzemelerde UV koordinatı silinir (köşe başına 8 bayt)
+//  • normaller 32 bit ondalık yerine 8 bit tamsayıya (köşe başına 12 → 3 bayt)
+//  • düz gölgelendirmeli (flatShading) malzemede normal hiç tutulmaz
+// Aynı bellek hem işlemcide hem ekran kartında kazanılır. Paylaşılan geometrinin bütün
+// kullanıcıları kontrol edilir; animasyonlu / örnekli / iç içe geçmiş tamponlar atlanır.
+const TEX_SLOTS = ['map', 'normalMap', 'bumpMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'aoMap', 'lightMap', 'alphaMap', 'displacementMap', 'specularMap', 'envMap', 'matcap', 'gradientMap', 'clearcoatMap', 'sheenColorMap', 'transmissionMap', 'iridescenceMap'];
+function slimGeometries(root) {
+  const users = new Map();
+  root.traverse((o) => {
+    if (!o.isMesh || !o.geometry || o.isSkinnedMesh || o.morphTargetInfluences) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    let u = users.get(o.geometry);
+    if (!u) users.set(o.geometry, (u = { tex: false, flat: true, bad: false }));
+    for (const m of mats) {
+      if (!m) continue;
+      if (m.isShaderMaterial || m.isPointsMaterial || m.isLineBasicMaterial) u.bad = true;
+      if (TEX_SLOTS.some((k) => m[k])) u.tex = true;
+      if (!m.flatShading || m.isMeshBasicMaterial) u.flat = false;
+    }
+  });
+  users.forEach((u, g) => {
+    if (u.bad || g.userData?.noSlim) return;
+    const at = g.attributes;
+    if (!u.tex) {
+      if (at.uv && !at.uv.isInterleavedBufferAttribute) g.deleteAttribute('uv');
+      if (at.uv1 && !at.uv1.isInterleavedBufferAttribute) g.deleteAttribute('uv1');
+    }
+    const n = at.normal;
+    if (!n || n.isInterleavedBufferAttribute || !(n.array instanceof Float32Array)) return;
+    if (u.flat) {
+      g.deleteAttribute('normal');
+      return;
+    }
+    const src = n.array;
+    const q = new Int8Array(src.length);
+    for (let i = 0; i < src.length; i++) q[i] = Math.max(-127, Math.min(127, Math.round(src[i] * 127)));
+    g.setAttribute('normal', new THREE.BufferAttribute(q, n.itemSize, true));
+  });
+}
+
 export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 'Sen', spawn = 'ev', onInteract, onTick, onReady, onEvent, onPlayerTap, snapshot = false, world = null } = {}) {
   // snapshot: ekran dışı, döngüsüz motor — sadece paylaşılan şehir fotoğraflarını çizer (CityPhoto)
   // v147.1: telefonda logaritmik derinlik KAPALI (GPU'nun erken derinlik testini bozuyor → çok yavaş)
@@ -1867,6 +1908,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   let carCam = 'out';
   const inLook = { yaw: 0, pitch: -0.06 };
   let interiorCar = null; // içinden bakılan araba
+  let dbgPv = null; // v157.9: yalnız geliştirme önizlemesi — sürerken yolcu gözünden bak
   let inYawSm = null; // v151: iç kamerada baş ataleti
   // v150: araçların içi artık modelli (koltuk, torpido, direksiyon, şeffaf cam) — kamera
   // sadece koltuktaki göz hizasına yerleşir; ek kokpit parçası / gövde gizleme yok.
@@ -1912,7 +1954,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     } else if (seats > 4 && c.v.len > 5.2) {
       // otobüs: göz şoförün sağ arkasında, ayakta (tavanın altında kalır)
       const cab = c.v.cabin;
-      const y = cab ? Math.min(cab.floor + 1.45, cab.roof - 0.32) : d0.y + 0.32;
+      const y = cab ? Math.min(cab.floor + 1.55, cab.roof - 0.3) : d0.y + 0.32; // v157.9: zemin gerçek iç zemin
       pv = { eye: new V(-d0.x * 0.55, y, d0.z - 0.55), rig: false, bus: true };
     } else if (c.v.len > 5.6) {
       // tır / ambulans / karavan: ön yolcu sürücünün aynası, arkadakiler kendi koltuğundan
@@ -2547,6 +2589,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     if (hitGround) walkTo(gp.x, gp.z);
   }
   function onDown(e) {
+    if (paused) return; // v157.9: ortak tuval başka ekrandayken (karargah düzenleme) şehir dokunuş almaz
     canvas.setPointerCapture?.(e.pointerId);
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 2) {
@@ -2558,6 +2601,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     drag = { moved: 0 };
   }
   function onMove(e) {
+    if (paused) return; // v157.9: ortak tuval başka ekrandayken (karargah düzenleme) şehir dokunuş almaz
     const p = pointers.get(e.pointerId);
     if (!p) return;
     const dx = rotated ? e.clientY - p.y : e.clientX - p.x;
@@ -2611,11 +2655,13 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     drag = null;
   }
   function onWheel(e) {
+    if (paused) return; // v157.9: ortak tuval başka ekrandayken (karargah düzenleme) şehir dokunuş almaz
     e.preventDefault();
     if (view === '2d') top.dist = clamp(top.dist * (1 + clamp(e.deltaY, -200, 200) * 0.0012), 14, 110);
     else self.camDist = clamp(self.camDist + e.deltaY * 0.006, 1.8, 16);
   }
   const onKeyDown = (e) => {
+    if (paused) return;
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
     keys[e.code] = true;
     if (e.code === 'ShiftLeft') self.run = true;
@@ -3092,10 +3138,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       // v149 — araba içinden: koltuktaki göz hizası, arabanın yönüne göre serbest bakış
       const c = interiorCar;
       // v154: yolcunun ayrı göz noktası (passengerView); kokpit ön/arka yolcuya da gösterilir
-      const pv = driving ? null : passengerView(c, self.ride.k || 1);
-      const ck = driving ? cockpitOf(c, 0) : pv;
+      const asPax = !driving || dbgPv != null; // dbgPv: geliştirme önizlemesi (yolcu gözü)
+      const pv = asPax ? passengerView(c, driving ? dbgPv : self.ride.k || 1) : null;
+      const ck = asPax ? pv : cockpitOf(c, 0);
       me.group.visible = false;
-      const rig = driving || pv.rig ? cockpitRig(c, cockpitOf(c, 0)) : null;
+      const rig = !asPax || pv.rig ? cockpitRig(c, cockpitOf(c, 0)) : null;
       if (rig) {
         if (!rig.group.visible) showRig(c, true);
         const vmax = c.v.def.phys.vmax || 30;
@@ -3769,6 +3816,13 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     first = false;
   }
   lightsReady = true;
+  // v157.9: telefonda birleşik statik dünya geometrisi inceltilir (avatar / araç gibi sonradan doku
+  // alan nesnelere dokunulmaz — sadece birleştirilmiş şehir ve dış dünya parçaları; arazi karoları ortak tampon kullanır, dokunulmaz)
+  if (IS_MOBILE) {
+    const sm = scene.getObjectByName('merged');
+    if (sm) slimGeometries(sm);
+    if (W.mergedOuter) slimGeometries(W.mergedOuter);
+  }
   if (!snapshot || IS_MOBILE) applyTier();
   updateLights(true);
   // ilk kare (doku/gölgelendirici derlemesi) sonra hazır
@@ -4275,6 +4329,34 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       clock.getDelta();
       first = true;
     },
+    // v157.9: şehir başka bir ekranın (ev, işletme, karargah düzenleme) arkasında beklerken ekran
+    // kartındaki kopyalar bırakılır (işlemcideki veri kalır; dönüşte görünenler yeniden yüklenir)
+    releaseGpu() {
+      for (const c of cullItems) {
+        if (c.keep || c.gone) continue;
+        c.gone = true;
+        c.hidT = 0;
+        evictGpu(c.o);
+      }
+      renderer.renderLists?.dispose?.();
+    },
+    // v157.9: ortak çizici başka bir ekranda (karargah düzenleme) kullanıldıysa şehre geri alınır —
+    // şehir kapanıp yeniden kurulmaz (eskiden Düzenle'ye girip çıkarken iki kez uzun yükleme vardı)
+    reclaim() {
+      if (canvas.parentNode !== container) container.insertBefore(canvas, container.firstChild);
+      canvas.className = 'hs-gl';
+      canvas.style.width = '100%';
+      canvas.style.height = '100%';
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMappingExposure = 1.05;
+      renderer.__onLost = () => onEvent?.({ type: 'contextLost' });
+      applyTier();
+      moonL.shadow.needsUpdate = true;
+      first = true;
+    },
     // kapıdan çıkınca: kapının önüne, yüz binadan dışarı
     exitAt(zone) {
       const out = zone.out || 0;
@@ -4390,7 +4472,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     },
     world: () => W,
     // v157: geliştirme testleri (çarpışma / zemin simülasyonu) — canlıda yok
-    ...(import.meta.env?.DEV ? { __dbg: { THREE, scene, renderer, camera, me: () => ({ x: self.x, z: self.z, t: self.target, p: self.path, stuck: self.stuckT, seat: Boolean(self.seat) }), findPath: (a, b, c, d) => findPath(a, b, c, d), carBlockedAt, blockedAt, groundY: (x, z, h, c) => groundY(x, z, h, c), modeAt: (x, z) => W.modeAt(x, z) } } : {}),
+    ...(import.meta.env?.DEV ? { __dbg: { THREE, scene, renderer, camera, me: () => ({ x: self.x, z: self.z, t: self.target, p: self.path, stuck: self.stuckT, seat: Boolean(self.seat) }), findPath: (a, b, c, d) => findPath(a, b, c, d), carBlockedAt, blockedAt, groundY: (x, z, h, c) => groundY(x, z, h, c), modeAt: (x, z) => W.modeAt(x, z), car: () => myCar, pvOf: (k) => myCar && passengerView(myCar, k), seatW: (k) => myCar && seatWorld(myCar, k), paxView: (k) => { dbgPv = k; if (myCar) { myCar.v.rig && showRig(myCar, false); } } } } : {}),
     // v157 — yeni harita (mini + büyük): ilk açılışta bir kez çizilir
     map() {
       if (!gmap) {

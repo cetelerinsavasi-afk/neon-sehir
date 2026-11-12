@@ -547,6 +547,14 @@ export function buildToll(group, G = GISE) {
   const band = new THREE.Mesh(new THREE.BoxGeometry(30.2, 0.35, 12.2), new THREE.MeshStandardMaterial({ color: '#1f6fd0', emissive: '#1f6fd0', emissiveIntensity: 0.6 }));
   band.position.y = 6.6;
   g.add(band);
+  // v157.9: gişe meydanı — yolun iki yanında dış adalara kadar asfalt (araçlar buradan da geçer)
+  const plazaM = new THREE.MeshStandardMaterial({ color: '#3b3c40', roughness: 0.95 });
+  for (const sd of [-1, 1]) {
+    const pl = new THREE.Mesh(new THREE.BoxGeometry(2.4, 0.1, 38), plazaM);
+    pl.position.set(sd * (ROAD_HALF + 1.2), 0.015, 0);
+    pl.receiveShadow = true;
+    g.add(pl);
+  }
   const islandM = new THREE.MeshStandardMaterial({ color: '#d9d4c8', roughness: 0.8 });
   const stripeM = new THREE.MeshStandardMaterial({ color: '#f2c21a', roughness: 0.6 });
   const boothM = new THREE.MeshStandardMaterial({ color: '#f4f4f2', roughness: 0.5 });

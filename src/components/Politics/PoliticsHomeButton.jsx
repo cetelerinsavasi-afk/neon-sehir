@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 /* eslint-disable react-refresh/only-export-components */
 // v136 — anasayfa sol alt 🗳️ butonu. Oyuncunun yapacağı bir şey varsa görünür:
 //   imza dönemi (aday olmadı / imza vermedi) · oylama (oy vermedi) · sayım (herkese, 21–24)
@@ -32,11 +33,16 @@ export default function PoliticsHomeButton({ slot = 0, onVisibleChange, inline =
           <small>{LABEL[need]}</small>
         </button>
       )}
-      {open && (
-        <Suspense fallback={null}>
-          {open === 'coup' ? <CoupScreen onClose={() => setOpen(null)} /> : open === 'coupVote' ? <CoupVoteSheet onClose={() => setOpen(null)} /> : <PoliticsScreen onClose={() => setOpen(null)} />}
-        </Suspense>
-      )}
+      {open &&
+        createPortal(
+        // v157.9: gövdede, şehrin (z 80) üstünde — alt çubuk ekranın son satırlarını örtmesin
+        <div style={{ position: 'fixed', inset: 0, zIndex: 905 }}>
+          <Suspense fallback={null}>
+            {open === 'coup' ? <CoupScreen onClose={() => setOpen(null)} /> : open === 'coupVote' ? <CoupVoteSheet onClose={() => setOpen(null)} /> : <PoliticsScreen onClose={() => setOpen(null)} />}
+          </Suspense>
+        </div>,
+          document.body
+        )}
     </>
   );
 }

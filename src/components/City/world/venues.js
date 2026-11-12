@@ -1143,8 +1143,6 @@ export function buildHqVenue(lot, slot) {
   // kapı üstü lamba + numara (çetenin adı şehirde karargah bilgisi gelince eklenir)
   P.high.box(0.5, 0.14, 0.22, glowMat('#ffd9a0', 1.6), DOOR.x, 4.05, FRONT + 0.12, { cast: false }); // kamera kapı arkasındayken önüne girmesin
   P.high.sign(`hq_no${slot}`, `${slot + 1}`, 0.9, BW / 2 - 1.4, 4.4, FRONT + 0.08, 0, { color: '#e8e2d0', font: '900 120px Impact, Arial Black, sans-serif', light: false });
-  P.base.item('barrel', BW / 2 + 1.2, FRONT + 1.4, 0, 0);
-  P.base.item('crates', -BW / 2 - 1.4, FRONT + 1.6, 0, 0);
   return finish(P, `hq${slot}`, venue, { x: DOOR.x, z: FRONT + 1.2 });
 }
 

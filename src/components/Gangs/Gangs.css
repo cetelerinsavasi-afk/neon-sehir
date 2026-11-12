@@ -3789,3 +3789,30 @@ button.gx-member.gx-member-btn:active {
 .gx-invites-btn {
   margin-bottom: 8px;
 }
+/* v157.9 — çete / teşkilat paneli alttan açılır, tüm ekranı kaplamaz; başlığa dokununca küçülür */
+.gx-hq-panel.gx-hq-sheet {
+  inset: auto 0 0 0;
+  height: 76%;
+  height: 76dvh;
+  border-radius: 18px 18px 0 0;
+  border-top: 1px solid rgba(25, 232, 255, 0.35);
+  box-shadow: 0 -14px 40px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+  transition: height 0.18s ease-out;
+}
+.gx-hq-sheet .gx-full-top { padding-top: 10px; }
+.gx-hq-panel.gx-hq-sheet.min { height: auto; }
+.gx-hq-sheet.min .gx-hq-panel-root { display: none; }
+.gx-hq-sheet.min .gx-full-top { padding-bottom: calc(10px + env(safe-area-inset-bottom)); border-bottom: 0; }
+.gx-sheet-toggle { flex: 1; text-align: left; background: none; border: 0; color: inherit; font: inherit; padding: 0; cursor: pointer; }
+.gx-sheet-toggle i { font-style: normal; font-size: 11px; opacity: 0.7; margin-left: 6px; }
+.gx-hq-sheet .gx-chat-list { height: calc(76dvh - 300px); max-height: 46vh; }
+/* başka çetenin profili */
+.gx-gprof { padding-bottom: 18px; }
+.gx-gprof-head { display: flex; align-items: center; gap: 12px; }
+.gx-gprof-main { min-width: 0; flex: 1; }
+.gx-gprof-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0; }
+.gx-gprof-stats > div { display: flex; flex-direction: column; gap: 4px; align-items: center; padding: 10px 6px; border-radius: 12px; background: rgba(255, 255, 255, 0.04); border: 1px solid #1f2a40; }
+.gx-gprof-stats span { font-size: 11px; color: #8a93a8; font-weight: 700; }
+.gx-gprof-stats b { font-size: 14px; color: #e8edf6; }
+.gx-gprof-extra { margin-bottom: 6px; }

@@ -863,7 +863,7 @@ export function buildMustakil(kit, lot) {
   const cw = w / 2;
   const cd = d / 2;
   [[-1, 1], [1, 1], [-1, -1], [1, -1]].forEach(([sx, sz], i) => {
-    const st = MUSTAKIL[i];
+    const st = MUSTAKIL[(i + (lot.alt || 0)) % MUSTAKIL.length]; // v157.9: ikinci mahallede farklı sıra
     const cx = (sx * cw) / 2;
     const cz = (sz * cd) / 2;
     // bahçe (çim) + yürüme yolu
@@ -967,24 +967,32 @@ export const VENDOR_STYLE = {
   midyeci: { cart: 'midyetezgahi', neon: 'neon_midye', glow: '#2dd4bf', npc: 'npc_midyeci' }, // v154
   dondurmaci: { cart: 'dondurmaarabasi', neon: 'neon_dondurma', glow: '#ff7aa8', npc: 'npc_dondurmaci' }, // v154
 };
-export function buildVendor(kit, key, venue, { compact = false } = {}) {
+export function buildVendor(kit, key, venue, { compact = false, along = false } = {}) {
   const st = VENDOR_STYLE[key];
-  // tabela direği + neon tabela (oyundaki aynı tabela)
-  kit.box(0.12, 4.6, 0.12, M('#1b1b1d', 0.4, 0.7), -1.9, 0, -1.3);
-  kit.box(0.12, 4.6, 0.12, M('#1b1b1d', 0.4, 0.7), 1.9, 0, -1.3);
-  kit.box(4.0, 0.12, 0.12, M('#1b1b1d', 0.4, 0.7), 0, 4.5, -1.3);
-  kit.item(st.neon, 0, -1.25, 0, 0, { solid: false, y: 1.5 });
+  // v157.9: arkadaki siyah tabela (direk + neon) kalktı — tezgâhın kendisi neci olduğunu gösteriyor
   kit.item(st.cart, 0, 0, 0, 0);
-  kit.item('streetlamp', -3.4, 0.2, 0, 0);
-  kit.item('copkutusu', 3.2, -0.6, 0, 0);
+  if (along) {
+    // v157.9: kaldırım boyunca dizilmiş masalar (yola taşmaz) — kaldırımın lambaları yeter
+    kit.item('copkutusu', 2.3, -0.9, 0, 0);
+    for (const mx of [-4.2, 4.4]) {
+      kit.item('plastikmasa', mx, 0.3, 0, 0);
+      kit.item('plastiktabure', mx - 0.75, 0.3, 0, 1);
+      kit.item('plastiktabure', mx + 0.75, 0.3, 0, 1);
+      kit.item('plastiktabure', mx, -0.45, 0, 1);
+    }
+    kit.item('umbrella', -4.2, 0.3, 0, 0, { solid: false });
+  } else {
+    kit.item('streetlamp', -3.4, 0.2, 0, 0);
+    kit.item('copkutusu', 3.2, -0.6, 0, 0);
+  }
   // plastik masalar (v157.4: dar kaldırımda masa yok — yola taşıyordu)
-  if (!compact) for (const [mx, mz] of [[-2.2, 2.6], [1.8, 3.0]]) {
+  if (!compact && !along) for (const [mx, mz] of [[-2.2, 2.6], [1.8, 3.0]]) {
     kit.item('plastikmasa', mx, mz, 0, 0);
     kit.item('plastiktabure', mx - 0.75, mz, 0, 1);
     kit.item('plastiktabure', mx + 0.75, mz, 0, 1);
     kit.item('plastiktabure', mx, mz + 0.75, 0, 1);
   }
-  if (!compact) kit.item('umbrella', -2.2, 2.6, 0, 0, { solid: false });
+  if (!compact && !along) kit.item('umbrella', -2.2, 2.6, 0, 0, { solid: false });
   kit.pool(0, 1, st.glow, 8, 0.17, 0.55);
   kit.light(0, 2.4, 0.8, st.glow, 6, 9);
   const npc = venue.npcs?.[0];

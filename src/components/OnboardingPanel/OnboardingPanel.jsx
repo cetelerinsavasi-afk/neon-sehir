@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useOnboarding, ONBOARDING_TASKS, ONBOARDING_TASK_COUNT } from '../../hooks/useOnboarding';
 import { checkOnboardingProgress, completeOnboardingChecklist } from '../../services/gameActions';
@@ -111,7 +112,9 @@ export default function OnboardingPanel({ gangReminders = null, gangChans = null
         {badgeContent !== null && <span className="onboarding-badge">{badgeContent}</span>}
       </button>
 
-      {open && (
+      {/* v157.9: panel gövdeye taşınır — şehirde alt çubuk (Sohbet · Çeteler…) son satırları örtmesin */}
+      {open &&
+        createPortal(
         <div className="onboarding-panel-backdrop" onClick={() => setOpen(false)}>
           <div className="onboarding-panel" onClick={(e) => e.stopPropagation()}>
             <div className="onboarding-panel-header">
@@ -198,8 +201,9 @@ export default function OnboardingPanel({ gangReminders = null, gangChans = null
               )}
             </div>
           </div>
-        </div>
-      )}
+        </div>,
+          document.body
+        )}
     </>
   );
 }

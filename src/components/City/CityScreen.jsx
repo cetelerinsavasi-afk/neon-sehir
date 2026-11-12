@@ -240,7 +240,7 @@ function shortTeam(name) {
   return `${w[0]} ${w.slice(1).map((x) => `${x[0].toLocaleUpperCase('tr-TR')}.`).join(' ')}`;
 }
 
-export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnterRace, onOpenBiz, onOpenHouse, raceFull = false, gangAlerts = null, onVisitVenue, onVisitHouse, onEnterHq }) {
+export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnterRace, onOpenBiz, onOpenHouse, covered = false, raceFull = false, gangAlerts = null, onVisitVenue, onVisitHouse, onEnterHq }) {
   const { user, loading: authLoading } = useAuth();
   // v149 — misafir (giriş yapmamış) da şehri gezer: yürür, oturur, mekân kapılarından girer.
   // Ağ (diğer oyuncular / sohbet) yok, alışveriş · araba · fotoğraf giriş ister.
@@ -283,6 +283,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const gangRef = useRef(gangAlerts);
   gangRef.current = gangAlerts;
   const hqRef = useRef({ state: 'idle', bySlot: {}, byGang: {}, promise: null });
+  const [, setHqTick] = useState(0); // v157.9: karargah sahipleri gelince düğmeler yenilensin
   const hqAreaRef = useRef(null);
   const loadHq = useCallback(() => {
     const H = hqRef.current;
@@ -300,6 +301,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         e.hqSet(g.hqSlot, { name: g.name });
       });
       H.state = 'done';
+      setHqTick((n) => n + 1);
       await Promise.all(
         list.map(async (g) => {
           try {
@@ -367,7 +369,18 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const [bizOpen, setBizOpen] = useState(false);
   const [houseBuy, setHouseBuy] = useState(null); // v157.8: Evler listesinden "Ev al" penceresi
   const [loadPct, setLoadPct] = useState(0);
-  const landscape = false;
+  // v157.9: telefon yan çevrilince (alçak + geniş ekran) yatay düzen — yan sütunlar alt çubuğun yanına iner
+  const isLand = () => typeof window !== 'undefined' && window.innerWidth > window.innerHeight && window.innerHeight < 560;
+  const [landscape, setLandscape] = useState(isLand);
+  useEffect(() => {
+    const on = () => setLandscape(isLand());
+    window.addEventListener('resize', on);
+    window.addEventListener('orientationchange', on);
+    return () => {
+      window.removeEventListener('resize', on);
+      window.removeEventListener('orientationchange', on);
+    };
+  }, []);
   const [driveChat, setDriveChat] = useState(false);
   const [gameVenueKey, setGameVenueKey] = useState(null); // oyunun mekân katmanı (VenueLayer) — çıkınca 3 sn sonra kapanır
   const venueApiRef = useRef(null);
@@ -611,24 +624,56 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       if (document.hidden) {
         e.pause();
         e.hidden(true);
-      } else if (!watchId && (!panel || !['phone', 'map', 'futbol', 'gangs', 'soygun', 'profile'].includes(panel.kind))) {
+      } else if (!covered && !watchId && (!panel || !['phone', 'map', 'futbol', 'gangs', 'soygun', 'profile'].includes(panel.kind))) {
         e.resume();
         e.hidden(false);
       }
     };
     document.addEventListener('visibilitychange', on);
     return () => document.removeEventListener('visibilitychange', on);
-  }, [panel, watchId]);
+  }, [panel, watchId, covered]);
   // telefon açıkken sahne durur (pil + ısınma)
   useEffect(() => {
     const e = engineRef.current;
     if (!e || !ready) return;
+    if (covered) {
+      e.pause();
+      e.hidden(true);
+      e.releaseGpu?.();
+      return undefined;
+    }
     if (panel?.kind === 'phone' || panel?.kind === 'futbol' || panel?.kind === 'gangs' || panel?.kind === 'soygun' || panel?.kind === 'profile' || watchId || raceFull) {
       if (!heistOn) e.pause();
       else e.resume();
     }
     else e.resume();
-  }, [panel, ready, raceFull, watchId, heistOn]);
+    return undefined;
+  }, [panel, ready, raceFull, watchId, heistOn, covered]);
+  // v157.9: karargah düzenlemesinden dönüş — şehir kapanmadan bekledi; çizici geri alınır ve
+  // düzenlenen karargahın iç tasarımı yeniden okunur (tek okuma)
+  const wasCovered = useRef(false);
+  useEffect(() => {
+    const e = engineRef.current;
+    if (covered) {
+      wasCovered.current = true;
+      return;
+    }
+    if (!wasCovered.current || !e || !ready) return;
+    wasCovered.current = false;
+    e.reclaim?.();
+    e.hidden(false);
+    const gid = gangRef.current?.gangId;
+    const slot = gid ? hqRef.current.byGang[gid] : null;
+    if (Number.isInteger(slot)) {
+      getDoc(doc(db, 'houses', `hq_${gid}`))
+        .then((hs) => {
+          if (!hs.exists()) return;
+          const d = hs.data();
+          engineRef.current?.hqSet(slot, { design: { items: Array.isArray(d.items) ? d.items : [], wall: d.wall, floor: d.floor } });
+        })
+        .catch(() => {});
+    }
+  }, [covered, ready]);
 
   // --- v149 STADYUM: sponsor panoları, maç seçici, saha kilidi ---------------------------
   const { sponsors, matches, matchHour } = useStadiumMatches(inStadium && Boolean(user));
@@ -1006,6 +1051,15 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   }
 
   const vui = !driving && !riding ? VENUE_UI[venue] || null : null;
+  // v157.9: karargah içi (hq0–hq5): kimin karargahı, benim mi
+  const hqVenue = (() => {
+    const m = !driving && !riding ? /^hq(\d)$/.exec(venue || '') : null;
+    if (!m) return null;
+    const slot = Number(m[1]);
+    const gang = hqRef.current.bySlot[slot] || null;
+    const gid = gangAlerts?.gangId;
+    return { slot, gang, mine: Boolean(!guest && gid && gang && gang.id === gid) };
+  })();
   const zoneName = driving ? `🚗 ${drive?.name || ''}${place ? ` · ${place}` : ''}` : riding ? '🚗 Yolcu' : venue ? VENUE_TITLE[venue] || (/^hq\d$/.test(venue) ? `🏴 ${hqRef.current.bySlot[Number(venue.slice(2))]?.name || 'Karargah'}` : '🏢 Mekân') : zone ? zone.title : place ? `🌲 ${place}` : '🌆 Neon Şehir';
   // v157: yol üstü istasyonları (mola, çeşme, manzara… sadece RP, para yok)
   const spotList = spot && !riding ? spot : null;
@@ -1032,7 +1086,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   };
 
   return (
-    <div className={`hs-root cs-root${driving ? ' driving' : ''}${heistOn ? ' cs-heist-on' : ''}${rotated ? ' cs-rotated' : ''}${landscape ? ' cs-land' : ''}${vui && (vui.biz || vui.region || vui.inCity || vui.heist) ? ' cs-vbtn' : ''}`}>
+    <div className={`hs-root cs-root${driving ? ' driving' : ''}${heistOn ? ' cs-heist-on' : ''}${rotated ? ' cs-rotated' : ''}${landscape ? ' cs-land' : ''}${vui && (vui.biz || vui.region || vui.inCity || vui.heist) ? ' cs-vbtn' : ''}`} style={covered ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}>
       <div className="hs-stage" ref={stageRef} />
       {!ready && !fatal && (
         <div className="hs-loading cs-loading">
@@ -1198,30 +1252,33 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
               </button>
             )}
           </div>
-          {/* v157.4 — kendi karargahının içinde: üstte "Çetem" (rakip karargahlarda yok) */}
-          {(() => {
-            const m = /^hq(\d)$/.exec(venue || '');
-            if (!m || guest) return null;
-            const gid = gangAlerts?.gangId;
-            const mine = gid && hqRef.current.byGang[gid] === Number(m[1]);
-            if (!mine) return null;
-            return (
-              <div className="cs-venue-bar">
-                <button className="cs-venue-btn" onClick={() => setOrgPanel('gang')}>
-                  🏴 Çetem
-                </button>
-                <button className="cs-venue-btn" onClick={() => onEnterHq?.('gang', Number(m[1]))}>
-                  🛋️ Düzenle
-                </button>
-              </div>
-            );
-          })()}
           {/* v157.8 — sol üst: şüphe · altın, hemen altında mekân düğmeleri (Evler / galeriler… + soygun);
               liste düğmeleri açılıp kapanır, liste açıkken sağ üstünde "al / aç" düğmesi */}
-          {!driving && (!guest || vui) && (
+          {!driving && (!guest || vui || hqVenue) && (
             <div className="v3-menu cs-lmenu">
               {!guest && <div className={`v3-badge v3-sus ${susCls}`}>🕵️ Şüphe <b>%{sus}</b></div>}
               {!guest && <div className="v3-badge cs-gold"><span className="gold-coin-icon" style={{ width: 13, height: 13 }} /> <b>{fmt(gold)}</b></div>}
+              {/* v157.9 — karargahların içinde: kendi çetende Çetem + Düzenle, başka çetede o çetenin profili */}
+              {hqVenue && (
+                <div className="cs-venue-bar">
+                  {hqVenue.mine ? (
+                    <>
+                      <button className="cs-venue-btn" onClick={() => setOrgPanel('gang')}>
+                        🏴 Çetem
+                      </button>
+                      <button className="cs-venue-btn" onClick={() => onEnterHq?.('gang', hqVenue.slot)}>
+                        🛋️ Düzenle
+                      </button>
+                    </>
+                  ) : (
+                    hqVenue.gang && (
+                      <button className="cs-venue-btn" onClick={() => (guest ? setAskSignIn(true) : setOrgPanel({ profile: { id: hqVenue.gang.id, name: hqVenue.gang.name } }))}>
+                        {hqVenue.gang.logo?.emoji || '🏴'} {hqVenue.gang.name}
+                      </button>
+                    )
+                  )}
+                </div>
+              )}
               {vui && (vui.biz || vui.region || vui.inCity || vui.heist) && (
                 <div className="cs-venue-bar">
                   {(vui.biz || vui.region) && (
@@ -1587,7 +1644,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       {orgPanel && (
         <Suspense fallback={null}>
           <GangAlertsContext.Provider value={gangAlerts}>
-            <OrgPanelSheet org={orgPanel} onClose={() => setOrgPanel(null)} />
+            <OrgPanelSheet org={typeof orgPanel === 'string' ? orgPanel : 'gang'} profileGang={orgPanel?.profile || null} onClose={() => setOrgPanel(null)} />
           </GangAlertsContext.Provider>
         </Suspense>
       )}

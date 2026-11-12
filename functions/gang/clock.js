@@ -21,6 +21,8 @@ const TICK_MAX_FAILED_ATTEMPTS = 3; // v137: bundan sonra hatalı gün de kapan�
 const MAX_CATCHUP_DAYS = 40;
 
 const hqSlotsDone = new Set(); // v157.4: bu sunucu örneğinde karargah ataması yapıldı
+const seniorsDone = new Set(); // v157.9: kıdemli kadro ilk doldurma
+const renameDone = new Set(); // v157.9: Kara Şahinler ad düzeltmesi yapıldı
 export function createClock(core, actions) {
   const { db, FV, ledger, gangLog, intelLog, notify } = core;
   const { wars: warActions, votes: voteActions, treasury, intel: intelActions, market: marketActions, roles: roleActions } = actions;
@@ -1886,6 +1888,16 @@ export function createClock(core, actions) {
     }
     // v157.4: tek seferlik — 2 yeni çete + 6 karargahın sahipleri (güce göre)
     if (!ctx0.isTest && !hqSlotsDone.has(ctx0.worldId)) await safe(ctx0, 'hq-slots-v1574', () => ensureHqSlots(ctx0));
+    // v157.9: kıdemli kadrosu (seniors) olmayan çeteler bir kez doldurulur (sonra 00:00 / üyelik değişince güncellenir)
+    if (!ctx0.isTest && !seniorsDone.has(ctx0.worldId)) {
+      await safe(ctx0, 'seniors-v1579', async () => {
+        const gs = await ctx0.ref.gangs().where('status', '==', 'active').limit(30).get();
+        for (const g of gs.docs) if (!Array.isArray(g.data().seniors)) await core.refreshGangRoster(ctx0, g.id);
+        seniorsDone.add(ctx0.worldId);
+      });
+    }
+    // v157.9: tek seferlik — v157.4'te kurulan "Kara Kartallar" → "Kara Şahinler"
+    if (!ctx0.isTest && !renameDone.has(ctx0.worldId)) await safe(ctx0, 'rename-v1579', () => renameKaraSahinler(ctx0));
     // dağılmış çeteler
     const dis = await ctx0.ref.gangs().where('status', '==', 'disbanded').where('cleanupDone', '==', false).limit(20).get();
     for (const g of dis.docs) await safe(ctx0, `cleanup:${g.id}`, () => cleanupGang(ctx0, g.id));
@@ -1900,6 +1912,43 @@ export function createClock(core, actions) {
   //     sonraki 2 → ortadakiler (1, 4); yeni 2 çete → en uzaktakiler (2, 5)
   //   gangs/{id}.hqSlot (0–5) — istemci hangarı buradan bulur. Bayrak: meta/hqSlots.
   // ---------------------------------------------------------------------------
+  // v157.9 — karargah atamasıyla kurulan "Kara Kartallar" çetesinin adı "Kara Şahinler" olur (tek seferlik).
+  // Sadece meta/hqSlots'ta kayıtlı (oyunun kurduğu) çete değişir; ad dizini (gangNames) de taşınır.
+  async function renameKaraSahinler(ctx) {
+    const OLD = 'Kara Kartallar';
+    const NEW = 'Kara Şahinler';
+    const metaRef = ctx.ref.world().collection('meta').doc('rename1579');
+    const slotsRef = ctx.ref.world().collection('meta').doc('hqSlots');
+    const res = await db.runTransaction(async (tx) => {
+      const [meta, slotsMeta] = await Promise.all([tx.get(metaRef), tx.get(slotsRef)]);
+      if (meta.exists && meta.data()?.done) return { skipped: true };
+      if (!slotsMeta.exists || !slotsMeta.data()?.done) return { waiting: true }; // atama henüz yapılmadı (yeni ad zaten kullanılacak)
+      const ids = Object.keys(slotsMeta.data().slots || {});
+      const snaps = ids.length ? await Promise.all(ids.map((id) => tx.get(ctx.ref.gang(id)))) : [];
+      const target = snaps.find((g) => g.exists && g.data()?.name === OLD);
+      if (!target) {
+        tx.set(metaRef, { done: true, atMs: ctx.now, renamed: null });
+        return { renamed: null };
+      }
+      const newKey = core.nameKeyOf(NEW);
+      const oldKey = target.data().nameKey || core.nameKeyOf(OLD);
+      const taken = await tx.get(ctx.ref.gangName(newKey));
+      if (taken.exists && taken.data()?.gangId !== target.id) {
+        tx.set(metaRef, { done: true, atMs: ctx.now, renamed: null, reason: 'name-taken' });
+        return { renamed: null, reason: 'name-taken' };
+      }
+      const oldIdx = await tx.get(ctx.ref.gangName(oldKey));
+      if (oldIdx.exists && oldIdx.data()?.gangId === target.id) tx.delete(ctx.ref.gangName(oldKey));
+      tx.set(ctx.ref.gangName(newKey), { gangId: target.id });
+      tx.update(target.ref, { name: NEW, nameKey: newKey });
+      tx.set(metaRef, { done: true, atMs: ctx.now, renamed: target.id });
+      return { renamed: target.id };
+    });
+    if (!res?.waiting) renameDone.add(ctx.worldId);
+    if (res && !res.skipped && !res.waiting) ctx.logs.push({ gang: 'rename_v1579', world: ctx.worldId, ...res });
+    return res;
+  }
+
   async function ensureHqSlots(ctx) {
     const metaRef = ctx.ref.world().collection('meta').doc('hqSlots');
     const res = await db.runTransaction(async (tx) => {
@@ -1907,7 +1956,7 @@ export function createClock(core, actions) {
       if (meta.exists && meta.data()?.done) return { skipped: true };
       const gs = await tx.get(ctx.ref.gangs().where('status', '==', 'active').limit(30));
       const NEW = [
-        { name: 'Kara Kartallar', logo: { emoji: '🦅', color: '#ffd23f', bg: '#231c05' }, note: 'Gökyüzü bizim, şehir de bizim olacak.' },
+        { name: 'Kara Şahinler', logo: { emoji: '🦅', color: '#ffd23f', bg: '#231c05' }, note: 'Gökyüzü bizim, şehir de bizim olacak.' }, // v157.9: eski adı Kara Kartallar
         { name: 'Gece Kurtları', logo: { emoji: '🐺', color: '#19e8ff', bg: '#06222b' }, note: 'Gece çökünce sokaklar bizim.' },
       ];
       const nameSnaps = await Promise.all(NEW.map((n) => tx.get(ctx.ref.gangName(core.nameKeyOf(n.name)))));
@@ -1946,5 +1995,5 @@ export function createClock(core, actions) {
     return res;
   }
 
-  return { runClock, runDailyTick, cleanupGang, ensureHqSlots, resolveTruckTrip, productForSunday, dateKeyOf, processBets, resolveVoteEarly, safe, ensureSundayPowerOwnV111, ensureRouteSaturdayV136 };
+  return { runClock, runDailyTick, cleanupGang, ensureHqSlots, renameKaraSahinler, resolveTruckTrip, productForSunday, dateKeyOf, processBets, resolveVoteEarly, safe, ensureSundayPowerOwnV111, ensureRouteSaturdayV136 };
 }

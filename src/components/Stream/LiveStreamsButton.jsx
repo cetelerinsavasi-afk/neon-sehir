@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom';
 import { useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBackClose } from '../../lib/backStack';
@@ -52,7 +53,8 @@ export default function LiveStreamsButton({ onWatch, className = '', slotBottom 
         CANLI
         {list.length > 1 && <b>{list.length}</b>}
       </button>
-      {open && (
+      {open &&
+        createPortal(
         <div className="st-sheet-bg" onClick={() => setOpen(false)}>
           <div className="st-sheet st-list" onClick={(e) => e.stopPropagation()}>
             <p className="st-sheet-title">🔴 Canlı yayınlar</p>
@@ -83,8 +85,9 @@ export default function LiveStreamsButton({ onWatch, className = '', slotBottom 
               </div>
             ))}
           </div>
-        </div>
-      )}
+        </div>,
+          document.body
+        )}
     </>
   );
 }

@@ -13,6 +13,11 @@ import { GangProvider, useDocData, useGang } from './GangContext';
 import { useGangAlertsCtx } from './alerts';
 import { GangViews, IntelViews, useOfficialSeat } from './GangShell';
 import { useBelediyeChatUnread } from '../../hooks/useBelediyeChatUnread';
+import { GangKasa } from './tabs/ListTab';
+import { MemberCard, RankTree } from './shared';
+import { Card, Logo } from './ui';
+import { BiatTag } from './Biat';
+import { fmt, productOf } from './gangConstants';
 import './Gangs.css';
 
 
@@ -62,7 +67,61 @@ function Inner({ org }) {
   );
 }
 
-export default function OrgPanelSheet({ org = 'gang', onClose, onEnterHq }) {
+// v157.9 — başka çetenin karargahında: o çetenin profili (herkese açık bilgiler, kasa 00:00 hâli)
+export function GangProfile({ gangId }) {
+  const { path } = useGang();
+  const { data: g, loading } = useDocData(path(`gangs/${gangId}`));
+  if (loading) return <div className="gx-loading">Yükleniyor…</div>;
+  if (!g) return <div className="gx-loading">Çete bulunamadı.</div>;
+  const seniors = Array.isArray(g.seniors) ? g.seniors : [];
+  const by = (r) => seniors.filter((m) => m.rank === r).map((m) => ({ ...m, id: m.uid }));
+  const card = (m) => <MemberCard key={m.id} name={m.name} rank={m.rank} prestige={m.prestige} avatar={m.avatar} big={m.rank === 'baba'} />;
+  return (
+    <div className="gx-page gx-gprof">
+      <Card className="gx-gprof-head">
+        <Logo logo={g.logo} size={56} />
+        <div className="gx-gprof-main">
+          <div className="gx-gang-card-name">{g.name}</div>
+          {g.note && <div className="gx-note-quote">“{g.note}”</div>}
+        </div>
+      </Card>
+      <div className="gx-gprof-stats">
+        <div>
+          <span>Kasa</span>
+          <GangKasa gang={g} />
+        </div>
+        <div>
+          <span>Güç</span>
+          <b>⚔️ {fmt(g.lastSundayPower || 0)}</b>
+        </div>
+        <div>
+          <span>Üye</span>
+          <b>👥 {fmt(g.memberCount || 0)}</b>
+        </div>
+      </div>
+      {(g.biat?.name || (g.routeProducts || []).length > 0) && (
+        <div className="gx-gang-card-meta gx-gprof-extra">
+          {g.biat?.name && <BiatTag name={g.biat.name} logo={g.biat.logo} />}
+          {(g.routeProducts || []).map((p) => (
+            <span key={p} title={productOf(p).label}>
+              🛣️{productOf(p).emoji}
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="gx-section-head">
+        <span>👑 Kıdemli kadro</span>
+      </div>
+      {seniors.length ? (
+        <RankTree rows={[by('baba'), by('sagkol'), by('kidemli')]} renderCard={card} />
+      ) : (
+        <div className="gx-loading">{g.memberCount ? 'Kadro 00:00’da görünür.' : 'Henüz üyesi yok.'}</div>
+      )}
+    </div>
+  );
+}
+
+export default function OrgPanelSheet({ org = 'gang', onClose, onEnterHq, profileGang = null }) {
   const { user } = useAuth();
   const { data: config } = useDocData(user ? 'gangSystem/config' : null);
   const worldId = config?.liveOpen ? config.liveWorldId : null;
@@ -70,19 +129,24 @@ export default function OrgPanelSheet({ org = 'gang', onClose, onEnterHq }) {
   const nav = useMemo(() => (onEnterHq ? { enterHq: onEnterHq } : null), [onEnterHq]);
   // v146.1: body'ye taşınır — mekânın alt araç çubukları / dönüşümlü kapsayıcılar
   // paneli ya da sohbet kutusunu, bağış penceresini örtmesin.
+  // v157.9: alttan açılan, açılıp kapanabilen panel (mekân arkada görünür kalır)
+  const [min, setMin] = useState(false);
+  const title = profileGang ? `🏴 ${profileGang.name || 'Çete'}` : org === 'intel' ? '🚓 Polis Teşkilatı' : '🏴 Çete';
   return createPortal(
-    <div className="gx-hq-panel" role="dialog" aria-label={org === 'intel' ? 'Polis Teşkilatı' : 'Çete'} onPointerDown={(e) => e.stopPropagation()}>
+    <div className={`gx-hq-panel gx-hq-sheet${min ? ' min' : ''}`} role="dialog" aria-label={org === 'intel' ? 'Polis Teşkilatı' : 'Çete'} onPointerDown={(e) => e.stopPropagation()}>
       <div className="gx-full-top">
         <button className="gx-full-close" onClick={onClose} aria-label="Kapat">
           ✕
         </button>
-        <span className="gx-full-title">{org === 'intel' ? '🚓 Polis Teşkilatı' : '🏴 Çete'}</span>
+        <button className="gx-full-title gx-sheet-toggle" onClick={() => setMin((v) => !v)}>
+          {title} <i>{min ? '▲' : '▼'}</i>
+        </button>
       </div>
       <div className="gx-root gx-hq-panel-root">
         {worldId ? (
           <GangProvider mode={mode}>
             <HqNavContext.Provider value={nav}>
-              <Inner org={org} />
+              {profileGang ? <GangProfile gangId={profileGang.id} /> : <Inner org={org} />}
             </HqNavContext.Provider>
           </GangProvider>
         ) : (

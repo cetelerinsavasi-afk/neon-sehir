@@ -228,6 +228,7 @@ function GameShell() {
   const [belediyeOpen, setBelediyeOpen] = useState(false); // v108 — başkanlık makam odası
   const [vendorRegion, setVendorRegion] = useState(null); // v145 — seyyar satıcı 3D mekânı (regions.js kaydı)
   const [city, setCity] = useState(null); // v147 — gezilebilir şehir: { spawn, k }
+  const [cityCovered, setCityCovered] = useState(false); // v157.9: karargah düzenlenirken şehir arkada bekler
   const [cityReturn, setCityReturn] = useState(null); // v147.1 — şehirden açılan liste/mekân kapanınca şehre (o kapıya) dön
   // v77 performans: kök bileşen sadece HUD alanları değişince yeniden çizilir
   const hudKey = usePlayerSelect(selectHud);
@@ -533,6 +534,10 @@ function GameShell() {
   );
   // v157.4: ana sayfa yok — oyun şehirde açılır (evin önünde); hiçbir mekân / ekran açık değilse
   // oyuncu her zaman şehre (girdiği kapının önüne, yoksa evin önüne) döner → asla boşta kalmaz
+  // v157.9: şehrin üstünde açılan ekranlar (ev, işletme, karargah düzenleme) kapanınca şehir devam eder
+  useEffect(() => {
+    if (cityCovered && (!somethingOpen || !city)) setCityCovered(false);
+  }, [cityCovered, somethingOpen, city]);
   useEffect(() => {
     if (city || somethingOpen) return;
     openCityRef.current(cityReturn || { region: 'ev', out: true });
@@ -704,6 +709,7 @@ function GameShell() {
             onClose={() => {
               setGangsOpen(false);
               setGangsHq(null);
+              setCityCovered(false);
             }}
           />
         </GangAlertsContext.Provider>
@@ -826,10 +832,12 @@ function GameShell() {
           spawn={city.spawn}
           onClose={() => setCity(null)}
           gangAlerts={gangAlerts}
+          covered={cityCovered}
           onEnterHq={(kind, slot) => {
-            setCity(null);
-            // v157.4: karargahı düzenleyip çıkınca şehirde yine karargahın içine dönülür
+            // v157.9: şehir kapanmaz — düzenleme ekranı şehrin üstünde açılır, şehir bekler (anında açılır,
+            // dönüşte şehir yeniden kurulmaz). Karargahın içi dönüşte yeniden okunur.
             if (Number.isInteger(slot)) setCityReturn(`hq${slot}`);
+            setCityCovered(true);
             setGangsHq(kind);
             setGangsOpen(true);
           }}
@@ -865,13 +873,13 @@ function GameShell() {
           // v157 — şehirdeki mekânın listesinden seçilen işletmeye git (çıkınca şehre, o mekânın içine)
           // v157.8 — Ev / Ofis binasındaki listeden bir eve / ofise gir (çıkınca o binanın içine dönülür)
           onOpenHouse={(houseId, region) => {
-            setCity(null);
+            setCityCovered(true); // v157.9: şehir kapanmaz, arkada bekler (dönüşte yeniden kurulmaz)
             setCityReturn(region === 'ofis' ? 'ofis' : 'ev');
             setHouseView({ houseId });
           }}
           onOpenBiz={({ type, houseId, game, buy }) => {
             const region = BIZ_TYPES[type]?.region || 'ev';
-            setCity(null);
+            setCityCovered(true); // v157.9: şehir arkada bekler
             setCityReturn(region);
             // v157.8: listenin sağ üstündeki "+ … aç" → işletme açma penceresi doğrudan açılır
             if (buy) {

@@ -887,7 +887,9 @@ export function finishCityWorld(W, scene) {
     }
     const n = nearest(px, pz, hint);
     if (n && n.s >= S_EXIT - 30 && n.dist < 40) {
-      const lim = RAIL - 0.45 - r;
+      // v157.9: gişe meydanında bariyer yok, şeritler dış adaya kadar geniş — görünmez duvar kalktı
+      const atToll = GISES.some((G) => Math.abs(n.s - G.s) < 19);
+      const lim = (atToll ? 7.4 - 0.6 : RAIL - 0.45) - r;
       if (Math.abs(n.d) <= lim && (curY === null || Math.abs(n.y - curY) < 4)) {
         for (const G of GISES) if (Math.abs(n.s - G.s) < 8.6) for (const a of [-7.4, 0, 7.4]) if (Math.abs(n.d - a) < 0.6 + r) return false;
         return true;

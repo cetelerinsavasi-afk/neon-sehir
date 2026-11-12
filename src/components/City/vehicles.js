@@ -1294,7 +1294,21 @@ function buildBusModel(n) {
     v = l / 2,
     C = -l / 2,
     w = v - g;
-  if ((rbox(i, l - g, x - p + 0.1, c, 0.12, (w + C) / 2, (x + p) / 2 - 0.05, 0, u), g)) {
+  // v157.9: alt gövde içi boş (taban + yan / ön / arka duvar) — eskiden dolu kutuydu, üst yüzü
+  // pencere hizasında "zemin" gibi görünüp oturan yolcuları göğüslerine kadar örtüyordu
+  const fl = p + 0.17; // iç zemin
+  {
+    const bx = (w + C) / 2;
+    const bl = l - g;
+    const wt = 0.08;
+    const hh = x - p + 0.1;
+    const cy = (x + p) / 2 - 0.05;
+    box(i, bl, fl - p + 0.1, c, bx, (fl + p) / 2 - 0.05, 0, u); // taban
+    [-1, 1].forEach((sd) => rbox(i, bl, hh, wt, 0.03, bx, cy, sd * (c / 2 - wt / 2), u)); // yanlar
+    box(i, wt, hh, c - 2 * wt, C + wt / 2, cy, 0, u); // arka
+    box(i, wt, hh, c - 2 * wt, w - wt / 2, cy, 0, u); // ön
+  }
+  if (g) {
     (rbox(i, g + 0.1, 0.95, c - 0.3, 0.15, v - g / 2, p + 0.45, 0, u), rbox(i, 0.12, 0.5, c - 0.6, 0.03, v + 0.02, p + 0.4, 0, CHROME()));
     for (let ft = 0; ft < 6; ft++) box(i, 0.13, 0.025, c - 0.66, v + 0.03, p + 0.2 + ft * 0.075, 0, mat("#222", 0.5));
   }
@@ -1318,8 +1332,8 @@ function buildBusModel(n) {
     const iw = c - 0.16;
     const il = w - C - 0.3;
     const icx = (w + C) / 2;
-    box(i, il, 0.02, iw, icx, x + 0.02, 0, mat("#2b2f38", 0.95));
-    box(i, il, 0.02, 0.5, icx, x + 0.035, 0, mat("#3a3f4a", 0.9));
+    box(i, il, 0.02, iw, icx, fl + 0.01, 0, mat("#2b2f38", 0.95));
+    box(i, il, 0.02, 0.5, icx, fl + 0.025, 0, mat("#3a3f4a", 0.9));
     if (!t.deck2) {
       const ceil = new THREE.Mesh(new THREE.PlaneGeometry(il, iw), mat("#d9dde4", 0.9));
       ceil.rotation.x = PI / 2;
@@ -1333,8 +1347,8 @@ function buildBusModel(n) {
         i.add(s2);
       });
       const pole = mat("#ffd23f", 0.3, 0.6);
-      const ph = _ - x - 0.1;
-      for (let px = w - 1.6; px > C + 0.6; px -= 2.6) [-1, 1].forEach((ft) => cyl(i, 0.025, 0.025, ph, px, x + ph / 2, ft * 0.32, pole, 8));
+      const ph = _ - fl - 0.1;
+      for (let px = w - 1.6; px > C + 0.6; px -= 2.6) [-1, 1].forEach((ft) => cyl(i, 0.025, 0.025, ph, px, fl + ph / 2, ft * 0.32, pole, 8));
       [-1, 1].forEach((ft) => {
         const rail = cyl(i, 0.02, 0.02, il - 0.6, icx, _ - 0.28, ft * 0.32, pole, 8);
         rail.rotation.z = PI / 2;
@@ -1606,7 +1620,7 @@ function buildBusModel(n) {
     e.root.traverse((ft) => {
       ft.isMesh && !ft.material.transparent && ((ft.castShadow = true), (ft.receiveShadow = true));
     }),
-    { ...e, def: { name: t.name, seats: t.seats, phys: { vmax: t.vmax, acc: 3.2, grip: 5, steer: 0.82 } }, len: l, wb: ae - rt, halfW: c / 2, seatPts, seat: seatPts[0], open: true, cabin: { floor: x, roof: t.deck2 ? x + 2.2 : _ } }
+    { ...e, def: { name: t.name, seats: t.seats, phys: { vmax: t.vmax, acc: 3.2, grip: 5, steer: 0.82 } }, len: l, wb: ae - rt, halfW: c / 2, seatPts, seat: seatPts[0], open: true, cabin: { floor: fl, roof: t.deck2 ? x + 2.2 : _ } }
   );
 }
 let TRUCK_TRAILERS = {
