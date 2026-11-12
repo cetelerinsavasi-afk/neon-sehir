@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { getCachedPhoto, putCachedPhoto, photoKey, whenVisible, runPhotoJob, registerPhotoReleaser, IS_MOBILE_DEVICE } from '../../lib/photoCache';
 import { releaseSharedRenderer } from '../HouseScreen/houseEngine';
 import { createCityEngine } from './cityEngine.js';
+import { prepareCityWorld } from './world/outerWorld.js';
 import { getLiveCityEngine, onLiveCityChange } from './cityPhotoHub.js';
 import { drawPhotoOverlay, ensureOverlayFonts, PHOTO_ASPECT } from '../../../functions/photoOverlay.js';
 
@@ -40,15 +41,19 @@ onLiveCityChange((e) => {
   // şehre girildi: ekran dışı motor gereksiz (v149: kuyrukta — o an çizilen fotoğraf bozulmasın)
   if (e && off) runPhotoJob('city-release', release);
 });
-function engine() {
+// v157: dünya (şehir + otoyol + Kervankent) adım adım kurulur — ana iş parçacığı donmasın
+async function engine() {
   const live = getLiveCityEngine();
   if (live) return live;
   clearTimeout(idleT);
   if (!off) {
+    const world = await prepareCityWorld({ mobile: IS_MOBILE_DEVICE });
+    const live2 = getLiveCityEngine();
+    if (live2) return live2; // kurulurken şehre girildi
     offHost = document.createElement('div');
     offHost.style.cssText = 'position:fixed;left:-10000px;top:0;width:540px;height:960px;pointer-events:none;';
     document.body.appendChild(offHost);
-    off = createCityEngine(offHost, { snapshot: true, uid: '__photo__' });
+    off = createCityEngine(offHost, { snapshot: true, uid: '__photo__', world });
   }
   return off;
 }
@@ -98,7 +103,7 @@ function render(att, key) {
       const h = vert ? Math.round((w * 16) / 9) : w;
       let cam = cropCam(att.cam || {}, a, vert ? PHOTO_ASPECT : 1);
       if (att.sq && att.vert) cam = cropCam(cropCam(att.cam || {}, a, PHOTO_ASPECT), PHOTO_ASPECT, 1);
-      const eng = engine();
+      const eng = await engine();
       try {
         const url = await eng.renderAtt({ ...att, cam }, w, h);
         if (!att.overlay) return url;

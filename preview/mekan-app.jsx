@@ -12,6 +12,10 @@ import '../src/styles/theme.css';
 const q = new URLSearchParams(location.search);
 fakeDb.doc(`users/${PREVIEW_UID}`).set({ displayName: 'Önizleme', gold: 50000, suspicion: 22 }, { merge: true });
 fakeDb.doc(`weapons/${PREVIEW_UID}_w1`).set({ ownerId: PREVIEW_UID, power: Number(q.get('power') || 6500), lifeDays: 10 });
+if (q.get('daily')) {
+  const d = new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10);
+  fakeDb.doc(`dailyActions/${PREVIEW_UID}_${d}`).set({ heist: { seyyar_satici_1: true }, vendorPurchases: { seyyar_satici_2: true } });
+}
 if (q.get('plans')) {
   const exp = { toMillis: () => Date.now() + 864e5 };
   const av = (c, h) => ({ gender: 'erkek', hairStyle: h, clothing: 'hoodie', clothColor: c });

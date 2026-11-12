@@ -320,3 +320,85 @@ body.ns-city-open .race-bubble { z-index: 96; }
 .cs-market-item em { font-style: normal; font-size: 11px; font-weight: 800; color: #ffd84a; white-space: nowrap; }
 .cs-market-item:disabled { opacity: 0.45; }
 .cs-market-note { margin: 4px 2px 8px; font-size: 11px; color: #8fa0b8; }
+
+/* =========================================================================
+   v157 — gezilebilir şehir: iki yan sütun, mekân düğmeleri, işletme listesi,
+   yatay mod, yükleme çubuğu, sürerken sohbet
+   ========================================================================= */
+.cs-load-bar { width: 180px; height: 6px; border-radius: 99px; background: rgba(255,255,255,0.1); overflow: hidden; margin-top: 4px; }
+.cs-load-bar i { display: block; height: 100%; background: linear-gradient(90deg, #19e8ff, #ffd23f); transition: width 0.25s ease; }
+/* sol sütun (araba · koş · hareketler · yatay mod) — sağ sütunla aynı hizada */
+.cs-left {
+  position: absolute; left: 12px; bottom: calc(150px + var(--hs-safe-b, 0px));
+  display: flex; flex-direction: column; gap: 9px; z-index: 11;
+}
+.cs-left .hs-side-btn { display: grid; place-items: center; color: #f3e3b0; }
+.cs-left .cs-emotes { position: absolute; left: 60px; bottom: 0; right: auto; }
+.cs-root:not(.driving) .hs-side.cs-right { bottom: calc(150px + var(--hs-safe-b, 0px)); }
+/* etkileşim düğmeleri ortada (yan sütunların arasında) */
+.cs-root .hs-actions { left: 50%; transform: translateX(-50%); align-items: center; max-width: calc(100% - 150px); bottom: calc(154px + var(--hs-safe-b, 0px)); }
+.cs-root .hs-actions .hs-act { white-space: nowrap; }
+/* mekân düğmeleri: üst çubuğun hemen altında, ortada */
+.cs-venue-bar {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  top: calc(66px + var(--hs-safe-t, 0px)); z-index: 20;
+  display: flex; gap: 8px; max-width: calc(100% - 270px); flex-wrap: wrap; justify-content: center;
+}
+@media (max-width: 560px) {
+  .cs-venue-bar { top: calc(198px + var(--hs-safe-t, 0px)); max-width: calc(100% - 24px); }
+}
+.cs-venue-btn {
+  padding: 9px 14px; border-radius: 14px; border: 1px solid rgba(25, 232, 255, 0.6);
+  background: rgba(6, 18, 30, 0.88); color: #dff9ff; font-weight: 800; font-size: 14px; white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.45); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.cs-venue-btn i { font-style: normal; font-size: 10px; opacity: 0.7; margin-left: 4px; }
+.cs-venue-btn.on { background: rgba(25, 232, 255, 0.22); }
+.cs-venue-btn.heist { border-color: #ff4fa3; color: #ffc2e0; background: rgba(60, 8, 34, 0.9); }
+.cs-venue-btn:active { transform: scale(0.96); }
+/* açılıp kapanan işletme listesi */
+.cs-biz-panel {
+  position: absolute; left: 50%; transform: translateX(-50%); z-index: 21;
+  top: calc(116px + var(--hs-safe-t, 0px)); width: min(calc(100% - 24px), 420px);
+  max-height: min(52vh, 460px); overflow-y: auto; padding: 8px;
+  border-radius: 16px; background: rgba(10, 12, 22, 0.94); border: 1px solid rgba(25, 232, 255, 0.35);
+  box-shadow: 0 14px 36px rgba(0,0,0,0.55); animation: hs-pop 0.15s ease-out;
+}
+@media (max-width: 560px) { .cs-biz-panel { top: calc(246px + var(--hs-safe-t, 0px)); max-height: 44vh; } }
+.cs-biz-list { display: flex; flex-direction: column; gap: 6px; }
+.cs-biz-list .hh-row { margin: 0; }
+.cs-biz-empty { margin: 8px; color: #8a93a8; font-weight: 700; text-align: center; }
+/* oyunun mekân katmanı (camii, banka…): menüleri şehrin üst göstergelerinin altında */
+.cs-venue-layer .v3-menu { top: calc(150px + var(--hs-safe-t, 0px)); }
+.cs-venue-layer .v3-menu.right { top: calc(200px + var(--hs-safe-t, 0px)); }
+@media (max-width: 560px) { .cs-venue-layer .v3-menu { top: calc(178px + var(--hs-safe-t, 0px)); } .cs-venue-layer .v3-menu.right { top: calc(232px + var(--hs-safe-t, 0px)); } }
+.cs-venue-layer.away .v3-menu { display: none; }
+/* sürerken sohbet: üstte, küçük */
+.hs-chat.cs-drive-chat { left: 50%; right: auto; transform: translateX(-50%); width: min(calc(100% - 180px), 420px); bottom: auto; top: calc(124px + var(--hs-safe-t, 0px)); z-index: 30; }
+@media (max-width: 560px) { .hs-chat.cs-drive-chat { width: calc(100% - 24px); top: calc(176px + var(--hs-safe-t, 0px)); } }
+/* yatay mod: yön kilitlenemezse ekran yazılımla 90° döner (telefon yan tutulur) */
+.cs-root.cs-rotated {
+  position: fixed; top: 0; left: 100vw; width: 100vh; height: 100vw;
+  transform: rotate(90deg); transform-origin: top left;
+}
+.cs-root.cs-land .cs-left, .cs-root.cs-land:not(.driving) .hs-side.cs-right { bottom: calc(88px + var(--hs-safe-b, 0px)); gap: 7px; }
+.cs-root.cs-land .hs-side-btn { width: 44px; height: 44px; }
+.cs-root.cs-land .hs-actions { bottom: calc(92px + var(--hs-safe-b, 0px)); }
+.cs-root.cs-land .hs-chat:not(.cs-drive-chat) { left: 70px; right: 70px; }
+/* v157 — yeni harita */
+.cs-mini { background: #e8ecdf; border: 3px solid #fff; }
+.cs-bigmap2 { position: absolute; inset: 0; z-index: 45; background: rgba(5, 6, 14, 0.55); display: grid; place-items: center; }
+.cs-bigmap2-wrap { position: relative; width: min(96vw, 1100px); height: min(86vh, 820px); border-radius: 18px; overflow: hidden; border: 3px solid #fff; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+.cs-bigmap2 canvas { width: 100%; height: 100%; display: block; touch-action: none; background: #e8ecdf; cursor: grab; }
+.cs-bm-tabs { position: absolute; top: 10px; left: 10px; display: flex; gap: 4px; background: rgba(255,255,255,0.94); padding: 4px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.cs-bm-tabs button, .cs-bm-close, .cs-bm-zoom button { border: 0; cursor: pointer; font-weight: 800; font-size: 13px; border-radius: 9px; padding: 8px 11px; background: transparent; color: #3a3530; }
+.cs-bm-tabs button.on { background: #2f7cf6; color: #fff; }
+.cs-bm-close { position: absolute; top: 10px; right: 10px; width: 40px; height: 40px; padding: 0; font-size: 16px; background: rgba(255,255,255,0.94); box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.cs-bm-zoom { position: absolute; right: 10px; bottom: 14px; display: flex; flex-direction: column; gap: 4px; background: rgba(255,255,255,0.94); padding: 4px; border-radius: 12px; }
+.cs-bm-zoom button { font-size: 20px; width: 40px; height: 40px; padding: 0; }
+@media (max-width: 420px) { .cs-bm-tabs button { padding: 7px 8px; font-size: 12px; } }
+/* v157 — tır / otobüs: yakın / uzak mesafe seçimi */
+.cs-job-range { display: flex; gap: 8px; }
+.cs-job-range .cs-job-start { flex: 1; min-width: 0; }
+.cs-job-start small { font-size: 11px; font-weight: 800; opacity: 0.75; }
+.cs-job-start.far { background: linear-gradient(135deg, rgba(25, 232, 255, 0.95), rgba(47, 124, 246, 0.95)); border-color: rgba(25, 232, 255, 0.7); color: #031726; }

@@ -31,30 +31,30 @@ test('meslek: işi sunucu seçer, en kısa süreden önce bitmez, kazanç ortala
   const d = await ops.jobDone('u', { vehicleId: 't', runId: r.run.id, t: r.run.par, hits: 0 });
   assert.ok(d.total > 3000 && d.total < 7000, `kazanç ${d.total}`);
   assert.equal((await db.doc('users/u').get()).data().gold, d.total);
-  assert.equal(d.left, 9);
+  assert.equal(d.left, 4); // v157: tır şehir içi günde 5
   // aynı iş ikinci kez ödenmez
   await assert.rejects(ops.jobDone('u', { vehicleId: 't', runId: r.run.id, t: r.run.par, hits: 0 }), /no-run/);
 });
 
-test('meslek: haklar OYUNCU bazlı (10 tır alan da günde 10 sevkiyat), ertesi gün yenilenir', async () => {
+test('meslek: haklar OYUNCU bazlı (10 tır alan da günde 5 sevkiyat), ertesi gün yenilenir', async () => {
   const { db, clock, ops } = setup();
   await db.doc('users/u').set({ gold: 0 });
   await db.doc('vehicles/t1').set({ ownerId: 'u', catalogId: 11, lifeDays: 20 });
   await db.doc('vehicles/t2').set({ ownerId: 'u', catalogId: 11, lifeDays: 20 });
   await db.doc('vehicles/b').set({ ownerId: 'u', catalogId: 12, lifeDays: 20 });
-  for (let i = 0; i < 10; i++) {
+  for (let i = 0; i < 5; i++) {
     const r = await ops.jobStart('u', { vehicleId: i % 2 ? 't1' : 't2' });
     clock.t += r.run.par * 1000;
     await ops.jobDone('u', { vehicleId: i % 2 ? 't1' : 't2', runId: r.run.id, t: r.run.par, hits: 1 });
   }
   await assert.rejects(ops.jobStart('u', { vehicleId: 't1' }), /job-limit/);
   await assert.rejects(ops.jobStart('u', { vehicleId: 't2' }), /job-limit/);
-  // otobüs ayrı meslek: günde 2 sefer
+  // otobüs ayrı meslek: v157 günde 1 şehir içi sefer
   const b1 = await ops.jobStart('u', { vehicleId: 'b' });
-  assert.equal(b1.daily, 2);
+  assert.equal(b1.daily, 1);
   clock.t += 26 * 3600_000;
   const r = await ops.jobStart('u', { vehicleId: 't1' });
-  assert.equal(r.left, 10);
+  assert.equal(r.left, 5);
 });
 
 test('meslek: sadece sahibi, ticari araç, ilandaki araç çalışmaz', async () => {

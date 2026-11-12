@@ -253,6 +253,10 @@
   color: var(--neon-cyan);
   border-color: var(--neon-cyan);
 }
+.sg-tag.dn {
+  color: #ffb347;
+  border-color: #ffb347;
+}
 .sg-badge {
   position: absolute;
   top: -7px;

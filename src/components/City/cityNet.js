@@ -19,7 +19,7 @@ import { app } from '../../firebase';
 
 const DB_URL = import.meta.env.VITE_FIREBASE_DATABASE_URL;
 export const CELL = 64;
-const OFF = 192; // dünya → pozitif hücre numarası
+const OFF = 3000; // dünya → pozitif hücre numarası (v157: otoyol + Kervankent; sunucu functions/cityPhoto.js ile AYNI)
 export const cellOf = (x, z) => `${Math.max(0, Math.floor((x + OFF) / CELL))}_${Math.max(0, Math.floor((z + OFF) / CELL))}`;
 const neighbors = (cell) => {
   const [a, b] = cell.split('_').map(Number);

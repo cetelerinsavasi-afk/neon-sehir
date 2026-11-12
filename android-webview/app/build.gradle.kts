@@ -41,8 +41,8 @@ android {
         targetSdk = 36
         // v155: Zümrüt Mağazası (Google Play Faturalandırma). UA eki (NeonSehirApp/15) ve açılış
         // adresi (av=15) BuildConfig.VERSION_CODE'dan türetilir — başka yere elle yazılmaz.
-        versionCode = 15
-        versionName = "1.2.0"
+        versionCode = 16
+        versionName = "1.2.1"
 
         buildConfigField("String", "WEB_CLIENT_ID", "\"$webClientId\"")
         buildConfigField("String", "SITE_HOST", "\"cetelerinsavasi.com\"")
@@ -88,6 +88,8 @@ android {
 kotlin {
     compilerOptions {
         jvmTarget.set(JvmTarget.JVM_17)
+        // Billing 9.x Kotlin 2.3 meta verisiyle derlenmis; projedeki Kotlin 2.1.20 bunu okuyabilsin diye.
+        freeCompilerArgs.add("-Xskip-metadata-version-check")
     }
 }
 
@@ -125,7 +127,7 @@ dependencies {
     // Kodda sadece geri çağrı (callback) API'leri var: "billing-ktx" Kotlin 2.1.20 ile derlenmezse
     // bu satırı  implementation("com.android.billingclient:billing:9.1.0")  yap (başka değişiklik gerekmez).
     // Kotlin sürümünü YÜKSELTME.
-    implementation("com.android.billingclient:billing-ktx:9.1.0")
+    implementation("com.android.billingclient:billing:9.1.0")
 
     testImplementation("junit:junit:4.13.2")
 }

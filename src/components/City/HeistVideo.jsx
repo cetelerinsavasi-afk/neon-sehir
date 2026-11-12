@@ -9,6 +9,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createCityEngine } from './cityEngine';
+import { prepareCityWorld } from './world/outerWorld.js';
+import { IS_MOBILE_DEVICE } from '../../lib/photoCache';
 import { VENDORS } from '../../../functions/vendorData.js';
 import { heistOutcomeOf, heistSceneOf, isVendorHeist } from '../HeistPanel/heistVideo';
 import './City.css';
@@ -94,21 +96,26 @@ export default function HeistVideo({ job, onClose }) {
       setPhase('play');
     };
 
-    try {
-      eng = createCityEngine(stageRef.current, {
-        uid: 'heist_me',
-        avatar: me.avatar || null,
-        name: me.name || 'Sen',
-        spawn: vendor ? venueKey || 'ev' : job.target,
-        onReady: () => {
-          run().catch(() => finish());
-        },
+    // v157: dünya adım adım kurulur (ana iş parçacığı donmasın), sonra motor
+    prepareCityWorld({ mobile: IS_MOBILE_DEVICE })
+      .then((world) => {
+        if (closed || !stageRef.current) return;
+        eng = createCityEngine(stageRef.current, {
+          uid: 'heist_me',
+          avatar: me.avatar || null,
+          name: me.name || 'Sen',
+          spawn: vendor ? venueKey || 'ev' : job.target,
+          world,
+          onReady: () => {
+            run().catch(() => finish());
+          },
+        });
+      })
+      .catch((e) => {
+        console.error('Soygun videosu kurulamadı:', e);
+        // grafik kurulamazsa: sonucu bekle, video olmadan kapat
+        server.then(() => finish());
       });
-    } catch (e) {
-      console.error('Soygun videosu kurulamadı:', e);
-      // grafik kurulamazsa: sonucu bekle, video olmadan kapat
-      server.then(() => finish());
-    }
     return () => {
       closed = true;
       try {

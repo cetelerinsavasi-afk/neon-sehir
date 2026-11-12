@@ -20,7 +20,7 @@ const selectHud = (p) => `${p?.suspicion ?? 0}|${p?.reputation ?? 0}|${p?.gold ?
 import { useMyActiveRaceRoom } from './hooks/useMyActiveRaceRoom';
 import { useFirestoreResume } from './hooks/useFirestoreResume';
 import { regions } from './data/regions';
-import { BIZ_BY_REGION } from '../functions/businessCatalogData.js';
+import { BIZ_BY_REGION, BIZ_TYPES } from '../functions/businessCatalogData.js';
 import { vendorVenueKey, VENDORS } from '../functions/vendorData.js';
 import CityPegman from './components/City/CityPegman'; // v147.3 — sürükle-bırak ile şehre gir
 import { IS_ANDROID_APP } from './lib/platform';
@@ -303,7 +303,14 @@ function GameShell() {
     }
   }, [myActiveRoom?.status]);
 
-  const handleRegionClick = (regionId, regionMeta) => {
+  // v157 — haritadaki mekânlar şehrin İÇİNDE: haritadan tıklayınca şehirdeki binanın içine girilir.
+  // (Şehrin içindeki "Barlar / Evler…" düğmesinden gelince fromCity: listeler / ekranlar açılır.)
+  const CITY_VENUE_REGIONS = new Set(['camii', 'karakol', 'banka', 'spor_salonu', 'belediye', 'silah_magazasi', 'araba_galerisi', 'fabrika', 'internet_kafe', 'modifiye_garaji', 'casino', 'bar', 'cafe', 'ev', 'liman_depo']);
+  const handleRegionClick = (regionId, regionMeta, { fromCity = false } = {}) => {
+    if (!fromCity && CITY_VENUE_REGIONS.has(regionMeta?.id || regionId)) {
+      openCity(regionMeta?.id || regionId);
+      return;
+    }
     // v66: "Ev" → Evler ekranı (ev satın al, evlerim, girebileceğim evler).
     // Profil alttaki 5. sekmede (👤).
     if (regionMeta?.screen === 'ev') {
@@ -670,6 +677,8 @@ function GameShell() {
       {businessView && (
         <BusinessHub
           type={businessView.type}
+          initialHouseId={businessView.houseId || null}
+          autoGame={Boolean(businessView.autoGame)}
           onClose={() => setBusinessView(null)}
           onOpenGameVenue={(t) => {
             const open = { silahci: setWeaponShopOpen, galeri: setDealershipOpen, modifiye: setTuningGarageOpen, gazino: setCasinoOpen }[t || businessView.type];
@@ -809,7 +818,20 @@ function GameShell() {
             setCity(null);
             setCityReturn(rid);
             const r = regions.find((x) => x.id === rid);
-            if (r) handleRegionClick(r.id, r);
+            if (r) handleRegionClick(r.id, r, { fromCity: true });
+          }}
+          // v157 — şehirdeki mekânın listesinden seçilen işletmeye git (çıkınca şehre, o mekânın içine)
+          onOpenBiz={({ type, houseId, game }) => {
+            const region = BIZ_TYPES[type]?.region || 'ev';
+            setCity(null);
+            setCityReturn(region);
+            if (game) {
+              const open = { silahci: setWeaponShopOpen, galeri: setDealershipOpen, modifiye: setTuningGarageOpen, gazino: setCasinoOpen }[type];
+              if (open) open(true);
+              else setBusinessView({ type, autoGame: true });
+              return;
+            }
+            setBusinessView({ type, houseId });
           }}
           onOpenHeist={(t) => {
             setCity(null);

@@ -47,6 +47,10 @@ import ShadyDealPanel from '../ShadyDeal/ShadyDealPanel';
 import SaleToast from '../ShadyDeal/SaleToast';
 import { EMOTES } from '../HouseScreen/houseEngine';
 import { createCityEngine } from './cityEngine.js';
+import { prepareCityWorld } from './world/outerWorld.js';
+import CityBizList from './CityBizList';
+import VenueLayer from '../Venue3D/VenueLayer';
+import { IS_MOBILE_DEVICE } from '../../lib/photoCache';
 import { createCityNet } from './cityNet.js';
 import { MAP_SIZE, buildMapping } from './cityMapMath.js';
 import { setLiveCityEngine } from './cityPhotoHub.js';
@@ -66,6 +70,27 @@ const FactoryScreen = lazy(() => import('../FactoryScreen/FactoryScreen'));
 const RaceTrackScreen = lazy(() => import('../RaceTrackScreen/RaceTrackScreen'));
 // kapıdan girilince şehir içinde panel olarak açılan mekânlar
 const IN_CITY_REGIONS = { fabrika: '🏭 Fabrika', yaris_pisti: '🏁 Yarış Pisti' };
+// v157 — haritadaki mekânın içindeyken çıkan düğmeler. Şehirdeki bina görünüştür: listeden
+// istenen işletmeye gidilir (biz), oyunun tek mekânlarında işlemler içeride yapılır (game),
+// soyulabilen mekânda "Soygun yap" içeride çıkar (heist).
+const VENUE_UI = {
+  bar: { biz: 'bar', label: '🍸 Barlar' },
+  cafe: { biz: 'cafe', label: '☕ Cafeler' },
+  netkafe: { biz: 'internet', label: '🖥️ İnternet kafeler', heist: 'internet_kafe' },
+  spor: { biz: 'spor', label: '🏋️ Spor salonları' },
+  galeri: { biz: 'galeri', label: '🚗 Araba galerileri', heist: 'araba_galerisi' },
+  silah: { biz: 'silahci', label: '🔫 Silahçılar', heist: 'silah_magazasi' },
+  modifiye: { biz: 'modifiye', label: '🔧 Modifiye garajları' },
+  casino: { biz: 'gazino', label: '🎰 Gazinolar', heist: 'casino' },
+  liman: { biz: 'depo', label: '📦 Depolar' },
+  fabrika: { inCity: 'fabrika', label: '🏭 Fabrika', heist: 'fabrika' },
+  ev: { region: 'ev', label: '🏠 Evler' },
+  banka: { game: 'banka', heist: 'banka' },
+  camii: { game: 'camii' },
+  karakol: { game: 'karakol' },
+  belediye: { game: 'belediye' },
+};
+const VENUE_TITLE = { bar: '🍸 Bar', cafe: '☕ Cafe', netkafe: '🖥️ İnternet Kafe', spor: '🏋️ Spor Salonu', galeri: '🚗 Araba Galerisi', silah: '🔫 Silah Mağazası', modifiye: '🔧 Modifiye Garajı', casino: '🎰 Casino', liman: '⚓ Liman & Depo', fabrika: '🏭 Fabrika', ev: '🏠 Ev', banka: '🏦 Banka', camii: '🕌 Camii', karakol: '🚓 Karakol', belediye: '🏛️ Belediye', hastane: '🏥 Hastane', benzinlik: '⛽ Benzinlik Market', otogar: '🚌 Otogar', otogar_kk: '🚌 Kervankent Otogarı', taksi_duragi: '🚕 Taksi Durağı' };
 const VENDOR_BY_VENUE = Object.fromEntries(Object.entries(VENDORS).map(([id, v]) => [v.venue, { id, ...v }]));
 const BUFE_MENU = [
   { id: 'sosisli', price: 200 },
@@ -197,7 +222,7 @@ function shortTeam(name) {
   return `${w[0]} ${w.slice(1).map((x) => `${x[0].toLocaleUpperCase('tr-TR')}.`).join(' ')}`;
 }
 
-export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnterRace, raceFull = false }) {
+export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnterRace, onOpenBiz, raceFull = false }) {
   const { user, loading: authLoading } = useAuth();
   // v149 — misafir (giriş yapmamış) da şehri gezer: yürür, oturur, mekân kapılarından girer.
   // Ağ (diğer oyuncular / sohbet) yok, alışveriş · araba · fotoğraf giriş ister.
@@ -235,6 +260,17 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const [inPist, setInPist] = useState(false);
   const [atPump, setAtPump] = useState(false); // v156
   const [fueling, setFueling] = useState(false); // v156 // v154: yarış pisti alanı (tribün / pit)
+  // v157 — mekânın içi / dış dünya / yükleme yüzdesi / yatay mod / sürerken sohbet
+  const [venue, setVenue] = useState(null);
+  const [place, setPlace] = useState(null);
+  const [spot, setSpot] = useState(null);
+  const [bizOpen, setBizOpen] = useState(false);
+  const [loadPct, setLoadPct] = useState(0);
+  const [landscape, setLandscape] = useState(false);
+  const [driveChat, setDriveChat] = useState(false);
+  const [gameVenueKey, setGameVenueKey] = useState(null); // oyunun mekân katmanı (VenueLayer) — çıkınca 3 sn sonra kapanır
+  const venueApiRef = useRef(null);
+  const gameVenueDef = useMemo(() => (gameVenueKey && VENUES[gameVenueKey] ? { ...VENUES[gameVenueKey], key: gameVenueKey } : null), [gameVenueKey]);
   // v154: şehir açıkken yarış ekranı / yarış balonu şehrin üstünde görünsün
   useEffect(() => {
     document.body.classList.add('ns-city-open');
@@ -325,10 +361,14 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     const st = startRef.current;
     let tries = 0;
     let t = 0;
-    const start = () => {
+    let dead = false;
+    const start = async () => {
       // v147.1: grafik kurulamazsa ekran çökmesin (eskiden ana sayfaya atıyordu) — birkaç kez dene
       try {
-        build();
+        // v157: şehir + mekânlar + dış dünya adım adım kurulur (telefonda tek uzun donma olmasın)
+        const world = await prepareCityWorld({ mobile: IS_MOBILE_DEVICE, onStep: (p) => !dead && setLoadPct(p) });
+        if (dead) return;
+        build(world);
       } catch (err) {
         console.error('Şehir kurulamadı:', err);
         try {
@@ -338,12 +378,14 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         }
         eng = null;
         tries += 1;
+        if (dead) return;
         if (tries < 3) t = setTimeout(start, 700 * tries);
         else setFatal(true);
       }
     };
-    const build = () => {
+    const build = (world) => {
       eng = createCityEngine(stageRef.current, {
+        world,
         uid,
         avatar: st.avatar,
         name: st.myName,
@@ -351,6 +393,13 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         onInteract: (z) => setZone(z),
         onTick: (s) => {
           hudRef.current = s;
+          // v157: mekânın içi / dış dünyadaki yer adı / yol üstü istasyonu
+          setVenue((v) => (v === (s.venue || null) ? v : s.venue || null));
+          setPlace((v) => (v === (s.place || null) ? v : s.place || null));
+          setSpot((v) => {
+            const k = s.spot ? s.spot.map((a) => a.id).join('|') : '';
+            return (v ? v.map((a) => a.id).join('|') : '') === k ? v : s.spot || null;
+          });
           setInStadium((v) => (v === (s.area === 'stadyum') ? v : s.area === 'stadyum'));
           setInPist((v) => (v === (s.area === 'pist') ? v : s.area === 'pist'));
           // v156: arabayla pompaların yanında mı? (⛽ Benzin al)
@@ -412,8 +461,10 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       }, 100);
     };
     setReady(false);
+    setLoadPct(0);
     t = setTimeout(start, 60);
     return () => {
+      dead = true;
       clearTimeout(t);
       clearInterval(tickT);
       net?.stop();
@@ -490,6 +541,79 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     return () => clearInterval(iv);
   }, [inStadium, curMatch]);
   const curLive = curMatch ? liveState(curMatch) : null;
+  // v157 — mekândan çıkınca liste kapanır; oyunun mekân katmanı (camii, banka…) içeride kurulur,
+  // çıkıldıktan 3 sn sonra kapanır (kapıda gidip gelince konum kaydı tekrar tekrar yazılmasın)
+  useEffect(() => {
+    setBizOpen(false);
+    const gk = VENUE_UI[venue]?.game || null;
+    if (gk) {
+      setGameVenueKey(gk);
+      return undefined;
+    }
+    const t = setTimeout(() => setGameVenueKey(null), 3000);
+    return () => clearTimeout(t);
+  }, [venue]);
+  // mekân katmanının istediği motor işlevleri (konuşma balonu, oda içi konum)
+  const venueEngRef = useRef(null);
+  if (!venueEngRef.current) {
+    venueEngRef.current = {
+      say: (id, line) => engineRef.current?.npcSay(id, line),
+      getSelfState: () => engineRef.current?.venueLocal?.() || null,
+      approach: () => false,
+      setSelfTicket: () => {},
+    };
+  }
+  // v157 — yatay mod: Android uygulamasında ekran döner; tarayıcıda tam ekran + yön kilidi,
+  // olmazsa şehir ekranı 90° çevrilir (telefon yan tutulur)
+  const [rotated, setRotated] = useState(false);
+  const toggleLandscape = async () => {
+    const on = !landscape;
+    setLandscape(on);
+    let native = false;
+    try {
+      const b = window.NeonAndroid;
+      if (b && typeof b.setOrientation === 'function') {
+        b.setOrientation(on ? 'landscape' : 'portrait');
+        native = true;
+      }
+    } catch {
+      native = false;
+    }
+    if (!native) {
+      try {
+        if (on) {
+          if (!document.fullscreenElement && document.documentElement.requestFullscreen) await document.documentElement.requestFullscreen({ navigationUI: 'hide' });
+          await window.screen?.orientation?.lock?.('landscape');
+          native = true;
+        } else {
+          window.screen?.orientation?.unlock?.();
+          if (document.fullscreenElement) await document.exitFullscreen?.();
+          native = true;
+        }
+      } catch {
+        native = false;
+      }
+    }
+    // yön kilitlenemediyse (iOS, kilitli WebView): ekran yazılımla 90° döner
+    const rot = on && !native && window.innerHeight > window.innerWidth;
+    setRotated(rot);
+    engineRef.current?.setRotated?.(rot);
+  };
+  useEffect(
+    () => () => {
+      try {
+        window.NeonAndroid?.setOrientation?.('portrait');
+      } catch {
+        /* yoksay */
+      }
+      try {
+        window.screen?.orientation?.unlock?.();
+      } catch {
+        /* yoksay */
+      }
+    },
+    []
+  );
   // kişi sayısı (yakındakiler) — 2 sn'de bir motorun haritasından
   useEffect(() => {
     if (!ready) return undefined;
@@ -505,181 +629,51 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const lots = useMemo(() => (ready ? engineRef.current?.lots || [] : []), [ready]);
   const mapping = useMemo(() => (lots.length ? buildMapping(lots) : null), [lots]);
 
-  // --- mini harita (gerçek harita resmi) ------------------------------------------------
+  // --- v157 mini harita (prototipteki çizim haritası: şehir, otoyol, Kervankent, köyler) ------------
+  const mmK = useRef(1.45);
   useEffect(() => {
+    if (!ready) return undefined;
     drawMiniRef.current = () => {
-    const hud = hudRef.current;
-    const c = miniRef.current;
-    const img = imgRef.current;
-    if (!c || !img || !mapping) return;
-    const g = c.getContext('2d');
-    const W = c.width;
-    const [u, v] = mapping.toImg(hud.x, hud.z);
-    const span = hud.driving ? 520 : 380;
-    g.clearRect(0, 0, W, W);
-    g.save();
-    g.beginPath();
-    g.arc(W / 2, W / 2, W / 2, 0, Math.PI * 2);
-    g.clip();
-    g.fillStyle = '#0b0e18';
-    g.fillRect(0, 0, W, W);
-    g.drawImage(img, u - span / 2, v - span / 2, span, span, 0, 0, W, W);
-    const k = W / span;
-    // v153: iş güzergahı mini haritada da çizili
-    const jr = engineRef.current?.jobRoutePts?.();
-    if (jr && jr.pts.length > 1) {
-      g.lineCap = 'round';
-      g.lineJoin = 'round';
-      const path = () => {
-        g.beginPath();
-        jr.pts.forEach((p, i) => {
-          const [pu, pv] = mapping.toImg(p.x, p.z);
-          const X = W / 2 + (pu - u) * k;
-          const Y = W / 2 + (pv - v) * k;
-          if (i) g.lineTo(X, Y);
-          else g.moveTo(X, Y);
-        });
-      };
-      path();
-      g.strokeStyle = 'rgba(0,0,0,0.55)';
-      g.lineWidth = W * 0.06;
-      g.stroke();
-      path();
-      g.strokeStyle = jr.color;
-      g.lineWidth = W * 0.035;
-      g.stroke();
-      const last = jr.pts[jr.pts.length - 1];
-      const [lu, lv] = mapping.toImg(last.x, last.z);
-      g.fillStyle = jr.color;
-      g.strokeStyle = '#fff';
-      g.lineWidth = 3;
+      const eng = engineRef.current;
+      const c = miniRef.current;
+      if (!eng || !c) return;
+      const gm = eng.map();
+      const me = eng.mapSelf();
+      const g = c.getContext('2d');
+      const cw = c.clientWidth || 124;
+      const dpr = c.width / cw || 2;
+      // şehirde yakın, otoyolda (hızlıyken) uzak
+      const kT = me.mode === 'hwy' ? (me.speed > 8 ? 0.55 : 0.95) : me.mode === 'town' ? 1.25 : 1.45;
+      mmK.current += (kT - mmK.current) * 0.15;
+      const h = hudRef.current.yaw + Math.PI; // bakış yönü
+      const rot = -Math.PI / 2 - Math.atan2(Math.cos(h), Math.sin(h));
+      const jr = eng.jobRoutePts?.();
+      const path = jr && jr.pts.length > 1 ? jr.pts.map((p) => [p.x, p.z]) : null;
+      const target = path ? { x: path[path.length - 1][0], z: path[path.length - 1][1] } : null;
+      gm.draw(g, c.width, c.height, { cx: me.x, cz: me.z, k: mmK.current * (cw / 124), rot, dpr, oy: (c.clientHeight || 124) * 0.58 }, { truck: { x: me.x, z: me.z, yaw: me.driving ? me.yaw : h }, target, path, parked: !me.driving && me.car ? me.car : null, walker: !me.driving });
+      // kuzey işareti
+      const nx = Math.cos(rot - Math.PI / 2);
+      const ny = Math.sin(rot - Math.PI / 2);
+      const r = cw / 2 - 9;
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
       g.beginPath();
-      g.arc(W / 2 + (lu - u) * k, W / 2 + (lv - v) * k, W * 0.04, 0, Math.PI * 2);
+      g.arc(cw / 2 + nx * r, cw / 2 + ny * r, 7, 0, Math.PI * 2);
+      g.fillStyle = '#ffffff';
       g.fill();
-      g.stroke();
-    }
-    if (hud.car && !hud.driving) {
-      const [cu, cv] = mapping.toImg(hud.car.x, hud.car.z);
-      g.font = `${Math.round(W * 0.12)}px sans-serif`;
+      g.fillStyle = '#d0302a';
+      g.font = '900 10px system-ui';
       g.textAlign = 'center';
       g.textBaseline = 'middle';
-      g.fillText('🚗', W / 2 + (cu - u) * k, W / 2 + (cv - v) * k);
-    }
-    const fx = -Math.sin(hud.yaw);
-    const fz = -Math.cos(hud.yaw);
-    const [au, av] = mapping.toImg(hud.x + fx * 6, hud.z + fz * 6);
-    const ang = Math.atan2(av - v, au - u);
-    g.translate(W / 2, W / 2);
-    g.rotate(ang);
-    g.fillStyle = 'rgba(25,232,255,0.28)';
-    g.beginPath();
-    g.moveTo(0, 0);
-    g.arc(0, 0, W * 0.32, -0.5, 0.5);
-    g.closePath();
-    g.fill();
-    g.fillStyle = '#ffd23f';
-    g.strokeStyle = '#111';
-    g.lineWidth = 3;
-    g.beginPath();
-    g.moveTo(W * 0.09, 0);
-    g.lineTo(-W * 0.055, W * 0.055);
-    g.lineTo(-W * 0.025, 0);
-    g.lineTo(-W * 0.055, -W * 0.055);
-    g.closePath();
-    g.fill();
-    g.stroke();
-    g.restore();
+      g.fillText('K', cw / 2 + nx * r, cw / 2 + ny * r + 0.5);
+      g.setTransform(1, 0, 0, 1, 0, 0);
     };
     drawMiniRef.current();
     return () => {
       drawMiniRef.current = null;
     };
-  }, [mapping, imgOk]);
-
-  const bigLayout = useRef(null);
-  useEffect(() => {
-    if (!mapOpen) return undefined;
-    const iv = setInterval(() => setMapTick((n) => n + 1), 500);
-    return () => clearInterval(iv);
-  }, [mapOpen]);
-  useEffect(() => {
-    if (!mapOpen) return;
-    const hud = hudRef.current;
-    const c = bigRef.current;
-    const img = imgRef.current;
-    if (!c || !img || !mapping) return;
-    c.width = c.clientWidth * 2;
-    c.height = c.clientHeight * 2;
-    const g = c.getContext('2d');
-    const s = Math.min(c.width, c.height) / MAP_SIZE;
-    const ox = (c.width - MAP_SIZE * s) / 2;
-    const oy = (c.height - MAP_SIZE * s) / 2;
-    bigLayout.current = { s, ox, oy };
-    g.fillStyle = '#05070c';
-    g.fillRect(0, 0, c.width, c.height);
-    g.drawImage(img, ox, oy, MAP_SIZE * s, MAP_SIZE * s);
-    const dot = (x, z, col, r, label) => {
-      const [u, v] = mapping.toImg(x, z);
-      const px = ox + u * s;
-      const py = oy + v * s;
-      g.fillStyle = col;
-      g.strokeStyle = '#000';
-      g.lineWidth = 4;
-      g.beginPath();
-      g.arc(px, py, r, 0, Math.PI * 2);
-      g.fill();
-      g.stroke();
-      if (label) {
-        g.font = `${r * 2.2}px sans-serif`;
-        g.textAlign = 'center';
-        g.textBaseline = 'middle';
-        g.fillText(label, px, py - r * 2.2);
-      }
-    };
-    // v153: iş güzergahı büyük haritada da
-    const jr = engineRef.current?.jobRoutePts?.();
-    if (jr && jr.pts.length > 1) {
-      g.lineCap = 'round';
-      g.lineJoin = 'round';
-      g.beginPath();
-      jr.pts.forEach((p, i) => {
-        const [pu, pv] = mapping.toImg(p.x, p.z);
-        if (i) g.lineTo(ox + pu * s, oy + pv * s);
-        else g.moveTo(ox + pu * s, oy + pv * s);
-      });
-      g.strokeStyle = jr.color;
-      g.lineWidth = 8;
-      g.stroke();
-      const last = jr.pts[jr.pts.length - 1];
-      dot(last.x, last.z, jr.color, 12, '🎯');
-    }
-    if (hud.car && !hud.driving) dot(hud.car.x, hud.car.z, '#19e8ff', 10, '🚗');
-    dot(hud.x, hud.z, '#ffd23f', 14, '📍');
-  }, [mapOpen, mapping, imgOk, mapTick]);
-  const onBigTap = (e) => {
-    const c = bigRef.current;
-    const L = bigLayout.current;
-    if (!c || !L || !mapping) return;
-    const r = c.getBoundingClientRect();
-    const u = (((e.clientX - r.left) / r.width) * c.width - L.ox) / L.s;
-    const v = (((e.clientY - r.top) / r.height) * c.height - L.oy) / L.s;
-    let best = null;
-    let bd = Infinity;
-    mapping.pts.forEach((p) => {
-      const d = Math.hypot(p.u - u, p.v - v);
-      if (d < bd) {
-        bd = d;
-        best = p;
-      }
-    });
-    if (best && bd < 170) {
-      setMapOpen(false);
-      const l = best.lot;
-      const tgt = l.door || { x: (l.x0 + l.x1) / 2, z: l.z1 + 1.5 };
-      engineRef.current.teleport(tgt.x, tgt.z + 2.5);
-      flash(`📍 ${l.icon} ${l.name}`);
-    }
-  };
+  }, [ready]);
+  void mapping;
+  void imgOk;
 
   // --- geri tuşu: panel → araba → yolculuk → şehirden çık ------------------------------------
   useBackClose(true, () => {
@@ -892,9 +886,15 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     const list = [];
     // v154: fabrika / yarış pisti → sayfası şehrin içinde açılır (şehir kapanmaz)
     const openIn = (rid) => setPanel({ kind: 'region', region: rid });
-    if (zone.kind === 'door') list.push({ label: zone.label || `${zone.title.split(' ')[0]} İçeri gir`, cls: 'take', free: true, on: () => (IN_CITY_REGIONS[zone.region] ? openIn(zone.region) : onEnterRegion?.(zone.region)) });
-    // v154: soyulabilir mekânın kapısında "Soygun yap" → aynı soygun paneli şehrin içinde
-    if (zone.kind === 'door' && HEIST_LABELS[zone.region]) list.push({ label: '💰 Soygun yap', cls: 'heist', on: () => setPanel({ kind: 'heist', target: zone.region, title: zone.title }) });
+    // v157: kapı butonları kalktı — mekânın içine yürüyerek girilir, düğmeler içeride (üstte)
+    // mekân istasyonları: oyunun mekânlarında (mihrap, vezne…) oyunun panelleri; markette alışveriş
+    if (zone.kind === 'station') {
+      (zone.acts || []).forEach((a) => {
+        if (a.act === 'market') list.push({ label: '🛒 Market', cls: 'take', on: () => setPanel({ kind: 'market' }) });
+        else if (a.act === 'atm') list.push({ label: '🏧 ATM', cls: 'take', on: () => setPanel({ kind: 'phone', app: 'banka' }) });
+        else if (zone.gameVenue) list.push({ label: a.label, cls: 'take', on: () => venueApiRef.current?.open(a.act) });
+      });
+    }
     if (zone.kind === 'vendor') {
       const v = vendorOf(zone);
       if (!vendorDone(v)) {
@@ -905,7 +905,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     }
     if (zone.kind === 'park' && zone.act === 'bufe') list.push({ label: '🌭 Büfe', on: () => setPanel({ kind: 'bufe' }) });
     if (zone.kind === 'park' && zone.act === 'npc') list.push({ label: '🕶️ Şüpheli adam', on: () => setPanel({ kind: 'shady' }) });
-    if (zone.kind === 'pist') list.push({ label: '🏁 Yarış Pisti', cls: 'take', on: () => openIn('yaris_pisti') });
+    if (zone.kind === 'pist') list.push({ label: '🏁 Yarış Pisti', cls: 'take', free: true, on: () => openIn('yaris_pisti') });
     // v154: tribünde / pitte otururken de yarışlara katılınabilsin
     if (zone.kind === 'seated' && inPist) list.push({ label: '🏁 Yarış Pisti', cls: 'take', on: () => openIn('yaris_pisti') });
     if (zone.kind === 'market') list.push({ label: '🛒 Market', cls: 'take', on: () => setPanel({ kind: 'market' }) });
@@ -924,16 +924,20 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     actions = { title: zone.title, list };
   }
 
-  const zoneName = driving ? `🚗 ${drive?.name || ''}` : riding ? '🚗 Yolcu' : zone ? zone.title : '🌆 Neon Şehir';
+  const vui = !driving && !riding ? VENUE_UI[venue] || null : null;
+  const zoneName = driving ? `🚗 ${drive?.name || ''}${place ? ` · ${place}` : ''}` : riding ? '🚗 Yolcu' : venue ? VENUE_TITLE[venue] || '🏢 Mekân' : zone ? zone.title : place ? `🌲 ${place}` : '🌆 Neon Şehir';
+  // v157: yol üstü istasyonları (mola, çeşme, manzara… sadece RP, para yok)
+  const spotList = spot && !riding ? spot : null;
   const cardInfo = card ? namesRef.current.get(card) : null;
 
   return (
-    <div className={`hs-root cs-root${driving ? ' driving' : ''}${heistOn ? ' cs-heist-on' : ''}`}>
+    <div className={`hs-root cs-root${driving ? ' driving' : ''}${heistOn ? ' cs-heist-on' : ''}${rotated ? ' cs-rotated' : ''}${landscape ? ' cs-land' : ''}`}>
       <div className="hs-stage" ref={stageRef} />
       {!ready && !fatal && (
         <div className="hs-loading cs-loading">
           <div className="hs-spinner" />
           <p>Neon Şehir…</p>
+          <div className="cs-load-bar"><i style={{ width: `${Math.max(4, loadPct)}%` }} /></div>
         </div>
       )}
       {fatal && (
@@ -988,14 +992,30 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           {myVeh && !guest && (driving || jobUi?.active) && (() => {
             const J = JOBS[myVeh.job];
             const today = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
-            const done = player?.jobs?.day === today ? Number(player.jobs.n?.[myVeh.job]) || 0 : 0;
-            const left = jobUi?.left ?? Math.max(0, J.daily - done);
+            const cnt = (k) => (player?.jobs?.day === today ? Number(player.jobs.n?.[k]) || 0 : 0);
+            const done = cnt(myVeh.job);
+            const left = Math.max(0, J.daily - done);
+            // v157: tır / otobüs — yakın (şehir içi) ya da uzak (O-77 → Kervankent)
+            const leftFar = J.dailyFar ? Math.max(0, J.dailyFar - cnt(`${myVeh.job}_uzak`)) : 0;
             return (
               <div className={`cs-job${jobUi?.active ? ' on' : ''}`}>
                 {!jobUi?.active ? (
-                  <button className="cs-job-start" onClick={() => jobRef.current?.start()} disabled={left <= 0}>
-                    <span>{left > 0 ? `${J.icon} İşe başla` : `${J.icon} Bugünkü hakkın doldu`}</span>
-                  </button>
+                  J.dailyFar ? (
+                    <div className="cs-job-range">
+                      <button className="cs-job-start" onClick={() => jobRef.current?.start('near')} disabled={left <= 0}>
+                        <span>{J.icon} Yakın mesafe</span>
+                        <small>{left > 0 ? `Şehir içi · ${left}/${J.daily}` : 'Bugünkü hak doldu'}</small>
+                      </button>
+                      <button className="cs-job-start far" onClick={() => jobRef.current?.start('far')} disabled={leftFar <= 0}>
+                        <span>🛣️ Uzak mesafe</span>
+                        <small>{leftFar > 0 ? `Kervankent · ${leftFar}/${J.dailyFar}` : 'Bugünkü hak doldu'}</small>
+                      </button>
+                    </div>
+                  ) : (
+                    <button className="cs-job-start" onClick={() => jobRef.current?.start()} disabled={left <= 0}>
+                      <span>{left > 0 ? `${J.icon} İşe başla` : `${J.icon} Bugünkü hakkın doldu`}</span>
+                    </button>
+                  )
                 ) : (
                   <div className="cs-job-panel">
                     <b>
@@ -1005,7 +1025,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                         </span>
                       )}
                       {jobUi.title}
-                      {jobUi.dist != null && <em className="cs-job-dist">{jobUi.dist} m</em>}
+                      {jobUi.dist != null && <em className="cs-job-dist">{jobUi.dist >= 1000 ? `${(jobUi.dist / 1000).toFixed(1).replace('.', ',')} km` : `${jobUi.dist} m`}</em>}
                     </b>
                     {jobUi.sub && <small>{jobUi.sub}</small>}
                     {jobUi.bar != null && (
@@ -1039,22 +1059,35 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
             </div>
           )}
           <canvas className="cs-mini" ref={miniRef} width={260} height={260} onClick={() => setMapOpen(true)} />
-          <div className={`hs-side${driving ? ' cs-drive-side' : ''}`}>
-            {!driving && !riding && (
+          {/* v157 — sol sütun: araba · hızlı koş · hareketler · yatay mod */}
+          {!driving && !riding && (
+            <div className="cs-left">
+              <button className="hs-side-btn cs-carbtn" onClick={() => (guest ? setAskSignIn(true) : setPanel({ kind: 'garage' }))} title="Arabalarım">🚗</button>
+              <button className={`hs-side-btn${run ? ' on' : ''}`} onClick={() => { setRun(!run); engineRef.current.setRun(!run); }} title="Hızlı koş">{run ? '🏃' : '🚶'}</button>
               <button className={`hs-side-btn${panel?.kind === 'emotes' ? ' on' : ''}`} onClick={() => setPanel(panel?.kind === 'emotes' ? null : { kind: 'emotes' })} title="Hareketler">😀</button>
-            )}
-            {panel?.kind === 'emotes' && (
-              <div className="hs-emotes">
-                {EMOTES.map((e) => (
-                  <button key={e.key} onClick={() => { engineRef.current.emote(e.key); setPanel(null); }}>
-                    <span>{e.emoji}</span>
-                    {e.label}
-                  </button>
-                ))}
-              </div>
-            )}
-            {!driving && !riding && <button className="hs-side-btn cs-carbtn" onClick={() => (guest ? setAskSignIn(true) : setPanel({ kind: 'garage' }))} title="Arabalarım">🚗</button>}
-            {!driving && !riding && <button className={`hs-side-btn${run ? ' on' : ''}`} onClick={() => { setRun(!run); engineRef.current.setRun(!run); }} title="Koş">{run ? '🏃' : '🚶'}</button>}
+              <button className={`hs-side-btn${landscape ? ' on' : ''}`} onClick={toggleLandscape} title="Yatay mod">
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2">
+                  <rect x="2" y="6" width="20" height="12" rx="2" />
+                  <line x1="18" y1="11" x2="18" y2="13" />
+                </svg>
+              </button>
+              {panel?.kind === 'emotes' && (
+                <div className="hs-emotes cs-emotes">
+                  {EMOTES.map((e) => (
+                    <button key={e.key} onClick={() => { engineRef.current.emote(e.key); setPanel(null); }}>
+                      <span>{e.emoji}</span>
+                      {e.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {/* v157 — sağ sütun: ChatsApp · telefon · kamera · yakındaki oyuncular */}
+          <div className={`hs-side cs-right${driving ? ' cs-drive-side' : ''}`}>
+            {!guest && <button className="hs-side-btn" onClick={() => setPanel({ kind: 'phone', app: 'chatsapp' })} title="ChatsApp">💬</button>}
+            {!guest && <button className="hs-side-btn" onClick={() => setPanel({ kind: 'phone', app: null })} title="Telefon">📱</button>}
+            <button className="hs-side-btn" onClick={() => (guest ? setAskSignIn(true) : openCamera())} title="Fotoğraf çek">📷</button>
             {!guest && !driving && (
               <NearbyPlayersButton
                 buttonClassName="hs-side-btn"
@@ -1062,10 +1095,71 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                 others={nearby.map((id) => ({ uid: id, displayName: namesRef.current.get(id)?.n || 'Oyuncu', avatar: namesRef.current.get(id)?.a || null }))}
               />
             )}
-            {!guest && <button className="hs-side-btn" onClick={() => setPanel({ kind: 'phone', app: 'chatsapp' })} title="ChatsApp">💬</button>}
-            {!guest && <button className="hs-side-btn" onClick={() => setPanel({ kind: 'phone', app: null })} title="Telefon">📱</button>}
-            <button className="hs-side-btn" onClick={() => (guest ? setAskSignIn(true) : openCamera())} title="Fotoğraf çek">📷</button>
+            {driving && (
+              <button className={`hs-side-btn${driveChat ? ' on' : ''}`} onClick={() => setDriveChat((v) => !v)} title="Sohbet">
+                🗨️
+              </button>
+            )}
           </div>
+          {/* v157 — mekânın içindeyken: o türdeki işletmeler (açılıp kapanan liste) + soygun */}
+          {vui && (vui.biz || vui.region || vui.inCity || vui.heist) && (
+            <div className="cs-venue-bar">
+              {vui.biz && (
+                <button className={`cs-venue-btn${bizOpen ? ' on' : ''}`} onClick={() => (guest ? setAskSignIn(true) : setBizOpen((v) => !v))}>
+                  {vui.label} <i>{bizOpen ? '▲' : '▼'}</i>
+                </button>
+              )}
+              {vui.region && (
+                <button className="cs-venue-btn" onClick={() => onEnterRegion?.(vui.region)}>
+                  {vui.label}
+                </button>
+              )}
+              {vui.inCity && (
+                <button className="cs-venue-btn" onClick={() => (guest ? setAskSignIn(true) : setPanel({ kind: 'region', region: vui.inCity }))}>
+                  {vui.label}
+                </button>
+              )}
+              {vui.heist && HEIST_LABELS[vui.heist] && (
+                <button className="cs-venue-btn heist" onClick={() => (guest ? setAskSignIn(true) : setPanel({ kind: 'heist', target: vui.heist, title: VENUE_TITLE[venue] || '' }))}>
+                  💰 Soygun yap
+                </button>
+              )}
+            </div>
+          )}
+          {vui?.biz && bizOpen && !guest && (
+            <div className="cs-biz-panel">
+              <CityBizList
+                type={vui.biz}
+                onPick={(pick) => {
+                  setBizOpen(false);
+                  onOpenBiz?.(pick);
+                }}
+              />
+            </div>
+          )}
+          {/* v157 — oyunun mekânları (camii, banka, karakol, belediye): işlemler içeride */}
+          {gameVenueKey && !guest && VENUES[gameVenueKey] && (
+            <div className={`cs-venue-layer${venue && VENUE_UI[venue]?.game === gameVenueKey ? '' : ' away'}`}>
+              <VenueLayer
+                venue={gameVenueDef}
+                engineRef={venueEngRef}
+                interact={zone?.kind === 'station' ? { id: zone.station } : null}
+                mode={venue && VENUE_UI[venue]?.game === gameVenueKey && !driving ? 'walk' : 'away'}
+                apiRef={venueApiRef}
+                onOpenHeist={(t) => setPanel({ kind: 'heist', target: t, title: VENUE_TITLE[venue] || '' })}
+                flash={flash}
+              />
+            </div>
+          )}
+          {spotList && spotList.length > 0 && !actions?.list?.length && (
+            <div className="hs-actions">
+              {spotList.map((a) => (
+                <button key={a.id} className="hs-act" onClick={() => flash(engineRef.current?.spotText?.(a.id) || a.label)}>
+                  {a.label}
+                </button>
+              ))}
+            </div>
+          )}
           {actions && actions.list.length > 0 && (
             <div className="hs-actions">
               <div className="hs-actions-title">{actions.title}</div>
@@ -1114,8 +1208,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
               </div>
             </div>
           )}
-          {!driving && !guest && (
-            <div className={`hs-chat${chatOpen ? ' expanded' : ''}`}>
+          {(!driving || driveChat) && !guest && (
+            <div className={`hs-chat${chatOpen ? ' expanded' : ''}${driving ? ' cs-drive-chat' : ''}`}>
               {/* v151: diğer mekânlardaki gibi — dokununca sohbet açılır (eski mesajlar); şikâyet ⚠️ ile */}
               <div className="hs-chat-feed" onClick={() => setChatOpen((v) => !v)}>
                 {(chatOpen ? msgs : msgs.slice(-3)).map((m) => (
@@ -1312,15 +1406,15 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         />
       )}
       {askSignIn && <GuestSignInSheet onClose={() => setAskSignIn(false)} message="Misafir olarak şehri gezebilirsin — bunu yapmak için giriş yapmalısın." />}
-      {mapOpen && (
-        <div className="cs-bigmap" onClick={() => setMapOpen(false)}>
-          <div className="cs-bigmap-head" onClick={(e) => e.stopPropagation()}>
-            <b>🗺️ Neon Şehir</b>
-            <span>📍</span>
-            <button className="bz-x" onClick={() => setMapOpen(false)}>✕</button>
-          </div>
-          <canvas ref={bigRef} onClick={(e) => { e.stopPropagation(); onBigTap(e); }} />
-        </div>
+      {mapOpen && ready && (
+        <CityBigMap
+          engine={engineRef.current}
+          onClose={() => setMapOpen(false)}
+          onPick={(p) => {
+            setMapOpen(false);
+            if (engineRef.current?.mapGo(p)) flash(`📍 ${p.icon && !p.glyph ? `${p.icon} ` : ''}${p.name || ''}`);
+          }}
+        />
       )}
     </div>
   );
@@ -1337,6 +1431,138 @@ function ChatBox({ onSend }) {
     <div className="hs-chat-row">
       <input value={text} maxLength={200} placeholder="Mesaj yaz…" enterKeyHint="send" onChange={(e) => setText(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && send()} />
       <button onClick={send} disabled={!text.trim()}>Gönder</button>
+    </div>
+  );
+}
+
+// v157 — büyük harita: sürükle, iki parmakla yakınlaştır, simgeye dokun → oraya git (mekânsa içine)
+function CityBigMap({ engine, onClose, onPick }) {
+  const ref = useRef(null);
+  const view = useRef(null);
+  const [tab, setTab] = useState('sehir');
+  const preset = useCallback((v) => {
+    const c = ref.current;
+    if (!c || !engine) return;
+    const W = c.clientWidth;
+    const H = c.clientHeight;
+    const me = engine.mapSelf();
+    setTab(v);
+    if (v === 'sehir') view.current = { cx: 2, cz: -22, k: Math.min(W / 380, H / 300), follow: false };
+    else if (v === 'bolge') view.current = { cx: 1100, cz: -1150, k: Math.min(W / 2700, H / 2700), follow: false };
+    else if (v === 'kasaba') {
+      const T = engine.world().town.root.position;
+      view.current = { cx: T.x, cz: T.z, k: Math.min(W / 230, H / 230), follow: false };
+    } else view.current = { cx: me.x, cz: me.z, k: Math.max(view.current?.k || 1.6, 1.6), follow: true };
+  }, [engine]);
+  useEffect(() => {
+    const c = ref.current;
+    if (!c || !engine) return undefined;
+    const fit = () => {
+      const r = c.getBoundingClientRect();
+      const d = Math.min(2, window.devicePixelRatio || 1);
+      c.width = Math.max(1, Math.round(r.width * d));
+      c.height = Math.max(1, Math.round(r.height * d));
+    };
+    fit();
+    const me = engine.mapSelf();
+    preset(me.mode === 'hwy' ? 'bolge' : me.mode === 'town' ? 'kasaba' : 'sehir');
+    let raf = 0;
+    const gm = engine.map();
+    const draw = () => {
+      raf = requestAnimationFrame(draw);
+      const v = view.current;
+      if (!v) return;
+      const m = engine.mapSelf();
+      if (v.follow) {
+        v.cx = m.x;
+        v.cz = m.z;
+      }
+      const dpr = c.width / (c.clientWidth || 1);
+      const jr = engine.jobRoutePts?.();
+      const path = jr && jr.pts.length > 1 ? jr.pts.map((p) => [p.x, p.z]) : null;
+      gm.draw(c.getContext('2d'), c.width, c.height, { cx: v.cx, cz: v.cz, k: v.k, rot: 0, dpr }, { truck: { x: m.x, z: m.z, yaw: m.driving ? m.yaw : m.yaw }, target: path ? { x: path[path.length - 1][0], z: path[path.length - 1][1] } : null, path, labels: true, streets: true, parked: !m.driving && m.car ? m.car : null, walker: !m.driving });
+    };
+    draw();
+    window.addEventListener('resize', fit);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', fit);
+    };
+  }, [engine, preset]);
+  // sürükle / kıstır / dokun
+  const pts = useRef(new Map());
+  const pinch = useRef(null);
+  const down = useRef(null);
+  const zoomAt = (f, sx, sy) => {
+    const c = ref.current;
+    const v = view.current;
+    if (!c || !v) return;
+    const W = c.clientWidth;
+    const H = c.clientHeight;
+    const wx = v.cx + (sx - W / 2) / v.k;
+    const wz = v.cz + (sy - H / 2) / v.k;
+    v.k = Math.max(0.12, Math.min(8, v.k * f));
+    v.cx = wx - (sx - W / 2) / v.k;
+    v.cz = wz - (sy - H / 2) / v.k;
+  };
+  const onDown = (e) => {
+    ref.current.setPointerCapture?.(e.pointerId);
+    pts.current.set(e.pointerId, [e.clientX, e.clientY]);
+    if (view.current) view.current.follow = false;
+    down.current = [e.clientX, e.clientY, performance.now()];
+  };
+  const onMove = (e) => {
+    const P = pts.current;
+    if (!P.has(e.pointerId) || !view.current) return;
+    const [px, py] = P.get(e.pointerId);
+    P.set(e.pointerId, [e.clientX, e.clientY]);
+    if (P.size === 2) {
+      const [a, b] = [...P.values()];
+      const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+      if (pinch.current) {
+        const r = ref.current.getBoundingClientRect();
+        zoomAt(d / pinch.current, (a[0] + b[0]) / 2 - r.left, (a[1] + b[1]) / 2 - r.top);
+      }
+      pinch.current = d;
+      return;
+    }
+    view.current.cx -= (e.clientX - px) / view.current.k;
+    view.current.cz -= (e.clientY - py) / view.current.k;
+  };
+  const onUp = (e) => {
+    pts.current.delete(e.pointerId);
+    if (pts.current.size < 2) pinch.current = null;
+    const d0 = down.current;
+    if (d0 && Math.hypot(e.clientX - d0[0], e.clientY - d0[1]) < 6 && performance.now() - d0[2] < 500 && view.current) {
+      const c = ref.current;
+      const r = c.getBoundingClientRect();
+      const dpr = c.width / (c.clientWidth || 1);
+      const p = engine.map().pick({ ...view.current, rot: 0, dpr }, c.width, c.height, (e.clientX - r.left) * dpr, (e.clientY - r.top) * dpr);
+      if (p) onPick(p);
+    }
+    down.current = null;
+  };
+  const onWheel = (e) => {
+    const r = ref.current.getBoundingClientRect();
+    zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX - r.left, e.clientY - r.top);
+  };
+  return (
+    <div className="cs-bigmap2" onClick={onClose}>
+      <div className="cs-bigmap2-wrap" onClick={(e) => e.stopPropagation()}>
+        <canvas ref={ref} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onWheel={onWheel} />
+        <div className="cs-bm-tabs">
+          {[['sehir', 'Şehir'], ['bolge', 'Bölge'], ['kasaba', 'Kervankent'], ['ben', 'Ben']].map(([k, l]) => (
+            <button key={k} className={tab === k ? 'on' : ''} onClick={() => preset(k)}>
+              {l}
+            </button>
+          ))}
+        </div>
+        <button className="cs-bm-close" onClick={onClose} aria-label="Kapat">✕</button>
+        <div className="cs-bm-zoom">
+          <button onClick={() => { const c = ref.current; zoomAt(1.5, c.clientWidth / 2, c.clientHeight / 2); }}>+</button>
+          <button onClick={() => { const c = ref.current; zoomAt(1 / 1.5, c.clientWidth / 2, c.clientHeight / 2); }}>−</button>
+        </div>
+      </div>
     </div>
   );
 }

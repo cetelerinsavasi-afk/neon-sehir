@@ -1501,6 +1501,16 @@ function barrel(g, ctx) {
   [0.18, 0.74].forEach((y) => C(g, 0.342, 0.342, 0.05, 0, y, 0, M('#111', 0.4, 0.8)));
   C(g, 0.3, 0.3, 0.02, 0, 0.93, 0, M('#2a2a2e', 0.3, 0.8));
 }
+// v157 — bar önü: ahşap fıçı masa (üstünde bardak)
+function barrelTable(g) {
+  const wd = M('#7a4a26', 0.85);
+  const hoop = M('#2b2b2e', 0.4, 0.8);
+  C(g, 0.4, 0.33, 0.52, 0, 0.26, 0, wd, null, 16);
+  C(g, 0.33, 0.4, 0.52, 0, 0.78, 0, wd, null, 16);
+  [0.1, 0.42, 0.62, 0.94].forEach((y) => C(g, (y < 0.52 ? 0.33 + (y / 0.52) * 0.07 : 0.4 - ((y - 0.52) / 0.52) * 0.07) + 0.012, (y < 0.52 ? 0.33 + (y / 0.52) * 0.07 : 0.4 - ((y - 0.52) / 0.52) * 0.07) + 0.012, 0.04, 0, y, 0, hoop, null, 16));
+  C(g, 0.34, 0.34, 0.03, 0, 1.055, 0, M('#5a3418', 0.8), null, 16);
+  C(g, 0.035, 0.03, 0.12, 0.1, 1.13, 0.05, M('#ffd27a', 0.1, 0.1, { transparent: true, opacity: 0.75 }), null, 10);
+}
 function crate(g) {
   const w = M('#9a7443', 0.85);
   const d = M('#6a4a26', 0.9);
@@ -3218,6 +3228,7 @@ export const CATALOG = [
   { k: 'toolchest', name: 'Takım Dolabı', cat: 'garaj', icon: '🗄️', price: G(4000), build: toolChest, box: [0.45, 0.25] },
   { k: 'tires', name: 'Lastik Yığını', cat: 'garaj', icon: '🛞', price: null, build: tireStack, box: [0.36, 0.36] },
   { k: 'barrel', name: 'Varil', cat: 'garaj', icon: '🛢️', price: null, tints: 'fabric', build: barrel, box: [0.34, 0.34] },
+  { k: 'barreltable', name: 'Fıçı Masa', cat: 'masa', icon: '🍺', price: null, build: barrelTable, box: [0.38, 0.38] },
   { k: 'crate', name: 'Tahta Sandık', cat: 'garaj', icon: '📦', price: null, build: crate, box: [0.46, 0.46] },
 
   // DEKOR

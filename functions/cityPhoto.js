@@ -19,7 +19,7 @@
 import { sanitizeOverlay, overlayText } from './photoOverlay.js';
 
 export const CITY_CELL = 64;
-const CELL_OFF = 192;
+const CELL_OFF = 3000; // v157: dünya otoyol + Kervankent'e kadar genişledi (istemci cityNet.js ile AYNI)
 export const cityCellOf = (x, z) => `${Math.max(0, Math.floor((x + CELL_OFF) / CITY_CELL))}_${Math.max(0, Math.floor((z + CELL_OFF) / CITY_CELL))}`;
 const MAX_PEOPLE = 12;
 const MAX_CARS = 8;
@@ -47,9 +47,9 @@ export function cityRtdbUrl() {
 // Kamera pozu (houses.js camOf ile aynı alanlar)
 export function cleanCam(c) {
   if (!c || typeof c !== 'object') return null;
-  const px = num(c.px, -450, 450);
-  const py = num(c.py, -5, 400);
-  const pz = num(c.pz, -450, 450);
+  const px = num(c.px, -3200, 3200);
+  const py = num(c.py, -10, 700);
+  const pz = num(c.pz, -3200, 3200);
   let dx = num(c.dx, -1, 1);
   let dy = num(c.dy, -1, 1);
   let dz = num(c.dz, -1, 1);
@@ -70,8 +70,8 @@ export function cleanFb(fb, cam) {
   const near = (x, z) => x !== null && z !== null && Math.hypot(x - cam.px, z - cam.pz) <= 160;
   const fig = (a) => {
     if (!Array.isArray(a) || a.length < 2) return null;
-    const x = num(a[0], -450, 450);
-    const z = num(a[1], -450, 450);
+    const x = num(a[0], -3200, 3200);
+    const z = num(a[1], -3200, 3200);
     if (!near(x, z)) return null;
     return [r2(x), r2(z), a[2] ? 1 : 0, a[3] ? 1 : 0, a[4] ? 1 : 0];
   };
@@ -90,9 +90,9 @@ export function cleanFb(fb, cam) {
   const r = fig(fb.r);
   let b = null;
   if (Array.isArray(fb.b)) {
-    const bx = num(fb.b[0], -450, 450);
-    const by = num(fb.b[1], -2, 20);
-    const bz = num(fb.b[2], -450, 450);
+    const bx = num(fb.b[0], -3200, 3200);
+    const by = num(fb.b[1], -2, 40);
+    const bz = num(fb.b[2], -3200, 3200);
     if (by !== null && near(bx, bz)) b = [r2(bx), r2(by), r2(bz)];
   }
   if (!p.length && !r && !b) return null;
@@ -174,8 +174,8 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
     const t = now();
     const reqPeople = Array.isArray(p?.people) ? p.people.slice(0, 40) : [];
     const me = reqPeople.find((q) => q && q.uid === uid);
-    const mx = num(me?.x, -450, 450);
-    const mz = num(me?.z, -450, 450);
+    const mx = num(me?.x, -3200, 3200);
+    const mz = num(me?.z, -3200, 3200);
     if (mx === null || mz === null) fail('invalid-argument', 'Fotoğrafta sen yoksun.');
     let rt;
     try {
@@ -197,8 +197,8 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
     const carSlackOf = new Map();
     (Array.isArray(p?.cars) ? p.cars.slice(0, 20) : []).forEach((c) => {
       if (!c || typeof c.o !== 'string' || !UID_RE.test(c.o) || carOwners.has(c.o) || cars.length >= MAX_CARS) return;
-      const x = num(c.x, -450, 450);
-      const z = num(c.z, -450, 450);
+      const x = num(c.x, -3200, 3200);
+      const z = num(c.z, -3200, 3200);
       const v = Number(c.v);
       const rec = rt.c.get(c.o);
       // v152: ticari araçlar (11-15) ve motorlar (21-24) de fotoğrafa girer
@@ -211,7 +211,7 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
       // v152: modifiye (m) ve iş hâli (j: dorse / yolcular / tepe lambası) RTDB kaydından — sahte olamaz
       const m = typeof rec.m === 'string' && rec.m.length <= 700 ? rec.m : '';
       const j = Math.max(0, Math.min(40, Math.floor(Number(rec.j) || 0)));
-      cars.push({ o: c.o, v, x: r2(x), z: r2(z), y: r2(num(c.y, -2, 20) ?? 0), r: r3(wrapYaw(num(c.r, -1e4, 1e4) ?? 0)), st: r2(num(c.st, -1, 1) ?? 0), ...(m ? { m } : {}), ...(j ? { j } : {}) });
+      cars.push({ o: c.o, v, x: r2(x), z: r2(z), y: r2(num(c.y, -6, 300) ?? 0), r: r3(wrapYaw(num(c.r, -1e4, 1e4) ?? 0)), st: r2(num(c.st, -1, 1) ?? 0), ...(m ? { m } : {}), ...(j ? { j } : {}) });
     });
 
     // kişiler
@@ -221,8 +221,8 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
       if (picked.length >= MAX_PEOPLE) break;
       if (!q || typeof q.uid !== 'string' || !UID_RE.test(q.uid) || seen.has(q.uid)) continue;
       const rec = rt.p.get(q.uid);
-      const x = num(q.x, -450, 450);
-      const z = num(q.z, -450, 450);
+      const x = num(q.x, -3200, 3200);
+      const z = num(q.z, -3200, 3200);
       // v154: araçtaki kişi (şoför / yolcu) aracın payını alır — giderken çekilen fotoğrafta arabadan "düşmesin"
       const pSlack = typeof q.c === 'string' && carOwners.has(q.c) ? carSlackOf.get(q.c) || 0 : 0;
       if (x === null || z === null || !fresh(rec, FRESH_P_MS) || Math.hypot(rec.x - x, rec.z - z) > NEAR_P + pSlack) continue;
@@ -234,15 +234,15 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
         uid: q.uid,
         x: r2(x),
         z: r2(z),
-        y: r2(num(q.y, -2, 20) ?? 0),
+        y: r2(num(q.y, -6, 300) ?? 0),
         l: q.l ? 1 : 0,
         m: q.m ? 1 : 0,
         wp: q.wp ? 1 : 0,
-        ...(num(q.sy, -1, 5) !== null && !car.c ? { sy: r2(q.sy) } : {}),
+        ...(num(q.sy, -6, 300) !== null && !car.c ? { sy: r2(q.sy) } : {}),
         ...car,
         ...(em ? { e: em } : {}),
         ...(typeof q.h === 'string' && isProduct(q.h) ? { h: q.h } : {}),
-        ...(num(q.px, -450, 450) !== null && num(q.pz, -450, 450) !== null && Math.hypot(q.px - x, q.pz - z) < 4 ? { px: r2(q.px), pz: r2(q.pz) } : {}),
+        ...(num(q.px, -3200, 3200) !== null && num(q.pz, -3200, 3200) !== null && Math.hypot(q.px - x, q.pz - z) < 4 ? { px: r2(q.px), pz: r2(q.pz) } : {}),
         said,
       });
     }
