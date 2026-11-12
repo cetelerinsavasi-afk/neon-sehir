@@ -116,11 +116,7 @@ export default function OfficePanel({ houseId, houseDoc, onClose, flash, onRenam
           <button className={tab === 'items' ? 'on' : ''} onClick={() => setTab('items')}>
             🏷️ Fiyatlar
           </button>
-          {hq && (
-            <button className={tab === 'invite' ? 'on' : ''} onClick={() => setTab('invite')}>
-              📨 Davet
-            </button>
-          )}
+          {/* v157.4: karargah davetleri kaldırıldı (karargahlar haritada, herkese açık) */}
           <button className={tab === 'report' ? 'on' : ''} onClick={() => setTab('report')}>
             📊 Rapor
           </button>

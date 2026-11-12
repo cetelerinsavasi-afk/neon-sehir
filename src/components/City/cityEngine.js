@@ -21,6 +21,8 @@ import { createStadiumMatch, matchAvatar } from './stadiumMatch.js';
 // v157 — genişletilmiş dünya (otoyol, Kervankent, köyler, orman, kumsal) + girilebilir mekânlar
 import { bakeGeo, canonMat, makeLod, lodTag, dropVenueInt, buildVenueInt, prepareCityWorldSync, finishCityWorld, mergeCityWorld, mergeVenue, mergeInPlace, buildAnimals, CITY_GRID, VENUE_GAME_KEY, toRoom, fromRoom, VROOM, nearest as hwyNearest, inTunnel, frameAt as hwyFrameAt } from './world/outerWorld.js';
 import { NEW_VENUES } from './world/layouts.js';
+import { HQ_CACHE } from './world/venues.js';
+import { Kit } from './kit.js';
 import { createMap } from './world/map.js';
 import { geo as rsGeo, fromPad } from './world/roadsideGeo.js';
 import { LOT_TYPES } from './cityPlan.js';
@@ -80,7 +82,7 @@ function avatarTextures(avatar, light = false) {
   let e = avCache.get(key);
   if (e) return e;
   const full = { ...DEFAULT_AVATAR, ...av };
-  e = { ready: false, tex: {}, full };
+  e = { ready: false, tex: {}, full, refs: 0, last: performance.now() };
   avCache.set(key, e);
   const poses = light ? ['idle', 'sit'] : ['idle', 'walk1', 'walk2', 'sit', 'back', 'backIdle'];
   let left = poses.length;
@@ -90,13 +92,16 @@ function avatarTextures(avatar, light = false) {
     if (pose === 'back' || pose === 'backIdle') markup = markup.replace('</svg>', backOfHead(full) + '</svg>');
     const img = new Image();
     img.onload = () => {
+      // v157.4: telefonda avatar dokuları küçük (6 poz × her oyuncu — ekran kartı belleği ~2,5 kat az)
+      const AW = IS_MOBILE ? 208 : 320;
+      const AH = IS_MOBILE ? 377 : 580;
       const c = document.createElement('canvas');
-      c.width = 320;
-      c.height = 580;
-      c.getContext('2d').drawImage(img, 0, 0, 320, 580);
+      c.width = AW;
+      c.height = AH;
+      c.getContext('2d').drawImage(img, 0, 0, AW, AH);
       const t = new THREE.CanvasTexture(c);
       t.colorSpace = THREE.SRGBColorSpace;
-      t.anisotropy = 4;
+      t.anisotropy = IS_MOBILE ? 1 : 4;
       e.tex[pose] = t;
       left -= 1;
       if (left === 0) e.ready = true;
@@ -160,6 +165,25 @@ function heldTexture(p) {
   return t;
 }
 
+// v157.4: avatar dokuları artık sonsuza kadar tutulmaz — hiçbir figür kullanmıyorsa 60 sn sonra
+// ekran kartından silinir (uzun oturumda yanından geçen her oyuncunun 6 dokusu birikiyordu → bellek)
+function texUse(prev, next) {
+  if (prev === next) return next;
+  if (prev && prev.refs) {
+    prev.refs -= 1;
+    prev.last = performance.now();
+  }
+  if (next && !next.lazy) next.refs = (next.refs || 0) + 1;
+  return next;
+}
+export function sweepAvatarTextures(now = performance.now(), idleMs = 60_000) {
+  for (const [k, e] of avCache) {
+    if (e.refs > 0 || !e.ready || now - (e.last || 0) < idleMs) continue;
+    Object.values(e.tex).forEach((t) => t?.dispose?.());
+    avCache.delete(k);
+  }
+}
+const motoHatOf = (v) => (v && v.moto && v.ride !== 'horse' ? (typeof v.paint === 'string' && v.paint[0] === '#' ? v.paint : '#1a1a1a') : null); // v157.4: atta kask yok
 class Fig {
   constructor(scene, layer, { id, name, avatar, isSelf = false, npc = false, lazy = false }) {
     this.scene = scene;
@@ -205,16 +229,34 @@ class Fig {
     this.label.append(this.bubbleBox, this.emoteEl, this.nameEl);
     layer.appendChild(this.label);
     this.av0 = avatar;
-    this.tex = lazy ? { ready: false, tex: {}, lazy: true } : avatarTextures(avatar);
+    this.avBase = avatar;
+    this.hatOn = null;
+    this.motoHat = null;
+    this.tex = lazy ? { ready: false, tex: {}, lazy: true } : texUse(null, avatarTextures(avatar));
     this.avKey = JSON.stringify(avatar || null);
     this.setExtras(avatar);
   }
   setAvatar(av) {
     const k = JSON.stringify(av || null);
-    if (k === this.avKey) return;
+    if (k === this.avKey && !this.hatOn) return;
+    this.avBase = av;
+    this.hatOn = null;
     this.avKey = k;
-    this.tex = avatarTextures(av);
+    this.tex = texUse(this.tex, avatarTextures(av));
     this.setExtras(av);
+  }
+  // v157.4: motordayken motor renginde kask (sadece görünüm; avatar verisi değişmez)
+  syncHat() {
+    const h = this.inCar ? this.motoHat || null : null;
+    if (h === this.hatOn) return;
+    this.hatOn = h;
+    const av = h ? { ...(this.avBase || DEFAULT_AVATAR), hat: 'helmet', hatColor: h } : this.avBase;
+    if (this.tex.lazy) {
+      this.av0 = av;
+      return;
+    }
+    this.avKey = h ? `hat:${h}` : JSON.stringify(av || null);
+    this.tex = texUse(this.tex, avatarTextures(av));
   }
   setName(n) {
     if (n && this.nameEl.textContent !== n) this.nameEl.textContent = n;
@@ -234,7 +276,7 @@ class Fig {
     } else this.pet.set(pet);
   }
   ensureTex() {
-    if (this.tex.lazy) this.tex = avatarTextures(this.av0, true);
+    if (this.tex.lazy) this.tex = texUse(null, avatarTextures(this.av0, true));
     return this.tex;
   }
   setForcePose(p) {
@@ -295,7 +337,10 @@ class Fig {
     const back = el > 0.35 ? Math.min(el - 0.35, 1.05) : 0;
     this.pivot.rotation.order = 'YXZ';
     this.pivot.rotation.set(-back, ang, tilt);
-    this.pivot.position.y = lift;
+    // v157.4: oturan / araçtaki figür, kamera yukarıdayken koltuk hizasından geriye yatırılır —
+    // eskiden yerden yatırılıyordu: motorda figür farın önüne kayıp küçük görünüyordu
+    const pivY = this.sitting ? (this.seatY ?? 0.5) - this.y : 0;
+    this.pivot.position.y = lift + pivY;
     let pose = 'idle';
     if (this.sitting) pose = 'sit';
     // v149: tribün koltuğu — kamera arkadaysa ense görünür (yüz sahaya dönük)
@@ -314,6 +359,7 @@ class Fig {
     // v153: haraç pozu (silah doğrultma / eller havada) + titreme
     if (this.forcePose && this.tex.tex[this.forcePose] && !this.inCar && !this.sitting) pose = this.forcePose;
     this.pivot.position.x = this.shakeUntil > now ? Math.sin(now / 21) * 0.035 : 0;
+    this.syncHat();
     if (this.tex.lazy) this.ensureTex();
     if (this.tex.ready) {
       const t = this.tex.tex[pose] || this.tex.tex.idle;
@@ -329,7 +375,7 @@ class Fig {
     // v147.3: suya batma (kıyıdan içeri doğru derinleşir)
     const sinkT = this.sitting || this.inCar ? 0 : this.sink || 0;
     this.sinkCur = (this.sinkCur || 0) + (sinkT - (this.sinkCur || 0)) * Math.min(1, dt * 5 || 1);
-    this.plane.position.y = this.sitting ? (this.seatY ?? 0.5) - this.y + 0.04 + kIn * (AV_WAIST_FROM_TOP - AV_PLANE_H / 2) : AV_PLANE_H / 2 - AV_FEET - this.sinkCur;
+    this.plane.position.y = this.sitting ? 0.04 + kIn * (AV_WAIST_FROM_TOP - AV_PLANE_H / 2) : AV_PLANE_H / 2 - AV_FEET - this.sinkCur;
     if (this.holding) {
       const side = this.facingLeft ? -1 : 1;
       const bob = Math.sin(now / 480) * 0.02;
@@ -351,6 +397,7 @@ class Fig {
     });
   }
   dispose(scene) {
+    texUse(this.tex, null);
     scene.remove(this.group);
     this.label.remove();
     this.mat.dispose();
@@ -373,7 +420,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   // v149: telefonda fotoğraf motoru da hafif (gölgesiz) ayarda — Sixtagram açılınca bellek taşmasın
-  let tier = snapshot ? (IS_MOBILE ? 2 : 0) : readCityTier(IS_ANDROID ? 2 : IS_MOBILE ? 1 : 0);
+  let tier = snapshot ? (IS_MOBILE ? 2 : 0) : readCityTier(IS_MOBILE ? 2 : 0) /* v157.4: tüm telefonlar düşük kademeden başlar (gerekirse yükselir) */;
   renderer.setPixelRatio(snapshot ? 1 : Math.min(window.devicePixelRatio || 1, CITY_TIERS[tier].dpr));
   renderer.toneMappingExposure = 1.05;
   if (!snapshot) renderer.__onLost = () => onEvent?.({ type: 'contextLost' });
@@ -802,7 +849,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     });
     k.npcs.forEach((n) => {
       const p = k.group.localToWorld(new V(n.x, 0, n.z));
-      npcDefs.push({ ...n, x: p.x, z: p.z, y: p.y });
+      npcDefs.push({ ...n, x: p.x, z: p.z, y: p.y, outer: true });
     });
   });
   W.extraLights.forEach((L) => lights.push(L));
@@ -818,11 +865,21 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       if (m.userData.lod) cullItems.push({ o: m, x: m.userData.cellC.x, z: m.userData.cellC.z, r: 0, lod: m.userData.lod });
       else if (sph.radius < 140) cullItems.push({ o: m, x: sph.center.x, z: sph.center.z, r: sph.radius });
     });
+    // v157.4: kesme yarıçapı grubun GERÇEK kapsamından (eskiden grubun merkezi + 45 m sanılıyordu →
+    // kumsal, marina gibi geniş gruplar yaklaşınca kayboluyordu: kumlar, yatlar)
+    const kitSphere = (g) => {
+      const bb = new THREE.Box3().setFromObject(g);
+      if (bb.isEmpty()) return null;
+      const c = bb.getCenter(new V());
+      return { x: c.x, z: c.z, r: Math.max(8, Math.hypot(bb.max.x - bb.min.x, bb.max.z - bb.min.z) / 2) };
+    };
     city.kits.forEach((k) => {
       if (k.__cut || !k.group.parent || k.group.parent !== scene) return;
       const p = k.group.getWorldPosition(new V());
       if (Math.hypot(p.x, p.z) < 1 && (k.group.name === 'zemin' || k.group.name === 'deniz')) return;
-      cullItems.push({ o: k.group, x: p.x, z: p.z, r: 45 });
+      const sp = kitSphere(k.group);
+      if (!sp || sp.r > 400) return; // çok geniş (zemin gibi): hep görünür
+      cullItems.push({ o: k.group, x: sp.x, z: sp.z, r: sp.r });
     });
     // v157: mekân kökleri (canlı eşyalar, iç gruplar) + dış dünyanın birleşik parçaları
     W.venues.forEach((v) => {
@@ -839,8 +896,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     });
     outerKits.forEach((k) => {
       if (k.dynamic.children.length) {
-        const p = k.group.getWorldPosition(new V());
-        cullItems.push({ o: k.dynamic, x: p.x, z: p.z, r: 80, outer: true });
+        const sp = kitSphere(k.dynamic);
+        if (sp && sp.r <= 400) cullItems.push({ o: k.dynamic, x: sp.x, z: sp.z, r: sp.r, outer: true });
       }
     });
   }
@@ -1279,7 +1336,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   };
 
   // --- doğma noktası (harita bölgesi → kapı / satıcı / açık alan) ------------------
-  const REGION_LOT = { camii: 'camii', karakol: 'karakol', banka: 'banka', spor_salonu: 'spor', belediye: 'belediye', silah_magazasi: 'silah', araba_galerisi: 'galeri', fabrika: 'fabrika', internet_kafe: 'netkafe', modifiye_garaji: 'modifiye', casino: 'casino', park: 'park', bar: 'bar', cafe: 'cafe', yaris_pisti: 'pist', stadyum: 'stadyum', ev: 'ev', liman_depo: 'liman', hastane: 'hastane', benzinlik: 'benzinlik', otogar: 'otogar', taksi_duragi: 'taksi_duragi' };
+  const REGION_LOT = { camii: 'camii', karakol: 'karakol', banka: 'banka', spor_salonu: 'spor', belediye: 'belediye', silah_magazasi: 'silah', araba_galerisi: 'galeri', fabrika: 'fabrika', internet_kafe: 'netkafe', modifiye_garaji: 'modifiye', casino: 'casino', park: 'park', bar: 'bar', cafe: 'cafe', yaris_pisti: 'pist', stadyum: 'stadyum', ev: 'ev', liman_depo: 'liman', hastane: 'hastane', benzinlik: 'benzinlik', otogar: 'otogar', taksi_duragi: 'taksi_duragi', ofis: 'ofis' };
   // v157: girilebilir mekânın İÇİNDE, kapının iç tarafında (yüz içeriye dönük)
   function venueSpawn(type) {
     const v = W.venues.find((q) => q.type === type);
@@ -1290,6 +1347,14 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   function spawnPoint(key) {
     // v157: Kervankent / dış dünya noktası
     if (key && typeof key === 'object' && key.world && Number.isFinite(key.x) && Number.isFinite(key.z)) return { x: key.x, z: key.z, yaw: key.yaw ?? Math.PI };
+    // v157.4: oyun açılışı — evin kapısının ÖNÜNDE (dışarıda), yüz yola dönük
+    if (key && typeof key === 'object' && key.region && key.out) {
+      const v = W.venues.find((q) => q.type === (REGION_LOT[key.region] || key.region));
+      if (v) {
+        const p = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 + 3.5);
+        if (!blockedAt(p.x, p.z)) return { x: p.x, z: p.z, yaw: v.ry + Math.PI, pitch: 0.36 };
+      }
+    }
     if (typeof key === 'string' || (key && typeof key === 'object' && key.region)) {
       const k = typeof key === 'string' ? key : key.region;
       const vs = venueSpawn(REGION_LOT[k] || k);
@@ -1353,8 +1418,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
 
   // --- NPC'ler (satıcılar, büfeci, şüpheli adam) ----------------------------------
   // v157: mekân içi NPC'ler + yol üstü / köy / orman NPC'leri de aynı listede
+  const outerNpcIds = new Set(W.npcDefs.map((n) => n.id));
   const npcs = [...npcDefs, ...venueNpcDefs, ...W.npcDefs].map((n) => {
     const f = new Fig(scene, layer, { id: n.id, name: n.name, avatar: n.av, npc: true, lazy: true });
+    // v157.4: köy / yol üstü / park botlarının isim etiketi yok (konuşma balonu kalır)
+    if (n.outer || outerNpcIds.has(n.id)) f.nameEl.style.display = 'none';
     f.x = n.x;
     f.z = n.z;
     f.y = n.y != null ? n.y : groundY(n.x, n.z);
@@ -1633,6 +1701,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         f.seatY = p.y;
         f.sitting = true;
         f.inCar = true;
+        f.motoHat = motoHatOf(carObj.v);
         f.carYaw = carObj.yaw;
         f.moving = false;
         show = vis && carObj.v.open;
@@ -1736,6 +1805,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     me.seatY = p.y;
     me.sitting = true;
     me.inCar = true;
+    me.motoHat = motoHatOf(c.v);
     me.carYaw = c.yaw;
     me.moving = false;
     me.group.visible = c.v.open;
@@ -1981,6 +2051,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   };
   function carFree(x, z, yaw) {
     const r = myCar.v.halfW * 0.82;
+    // v157.4: bisiklet / at — yayaların girdiği her yere girer (araç ya da yaya ızgarasında boşsa geçer)
+    if (myCar.v.walker) {
+      for (const [px, pz] of carCircles(x, z, yaw)) if (carBlockedAt(px, pz, 0.3, myCar.y) && blockedAt(px, pz, 0.3)) return 'wall';
+      return null;
+    }
     for (const [px, pz] of carCircles(x, z, yaw)) if (carBlockedAt(px, pz, r, myCar.y)) return 'wall';
     return null;
   }
@@ -2075,17 +2150,19 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       old.v.rig?.dispose();
       old.v.root.traverse((o) => o.isMesh && o.geometry.dispose());
     }
-    // ön farların yere düşen ışığı
-    const head = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 7.5), headMat('#ffe9b8', 0.5));
-    head.rotation.x = -Math.PI / 2;
-    head.position.set(0, 0.04, v.len / 2 + 3.9);
-    head.userData.keepFp = true;
-    v.root.add(head);
-    const tail = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.6), headMat('#ff2a3a', 0.5));
-    tail.rotation.x = -Math.PI / 2;
-    tail.position.set(0, 0.04, -v.len / 2 - 0.6);
-    tail.userData.keepFp = true;
-    v.root.add(tail);
+    if (!v.silent) {
+      // ön farların yere düşen ışığı
+      const head = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 7.5), headMat('#ffe9b8', 0.5));
+      head.rotation.x = -Math.PI / 2;
+      head.position.set(0, 0.04, v.len / 2 + 3.9);
+      head.userData.keepFp = true;
+      v.root.add(head);
+      const tail = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 1.6), headMat('#ff2a3a', 0.5));
+      tail.rotation.x = -Math.PI / 2;
+      tail.position.set(0, 0.04, -v.len / 2 - 0.6);
+      tail.userData.keepFp = true;
+      v.root.add(tail);
+    }
     myCar = { v, id, mk, x: spot.x, z: spot.z, y: groundY(spot.x, spot.z), yaw: spot.yaw, vx: 0, vz: 0, steer: 0, roll: 0, pitch: 0, lastVF: 0, spawnT: 0, skidD: 0, gp: 0 };
     setPax(myCar, myJob.on ? myJob.pax : 0); // v152: tır dorsesiz başlar
     scene.add(v.root);
@@ -2127,8 +2204,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     me.sitting = myCar.v.open;
     driveCamOff = 0;
     driveCamIdle = 9;
-    sound.start();
-    sound.idle(true);
+    // v157.4: bisiklet / at — motor sesi yok
+    if (!myCar.v.silent) {
+      sound.start();
+      sound.idle(true);
+    }
     zoneKey = '__drive__';
   }
   function exitCar() {
@@ -2285,7 +2365,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const skidding = slip > 2.2 || (hand && Math.abs(vF) > 5) || (braking && Math.abs(vF) > 10);
     updateCarVisual(c, dt, vF, delta, braking || (thr < 0 && vF > 0), skidding, yawRate * dt);
     driveStat = { kmh: Math.round(Math.abs(vF) * 3.6), gear: vF < -0.3 ? 'R' : Math.abs(vF) < 0.3 && !thr ? 'N' : String(1 + Math.min(4, Math.floor((Math.abs(vF) / P.vmax) * 5))), ratio: Math.abs(vF) / P.vmax, name: c.v.def.name };
-    sound.update(Math.min(1, Math.abs(vF) / P.vmax), thr, skidding ? Math.min(1, slip / 6 + 0.3) : 0);
+    if (!c.v.silent) sound.update(Math.min(1, Math.abs(vF) / P.vmax), thr, skidding ? Math.min(1, slip / 6 + 0.3) : 0);
     // oyuncu arabayla taşınır (etiket, bölge, mini harita için)
     self.x = c.x;
     self.z = c.z;
@@ -2370,6 +2450,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       w.spin.rotation.z -= (vF * dt) / w.r;
       if (w.front && !w.moto) w.pivot.rotation.y = delta;
     });
+    v.gait?.(vF, dt); // v157.4: atın bacakları
     stepTrailer(c, vF, dyaw, dt);
     flashVehicle(v, c === myCar && myJob.on);
     v.tlMat.emissiveIntensity = braking ? 5 : 1.4;
@@ -3309,7 +3390,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       }
       const fx = Math.sin(myCar.yaw);
       const fz = Math.cos(myCar.yaw);
-      headSpot.intensity = 55;
+      headSpot.intensity = myCar.v.silent ? 0 : 55; // v157.4: bisiklet / atta far yok
       headSpot.position.set(myCar.x + fx * (myCar.v.len / 2), myCar.y + 0.75, myCar.z + fz * (myCar.v.len / 2));
       headSpot.target.position.set(myCar.x + fx * 16, 0, myCar.z + fz * 16);
       if (driving) {
@@ -3323,6 +3404,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
           me.y = myCar.y;
           me.seatY = sp.y;
           me.inCar = true;
+          me.motoHat = motoHatOf(myCar.v);
           me.carYaw = myCar.yaw;
           me.group.visible = true;
         } else me.group.visible = false;
@@ -3345,7 +3427,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       if (p.t >= 1) p.sp.visible = false;
     });
     // v157: mekân durumu (yürürken), kesit, iç mekânların görünürlüğü, garaj kepenkleri, hayvanlar
-    setVenue(!driving && !self.ride && !heist?.active ? W.inVenueRoom(self.x, self.z, -0.1) : null);
+    setVenue((!driving || myCar?.v.walker) && !self.ride && !heist?.active ? W.inVenueRoom(self.x, self.z, -0.1) : null); // v157.4: binekle mekâna girilir
     if (LAZY_INT) lazyInteriors(dt);
     W.venues.forEach((v) => {
       const near = (camera.position.x - v.wx) ** 2 + (camera.position.z - v.wz) ** 2 < (IS_MOBILE ? 45 : 70) ** 2;
@@ -3615,6 +3697,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   let lastTierAt = 0;
   let raiseSaved = false; // v154: bu oturumda "sonraki açılışta kaliteyi artır" kaydedildi
   let lastRenderAt = 0;
+  let lastBusyAt = 0;
+  let lastSweepAt = performance.now();
   let frameNo = 0;
   function perfSample(iv) {
     const now = performance.now();
@@ -3663,10 +3747,18 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       return;
     }
     const now = performance.now();
-    const cap = CITY_TIERS[tier].fps;
+    // v157.4: telefonda oyuncu dururken (yürümüyor, sürmüyor, ekrana dokunmuyor) 30 kare/sn —
+    // pil ve ısınma yarıya iner; hareket başlayınca hemen tam hıza döner
+    const still = IS_MOBILE && !driving && !self.ride && !self.target && !self.path && !me.moving && !drag && pointers.size === 0 && !Object.values(keys).some(Boolean);
+    if (!still) lastBusyAt = now;
+    const cap = still && now - lastBusyAt > 1500 ? Math.min(30, CITY_TIERS[tier].fps) : CITY_TIERS[tier].fps;
     if (cap < 58 && lastRenderAt && now - lastRenderAt < 1000 / cap - 3) return;
-    if (lastRenderAt) perfSample(now - lastRenderAt);
+    if (lastRenderAt && cap >= CITY_TIERS[tier].fps) perfSample(now - lastRenderAt); // boşta yavaşlatma kalite düşürmesin
     lastRenderAt = now;
+    if (now - lastSweepAt > 15_000) {
+      lastSweepAt = now;
+      sweepAvatarTextures(now);
+    }
     const dt = Math.min(clock.getDelta(), 0.05);
     frame(dt);
     cull(false);
@@ -3728,12 +3820,16 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       });
     const cars = [];
     if (myCar) cars.push({ o: myUid, v: myCar.id, x: r2(myCar.x), z: r2(myCar.z), y: r2(myCar.y), r: wy(myCar.yaw), st: r2(myCar.steer || 0) });
+    // v157.4: bindiğim araç (otobüste yolcuyken iç kamerada gövde gizli) fotoğrafa her zaman girer
+    const rideOwner = self.ride ? self.ride.owner : null;
     rcars.forEach((c, uid) => {
-      if (!c.v.root.visible || Math.hypot(c.x - self.x, c.z - self.z) > VIS_DIST) return;
+      if (uid !== rideOwner && (!c.v.root.visible || Math.hypot(c.x - self.x, c.z - self.z) > VIS_DIST)) return;
       cars.push({ o: uid, v: c.id, x: r2(c.x), z: r2(c.z), y: r2(c.y), r: wy(c.yaw), st: r2(c.steer || 0) });
     });
     // v154: stadyumda maç oynanırken futbolcular + top da kareye girer
     const fb = stadium?.snap?.() || null;
+    // bindiğim araç listenin başına (8 sınırında düşmesin)
+    if (rideOwner) cars.sort((a, b) => (b.o === rideOwner) - (a.o === rideOwner));
     return { cam, people, cars: cars.slice(0, 8), tod, ...(fb ? { fb } : {}) };
   }
   function drawShotLabels(ctx, W, H, s, list) {
@@ -3944,7 +4040,12 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       camera.updateMatrixWorld(true);
       const fp = att.people?.[0] || { x: cam.px, z: cam.pz };
       // fotoğrafın çekildiği yer (canlı motorda oyuncu başka yerde olabilir): oranın parçaları görünür
-      for (const c of cullItems) c.o.visible = Math.hypot(c.x - fp.x, c.z - fp.z) - c.r < 170;
+      for (const c of cullItems) {
+        // v157.8: hem çekenin hem kameranın yakını tam eşya (bank vb. kutu olarak çıkmasın)
+        const d = Math.min(Math.hypot(c.x - fp.x, c.z - fp.z), Number.isFinite(cam.px) && Number.isFinite(cam.pz) ? Math.hypot(c.x - cam.px, c.z - cam.pz) : Infinity);
+        // v157.4: fotoğrafta da LOD — yakında tam eşya, ötede kutu (ikisi birden değil)
+        c.o.visible = c.lod === 'near' ? d < 90 : c.lod === 'mid' ? d >= 90 && d < 170 : d - c.r < 170;
+      }
       const fogSave = [scene.fog.near, scene.fog.far, camera.far];
       scene.fog.near = 70;
       scene.fog.far = 300;
@@ -3974,6 +4075,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
           f.seatY = sp.y;
           f.sitting = true;
           f.inCar = true;
+          f.motoHat = motoHatOf(car.v);
           f.carYaw = car.yaw;
           f.moving = false;
           f.group.visible = car.v.open;
@@ -4119,6 +4221,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     heist,
     photoState,
     renderAtt,
+    // v157.4: Sixtagram — telefonda sadece yakındaki fotoğraflar kendiliğinden çizilir
+    selfPos: () => ({ x: self.x, z: self.z }),
     getPerf: () => ({ tier, name: CITY_TIERS[tier].name, dpr: renderer.getPixelRatio() }),
     setPerfTier: (v) => setTier(clamp(Math.round(v), 0, CITY_TIERS.length - 1), performance.now()),
     setView(v) {
@@ -4219,6 +4323,40 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       ring.visible = false;
       first = true;
       return true;
+    },
+    // v157.4 — ÇETE KARARGAHLARI: hangar (slot 0–5) → çetenin adı (kapının üstünde) + iç tasarımı
+    hqSet(slot, { name = null, design } = {}) {
+      const v = W.venues.find((q) => q.type === `hq${slot}`);
+      if (!v) return false;
+      if (name && v.hqName !== name) {
+        v.hqName = name;
+        if (v.hqSign) {
+          v.root.remove(v.hqSign);
+          v.hqSign.traverse((o) => o.isMesh && (o.geometry.dispose(), o.material.map?.dispose?.(), o.material.dispose?.()));
+        }
+        const k = new Kit(`hqname${slot}`);
+        k.sign(`hqn${slot}_${name}`, String(name).toLocaleUpperCase('tr-TR').slice(0, 24), 0.7, 0, 5.1, v.door.z - 1.2 + 0.12, 0, { color: '#ffffff', glow: '#ff3b3b', font: '900 100px Impact, Arial Black, sans-serif', li: 5, ld: 9 });
+        v.hqSign = k.group;
+        v.root.add(k.group);
+        k.group.updateMatrixWorld(true);
+      }
+      if (design !== undefined) {
+        HQ_CACHE.designs[slot] = design || null;
+        if (v.intOn !== false) {
+          dropVenueInt(v);
+          buildVenueInt(v);
+        }
+      }
+      return true;
+    },
+    // kendi karargahına ışınlan (Çeteler › Aç)
+    enterHq(slot) {
+      return api.enterVenue(`hq${slot}`);
+    },
+    // karargahların bulunduğu cebin merkezi (yaklaşınca bilgiler okunur)
+    hqArea: () => {
+      const p = rsGeo().pads.find((q) => q.key === 'cete');
+      return p ? { x: p.cx, z: p.cz, r: p.r } : null;
     },
     // dünya üzerindeki herhangi bir noktaya (Kervankent, köy, kumsal…) yürüyerek ışınlan
     teleportWorld(x, z, yaw) {

@@ -9,6 +9,7 @@ import { Kit, M, glowMat, floorMat, floorRep } from '../kit.js';
 import { buildVehicle } from '../vehicles.js';
 import { ROAD_HALF, frameAt } from './route.js';
 import { geo, fromPad, BR_HALF } from './roadsideGeo.js';
+import { buildBenzinlikVenue, buildHqVenue, HQ_SLOTS, ROOM as VROOM_RS } from './venues.js';
 
 const PI = Math.PI;
 
@@ -352,8 +353,8 @@ B.benzin = (kit, p, ctx) => {
   curb(kit, p, p.x1, p.z0, p.x1, p.z1);
   curb(kit, p, ROAD_HALF + 1.2, p.z0, p.x1, p.z0);
   curb(kit, p, ROAD_HALF + 1.2, p.z1, p.x1, p.z1);
-  // sundurma (tır geçer: 6,2 m)
-  const cx = 17.5;
+  // sundurma (tır geçer: 6,2 m) — v157.4: market içine girilebilir oldu, kanopi 1 m yola yaklaştı
+  const cx = 16.5;
   const cw = 15;
   const cl = 30;
   const top = 6.2;
@@ -377,13 +378,23 @@ B.benzin = (kit, p, ctx) => {
   kit.sign(`${p.key}_tir`, 'TIR · MOTORİN', 0.42, cx - 4.2, yc + 3.4, -6.6, -PI / 2, { color: '#06202a', bg: '#ffd23f', font: '900 100px Arial, sans-serif', light: false });
   // market + WC (istasyonun arkası)
   const mx = p.x1 - 5;
-  building(kit, mx, y(mx, 6), 6, 8, 4.2, 18, { wall: '#f4f2ec', roof: '#1d2128' });
-  kit.sign(`${p.key}_market`, 'MARKET 7/24', 0.7, mx - 4.08, y(mx, 6) + 3.4, 6, -PI / 2, { color: '#ffffff', glow: '#19e8ff', font: '900 110px Arial, sans-serif', li: 5, ld: 9 });
-  kit.item('door_market', mx - 4.05, 2, 6, 0, { y: y(mx, 2), solid: false });
+  // v157.4: MARKET artık şehirdeki benzinlik marketi gibi içine girilen mekân (ön yüzü kanopiye bakar)
+  {
+    // kök = parsel merkezi; oda merkezi yerel z −5,2, arka duvar −12,5 → döndürünce dünya +x
+    const vx = p.x1 - 1 - (VROOM_RS.D / 2 + 5.2 + 0.3);
+    const vlot = { w: 20, d: 16 };
+    const v = buildBenzinlikVenue(vlot, { road: true });
+    v.rebuild = () => buildBenzinlikVenue(vlot, { road: true });
+    v.root.position.set(vx, y(vx, 6), 6);
+    v.root.rotation.y = -PI / 2;
+    kit.group.add(v.root);
+    v.padRy = -PI / 2;
+    ctx.venues.push(v);
+  }
   building(kit, mx, y(mx, -12), -12, 6, 3.2, 6, { wall: '#d9e3ea', roof: '#1d2128', glass: false });
   kit.sign(`${p.key}_wc`, 'WC · MESCİT', 0.4, mx - 3.06, y(mx, -12) + 2.5, -12, -PI / 2, { color: '#ffffff', bg: '#1d4f9a', font: '900 100px Arial, sans-serif', light: false });
-  kit.item('airpump', mx - 5.6, -4, 2, 0, { y: y(mx - 5.6, -4) });
-  kit.item('trash', mx - 5.3, 15, 0, 0, { y: y(mx - 5.3, 15) });
+  kit.item('airpump', mx - 5.6, -7, 2, 0, { y: y(mx - 5.6, -7) });
+  kit.item('trash', mx - 5.3, 20, 0, 0, { y: y(mx - 5.3, 20) });
   // fiyat totemi (yoldan görünsün)
   const tx = ROAD_HALF + 4;
   const tz = p.z1 - 8;
@@ -393,11 +404,11 @@ B.benzin = (kit, p, ctx) => {
   [['BENZİN', '44,90'], ['MOTORİN', '46,10'], ['LPG', '24,70']].forEach(([a, b], i) => kit.sign(`${p.key}_tp${i}`, `${a}  ${b}`, 0.42, tx - 0.27, ty + 4.1 - i * 0.62, tz, -PI / 2, { color: '#ffd23f', bg: '#0c0d10', font: '900 90px Arial, sans-serif', light: false }));
   kit.solid(tx, tz, 0.4, 1.4);
   // park etmiş araçlar
-  parkVehicle(kit, 5, mx - 9, y(mx - 9, 13), 13, PI / 2);
-  parkVehicle(kit, 2, mx - 9, y(mx - 9, 16.5), 16.5, PI / 2);
+  parkVehicle(kit, 5, mx - 9, y(mx - 9, 22), 22, PI / 2);
+  parkVehicle(kit, 2, mx - 9, y(mx - 9, 25.5), 25.5, PI / 2);
   for (const [x, z] of [[p.x1 - 1.2, p.z0 + 4], [p.x1 - 1.2, p.z1 - 4], [mx - 6, -20]]) lampPost(kit, x, y(x, z), z, 0);
   ctx.npc.push({ x: cx - 2.4, z: 2.5, name: 'Pompacı', av: { clothing: 'jacket', clothColor: '#ff2d8a', hat: 'cap', hatColor: '#14161b', pantsColor: '#2b3550' }, lines: ['Depoyu dolduralım mı abi?', 'Camları da silelim.', 'Motorin tarafı içeride, tır şeridi.'] });
-  return [{ x: cx, z: 0, r: 9, acts: [{ id: 'yakit', label: '⛽ Depoyu doldur' }], truck: true, foot: true }, { x: mx - 4.6, z: 6, r: 3, acts: [{ id: 'market', label: '🛒 Su + simit al' }], foot: true }];
+  return [{ x: cx, z: 0, r: 9, acts: [{ id: 'yakit', label: '⛽ Depoyu doldur' }], truck: true, foot: true }];
 };
 
 B.polis = (kit, p, ctx) => {
@@ -588,8 +599,8 @@ B.dinlenme = (kit, p, ctx) => {
     // tarafında kalıyor, park yerinin çıkışında görünmez duvar oluşuyordu)
     if (i % 2 === 0) parkVehicle(kit, 11, 23, y(23, zz), zz, -PI / 2, { trailer: i ? 'tenteli' : 'konteyner', trailerColor: i ? '#8a3a2a' : '#2a6fb5', paint: i ? '#f4f4f2' : '#1f9e5a', plate: `${34 + i} TR ${100 + i}` });
   });
-  kit.sign(`${p.key}_tirp`, 'TIR PARKI', 0.6, 10, y(10, zf(-40)) + 3.2, zf(-40), -PI / 2, { color: '#ffffff', bg: '#1d4f9a', font: '900 100px Arial, sans-serif', light: false });
-  kit.box(0.14, 3, 0.14, M('#9aa0a8', 0.4, 0.7), 10, y(10, zf(-40)), zf(-40));
+  kit.sign(`${p.key}_tirp`, 'TIR PARKI', 0.6, ROAD_HALF + 2.4, y(10, zf(-30)) + 3.2, zf(-30), -PI / 2, { color: '#ffffff', bg: '#1d4f9a', font: '900 100px Arial, sans-serif', light: false });
+  kit.box(0.14, 3, 0.14, M('#9aa0a8', 0.4, 0.7), ROAD_HALF + 2.4, y(10, zf(-30)), zf(-30));
   for (let k = 0; k < 8; k++) {
     const zz = zf(34 + k * 3);
     lineMark(kit, p, 14, zz, 24, zz, '#f2f2f2');
@@ -604,9 +615,10 @@ B.dinlenme = (kit, p, ctx) => {
   for (const [x, z] of [[kx - 4, kz - 6], [kx - 4, kz + 6]]) bigTree(kit, x, y(x, z), z, 0.8);
   for (const z of [zf(60), zf(64)]) kit.item('plastikmasa', p.x1 - 3, z, 0, 0, { y: y(p.x1, z) });
   // lambalar
-  for (const z of [-60, -30, 0, 30, 60]) lampPost(kit, ROAD_HALF + 6.5, y(ROAD_HALF + 6, zf(z)), zf(z), 0);
-  // giriş totemi
-  signPost(kit, `${p.key}_tot`, 'DİNLENME TESİSİ', ROAD_HALF + 3.6, y(ROAD_HALF, zf(-68)), zf(-68), -PI / 2, { bg: '#1d4f9a', h: 0.7, pole: 4.2, glow: '#19e8ff' });
+  // v157.4: direkler sürüş şeridinden refüje alındı (araba devamlı direklere çarpıyordu)
+  for (const z of [-45, -15, 15, 45]) lampPost(kit, ROAD_HALF + 2.4, y(ROAD_HALF + 2.4, zf(z)), zf(z), PI);
+  // giriş totemi (girişin ortasındaydı → refüj başına)
+  signPost(kit, `${p.key}_tot`, 'DİNLENME TESİSİ', ROAD_HALF + 2.4, y(ROAD_HALF + 2.4, zf(-50)), zf(-50), -PI / 2, { bg: '#1d4f9a', h: 0.7, pole: 4.2, glow: '#19e8ff' });
   // insanlar
   ctx.npc.push({ x: bx - 11.5, z: bz + 4.4, name: 'Garson Murat', av: { clothing: 'vest', clothColor: '#f4f1e8', neckAcc: 'bow', pantsColor: '#1a1a1a' }, lines: ['Buyrun, mercimek çorbası taze!', 'Çay mı içersiniz?', 'Tır şoförlerine çay bizden.'] });
   ctx.npc.push({ x: bx - 13, z: bz - 9, name: 'Tırcı Cemal', av: { clothing: 'jacket', clothColor: '#3a4a2a', hat: 'cap', hatColor: '#c8141e', pantsColor: '#2b3550', facialHair: 'mustache' }, lines: ['Kartal virajlarında yavaş git, kar varsa zincir tak.', 'Kantar ileride, yükün fazlaysa ceza yersin.', 'Kervankent\'e 2,5 km kaldı.'] });
@@ -825,6 +837,7 @@ B.cete = (kit, p, ctx) => {
     const x = -62 + rnd() * 124;
     const z = (rnd() < 0.5 ? -1 : 1) * (8 + rnd() * 2.5);
     if (Math.abs(x) % 44 < 12 && Math.abs(z) > 30) continue;
+    if ([-44, 0, 44].some((hx) => Math.abs(x - hx) < 11.5)) continue; // v157.4: karargah kapılarının önü
     for (let q = 0; q < 9; q++) kit.mesh(new THREE.DodecahedronGeometry(0.15 + rnd() * 0.4, 0), rubbleM[q % 4], x + (rnd() - 0.5) * 2.4, Y + 0.1, z + (rnd() - 0.5) * 1.6, rnd() * 3);
   }
   for (let k = 0; k < 10; k++) {
@@ -838,19 +851,26 @@ B.cete = (kit, p, ctx) => {
     const x = p.x0 + 3 + rnd() * (p.x1 - p.x0 - 6);
     const z = p.z0 + 2 + rnd() * (p.z1 - p.z0 - 4);
     if (Math.abs(z) < 5) continue;
+    if (Math.abs(z) > 8.5 && Math.abs(z) < 24.5 && [-44, 0, 44].some((hx) => Math.abs(x - hx) < 10.5)) continue; // v157.4: karargahların içi
     for (let q = 0; q < 3; q++) kit.box(0.05, 0.3 + rnd() * 0.5, 0.05, weed, x + q * 0.12, Y, z + (q - 1) * 0.08, { cast: false, ry: rnd() * 3 });
   }
   const puddle = new THREE.MeshStandardMaterial({ color: '#2a2e33', roughness: 0.05, metalness: 0.6, transparent: true, opacity: 0.85 });
   [[-12, 2.5, 2.2], [26, -2.8, 1.6], [-48, -1.5, 2.8], [58, 2, 1.8]].forEach(([x, z, r]) => kit.mesh(new THREE.CircleGeometry(r, 16), puddle, x, Y + 0.025, z, 0, { rx: -PI / 2, cast: false }).scale.set(1, 0.6, 1));
-  // 6 hangar: sağlı sollu, kapılar yola bakar
-  const hz = 21;
-  [[-44, 1, 'q', '#b08a6a', 0], [0, 1, 'g', '#a8a296', 0], [44, 1, 'q', '#9a8670', 0.7], [-44, -1, 'g', '#9c968a', 0], [0, -1, 'q', '#a87e5e', 0], [44, -1, 'q', '#b49478', 0]].forEach(([x, s, t, tint, open], i) => {
+  // v157.4: 6 hangar = 6 ÇETE KARARGAHI (girilir; içi çetenin karargah tasarımı), kapılar yola bakar
+  HQ_SLOTS.forEach(([x, s], slot) => {
+    const vlot = { w: 22, d: 18 };
+    const v = buildHqVenue(vlot, slot);
+    v.rebuild = () => buildHqVenue(vlot, slot);
     const ry = s > 0 ? PI : 0; // +z yan: önü −z'ye (yola)
-    if (t === 'q') quonset(kit, x, s * hz, ry, { tint, open });
-    else gableHangar(kit, x, s * hz, ry, { tint });
-    // numara
-    kit.sign(`cete_h${i}`, `${i + 1}`, 1.2, x + 7, 4.2, s * (hz - 12.3), ry, { color: '#e8e2d0', font: '900 120px Impact, Arial Black, sans-serif', light: false });
+    v.root.position.set(x, Y, s * 10.8);
+    v.root.rotation.y = ry;
+    kit.group.add(v.root);
+    v.padRy = ry;
+    v.hqSlot = slot;
+    ctx.venues.push(v);
   });
+  void quonset;
+  void gableHangar;
   // grafiti duvarı
   kit.item('graffiti', -22, 9.6, 0, 0, { y: Y, solid: false });
   kit.box(5, 3, 0.25, M('#6b6a66', 0.95), -22, Y, 9.2);
@@ -865,8 +885,9 @@ B.cete = (kit, p, ctx) => {
     kit.solid(x, z, 2.3, 1.2, r);
   };
   [[-62, -30, 3, 0.1], [-56, -32, 4, -0.2], [-62, 30, 2, 0.3], [62, -30, 4, 0], [56, -31, 3, 0.4], [62, 31, 3, -0.1], [-30, 34, 2, 1.4], [26, -34, 3, 1.6]].forEach(([x, z, n, r]) => stack(x, z, n, r));
+  // v157.4: hangarların içine taşan araba / kasa / varil / forklift yol bandına alındı
   // devrilmiş / tekerleksiz hurda arabalar (oyunun araç modelleri, paslı boya)
-  [[-26, -8, 0.6, 1], [18, 8.2, -0.3, 6], [52, -7.5, 2.4, 3], [-52, 8, 1.2, 9]].forEach(([x, z, r, id], i) => {
+  [[-26, -8, 0.6, 1], [18, 8.2, -0.3, 6], [27, -7.5, 2.4, 3], [-27, 6.8, 1.2, 9]].forEach(([x, z, r, id], i) => {
     const v = buildVehicle(id, { paint: rust[i % rust.length], finish: 'mat' });
     v.root.position.set(x, Y - 0.15, z);
     v.root.rotation.set(i % 2 ? 0.05 : -0.04, r, i === 2 ? 0.3 : 0.02);
@@ -875,19 +896,19 @@ B.cete = (kit, p, ctx) => {
     kit.solid(x, z, 1.1, 2.4, r);
   });
   // lastik / varil / kasa yığınları
-  [[-35, -11], [32, 10.5], [-10, -11], [60, 12], [-60, -12]].forEach(([x, z], i) => {
+  [[-32.5, -11], [32, 10.5], [-12.5, -10.5], [60, 12], [-60, -12]].forEach(([x, z], i) => {
     kit.item('tires', x, z, 0, 0, { y: Y });
     kit.item('tires', x + 0.7, z + 0.4, 0, 0, { y: Y });
     if (i % 2) kit.item('tires', x - 0.5, z - 0.6, 0, 0, { y: Y });
   });
-  [[-18, 11], [12, -10.5], [36, -10.8], [-46, -9.8]].forEach(([x, z], i) => {
+  [[-18, 11], [12, -10.5], [36, -7.2], [-46, -7.2]].forEach(([x, z], i) => {
     kit.item('crates', x, z, i, 0, { y: Y });
     kit.item('pallets', x + 2.4, z, 0, 0, { y: Y });
   });
   kit.item('container', 64, 0, 2, 3, { y: Y });
-  kit.item('forklift', 50, 10.4, 5, 0, { y: Y });
+  kit.item('forklift', 27, 10.8, 5, 0, { y: Y });
   // yanan variller (titrek ateş)
-  [[-30, 9], [8, -9.5], [40, 9.5], [-58, 0]].forEach(([x, z], i) => {
+  [[-30, 9], [12, -7.4], [40, 7.4], [-58, 0]].forEach(([x, z], i) => {
     kit.item('barrel', x, z, 0, 0, { y: Y });
     const f = kit.mesh(new THREE.ConeGeometry(0.32, 0.9, 7), new THREE.MeshBasicMaterial({ color: '#ff8a2a', transparent: true, opacity: 0.85 }), x, Y + 1.25, z, 0, { cast: false, dyn: true });
     kit.ticks.push({ obj: f, ctl: { tick: (t) => {
@@ -960,7 +981,7 @@ B.cete = (kit, p, ctx) => {
   fenceSide(X0, 6, X0, Z1);
   // kırık kapı kanadı (yere yaslanmış)
   kit.box(5.6, 2.2, 0.08, M('#55534e', 0.6, 0.6), X0 + 2, Y + 0.5, -8.6, { ry: 0.4, rz: 0.15 });
-  signPost(kit, 'cete_uyari', 'ÖZEL MÜLK · GİRMEYİNİZ', X0 - 0.4, Y, 8.2, -PI / 2, { bg: '#8a1a1a', h: 0.5, pole: 1.9 });
+  signPost(kit, 'cete_uyari', 'ÇETE KARARGAHLARI', X0 - 0.4, Y, 8.2, -PI / 2, { bg: '#8a1a1a', h: 0.5, pole: 1.9 });
   kit.sign('cete_hurda', 'HURDACI', 0.8, X0 + 0.3, Y + 3.2, -6.4, -PI / 2, { color: '#d8c8a0', bg: '#3a2a1e', font: '900 100px Impact, Arial Black, sans-serif', light: false });
   kit.box(0.2, 3.4, 0.2, M('#4a3a2c', 0.9), X0 + 0.3, Y, -6.4);
   // titrek, zayıf lambalar
@@ -970,13 +991,12 @@ B.cete = (kit, p, ctx) => {
     kit.ticks.push({ obj: b, ctl: { tick: (t) => (b.visible = Math.sin(t * 17 + i * 3) + Math.sin(t * 3.1 + i) > -1.2) } });
   });
   // çete üyeleri + bekçi köpekleri
-  ctx.npc.push({ x: -8, z: 4.5, name: 'Kara Murat', av: { clothing: 'hoodie', clothColor: '#1a1a1c', hat: 'cap', hatColor: '#1a1a1c', facialHair: 'stubble', pantsColor: '#1a1a1c' }, lines: ['Burada ne arıyorsun?', 'Yanlış yere geldin dostum.', 'Patron 3 numaralı hangarda.'] });
+  ctx.npc.push({ x: -8, z: 4.5, name: 'Kara Murat', av: { clothing: 'hoodie', clothColor: '#1a1a1c', hat: 'cap', hatColor: '#1a1a1c', facialHair: 'stubble', pantsColor: '#1a1a1c' }, lines: ['Burada ne arıyorsun?', 'Yanlış yere geldin dostum.', 'Her çetenin burada bir karargahı var.'] });
   ctx.npc.push({ x: 41, z: 5, name: 'Sinsi Cemil', av: { clothing: 'jacket', clothColor: '#3a2a22', hat: 'beanie', hatColor: '#5a1a1a', pantsColor: '#222' }, lines: ['Mal geldi mi?', 'Polis yok burada, rahat ol.', 'Gözünü dört aç.'] });
   ctx.npc.push({ x: -40, z: -5, name: 'Bekçi', av: { clothing: 'jacket', clothColor: '#2a3a2a', hat: 'cap', hatColor: '#2a2a2a', facialHair: 'full', pantsColor: '#222' }, lines: ['Köpekler ısırır, uzak dur.', 'Gece kimse girmez buraya.'] });
   ctx.npc.push({ x: 18, z: -4.5, name: 'Tamirci Hayri', av: { clothing: 'vest', clothColor: '#3a3a3a', hat: 'cap', hatColor: '#8a1a1a', pantsColor: '#2b3550' }, lines: ['Bu parçalar çalıntı değil… sanırım.', 'Motor lazımsa bende var.'] });
   for (let k = 0; k < 3; k++) ctx.animals.push({ kind: 'kopek', x: -30 + k * 28, z: (k % 2 ? 1 : -1) * 3, v: 1 + (k % 3), area: [p.x0 + 3, p.z0 + 3, p.x1 - 3, p.z1 - 3], homeR: 22 });
   return [
-    { x: 44, z: 9, r: 4, acts: [{ id: 'cete', label: '🕶️ Kapıyı çal' }], foot: true },
     { x: -40, z: -4, r: 3, acts: [{ id: 'cete2', label: '💬 Bekçiyle konuş' }], foot: true },
   ];
 };
@@ -1630,19 +1650,26 @@ export function buildRoadside(groundAt = () => 0) {
   root.name = 'yol_ustu';
   const kits = [];
   const npcs = [];
+  const rsVenues = [];
   pads.forEach((p) => {
     const kit = new Kit(`cep_${p.key}`);
     kit.group.position.set(p.cx, p.y0, p.cz);
     kit.group.rotation.y = p.ry;
     root.add(kit.group);
     kits.push(kit);
-    const ctx = { npc: [], animals: [] };
+    const ctx = { npc: [], animals: [], venues: [] };
     const fn = B[p.kind];
     p.zones = fn ? fn(kit, p, ctx) || [] : [];
     p.kit = kit;
     p.kantarSign = ctx.kantarSign || null;
     ctx.npc.forEach((n) => npcs.push({ ...n, pad: p }));
     p.animals = ctx.animals;
+    // v157.4: yol üstü mekânlar (benzinlik marketi) — kitleri cebin engellerine katılır
+    ctx.venues.forEach((v) => {
+      v.pad = p;
+      kits.push(...v.kits);
+      rsVenues.push(v);
+    });
   });
   buildPier(root, kits, groundAt, npcs);
   // köy yolları + otoyolda sapak tabelası
@@ -1675,7 +1702,7 @@ export function buildRoadside(groundAt = () => 0) {
       }
     }
   });
-  return { root, kits, npcs, valleyWild };
+  return { root, kits, npcs, valleyWild, venues: rsVenues };
 }
 
 // --- AKÇAY VADİSİ KÖY YOLU: köy köprüsü, tabelalar, yayla evi, çeşme + yaban hayvanı yerleri ---------

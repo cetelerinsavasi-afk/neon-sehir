@@ -228,7 +228,7 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
       if (x === null || z === null || !fresh(rec, FRESH_P_MS) || Math.hypot(rec.x - x, rec.z - z) > NEAR_P + pSlack) continue;
       seen.add(q.uid);
       const em = q.e && EMOTE_KEYS.includes(q.e.k) && num(q.e.at, 0, 3200) !== null ? { k: q.e.k, at: Math.round(q.e.at) } : null;
-      const car = typeof q.c === 'string' && carOwners.has(q.c) ? { c: q.c, k: Math.round(num(q.k, 0, 3) ?? 0) } : {};
+      const car = typeof q.c === 'string' && carOwners.has(q.c) ? { c: q.c, k: Math.round(num(q.k, 0, 40) ?? 0) } : {};
       const said = Array.isArray(q.says) ? q.says.filter((s) => typeof s === 'string').slice(-2) : [];
       picked.push({
         uid: q.uid,

@@ -26,9 +26,9 @@ const CAR = {
   10: { cab: false, seats: 2, paint: '#26339a', finish: 'parlak', rim: '#e2e2e6', rimStyle: 'kol', spokes: 5, caliper: '#c8141e', exhaust: 'cift', interior: '#1a1a1d' },
 };
 // v151: ticari / motor → modifiye profili
-const PROFILE = { 11: 'truck', 12: 'bus', 13: 'taxi', 14: 'police', 15: 'ambulance', 21: 'moto', 22: 'moto', 23: 'moto', 24: 'moto' };
-export const MOTO_KEY = { 21: 'scooter', 22: 'cross', 23: 'chopper', 24: 'sport' };
-const MOTO_PAINT = { 21: '#e8e2d0', 22: '#f2a51f', 23: '#121214', 24: '#c8141e' };
+const PROFILE = { 11: 'truck', 12: 'bus', 13: 'taxi', 14: 'police', 15: 'ambulance', 21: 'moto', 22: 'moto', 23: 'moto', 24: 'moto', 25: 'moto', 26: 'moto' };
+export const MOTO_KEY = { 21: 'scooter', 22: 'cross', 23: 'chopper', 24: 'sport', 25: 'bisiklet', 26: 'at' };
+const MOTO_PAINT = { 21: '#e8e2d0', 22: '#f2a51f', 23: '#121214', 24: '#c8141e', 25: '#1f8fe0', 26: '#7a4a2a' };
 export const modProfile = (id) => PROFILE[Number(id)] || 'car';
 
 export const MOD_ACC_KEYS = ['spoiler', 'scoop', 'skirts', 'bullbar', 'rack', 'fog', 'neon'];

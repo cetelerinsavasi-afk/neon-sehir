@@ -808,3 +808,13 @@
   font-size: 20px;
   line-height: 1;
 }
+/* v157.4: akışın sonundaki "daha fazla" yer tutucusu */
+.six-more {
+  display: block;
+  width: 100%;
+  background: none;
+  border: 0;
+  padding: 18px 0 28px;
+  font-size: 22px;
+  cursor: pointer;
+}

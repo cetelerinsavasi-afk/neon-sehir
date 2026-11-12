@@ -201,6 +201,7 @@ function GameShell() {
   // v77: İşletme listesi — null kapalı, { type } açık (spor, cafe, bar, internet, silahci, galeri, modifiye)
   const [businessView, setBusinessView] = useState(null);
   const [gangsOpen, setGangsOpen] = useState(false);
+  const [gangsHq, setGangsHq] = useState(null); // v157.4: şehirden karargaha giriş
   const [futbolOpen, setFutbolOpen] = useState(false);
   // comingSoon — "Çok yakında" mesajı (mekan adı), 2 sn sonra kendiliğinden kapanır.
   const [comingSoon, setComingSoon] = useState(null);
@@ -314,7 +315,7 @@ function GameShell() {
     // v66: "Ev" → Evler ekranı (ev satın al, evlerim, girebileceğim evler).
     // Profil alttaki 5. sekmede (👤).
     if (regionMeta?.screen === 'ev') {
-      setHouseView({ houseId: null });
+      setHouseView({ houseId: null, mode: 'ev' }); // v157.4: Ev'de ofis yok (ofisler kendi binasında)
       return;
     }
     // v149 — Stadyum artık park gibi haritaya gömülü: futbol paneli açılmaz, şehirde
@@ -472,7 +473,10 @@ function GameShell() {
   useEffect(() => {
     const on = (e) => {
       const id = e?.detail?.houseId;
-      if (typeof id === 'string' && id) setHouseView({ houseId: id });
+      if (typeof id === 'string' && id) {
+        setCity(null); // v157.4: şehirdeki Çeteler panelinden karargaha giriş
+        setHouseView({ houseId: id });
+      }
     };
     window.addEventListener('neon-open-house', on);
     return () => window.removeEventListener('neon-open-house', on);
@@ -525,11 +529,13 @@ function GameShell() {
   // v147.1 — şehirden açılan liste/mekân/soygun ekranı kapanınca (✕) ana sayfa yerine şehre,
   // girilen kapının önüne dönülür
   const somethingOpen = Boolean(
-    watchStreamId || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || teskilatOpen || vendorRegion || heistTarget !== undefined || activeRegion || comingSoon || raceLobbyMode || activeTableId || effectiveRaceRoomId
+    watchStreamId || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || teskilatOpen || vendorRegion || heistTarget !== undefined || activeRegion || activeTableId || (effectiveRaceRoomId && raceExpanded)
   );
+  // v157.4: ana sayfa yok — oyun şehirde açılır (evin önünde); hiçbir mekân / ekran açık değilse
+  // oyuncu her zaman şehre (girdiği kapının önüne, yoksa evin önüne) döner → asla boşta kalmaz
   useEffect(() => {
-    if (!cityReturn || city || somethingOpen) return;
-    openCityRef.current(cityReturn);
+    if (city || somethingOpen) return;
+    openCityRef.current(cityReturn || { region: 'ev', out: true });
   }, [cityReturn, city, somethingOpen]);
   const mapCovered = Boolean(
     watchStreamId || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || teskilatOpen || Boolean(vendorRegion) || Boolean(city) || heistTarget !== undefined || (effectiveRaceRoomId && raceExpanded)
@@ -572,7 +578,8 @@ function GameShell() {
       {user && <NetCreditRing className="vn-fixed" />}
 
       <main className="map-stage">
-        <CityMap onRegionClick={onRegionClickStable} paused={mapCovered} />
+        {/* v157.4: oyun şehirde açılır — eski 2D harita şehir açıkken hiç kurulmaz (bellek) */}
+        {!city && <CityMap onRegionClick={onRegionClickStable} paused={mapCovered} />}
       </main>
 
       <ReferralPrompt />
@@ -663,6 +670,7 @@ function GameShell() {
       {houseView && (
         <HouseHub
           initialHouseId={houseView.houseId}
+          mode={houseView.mode || null}
           onClose={() => {
             const fromVisit = Boolean(houseView.houseId) && visitReturnPending;
             setHouseView(null);
@@ -679,6 +687,7 @@ function GameShell() {
           type={businessView.type}
           initialHouseId={businessView.houseId || null}
           autoGame={Boolean(businessView.autoGame)}
+          initialOpenAsk={Boolean(businessView.openAsk)}
           onClose={() => setBusinessView(null)}
           onOpenGameVenue={(t) => {
             const open = { silahci: setWeaponShopOpen, galeri: setDealershipOpen, modifiye: setTuningGarageOpen, gazino: setCasinoOpen }[t || businessView.type];
@@ -690,7 +699,13 @@ function GameShell() {
       {futbolOpen && <FutbolFullScreen onClose={() => setFutbolOpen(false)} />}
       {gangsOpen && (
         <GangAlertsContext.Provider value={gangAlerts}>
-          <GangsFullScreen onClose={() => setGangsOpen(false)} />
+          <GangsFullScreen
+            initialHq={gangsHq}
+            onClose={() => {
+              setGangsOpen(false);
+              setGangsHq(null);
+            }}
+          />
         </GangAlertsContext.Provider>
       )}
 
@@ -810,6 +825,28 @@ function GameShell() {
           key={city.k}
           spawn={city.spawn}
           onClose={() => setCity(null)}
+          gangAlerts={gangAlerts}
+          onEnterHq={(kind, slot) => {
+            setCity(null);
+            // v157.4: karargahı düzenleyip çıkınca şehirde yine karargahın içine dönülür
+            if (Number.isInteger(slot)) setCityReturn(`hq${slot}`);
+            setGangsHq(kind);
+            setGangsOpen(true);
+          }}
+          // v157.4: şehrin Soygun panelindeki Ziyaret → mekân / ev (çıkınca şehre dönülür)
+          onVisitVenue={(k) => {
+            setCity(null);
+            handleVisitVenue(k);
+            // v157.4: mekândan çıkınca Ziyaret listesine değil, şehirde o mekânın önüne dönülür
+            setVisitReturnPending(false);
+            const vr = String(k).startsWith('vendor:') ? regions.find((x) => x.id === String(k).slice(7)) : null;
+            setCityReturn(vr ? vendorVenueKey(vr.id) || 'ev' : { teskilat: 'karakol', mosque: 'camii', dealership: 'araba_galerisi', weaponShop: 'silah_magazasi', tuningGarage: 'modifiye_garaji' }[k] || k);
+          }}
+          onVisitHouse={(houseId) => {
+            setCity(null);
+            setVisitReturnPending(true);
+            setHouseView({ houseId });
+          }}
           // v154: şehirdeki pist panelinden yarışa giriş → yarış ekranı şehrin üstünde, şehir durur
           onEnterRace={(roomId, o) => openRace(roomId, { expand: true, ...(o || {}) })}
           raceFull={Boolean(effectiveRaceRoomId && raceExpanded)}
@@ -817,14 +854,30 @@ function GameShell() {
             // kapıdan içeri: şehir kapanır (araba kalkar), mekân/liste mevcut yoldan açılır
             setCity(null);
             setCityReturn(rid);
+            // v157.4: Ofis binasının danışmasından "🏢 Ofisler" listesi
+            if (rid === 'ofis') {
+              setHouseView({ houseId: null, mode: 'ofis' });
+              return;
+            }
             const r = regions.find((x) => x.id === rid);
             if (r) handleRegionClick(r.id, r, { fromCity: true });
           }}
           // v157 — şehirdeki mekânın listesinden seçilen işletmeye git (çıkınca şehre, o mekânın içine)
-          onOpenBiz={({ type, houseId, game }) => {
+          // v157.8 — Ev / Ofis binasındaki listeden bir eve / ofise gir (çıkınca o binanın içine dönülür)
+          onOpenHouse={(houseId, region) => {
+            setCity(null);
+            setCityReturn(region === 'ofis' ? 'ofis' : 'ev');
+            setHouseView({ houseId });
+          }}
+          onOpenBiz={({ type, houseId, game, buy }) => {
             const region = BIZ_TYPES[type]?.region || 'ev';
             setCity(null);
             setCityReturn(region);
+            // v157.8: listenin sağ üstündeki "+ … aç" → işletme açma penceresi doğrudan açılır
+            if (buy) {
+              setBusinessView({ type, openAsk: true });
+              return;
+            }
             if (game) {
               const open = { silahci: setWeaponShopOpen, galeri: setDealershipOpen, modifiye: setTuningGarageOpen, gazino: setCasinoOpen }[type];
               if (open) open(true);

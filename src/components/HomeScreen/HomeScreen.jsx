@@ -85,6 +85,14 @@ function ProfileHeader({ player, onEditAvatar, onAccessories, onReport, onFurnit
       )}
       {error && <p className="home-error">{error}</p>}
 
+      {/* v157.4 — profilde şüphe · saygınlık · zümrüt · altın */}
+      <div className="home-stats">
+        <span title="Şüphe">🕵️ <b>%{Math.max(0, Math.round(Number(player?.suspicion) || 0))}</b></span>
+        <span title="Saygınlık">⭐ <b>{Math.round(Number(player?.reputation) || 0).toLocaleString('tr-TR')}</b></span>
+        <span title="Zümrüt"><i className="emerald-icon" style={{ width: 14, height: 14 }} /> <b>{Math.round(Number(player?.emerald) || 0).toLocaleString('tr-TR')}</b></span>
+        <span title="Altın"><i className="gold-coin-icon" style={{ width: 14, height: 14 }} /> <b>{Math.round(Number(player?.gold) || 0).toLocaleString('tr-TR')}</b></span>
+      </div>
+
       <button className="home-btn" onClick={onEditAvatar}>
         🎭 Avatarımı Düzenle
       </button>

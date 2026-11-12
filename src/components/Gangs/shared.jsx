@@ -108,8 +108,8 @@ export function IntelDecisionPanel() {
       <div className="gx-decision-actions">
         <button className="gx-decision-btn intel" onClick={() => setAsk('disband')}>
           <span className="big">💥</span>
-          <b>Çeteyi polise teslim et</b>
-          <span className="dim">💥 Üyeler dağılır · 💰 altın devlete · +10M ✦</span>
+          <b>Kasaya el koy</b>
+          <span className="dim">💰 Kasa devlete · 🚪 çeteden ayrılırsın · +10M ✦</span>
         </button>
         <button className="gx-decision-btn baba" onClick={() => setAsk('stay')}>
           <span className="big">👑</span>
@@ -121,17 +121,17 @@ export function IntelDecisionPanel() {
         <Confirm
           icon={ask === 'disband' ? '💥' : '👑'}
           danger={ask === 'disband'}
-          title={ask === 'disband' ? 'Çete polise teslim edilsin mi?' : 'Polislikten ayrıl?'}
+          title={ask === 'disband' ? 'Çetenin kasasına el konulsun mu?' : 'Polislikten ayrıl?'}
           lines={
             ask === 'disband'
-              ? ['💥 Çetedeki tüm üyeler dağılır', '💰 Çetedeki tüm altına devlet adına el konur', '✦ +10.000.000 polis prestiji', '🕶️ Kimin teslim ettiği kimseye söylenmez']
+              ? ['💰 Çete kasasındaki tüm altın devlet kasasına geçer', '🚪 Çeteden ayrılırsın (çete kapanmaz, üyeler kalır)', '✦ +10.000.000 polis prestiji']
               : ['👑 Mafya Babası olarak devam edersin', '🚓 Polislikten ayrılırsın, prestijin silinir']
           }
-          confirmLabel={ask === 'disband' ? 'Teslim et' : 'Ayrıl, Baba kal'}
+          confirmLabel={ask === 'disband' ? 'El koy' : 'Ayrıl, Baba kal'}
           busy={busy === 'intelDecision'}
           onCancel={() => setAsk(null)}
           onConfirm={async () => {
-            await run('intelDecision', { choice: ask }, { success: ask === 'disband' ? '💥 Çete polise teslim edildi.' : '👑 Artık sadece Mafya Babasısın.' });
+            await run('intelDecision', { choice: ask }, { success: ask === 'disband' ? '💰 Kasaya el konuldu, çeteden ayrıldın.' : '👑 Artık sadece Mafya Babasısın.' });
             setAsk(null);
           }}
         />

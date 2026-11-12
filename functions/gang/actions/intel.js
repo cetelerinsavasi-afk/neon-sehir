@@ -785,6 +785,10 @@ export function createIntelActions(core) {
       const gangId = membership.gangId;
       const [gangSnap, meSnap] = await Promise.all([tx.get(ctx.ref.gang(gangId)), tx.get(ctx.ref.member(gangId, ctx.actorId))]);
       const plan = choice === 'stay' ? await planIntelLeave(tx, ctx, membership) : null;
+      // v157.4: 'disband' artık çeteyi KAPATMAZ (çeteler kapanmaz): çetenin kasasının tamamı devlete
+      // geçer, polis Mafya Babası çeteden ayrılır; çete Baba'sız devam eder (00:00'da yeni Baba)
+      const gangPlan = choice === 'disband' ? await core.planRemoval(tx, ctx, gangId, ctx.actorId, { gangSnapData: gangSnap.data() }) : null;
+      const stSnap = choice === 'disband' ? await tx.get(ctx.ref.gangState(gangId)) : null;
       if (meSnap.data()?.rank !== 'baba' || gangSnap.data()?.status !== 'active') fail('failed-precondition', 'Artık Mafya Babası değilsin.');
       if (choice === 'stay') {
         applyIntelLeave(tx, ctx, plan, { notifyText: '🚪 Çetenin başında kalmayı seçtin — polislikten ayrıldın.' });
@@ -792,15 +796,19 @@ export function createIntelActions(core) {
         return { choice };
       }
       const gang = gangSnap.data();
-      tx.update(ctx.ref.gang(gangId), { status: 'disbanded', dissolvedReason: 'intel_takedown', dissolvedAtMs: ctx.now, cleanupDone: false });
-      if (gang.nameKey) tx.delete(ctx.ref.gangName(gang.nameKey));
+      const kasa = Math.max(0, Math.floor(Number(stSnap?.data()?.kasa || 0)));
+      if (kasa > 0) {
+        tx.update(ctx.ref.gangState(gangId), { kasa: 0 });
+        core.creditIntel(tx, ctx, null, kasa, { type: 'gang_takedown_to_intel', refId: gangId, from: { kind: 'gang', id: gangId } });
+      }
+      core.applyRemoval(tx, ctx, gangPlan, 'intel_confiscate', { notifyText: `🚓 ${gang.name} çetesinin kasasını devlete teslim ettin ve çeteden ayrıldın.` });
       tx.update(ctx.ref.roster(rid), { prestige: FV.increment(INTEL.TAKEDOWN_PRESTIGE) });
       tx.set(ctx.ref.membership(ctx.actorId), { intelDecisionGangId: null, intelDecisionDeadline: null }, { merge: true });
-      // v40: kimin teslim ettiği kimseye söylenmez (kod adı dahil) — sadece çetenin çökertildiği duyurulur
-      announceIntel(tx, ctx, '💥', `${gang.name} çetesi çökertildi ve polise teslim edildi! Çetenin kasasına devlet adına el konuluyor.`);
-      ctx.logs.push({ gang: 'intel_takedown', world: ctx.worldId, gangId });
-      ctx.afterCommit.push(() => core.cleanupGang(ctx, gangId));
-      return { choice, gangId };
+      // v40: kimin teslim ettiği kimseye söylenmez (kod adı dahil)
+      announceIntel(tx, ctx, '💥', `${gang.name} çetesinin kasasına devlet adına el konuldu — ${kasa.toLocaleString('tr-TR')} altın devlet kasasına geçti.`);
+      core.announce(tx, ctx, gangId, '🚓', `Çetenin kasasına (${kasa.toLocaleString('tr-TR')} altın) devlet adına el konuldu. Mafya Babası koltuğu boş — yeni Baba 00:00'da belirlenecek.`);
+      ctx.logs.push({ gang: 'intel_confiscate', world: ctx.worldId, gangId, kasa });
+      return { choice, gangId, kasa };
     });
   }
 

@@ -582,7 +582,8 @@ export function buildModifiye(kit, lot) {
   kit.solid(-bw / 2, bz, 0.3, bd / 2);
   kit.solid(bw / 2, bz, 0.3, bd / 2);
   kit.solid(-bw / 3, bz - 0.5, 1.6, 2.8);
-  kit.blocker(bw, 6.5, bd, 0, 0, bz);
+  // v157.4: içine girilebilir — dokunuş kapıya yönlendirilmez, dokunulan yere (garajın içine) yürünür
+  kit.blocker(bw, 6.5, bd, 0, 0, bz).userData.venueShell = true;
   // v157: garajın içi (açık bölmeler) = mekân → üstte "🔧 Modifiye garajları" düğmesi
   kit.area(0, bz + 0.5, bw / 2 + 0.6, bd / 2 + 1.2, 'modifiye');
   return { door: { x: 0, z: bz + bd / 2 + 1.0 }, mapLabel: { text: 'MODİFİYE GARAJI', y: 9, z: bz } };
@@ -849,6 +850,75 @@ export function buildEv(kit, lot) {
   return { door: { x: bx, z: bz + bd / 2 + 1.2 }, mapLabel: { text: 'EV', y: 11, z: bz, x: bx } };
 }
 
+// --- v157.4 MÜSTAKİL EVLER MAHALLESİ: 4 bahçeli ev (ön sıra güneye, arka sıra evin tarafına bakar) ---
+const MUSTAKIL = [
+  { wall: '#f1e6d2', roof: '#8a3a2a', floors: 2, car: 'car_sedan' },
+  { wall: '#dfe8ee', roof: '#3a4a5c', floors: 1, car: null },
+  { wall: '#f4d9c6', roof: '#5a3a2e', floors: 2, car: 'car_classic' },
+  { wall: '#e6ead8', roof: '#7a2a24', floors: 1, car: 'car_sedan' },
+];
+export function buildMustakil(kit, lot) {
+  const { w, d } = lot;
+  kit.floor('kaldirim', w, d, 0, 0);
+  const cw = w / 2;
+  const cd = d / 2;
+  [[-1, 1], [1, 1], [-1, -1], [1, -1]].forEach(([sx, sz], i) => {
+    const st = MUSTAKIL[i];
+    const cx = (sx * cw) / 2;
+    const cz = (sz * cd) / 2;
+    // bahçe (çim) + yürüme yolu
+    kit.floor('cim', cw - 1, cd - 1, cx, cz, 0.15);
+    const bw = 7.4;
+    const bd = 6;
+    const bx = cx - sx * 1.2;
+    const bz = cz - sz * 1.4; // ev bahçenin arkasında, ön bahçe sokak tarafında
+    const H = st.floors === 2 ? 5.6 : 3.2;
+    const fz = bz + (sz * bd) / 2; // ön cephe (sokağa bakan)
+    kit.floor('kaldirim', 1.4, Math.abs(cz + (sz * cd) / 2 - fz), bx, (fz + cz + (sz * cd) / 2) / 2, 0.16);
+    kit.wallBox('boya_beyaz', bw, H, bd, bx, 0, bz, { tint: st.wall });
+    // beşik çatı (mahya sokağa paralel)
+    const sh = new THREE.Shape();
+    sh.moveTo(-bd / 2 - 0.45, 0);
+    sh.lineTo(bd / 2 + 0.45, 0);
+    sh.lineTo(0, 2.3);
+    sh.closePath();
+    const rf = kit.mesh(new THREE.ExtrudeGeometry(sh, { depth: bw + 0.8, bevelEnabled: false }), M(st.roof, 0.8), bx - bw / 2 - 0.4, H, bz, Math.PI / 2);
+    rf.castShadow = true;
+    kit.box(0.7, 1.6, 0.7, M('#6a5a52', 0.85), bx + bw / 4, H + 0.9, bz);
+    // pencereler + kapı + saçak (ön cephe)
+    const ry = sz > 0 ? 0 : Math.PI;
+    for (let f = 0; f < st.floors; f++) {
+      for (const ox of [-2.4, 2.4]) {
+        if (f === 0 && ox < 0 && false) continue;
+        kit.mesh(new THREE.PlaneGeometry(1.3, 1.25), glowMat('#ffd9a0', 0.9), bx + ox, 1.7 + f * 2.6, fz + sz * 0.02, ry, { cast: false });
+        kit.box(1.5, 0.1, 0.25, M('#f4efe6', 0.6), bx + ox, 1.0 + f * 2.6, fz + sz * 0.12, { cast: false });
+      }
+    }
+    kit.box(1.15, 2.2, 0.08, M('#5a3a2a', 0.7), bx, 0.15, fz + sz * 0.04, { cast: false });
+    kit.box(2.2, 0.16, 1.1, M(st.roof, 0.8), bx, 2.55, fz + sz * 0.55, { cast: false });
+    kit.light(bx, 2.4, fz + sz * 1.0, '#ffcf8a', 4, 7);
+    kit.mass(bw, H + 2.3, bd, bx, bz);
+    // bahçe çiti (sokak tarafı, ortada giriş boşluğu) + ağaç + araba / bank
+    const ez = cz + (sz * cd) / 2 - sz * 0.45;
+    for (const ox of [-4.6, -2.4, 2.4, 4.6]) kit.item('fence', bx + ox, ez, sz > 0 ? 0 : 4, 0);
+    kit.item('tree', cx + sx * (cw / 2 - 1.6), cz + sz * 1.2, 0, 0);
+    if (st.car) kit.item(st.car, cx + sx * (cw / 2 - 1.8), cz - sz * 2.6, sz > 0 ? 0 : 4, i % 3);
+    else kit.item('parkbench', cx + sx * (cw / 2 - 1.8), cz + sz * 2.2, sz > 0 ? 0 : 4, 0);
+    kit.item('plantb', bx - sx * 2.6, fz + sz * 0.8);
+  });
+  kit.item('streetlamp', w / 2 - 0.6, d / 2 - 0.6, 4);
+  kit.item('streetlamp', -w / 2 + 0.6, -d / 2 + 0.6, 0);
+  return { mapLabel: { text: 'MÜSTAKİL EVLER', y: 8, z: 0 } };
+}
+
+// --- v157.4 OFİS BİNASI (dış görünüş — şehirde girilebilir mekân kabuğu world/venues.js'te) ---
+export function buildOfisDis(kit, lot) {
+  const { w, d } = lot;
+  kit.floor('kaldirim', w, d, 0, 0);
+  tower(kit, { w: w - 4, d: d - 6, h: 30, x: 0, z: -2, style: 'cam_ofis', crown: '#19e8ff', seed: 4404 });
+  return { door: { x: 0, z: d / 2 - 1.5 }, mapLabel: { text: 'OFİSLER', y: 34, z: 0 } };
+}
+
 // --- STADYUM -----------------------------------------------------------------
 // v149 — Stadyum artık içine yürünerek girilen, haritaya gömülü yapı (bkz. stadium.js)
 export { buildStadyum } from './stadium.js';
@@ -897,7 +967,7 @@ export const VENDOR_STYLE = {
   midyeci: { cart: 'midyetezgahi', neon: 'neon_midye', glow: '#2dd4bf', npc: 'npc_midyeci' }, // v154
   dondurmaci: { cart: 'dondurmaarabasi', neon: 'neon_dondurma', glow: '#ff7aa8', npc: 'npc_dondurmaci' }, // v154
 };
-export function buildVendor(kit, key, venue) {
+export function buildVendor(kit, key, venue, { compact = false } = {}) {
   const st = VENDOR_STYLE[key];
   // tabela direği + neon tabela (oyundaki aynı tabela)
   kit.box(0.12, 4.6, 0.12, M('#1b1b1d', 0.4, 0.7), -1.9, 0, -1.3);
@@ -907,14 +977,14 @@ export function buildVendor(kit, key, venue) {
   kit.item(st.cart, 0, 0, 0, 0);
   kit.item('streetlamp', -3.4, 0.2, 0, 0);
   kit.item('copkutusu', 3.2, -0.6, 0, 0);
-  // plastik masalar
-  for (const [mx, mz] of [[-2.2, 2.6], [1.8, 3.0]]) {
+  // plastik masalar (v157.4: dar kaldırımda masa yok — yola taşıyordu)
+  if (!compact) for (const [mx, mz] of [[-2.2, 2.6], [1.8, 3.0]]) {
     kit.item('plastikmasa', mx, mz, 0, 0);
     kit.item('plastiktabure', mx - 0.75, mz, 0, 1);
     kit.item('plastiktabure', mx + 0.75, mz, 0, 1);
     kit.item('plastiktabure', mx, mz + 0.75, 0, 1);
   }
-  kit.item('umbrella', -2.2, 2.6, 0, 0, { solid: false });
+  if (!compact) kit.item('umbrella', -2.2, 2.6, 0, 0, { solid: false });
   kit.pool(0, 1, st.glow, 8, 0.17, 0.55);
   kit.light(0, 2.4, 0.8, st.glow, 6, 9);
   const npc = venue.npcs?.[0];

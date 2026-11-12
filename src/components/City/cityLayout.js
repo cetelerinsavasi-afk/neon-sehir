@@ -38,6 +38,9 @@ export const LOTS = [
   ['benzinlik', 3, 0],
   // v154 — taksi durağı (şehrin dışı: doğu dış halka, stadyumun karşısı)
   ['taksi_duragi', 6, 3, 6, 3, 'w'],
+  // v157.4 — evin karşısı: müstakil evler mahallesi (eski eczane/optik/pide blokları) + ofis binası
+  ['mustakil', 3, 4],
+  ['ofis', 4, 4],
   // v156 — şehirlerarası OTOGAR (dış halka, otoyol ağzının yanı; iki parsel, batıya bakar)
   ['otogar', 7, -1, 7, 0, 'w'],
 ];

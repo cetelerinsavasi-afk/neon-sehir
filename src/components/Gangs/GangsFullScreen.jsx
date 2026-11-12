@@ -1,7 +1,8 @@
 // Alt çubuktaki "Çeteler" sekmesi: tam ekran Çeteler (telefon uygulaması değil).
 import GangsScreen from './GangsScreen';
+import { InitialHqContext } from './cityHqNav';
 
-export default function GangsFullScreen({ onClose }) {
+export default function GangsFullScreen({ onClose, initialHq = null }) {
   return (
     <div className="gx-full" role="dialog" aria-label="Çeteler">
       <div className="gx-full-top">
@@ -11,7 +12,9 @@ export default function GangsFullScreen({ onClose }) {
         <span className="gx-full-title">🏴 Çeteler</span>
       </div>
       <div className="gx-full-body">
-        <GangsScreen />
+        <InitialHqContext.Provider value={initialHq}>
+          <GangsScreen />
+        </InitialHqContext.Provider>
       </div>
     </div>
   );

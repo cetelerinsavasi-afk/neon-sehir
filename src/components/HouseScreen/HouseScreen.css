@@ -2050,3 +2050,13 @@
   z-index: 11;
   animation: hs-pop 0.15s ease-out;
 }
+
+/* v157.4 — iPhone yatay: kamera / çentik tarafına oyun taşmaz, o şerit siyah kalır
+   (kök çerçeve güvenli alanın içine çekilir, dışı gölgeyle siyaha boyanır) */
+@media (orientation: landscape) {
+  .hs-root {
+    left: env(safe-area-inset-left, 0px);
+    right: env(safe-area-inset-right, 0px);
+    box-shadow: 0 0 0 200px #000;
+  }
+}

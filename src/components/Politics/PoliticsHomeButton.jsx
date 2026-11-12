@@ -16,7 +16,7 @@ const ICON = { coup: '⚡', coupVote: '⚡' };
 
 export const leftSlotBottom = (slot) => `calc(${104 + slot * 64}px + env(safe-area-inset-bottom))`;
 
-export default function PoliticsHomeButton({ slot = 0, onVisibleChange }) {
+export default function PoliticsHomeButton({ slot = 0, onVisibleChange, inline = false }) {
   const { player } = usePlayer();
   const { phase, cycle, state, now } = usePoliticsState();
   const need = politicsNeed({ phase, cycle, player, state, now });
@@ -27,7 +27,7 @@ export default function PoliticsHomeButton({ slot = 0, onVisibleChange }) {
   return (
     <>
       {need && (
-        <button type="button" className={`pl-home-btn${ICON[need] ? ' coup' : ''}`} style={{ bottom: leftSlotBottom(slot) }} onClick={() => setOpen(need)} aria-label={ICON[need] ? 'Darbe' : 'Belediye başkanlığı seçimi'}>
+        <button type="button" className={`pl-home-btn${inline ? ' pl-inline' : ''}${ICON[need] ? ' coup' : ''}`} style={inline ? undefined : { bottom: leftSlotBottom(slot) }} onClick={() => setOpen(need)} aria-label={ICON[need] ? 'Darbe' : 'Belediye başkanlığı seçimi'}>
           {ICON[need] || '🗳️'}
           <small>{LABEL[need]}</small>
         </button>

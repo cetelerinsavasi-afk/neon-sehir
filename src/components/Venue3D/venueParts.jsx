@@ -129,12 +129,12 @@ export function CamiiPart({ panel, setPanel, setDynNpcs, walk }) {
         <button className="v3-btn" onClick={() => setBooklet(true)}>
           📖 İmam Kitapçığı
         </button>
-      </Menu>
-      <Menu show={walk}>
-        <SuspicionBadge />
+        {/* v157.4: cemaat sağda, kitapçığın altında; şüphe zaten şehir göstergesinde (çift yazıyordu) */}
         <button className="v3-btn" onClick={() => setPanel('congregation')}>
           📿 {win}. Vakit Cemaati ({members.length})
         </button>
+      </Menu>
+      <Menu show={walk}>
         {user && !prayed && (
           <button className="v3-btn primary" disabled={busy} onClick={pray}>
             {busy ? 'İbadet ediliyor…' : '🤲 İbadet Et'}

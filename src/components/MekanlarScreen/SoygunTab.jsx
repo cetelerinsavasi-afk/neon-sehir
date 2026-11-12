@@ -56,7 +56,7 @@ function TargetCard({ target, onClick, badge, myPower, daily }) {
   );
 }
 
-export default function SoygunTab({ initialTarget }) {
+export default function SoygunTab({ initialTarget, onRun = null }) {
   const { player } = usePlayer();
   const { weapons } = useWeapons();
   const planCounts = useOpenHeistPlanCounts();
@@ -172,7 +172,7 @@ export default function SoygunTab({ initialTarget }) {
               >
                 ← Tüm hedefler
               </button>
-              <HeistPanel target={selected} />
+              <HeistPanel target={selected} onRun={onRun || undefined} />
             </div>
           )}
         </>

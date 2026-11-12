@@ -538,13 +538,14 @@ export function createCore(deps) {
         gangUpdate.babaVacantSinceMs = ctx.now;
         gangLog(tx, ctx, gangId, '👑', 'Mafya Babası koltuğu boş — yeni Mafya Babası 00:00\'da belirlenecek.');
       } else {
-        dissolved = true;
-        gangUpdate.status = 'disbanded';
-        gangUpdate.dissolvedReason = 'empty';
-        gangUpdate.dissolvedAtMs = ctx.now;
-        gangUpdate.cleanupDone = false;
-        gangUpdate.memberCount = 0;
-        if (gang?.nameKey) tx.delete(ctx.ref.gangName(gang.nameKey));
+        // v157.4: ÇETELER KAPANMAZ — son üye de çıksa çete (adı, kasası, deposu, karargahı) kalır;
+        // Baba koltuğu boş kalır. İlk katılan Çömez olur; 1M prestije ulaşan 00:00'da Baba seçilir.
+        if (babaChanged) {
+          gangUpdate.babaId = null;
+          gangUpdate.babaName = null;
+          gangUpdate.babaVacantSinceMs = ctx.now;
+        }
+        if (lastOne) gangUpdate.memberCount = 0;
       }
     }
     tx.update(ctx.ref.gang(gangId), gangUpdate);

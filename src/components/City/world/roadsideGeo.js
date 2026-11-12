@@ -510,7 +510,7 @@ export function geo() {
     branches.push(mr);
   }
   // GÜNEYDOĞU HURDALIĞI (çete bölgesi): şehrin doğu kenarından çakıllı yol + çitli alan
-  const cete = { key: 'cete', kind: 'cete', name: 'Eski Hurdalık', glyph: 'skull', cx: 330, cz: 30, ry: 0, y0: 0.05, x0: -70, x1: 70, z0: -38, z1: 38, gravel: true };
+  const cete = { key: 'cete', kind: 'cete', name: 'Çete Karargahları', glyph: 'skull', cx: 330, cz: 30, ry: 0, y0: 0.05, x0: -70, x1: 70, z0: -38, z1: 38, gravel: true };
   cete.yAt = () => 0.08;
   cete.r = Math.hypot(70, 38) + 2;
   cete.mx = cete.cx;

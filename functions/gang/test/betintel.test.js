@@ -105,8 +105,8 @@ test('bahis başlayamazsa (çete dağıldı) operasyon ücreti (v108) devlete ia
   await h.act(S.B.baba, 'respondBet', { warId: S.warId, accept: true });
   await h.act(S.A.ids[1], 'reportBet', { warId: S.warId });
   await h.act(S.bas, 'startBetOperation', { warId: S.warId });
-  await h.act(S.B.ids[0], 'leaveGang');
-  await h.act(S.B.baba, 'leaveGang'); // Beta dağıldı
+  // v157.4: çeteler artık kapanmaz — eski sürümden kalan dağılmış çete kaydı
+  await h.db.doc(`gangWorlds/test/gangs/${S.B.gangId}`).update({ status: 'disbanded', dissolvedReason: 'empty', dissolvedAtMs: h.clock.now, cleanupDone: false }); // Beta dağıldı
   await h.tickTo('2026-09-22', '00:05');
   assert.equal(h.get(`wars/${S.warId}`).status, 'cancelled');
   const t = h.treasury();

@@ -8,7 +8,8 @@
 // kilitli). Ekran her zaman "Çeteler" sekmesiyle açılır (v110); listede "Aç"a
 // basınca Savaş sekmesine geçer. Çete ↔ Polis Teşkilatı geçişi
 // "Çeteler" sekmesinden.
-import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { CityHqContext, InitialHqContext } from './cityHqNav';
 import { retryImport } from '../../lib/lazyRetry';
 import { useDocData, useGang } from './GangContext';
 import { useGangData, useIntelData } from './data';
@@ -45,13 +46,18 @@ export function useOfficialSeat(ms) {
 // çetende / teşkilatta "Aç" → karargaha (3D mekân) girilir; panellere oradaki
 // sağ üst butondan ulaşılır. Çetesi olmayan "Devam eden savaşlar"ı listeden izler.
 const GangHq = lazy(retryImport(() => import('./GangHq')));
-const TeskilatHq = lazy(retryImport(() => import('../Venue3D/VenueHouseScreen')));
+const TeskilatHq = lazy(retryImport(() => import('../Venue3D/VenueHouseScreen'))); // eslint-disable-line no-unused-vars
+// v157.4: Polis Teşkilatı mekânı kapandı — teşkilat paneli doğrudan açılır
+const OrgPanelSheetLazy = lazy(retryImport(() => import('./OrgPanelSheet')));
 
 export default function GangShell({ membership }) {
   const ms = membership || {};
   const official = useOfficialSeat(ms);
-  const [hq, setHq] = useState(null); // null | 'gang' | 'intel'
-  const open = (o) => setHq(o);
+  const cityHq = useContext(CityHqContext);
+  const initialHq = useContext(InitialHqContext);
+  const [hq, setHq] = useState(initialHq === 'gang' || initialHq === 'intel' ? initialHq : null); // null | 'gang' | 'intel'
+  // v157.4: şehrin içindeyken karargaha girmek şehirden çıkarır (App karargahı açar)
+  const open = (o) => (cityHq ? cityHq.enterHq(o) : setHq(o));
   const close = useCallback(() => setHq(null), []);
   return (
     <div className="gx-shell gx-shell-list">
@@ -63,7 +69,7 @@ export default function GangShell({ membership }) {
       </div>
       {hq && (
         <Suspense fallback={<div className="gx-loading gx-hq-loading">Karargaha giriliyor…</div>}>
-          {hq === 'gang' ? <GangHq gangId={ms.gangId} onExit={close} /> : <TeskilatHq venue="teskilat" onExit={close} fallback={<HqFail onDone={close} />} />}
+          {hq === 'gang' ? <GangHq gangId={ms.gangId} onExit={close} /> : <OrgPanelSheetLazy org="intel" onClose={close} />}
         </Suspense>
       )}
     </div>

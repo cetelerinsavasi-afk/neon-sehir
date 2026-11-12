@@ -81,8 +81,8 @@ test('çete dağılınca açık ilanları kapanır', async () => {
   const h = await createHarness();
   const G = await gangWithStock(h);
   const { listingId } = await h.act(G.baba, 'listDepotItem', { itemKey: 'araba:2', qty: 1, unitPrice: 8000 });
-  await h.act(G.ids[0], 'leaveGang');
-  await h.act(G.baba, 'leaveGang');
+  // v157.4: çeteler artık kapanmaz — eski sürümden kalan dağılmış çete kaydının temizliği
+  await h.db.doc(`gangWorlds/test/gangs/${G.gangId}`).update({ status: 'disbanded', dissolvedReason: 'empty', dissolvedAtMs: h.clock.now, cleanupDone: false });
   await h.internal.clock.runClock('test');
   assert.equal(h.get(`market/${listingId}`).status, 'cancelled');
 });

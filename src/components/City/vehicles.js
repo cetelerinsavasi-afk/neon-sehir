@@ -1872,16 +1872,146 @@ function sideRails(n, t, e, i, s) {
 // =============================================================================
 // v151 — MOTORLAR (mobilyadaki 4 motorun modeli; sürücü kask + mont)
 // =============================================================================
+// v157.4 — BİSİKLET ve AT (binek): motor modeliyle aynı düzen (m: +x ileri, y yukarı), tekerlek =
+// Torus'lu grup (dönme), at bacakları yürüyüşte sallanır (v.gait)
+function rideTube(m, a, b, r, mat) {
+  const A = new THREE.Vector3(...a);
+  const Bv = new THREE.Vector3(...b);
+  const len = A.distanceTo(Bv);
+  const o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 8), mat);
+  o.position.copy(A).add(Bv).multiplyScalar(0.5);
+  o.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), Bv.clone().sub(A).normalize());
+  m.add(o);
+  return o;
+}
+function rideWheel(m, x, r) {
+  const g = new THREE.Group();
+  g.position.set(x, r, 0);
+  const tire = new THREE.Mesh(new THREE.TorusGeometry(r, 0.03, 8, 28), new THREE.MeshStandardMaterial({ color: '#1a1a1c', roughness: 0.8 }));
+  g.add(tire);
+  const spokeM = new THREE.MeshStandardMaterial({ color: '#c9ccd2', roughness: 0.3, metalness: 0.8 });
+  for (let k = 0; k < 4; k++) {
+    const sp = new THREE.Mesh(new THREE.BoxGeometry(r * 2 - 0.04, 0.012, 0.012), spokeM);
+    sp.rotation.z = (k * Math.PI) / 4;
+    g.add(sp);
+  }
+  m.add(g);
+  return g;
+}
+const BIKE_ITEM = {
+  seats: [[0, 0.98, -0.16]],
+  box: [0.25, 0.85],
+  build(g, { tint }) {
+    const m = new THREE.Group();
+    m.rotation.y = -PI / 2;
+    g.add(m);
+    const paint = new THREE.MeshStandardMaterial({ color: tint.c, roughness: tint.r ?? 0.3, metalness: tint.m ?? 0.5 });
+    const blk = new THREE.MeshStandardMaterial({ color: '#16171a', roughness: 0.6 });
+    rideWheel(m, -0.52, 0.34);
+    rideWheel(m, 0.54, 0.34);
+    const bb = [-0.02, 0.33, 0];
+    const seatC = [-0.16, 0.86, 0];
+    const head = [0.4, 0.9, 0];
+    rideTube(m, [-0.52, 0.34, 0.05], bb, 0.018, paint);
+    rideTube(m, [-0.52, 0.34, -0.05], bb, 0.018, paint);
+    rideTube(m, bb, seatC, 0.024, paint);
+    rideTube(m, seatC, head, 0.024, paint);
+    rideTube(m, bb, [0.42, 0.78, 0], 0.026, paint);
+    rideTube(m, seatC, [-0.52, 0.34, 0.05], 0.014, paint);
+    rideTube(m, [0.4, 0.92, 0], [0.54, 0.34, 0.04], 0.016, blk);
+    rideTube(m, [0.4, 0.92, 0], [0.4, 1.06, 0], 0.016, blk);
+    rideTube(m, [0.36, 1.06, -0.26], [0.36, 1.06, 0.26], 0.014, blk);
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.05, 0.12), blk);
+    seat.position.set(-0.18, 0.93, 0);
+    m.add(seat);
+    rideTube(m, seatC, [-0.18, 0.92, 0], 0.014, blk);
+    const crank = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.02, 14), new THREE.MeshStandardMaterial({ color: '#c9ccd2', metalness: 0.8, roughness: 0.3 }));
+    crank.rotation.x = PI / 2;
+    crank.position.set(-0.02, 0.33, 0.05);
+    m.add(crank);
+  },
+};
+const HORSE_ITEM = {
+  seats: [[0, 1.52, -0.12]],
+  box: [0.32, 1.2],
+  build(g, { tint }) {
+    const m = new THREE.Group();
+    m.rotation.y = -PI / 2;
+    g.add(m);
+    const coat = new THREE.MeshStandardMaterial({ color: tint.c, roughness: 0.75 });
+    const dark = new THREE.MeshStandardMaterial({ color: '#2a1a12', roughness: 0.8 });
+    const hoofM = new THREE.MeshStandardMaterial({ color: '#1a1412', roughness: 0.7 });
+    const box = (w, h, d, mat, x, y, z, rz = 0) => {
+      const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      o.position.set(x, y, z);
+      o.rotation.z = rz;
+      m.add(o);
+      return o;
+    };
+    box(1.35, 0.55, 0.5, coat, 0, 1.2, 0);
+    box(0.5, 0.42, 0.46, coat, 0.55, 1.28, 0, 0.15);
+    box(0.32, 0.75, 0.3, coat, 0.82, 1.62, 0, -0.55);
+    box(0.52, 0.26, 0.26, coat, 1.08, 1.92, 0, -0.25);
+    box(0.1, 0.16, 0.06, coat, 0.9, 2.12, 0.08);
+    box(0.1, 0.16, 0.06, coat, 0.9, 2.12, -0.08);
+    box(0.4, 0.62, 0.06, dark, 0.74, 1.72, 0, -0.55);
+    box(0.08, 0.6, 0.12, dark, -0.72, 1.0, 0, 0.45);
+    // eyer + üzengi
+    box(0.48, 0.1, 0.54, new THREE.MeshStandardMaterial({ color: '#5a2e18', roughness: 0.6 }), -0.08, 1.5, 0);
+    box(0.06, 0.32, 0.02, dark, -0.08, 1.3, 0.28);
+    box(0.06, 0.32, 0.02, dark, -0.08, 1.3, -0.28);
+    // bacaklar: kalçadan sallanan gruplar
+    const legs = [];
+    [[0.5, 0.17, 0], [0.5, -0.17, PI], [-0.5, 0.17, PI], [-0.5, -0.17, 0]].forEach(([x, z, ph]) => {
+      const lg = new THREE.Group();
+      lg.position.set(x, 1.0, z);
+      const up = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.55, 0.16), coat);
+      up.position.y = -0.27;
+      lg.add(up);
+      const lo = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.4, 0.11), coat);
+      lo.position.y = -0.73;
+      lg.add(lo);
+      const hf = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.1, 0.16), hoofM);
+      hf.position.y = -0.95;
+      lg.add(hf);
+      m.add(lg);
+      legs.push({ g: lg, ph });
+    });
+    g.userData.legs = legs;
+  },
+};
 const MOTO_DEF = {
   scooter: { k: 'moto_scooter', name: 'Scooter', seats: 2, phys: { vmax: 22, acc: 6, grip: 9, steer: 0.5 } },
   cross: { k: 'moto_cross', name: 'Cross Motor', seats: 1, phys: { vmax: 33, acc: 10, grip: 9, steer: 0.48 } },
   chopper: { k: 'moto_chopper', name: 'Chopper', seats: 2, phys: { vmax: 36, acc: 8, grip: 8, steer: 0.38 } },
   sport: { k: 'moto_sport', name: 'Spor Motor', seats: 2, phys: { vmax: 48, acc: 13, grip: 11, steer: 0.42 } },
+  // v157.4: binekler — motorlardan yavaş (at scooter'dan bir tık hızlı), yaya alanlarına girer
+  bisiklet: { item: BIKE_ITEM, name: 'Bisiklet', seats: 1, ride: 'bike', phys: { vmax: 9, acc: 3.2, grip: 9, steer: 0.6 } },
+  at: { item: HORSE_ITEM, name: 'At', seats: 1, ride: 'horse', phys: { vmax: 24, acc: 6.5, grip: 9, steer: 0.52 } },
 };
 const MOTO_FINISH = { parlak: [0.22, 0.55], metalik: [0.15, 0.9], mat: [0.85, 0.1], krom: [0.05, 1], sedef: [0.18, 0.7] };
+// v157.4: binek (bisiklet / at) — yaya alanı, sessiz (motor sesi yok), atın yürüyüşü
+function rideExtras(t, o) {
+  if (!t.ride) return {};
+  const legs = o.children[0]?.userData?.legs || o.userData?.legs || null;
+  let ph = 0;
+  return {
+    walker: true,
+    silent: true,
+    ride: t.ride,
+    gait: legs
+      ? (vF, dt) => {
+          const sp = Math.abs(vF);
+          ph += dt * (2 + sp * 0.9);
+          const amp = Math.min(0.75, sp * 0.09);
+          legs.forEach((l) => (l.g.rotation.z = Math.sin(ph + l.ph) * amp));
+        }
+      : null,
+  };
+}
 function buildMotoModel(n) {
   const t = MOTO_DEF[n.moto] || MOTO_DEF.scooter;
-  const item = CATALOG_MAP[t.k];
+  const item = t.item || CATALOG_MAP[t.k];
   const [rgh, mtl] = MOTO_FINISH[n.finish] || MOTO_FINISH.parlak;
   const root = new THREE.Group();
   const tilt = new THREE.Group();
@@ -1896,7 +2026,7 @@ function buildMotoModel(n) {
   const f = item.seats[0];
   // sürücü kaskı / montu: oyuncunun avatarı oturur (motor modelinde manken yok)
   const back = -Math.max(...item.box) - 0.05;
-  plate(o, n.plate, 0, 0.55, back + 0.1, PI).scale.set(0.45, 0.8, 1);
+  if (!t.ride) plate(o, n.plate, 0, 0.55, back + 0.1, PI).scale.set(0.45, 0.8, 1);
   let neon = null;
   if (n.acc?.neon) {
     const g = canvasTex('glow', 128, 128, (x, w) => {
@@ -1922,7 +2052,7 @@ function buildMotoModel(n) {
   const tlMat = new THREE.MeshStandardMaterial({ color: '#330000', emissive: '#ff1010', emissiveIntensity: 1.2 });
   const tl = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.06, 0.04), tlMat);
   tl.position.set(0, 0.72, back + 0.12);
-  o.add(tl);
+  if (!t.ride) o.add(tl); // v157.4: bisiklet / atta stop lambası yok
   // koltuk çerçevesi: arabalarla aynı düzen ([ileri, y, yan] — gövde -90° dönük)
   const seatFrame = new THREE.Group();
   seatFrame.rotation.y = -PI / 2;
@@ -1931,7 +2061,7 @@ function buildMotoModel(n) {
     [f[2], f[1] - 0.06, 0],
     [f[2] - 0.45, f[1] - 0.01, 0],
   ].slice(0, t.seats);
-  return { root, tilt, body: seatFrame, wheels, flashers: [], tlMat, def: { name: t.name, seats: t.seats, phys: t.phys }, len, wb: len * 0.95, halfW: 0.45, neon, moto: true, seatPts, seat: seatPts[0], open: true, rider: { helmet: n.helmet, visor: n.helmetVisor, jacket: n.jacket } };
+  return { root, tilt, body: seatFrame, wheels, flashers: [], tlMat, def: { name: t.name, seats: t.seats, phys: t.phys }, len, wb: len * 0.95, halfW: 0.45, neon, moto: true, paint: n.paint, seatPts, seat: seatPts[0], open: true, ...rideExtras(t, o), rider: { helmet: n.helmet, visor: n.helmetVisor, jacket: n.jacket } };
 }
 
 // =============================================================================

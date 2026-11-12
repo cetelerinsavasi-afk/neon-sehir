@@ -10,6 +10,7 @@
 import * as THREE from 'three';
 import { Kit, M, glowMat, canvasTex, GLASS, basicGlow, roundRect } from '../kit.js';
 import { tower } from '../buildings.js';
+import { buildVehicle } from '../vehicles.js';
 import { gameVenue, NEW_VENUES } from './layouts.js';
 import './newItems.js';
 import * as J from '../jobBuildings.js';
@@ -352,6 +353,9 @@ export function buildBankaVenue(lot) {
   P.high.sign('bankalobi', 'PARARA BANK', 0.75, 0, 5.4, FZ + 0.06, 0, { color: '#ffffff', glow: '#5ad8ff', font: '800 100px Arial, sans-serif', li: 5, ld: 9 });
   P.base.item('atm', -3.0, FZ + 0.35, 0, 0);
   P.base.item('atm', -6.0, FZ + 0.35, 0, 0);
+  // v157.4: dış ATM'ler kullanılabilir (yaklaşınca 🏧 ATM düğmesi)
+  P.base.zone({ x: -3.0, z: FZ + 1.1, r: 1.3, kind: 'atm', title: '🏧 ATM' });
+  P.base.zone({ x: -6.0, z: FZ + 1.1, r: 1.3, kind: 'atm', title: '🏧 ATM' });
   P.base.item('stanchion', 3.4, FZ + 2.2, 0, 0);
   P.base.item('stanchion', 6.6, FZ + 2.2, 0, 0);
   P.base.item('planter', -w / 2 + 1.2, d / 2 - 0.8, 0);
@@ -393,8 +397,14 @@ export function buildKarakolVenue(lot) {
   P.base.item('bayrak', 1.6, FZ + 2.4, 0, 0);
   P.base.item('bayrak', 8.4, FZ + 2.4, 0, 0);
   for (let i = 0; i < 4; i++) P.base.box(0.12, 0.02, 4.8, M('#e8e8e8', 0.6), -9 + i * 3, 0.14, d / 2 - 3.2, { cast: false });
-  P.base.item('car_sedan', -7.5, d / 2 - 3.2, 0, 3);
-  P.base.item('car_sedan', -4.5, d / 2 - 3.2, 0, 3);
+  // v157.4: karakolun önünde polis arabaları (oyundaki polis aracı modeli)
+  for (const x of [-7.5, -4.5]) {
+    const pv = buildVehicle(14);
+    pv.root.position.set(x, 0.14, d / 2 - 3.2);
+    pv.root.traverse((o) => o.isMesh && (o.castShadow = true));
+    P.base.add(pv.root);
+    P.base.solid(x, d / 2 - 3.2, (pv.halfW || 1) + 0.1, (pv.len || 4.5) / 2);
+  }
   P.base.pool(DOOR.x, FZ + 2, '#3b6bff', 10, 0.16, 0.5);
   P.base.item('streetlamp', w / 2 - 1, d / 2 - 1.5, 4);
   return finish(P, 'karakol', venue, { x: DOOR.x, z: FZ + 1.3 });
@@ -941,7 +951,8 @@ export function buildHastaneVenue(lot) {
 }
 
 // --- BENZİNLİK (arka: market · önde kanopi + pompalar, oyundaki benzinlik mobilyaları) -------
-export function buildBenzinlikVenue(lot) {
+// v157.4: road → yol üstü Neon Petrol'ün marketi (kanopi / pompalar istasyonun kendisinde)
+export function buildBenzinlikVenue(lot, { road = false } = {}) {
   DOOR.x = 0;
   const P = newParts('benzinlik');
   const { w, d } = lot;
@@ -951,7 +962,9 @@ export function buildBenzinlikVenue(lot) {
   P.high.box(BW + 0.3, 0.3, BD + 0.3, M('#d9d9d4', 0.6), 0, extH, RZ);
   P.high.sign('benzinmarket', 'MARKET 7/24', 0.7, 0, 3.95, FRONT + 0.06, 0, { color: '#ffffff', glow: '#3ad07a', font: '900 100px Arial, sans-serif', li: 5, ld: 9 });
   P.high.sign('benzinlik', 'NEON PETROL', 0.9, 0, 5.2, FRONT + 0.06, 0, { color: '#3ad07a', glow: '#3ad07a', font: '900 100px Arial, sans-serif', li: 5, ld: 9 });
-  const cz = FRONT + 5.4;
+  if (road) return finish(P, 'benzinlik', NEW_VENUES.market, { x: 0, z: FRONT + 1.2 });
+  // v157.4: kanopi 1,2 m öne alındı — ayakları kapının hemen önündeydi, yayalar girişte takılıyordu
+  const cz = FRONT + 6.6;
   for (const x of [-4.4, 4.4]) {
     P.base.item('canopy', x, cz, 0, 0, { scale: 1.55 });
     P.base.item('pump', x - 1.6, cz, 2, 0);
@@ -1067,6 +1080,74 @@ export function buildTaksiVenue(lot) {
   return finish(P, 'taksi_duragi', NEW_VENUES.taksi, { x: 0, z: FRONT + 1.2 });
 }
 
+// --- v157.4 OFİS BİNASI (cam kule; girişte danışma lobisi — "🏢 Ofisler" listesi buradan) ------
+export function buildOfisVenue(lot) {
+  DOOR.x = 0;
+  const P = newParts('ofis');
+  const { w, d } = lot;
+  P.base.floor('kaldirim', w, d, 0, 0);
+  const extH = 4.6;
+  shell(P, { ext: wallExt('mermer_duvar', '#eef0f2'), extH, venue: NEW_VENUES.ofis, doorKey: 'door_doner', vitrine: true, ceil: '#e9ecef' });
+  // lobinin üstünde cam kule (7 kat)
+  const glassT = new THREE.MeshStandardMaterial({ color: '#7fa6bf', roughness: 0.12, metalness: 0.55 });
+  const bandM = M('#dfe4e8', 0.5, 0.2);
+  const TH = 7 * 3.4;
+  P.high.box(BW + 0.6, TH, BD + 0.6, glassT, 0, extH, RZ);
+  for (let k = 0; k <= 7; k++) P.high.box(BW + 0.75, 0.32, BD + 0.75, bandM, 0, extH + k * 3.4 - 0.16, RZ, { cast: false });
+  for (const x of [-BW / 2, -BW / 6, BW / 6, BW / 2]) P.high.box(0.3, TH, 0.3, bandM, x, extH, FRONT + 0.32, { cast: false });
+  P.high.box(BW + 1.2, 0.4, BD + 1.2, M('#1d2128', 0.5, 0.4), 0, extH + TH, RZ);
+  P.high.box(BW + 1.22, 0.12, 0.08, glowMat('#19e8ff', 2.2), 0, extH + TH + 0.3, FRONT + 0.92, { cast: false });
+  P.high.box(BW + 0.8, 0.35, BD + 0.8, M('#2a2f38', 0.5, 0.3), 0, extH, RZ);
+  P.high.sign('ofis_ad', 'NEON PLAZA · OFİSLER', 0.8, 0, extH + 0.75, FRONT + 0.75, 0, { color: '#ffffff', glow: '#19e8ff', font: '800 100px Arial, sans-serif', li: 7, ld: 14 });
+  // ön meydan: bayrak direkleri, saksılar, banklar
+  for (const x of [-7.5, -6, -4.5]) {
+    P.base.box(0.1, 7, 0.1, M('#c9ced4', 0.3, 0.8), x, 0, d / 2 - 2.2);
+    P.base.solid(x, d / 2 - 2.2, 0.12, 0.12);
+  }
+  [['#e30a17', -7.5], ['#1d4f9a', -6], ['#19e8ff', -4.5]].forEach(([c, x]) => P.base.box(0.9, 0.55, 0.03, M(c, 0.7), x + 0.5, 6.2, d / 2 - 2.2, { cast: false }));
+  for (const x of [-BW / 2 + 0.7, BW / 2 - 0.7]) P.base.item('plantb', x, FRONT + 0.9);
+  P.base.item('parkbench', 5.5, FRONT + 4.5, 0, 0);
+  P.base.item('parkbench', -2.5, FRONT + 4.5, 0, 0);
+  P.base.pool(0, FRONT + 2, '#19e8ff', 12, 0.14, 0.38);
+  return finish(P, 'ofis', NEW_VENUES.ofis, { x: 0, z: FRONT + 1.2 });
+}
+
+// --- v157.4 ÇETE KARARGAHI (hurdalıktaki 6 hangar) ---------------------------------------------
+// İçerisi çetenin kendi karargah tasarımı (houses/hq_{gangId} — sadece satın alınmış eşyalar);
+// tasarım şehirde karargaha yaklaşınca okunur (HQ_CACHE) ve iç mekân yeniden kurulur.
+export const HQ_SLOTS = [[-44, 1], [0, 1], [44, 1], [-44, -1], [0, -1], [44, -1]]; // [cep yerel x, taraf]
+export const HQ_CACHE = { designs: {} };
+const HQ_TINTS = ['#8a6a50', '#8f8a7e', '#7f6c58', '#868278', '#8a6248', '#94806a'];
+export function buildHqVenue(lot, slot) {
+  DOOR.x = 0;
+  const P = newParts(`hq${slot}`);
+  const { w, d } = lot;
+  P.base.floor('beton', w, d, 0, 0);
+  const design = HQ_CACHE.designs[slot] || null;
+  const items = (Array.isArray(design?.items) ? design.items : []).filter((it) => it && it.p === 1 && typeof it.k === 'string' && !(Math.abs(it.x) < 1.6 && it.z > ROOM.D / 2 - 1.8)).slice(0, 220);
+  const venue = { name: 'Karargah', icon: '🏴', wall: design?.wall || 'boya_beyaz', floor: design?.floor || 'parke_mese', items, npcs: [] };
+  const tint = HQ_TINTS[slot % HQ_TINTS.length];
+  const metal = M(tint, 0.75, 0.45);
+  const extH = 6.2;
+  shell(P, { ext: (kit, ww, hh, dd, x, y, z) => kit.box(ww, hh, dd, metal, x, y, z), extH, venue, doorKey: 'door_metal', ceil: '#2a2a2e' });
+  // oluklu sac nervürleri + yarım silindir çatı (eski hangarlar gibi)
+  const rib = M('#5a564f', 0.6, 0.6);
+  for (let x = -BW / 2; x <= BW / 2 + 0.01; x += 1.55) if (Math.abs(x - DOOR.x) > 1.2) P.high.box(0.12, extH - 0.2, 0.1, rib, x, 0.1, FRONT + 0.06, { cast: false });
+  const roof = new THREE.Mesh(new THREE.CylinderGeometry(BW / 2 + 0.3, BW / 2 + 0.3, BD + 0.8, 18, 1, false, PI / 2, PI), M(tint, 0.7, 0.5));
+  roof.rotation.x = PI / 2;
+  roof.scale.set(1, 1, 0.42);
+  roof.position.set(0, extH, RZ);
+  roof.castShadow = true;
+  P.high.group.add(roof);
+  P.high.box(BW + 0.4, 0.3, BD + 0.4, M('#3a3834', 0.7, 0.4), 0, extH - 0.15, RZ);
+  // kapı üstü lamba + numara (çetenin adı şehirde karargah bilgisi gelince eklenir)
+  P.high.box(0.5, 0.14, 0.22, glowMat('#ffd9a0', 1.6), DOOR.x, 4.05, FRONT + 0.12, { cast: false }); // kamera kapı arkasındayken önüne girmesin
+  P.high.sign(`hq_no${slot}`, `${slot + 1}`, 0.9, BW / 2 - 1.4, 4.4, FRONT + 0.08, 0, { color: '#e8e2d0', font: '900 120px Impact, Arial Black, sans-serif', light: false });
+  P.base.item('barrel', BW / 2 + 1.2, FRONT + 1.4, 0, 0);
+  P.base.item('crates', -BW / 2 - 1.4, FRONT + 1.6, 0, 0);
+  return finish(P, `hq${slot}`, venue, { x: DOOR.x, z: FRONT + 1.2 });
+}
+
 export const VENUE_BUILDERS = {
   camii: buildCamiiVenue,
   banka: buildBankaVenue,
@@ -1087,4 +1168,5 @@ export const VENUE_BUILDERS = {
   otogar: (lot) => buildOtogarVenue(lot),
   otogar_kk: (lot) => buildOtogarVenue(lot, { kk: true }),
   taksi_duragi: buildTaksiVenue,
+  ofis: buildOfisVenue,
 };

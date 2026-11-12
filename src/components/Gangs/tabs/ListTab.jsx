@@ -146,9 +146,7 @@ export default function ListTab({ membership, official = null, onOpen }) {
       <div className="gx-list-head">
         <span className="gx-list-title">
           🏴 Çeteler        </span>
-        <Btn small onClick={() => setCreate(true)}>
-          Çete kur +
-        </Btn>
+        {/* v157.4: yeni çete kurulamaz (6 çete · 6 karargah) */}
       </div>
       {gangs.length > 6 && <input className="gx-input gx-search" placeholder="Çete ara…" value={q} onChange={(e) => setQ(e.target.value)} />}
       {loading && <div className="gx-loading">Yükleniyor…</div>}

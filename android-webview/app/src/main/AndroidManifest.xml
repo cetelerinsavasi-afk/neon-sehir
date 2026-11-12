@@ -41,7 +41,7 @@
             android:exported="true"
             android:launchMode="singleTask"
             android:alwaysRetainTaskState="true"
-            android:screenOrientation="portrait"
+            android:screenOrientation="fullUser"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|locale|layoutDirection|colorMode|fontWeightAdjustment|grammaticalGender|mcc|mnc|touchscreen"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.NeonSehir.Starting">

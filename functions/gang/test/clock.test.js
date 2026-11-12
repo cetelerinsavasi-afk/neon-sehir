@@ -129,7 +129,8 @@ test('v38 aktiflik: savaş, herhangi bir sohbet ya da ibadet aktif sayılır; 29
   assert.equal(h.member(G.gangId, lazy), undefined);
   assert.equal(h.member(G.gangId, G.baba), undefined, 'Baba da çıkarıldı');
   for (const id of [warrior, chatter, prayer]) assert.ok(h.member(G.gangId, id), 'aktif üye kalır');
-  assert.equal(h.get(`gangs/${Solo.gangId}`).status, 'disbanded', 'kimse kalmadı → çete kapandı');
+  assert.equal(h.get(`gangs/${Solo.gangId}`).status, 'active', 'v157.4: kimse kalmasa da çete kapanmaz');
+  assert.equal(h.get(`gangs/${Solo.gangId}`).memberCount, 0);
   const msg = Object.values(h.db._dump('gangWorlds/test/inbox/')).find((m) => m.to === lazy && /mesaj yazmadığın ve ibadet etmediğin/.test(m.text));
   assert.ok(msg);
   // aktiflik nedeniyle çıkarılan aynı gün tekrar girebilir (v56 kilidi yalnızca atmalar için), prestij 0
@@ -180,7 +181,7 @@ test('v127: eski kayıt (gangCooldownGangId yok) — yasak ayrılış günü gan
   assert.equal(gangRejoinHoursLeft({ ...ms, gangCooldownGangId: 'C' }, 'A', now), 0);
 });
 
-test('dağılan çete: kasa yakılır, tırlar emekli, ticaret yolu boşa çıkar, bekleyen bahis iade', async () => {
+test('(v157.4 öncesi kalan) dağılmış çete temizliği: kasa yakılır, tırlar emekli, ticaret yolu boşa çıkar, bekleyen bahis iade', async () => {
   const h = await createHarness();
   const A = await setupGang(h, { members: 0, name: 'Alfa' });
   const B = await setupGang(h, { members: 0, name: 'Beta' });
@@ -190,7 +191,8 @@ test('dağılan çete: kasa yakılır, tırlar emekli, ticaret yolu boşa çıka
   await h.db.doc(`gangWorlds/test/gangs/${A.gangId}`).update({ routeProducts: ['silah'] });
   const { code } = await h.act(A.baba, 'buyTruck');
   const { warId } = await h.act(B.baba, 'offerBet', { targetGangId: A.gangId, stake: 100_000 });
-  await h.act(A.baba, 'leaveGang');
+  // v157.4: çeteler artık kapanmaz; eski sürümden kalan 'disbanded' kayıtların temizliği sürer
+  await h.db.doc(`gangWorlds/test/gangs/${A.gangId}`).update({ status: 'disbanded', dissolvedReason: 'empty', dissolvedAtMs: h.clock.now, cleanupDone: false });
   await h.internal.clock.runClock('test');
   assert.equal(h.get(`gangs/${A.gangId}`).status, 'disbanded');
   assert.equal(h.state(A.gangId).kasa, 0);

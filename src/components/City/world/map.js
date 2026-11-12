@@ -33,12 +33,12 @@ export const PAL = {
 const TYPE_COL = {
   banka: '#c7d6ea', karakol: '#c4cce0', belediye: '#e6dbc4', camii: '#cfe3dc', galeri: '#e2d6e8', silah: '#d9cfcf',
   modifiye: '#d8d5cc', casino: '#e3cde6', spor: '#d3e0ea', fabrika: '#d6d1c4', netkafe: '#cfdbe6', bar: '#ead1d8', cafe: '#eadfcc',
-  ev: '#e8dcc8', hastane: '#f0d4d4', benzinlik: '#d4e6d4', taksi_duragi: '#f2e3a6', otogar: '#e6d0d0',
+  ev: '#e8dcc8', hastane: '#f0d4d4', benzinlik: '#d4e6d4', taksi_duragi: '#f2e3a6', otogar: '#e6d0d0', ofis: '#dfe6ee', mustakil: '#e4ead2',
 };
 const ICON_COL = {
   banka: '#2f6fd0', karakol: '#1d3f8a', belediye: '#a8792a', camii: '#2d8a7a', galeri: '#7d3fa8', silah: '#8a2b2b', modifiye: '#5a5f68',
   casino: '#a8318a', spor: '#2f8ac2', fabrika: '#6b5a3a', netkafe: '#2a7ab8', bar: '#c23a6a', cafe: '#a8682a', ev: '#c2702a',
-  stadyum: '#2f9e44', park: '#2f9e44', pist: '#d0402a', liman: '#1d6fa8', hastane: '#d0302a', benzinlik: '#2f9e5a', taksi_duragi: '#d9a400', otogar: '#c8141e',
+  stadyum: '#2f9e44', park: '#2f9e44', pist: '#d0402a', liman: '#1d6fa8', hastane: '#d0302a', benzinlik: '#2f9e5a', taksi_duragi: '#d9a400', otogar: '#c8141e', ofis: '#2a6fb5', mustakil: '#5a8a3a',
 };
 // sokak adları (yer tutucu — oyunda değiştirilebilir)
 const STREETS_X = [ // yatay yollar: z
@@ -68,7 +68,7 @@ function rrect(g, x, z, hw, hd, yaw) {
 const GLYPH_OF = {
   camii: 'mosque', banka: 'bank', karakol: 'police', belediye: 'gov', galeri: 'car', silah: 'target', modifiye: 'wrench',
   casino: 'spade', spor: 'dumbbell', fabrika: 'factory', netkafe: 'monitor', bar: 'cocktail', cafe: 'cup', ev: 'house',
-  stadyum: 'ball', park: 'tree', pist: 'flag', liman: 'anchor', hastane: 'cross', benzinlik: 'fuel', taksi_duragi: 'car', otogar: 'bus',
+  stadyum: 'ball', park: 'tree', pist: 'flag', liman: 'anchor', hastane: 'cross', benzinlik: 'fuel', taksi_duragi: 'car', otogar: 'bus', ofis: 'gov', mustakil: 'house',
   melon: 'fork', rest: 'cup', honey: 'fork', corn: 'fork', village: 'house', light: 'flag', anchor2: 'anchor', boat: 'anchor', view: 'eye', beach: 'umbrella',
 };
 // birim koordinat (−1…1), beyaz

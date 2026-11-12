@@ -402,3 +402,70 @@ body.ns-city-open .race-bubble { z-index: 96; }
 .cs-job-range .cs-job-start { flex: 1; min-width: 0; }
 .cs-job-start small { font-size: 11px; font-weight: 800; opacity: 0.75; }
 .cs-job-start.far { background: linear-gradient(135deg, rgba(25, 232, 255, 0.95), rgba(47, 124, 246, 0.95)); border-color: rgba(25, 232, 255, 0.7); color: #031726; }
+
+/* v157.4 — konum iğnesi: üstte ok + mesafe (dokununca kalkar), büyük haritada seçim balonu */
+.cs-pin-chip {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  top: calc(110px + var(--hs-safe-t, 0px)); z-index: 12;
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 12px 6px 7px; border-radius: 999px; border: 0; cursor: pointer;
+  background: rgba(14, 17, 28, 0.86); color: #fff; font-weight: 800; font-size: 13px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+}
+.cs-pin-chip i { font-style: normal; opacity: 0.6; font-size: 11px; }
+.cs-bm-spot {
+  position: absolute; transform: translate(-50%, calc(-100% - 10px)); z-index: 3;
+  display: flex; flex-direction: column; gap: 4px; padding: 5px;
+  background: rgba(255,255,255,0.96); border-radius: 12px; box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+}
+.cs-bm-spot button { border: 0; border-radius: 9px; padding: 8px 12px; background: #f1ede6; color: #2c2823; font-weight: 800; font-size: 13px; cursor: pointer; white-space: nowrap; }
+
+/* v157.4 — alt çubuk: sohbet kapalıyken Sohbet · Çeteler · Soygun · Profil */
+.cs-dock {
+  position: absolute; left: 8px; right: 8px; bottom: calc(8px + var(--hs-safe-b, 0px)); z-index: 12;
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px;
+  padding: 5px; border-radius: 16px;
+  background: var(--hs-glass, rgba(14,17,28,0.8)); border: 1px solid var(--hs-line, rgba(255,255,255,0.12));
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+}
+.cs-dock-btn {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 6px 2px 5px; border: 0; border-radius: 12px; cursor: pointer;
+  background: rgba(255,255,255,0.06); color: #f1e9d2; font: 800 11px/1.1 system-ui, sans-serif;
+}
+.cs-dock-btn span { font-size: 19px; line-height: 1.1; }
+.cs-dock-btn.new::after, .cs-dock-dot {
+  content: ''; position: absolute; top: 5px; right: calc(50% - 18px); width: 8px; height: 8px; border-radius: 50%;
+  background: #ff3b5c; box-shadow: 0 0 0 2px rgba(14,17,28,0.9);
+}
+.cs-root.cs-land .cs-dock { left: 70px; right: 70px; }
+.cs-chat-hide {
+  flex: none; width: 36px; border: 0; border-radius: 10px; cursor: pointer;
+  background: rgba(255,255,255,0.08); color: #f1e9d2; font-weight: 900;
+}
+.cs-heist-on .cs-panel-layer { visibility: hidden; pointer-events: none; }
+
+/* v157.4 — sağ / sol yuvarlak butonlar daha şeffaf (sahne arkadan görünsün) */
+.cs-root .hs-side-btn { background: rgba(20, 20, 20, 0.42); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.cs-root .hs-side-btn.on { background: rgba(212, 175, 55, 0.3); }
+/* v157.8 — mekân düğmeleri sol üstte, şüphe · altının hemen altında; liste onların altında açılır */
+.v3-menu.cs-lmenu { max-width: calc(100% - 150px); z-index: 20; }
+.cs-lmenu .cs-venue-bar {
+  position: static; transform: none; max-width: none; justify-content: flex-start; gap: 6px; margin-top: 2px;
+}
+.cs-lmenu .cs-venue-btn { padding: 8px 12px; font-size: 13px; }
+.cs-lmenu .cs-biz-panel {
+  position: static; transform: none; width: min(calc(100vw - 24px), 400px);
+  max-height: min(48vh, 440px);
+}
+.cs-biz-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px 8px; }
+.cs-biz-head b { color: #dff9ff; font-size: 14px; }
+.cs-biz-head .hh-buy { margin: 0; flex: none; }
+/* oyunun mekânlarındaki (banka…) menü, sol üstteki mekân düğmelerinin altına iner */
+.cs-root.cs-vbtn .cs-venue-layer .v3-menu { top: calc(196px + var(--hs-safe-t, 0px)); }
+.cs-root.cs-vbtn .cs-venue-layer .v3-menu.right { top: calc(246px + var(--hs-safe-t, 0px)); }
+@media (max-width: 560px) {
+  .cs-lmenu .cs-biz-panel { max-height: 42vh; }
+  .cs-root.cs-vbtn .cs-venue-layer .v3-menu { top: calc(224px + var(--hs-safe-t, 0px)); }
+  .cs-root.cs-vbtn .cs-venue-layer .v3-menu.right { top: calc(278px + var(--hs-safe-t, 0px)); }
+}

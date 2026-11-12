@@ -129,7 +129,12 @@ export function WatchWarsButton() {
 }
 
 // v146 — Savaş › Davetler: çetemizi karargahına davet eden çeteler (hiç davet yoksa görünmez)
-export function HqInvitesButton({ gangId }) {
+// v157.4: karargah davet sistemi kaldırıldı (karargahlar haritada, herkese açık) — dinleyici de yok
+export function HqInvitesButton() {
+  return null;
+}
+// eslint-disable-next-line no-unused-vars
+function HqInvitesButtonOld({ gangId }) {
   const nav = useContext(HqNavContext);
   const [open, setOpen] = useState(false);
   const [list, setList] = useState([]);

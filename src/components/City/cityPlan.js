@@ -43,6 +43,9 @@ const T = {
   otogar: { build: J.buildOtogar, name: 'Otogar', icon: '🚌', open: true },
   // v157: limana uzak olan depo kaldı (kuzey deposu kaldırıldı); uzak teslim Kervankent'te
   depo_dogu: { build: J.buildDepoDogu, name: 'Doğu Lojistik Deposu', icon: '📦', open: true },
+  // v157.4 — müstakil evler mahallesi (girilmez; bahçeli 4 ev) + ofis binası (girilir: danışma lobisi)
+  mustakil: { build: B.buildMustakil, name: 'Müstakil Evler', icon: '🏡', open: true },
+  ofis: { build: B.buildOfisDis, region: 'ofis', name: 'Ofisler', icon: '🏢', label: '🏢 Ofisler' },
 };
 
 // Seyyar satıcılar: mekân değil, sokakta (lot yerel koordinatı)
@@ -192,7 +195,7 @@ export function buildCity() {
     k.group.position.set(v.x, 0, v.z);
     k.group.rotation.y = (v.r * Math.PI) / 4;
     host.kit.group.add(k.group);
-    B.buildVendor(k, v.key, VENUES[v.key]);
+    B.buildVendor(k, v.key, VENUES[v.key], { compact: Boolean(v.compact) });
     k.label(VENUES[v.key].name.toUpperCase(), 0, 4.2, 0, 'vendor');
   });
 
@@ -234,7 +237,8 @@ export function buildCity() {
   kits.push(edge);
   const edgeM = M('#a8a294', 0.9);
   // doğu kenarı: O-77 otoyol ağzında (z = −140) açık
-  const HW = { z0: cz(-1) - P / 2 - 4, z1: cz(-1) - P / 2 + 4 };
+  // v157.4: duvar uçları yola taşıyordu (±4) → bariyer hizasında biter (RAIL 6,3)
+  const HW = { z0: cz(-1) - P / 2 - 6.5, z1: cz(-1) - P / 2 + 6.5 };
   // ve güneydoğu hurdalık geçidi (z = EAST_GATE_Z ± 4)
   for (const [p, q] of [[Z0 - 0.6, HW.z0], [HW.z1, EAST_GATE_Z - 4], [EAST_GATE_Z + 4, Z1 + 0.3]]) {
     edge.box(0.6, 0.7, q - p, edgeM, X1 + 0.3, 0, (p + q) / 2);

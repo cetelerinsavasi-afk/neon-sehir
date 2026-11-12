@@ -20,6 +20,8 @@ export function createMembershipActions(core, intelHelpers) {
   // İstihbarattan da çıkar. Kurucu = Mafya Babası, 10.000.000 prestij.
   // ---------------------------------------------------------------------------
   async function createGang(ctx, data) {
+    // v157.4: yeni çete kurulamaz — şehirde 6 çete, her birinin haritada karargahı var
+    if (!ctx.isTest && !core.deps.allowCreateGang) fail('failed-precondition', 'Yeni çete kurulamaz. Şehirdeki 6 çeteden birine katılabilirsin.');
     const name = cleanText(data.name, { min: GANG.NAME_MIN, max: GANG.NAME_MAX, field: 'Çete adı' });
     const logo = validLogo(data.logo);
     const note = cleanText(data.note || '', { max: GANG.NOTE_MAX, field: 'Not' });

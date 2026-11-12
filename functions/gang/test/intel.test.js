@@ -185,7 +185,7 @@ test('rüşvet: tutarı İstihbarat operasyonda belirler; savunan 12:00 duyurusu
   assert.equal(h.get(`trucks/${truckId}`).lastTrip.outcome, 'delivered');
 });
 
-test('çeteyi İstihbarata teslim et → çete kapanır, üyeler atılır, TÜM kasa (v108) devlet kasasına; karar yoksa 00:00da İstihbarattan çıkar', async () => {
+test('v157.4: polis Baba kasaya el koyar → çete KAPANMAZ, üyeler kalır, TÜM kasa devlete, polis çeteden ayrılır; karar yoksa 00:00da İstihbarattan çıkar', async () => {
   const h = await createHarness();
   const G = await setupGang(h, { members: 3, name: 'Kurban' });
   await h.fundKasa(G.gangId, 300_000);
@@ -201,13 +201,12 @@ test('çeteyi İstihbarata teslim et → çete kapanır, üyeler atılır, TÜM 
   await h.act(spy, 'intelDecision', { choice: 'disband' });
   await h.internal.clock.runClock('test');
   const g = h.get(`gangs/${G.gangId}`);
-  assert.equal(g.status, 'disbanded');
-  assert.equal(g.cleanupDone, true);
-  for (const id of G.ids) assert.equal(h.gangOf(id), null);
+  assert.equal(g.status, 'active', 'çete kapanmaz');
+  assert.equal(g.babaId, null, 'Baba koltuğu boş');
+  assert.equal(h.gangOf(spy), null, 'polis çeteden ayrıldı');
+  for (const id of G.ids.slice(1)) assert.equal(h.gangOf(id), G.gangId, 'üyeler kalır');
   assert.equal(h.state(G.gangId).kasa, 0);
   assert.equal(h.treasury().in.ist_cokertme, st0 + 300_000, 'çetenin tüm parası devlet kasasına');
-  const msgs = Object.values(h.db._dump('gangWorlds/test/inbox/')).filter((m) => m.to === G.ids[1]);
-  assert.ok(msgs.some((m) => m.text.includes('polis tarafından çökertildi ve dağıtıldı')));
   const rid = (await h.membership(spy)).intelRosterId;
   assert.equal(h.get(`intelRoster/${rid}`).prestige, 10_000_000);
 

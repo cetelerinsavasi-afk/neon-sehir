@@ -73,10 +73,10 @@ export default function OrgPanelSheet({ org = 'gang', onClose, onEnterHq }) {
   return createPortal(
     <div className="gx-hq-panel" role="dialog" aria-label={org === 'intel' ? 'Polis Teşkilatı' : 'Çete'} onPointerDown={(e) => e.stopPropagation()}>
       <div className="gx-full-top">
-        <span className="gx-full-title">{org === 'intel' ? '🚓 Polis Teşkilatı' : '🏴 Çete'}</span>
         <button className="gx-full-close" onClick={onClose} aria-label="Kapat">
           ✕
         </button>
+        <span className="gx-full-title">{org === 'intel' ? '🚓 Polis Teşkilatı' : '🏴 Çete'}</span>
       </div>
       <div className="gx-root gx-hq-panel-root">
         {worldId ? (

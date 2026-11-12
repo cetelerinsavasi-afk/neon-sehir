@@ -26,6 +26,10 @@ export const VEHICLE_CATALOG = {
   22: { name: 'Cross Motor', kind: 'motor', job: 'kurye', gearLevel: 2, baseTank: 12, price: 35000, storage: 0, turboCount: 0 },
   23: { name: 'Chopper', kind: 'motor', job: 'kurye', gearLevel: 2, baseTank: 20, price: 60000, storage: 0, turboCount: 0 },
   24: { name: 'Spor Motor', kind: 'motor', job: 'kurye', gearLevel: 3, baseTank: 18, price: 95000, storage: 0, turboCount: 0 },
+  // v157.4 — BİSİKLET ve AT: motorların yanında. Tamir YOK (20 gün ömür), modifiye VAR, meslek YOK
+  // (para kazandırmaz); motorlardan yavaş ama yayaların girdiği her yere girer.
+  25: { name: 'Bisiklet', kind: 'motor', gearLevel: 1, baseTank: 0, price: 7500, storage: 0, turboCount: 0 },
+  26: { name: 'At', kind: 'motor', gearLevel: 1, baseTank: 0, price: 75000, storage: 0, turboCount: 0 },
 };
 
 // Fiyatlar (kullanıcı revizesi) — tamir/geliştirme malzemesi miktarı

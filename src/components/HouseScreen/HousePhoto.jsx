@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getCachedPhoto, putCachedPhoto, photoKey, whenVisible, runPhotoJob, onPhotoQueueIdle, IS_MOBILE_DEVICE } from '../../lib/photoCache';
 import { createHouseEngine, releaseSharedRenderer } from './houseEngine';
+import { getLiveCityEngine } from '../City/cityPhotoHub.js';
 
 // v149: telefonda fotoğraf kuyruğu boşalınca ekran dışı çizicinin grafik bağlamı bırakılır
 if (IS_MOBILE_DEVICE) onPhotoQueueIdle(() => releaseSharedRenderer('snap'));
@@ -109,7 +110,12 @@ function renderHousePhoto(att, key) {
   return job;
 }
 
-export default function HousePhoto({ attachment }) {
+// v157.4: telefonda şehir açıkken ev fotoğrafı dokununca çizilir — ev çizicisi ikinci bir grafik
+// bağlamı açar; şehir sahnesi bellekteyken akıştaki her ev karesi için bunu yapmak telefonu
+// bellek sınırına dayayıp oyunu kapatıyordu. Cihazda kayıtlıysa yine anında görünür.
+export default function HousePhoto({ attachment, manual = IS_MOBILE_DEVICE }) {
+  const [asked, setAsked] = useState(false);
+  const [waiting, setWaiting] = useState(false);
   const key = JSON.stringify([attachment.houseId, attachment.cam, attachment.vert ? 1 : 0, attachment.sq ? 1 : 0, attachment.overlay ? JSON.stringify(attachment.overlay).length : 0, attachment.people?.length, attachment.design?.items?.length, (attachment.people || []).map((p) => `${p.says?.length || 0}${p.holding || ''}${p.emote?.kind || ''}${p.emote?.at || ''}${p.x},${p.z}`)]);
   const [src, setSrc] = useState(null);
   const [failed, setFailed] = useState(false);
@@ -122,6 +128,7 @@ export default function HousePhoto({ attachment }) {
     getCachedPhoto(pk).then((hit) => {
       if (!alive) return;
       if (hit) return setSrc(hit);
+      if (manual && !asked && getLiveCityEngine()) return setWaiting(true);
       stop = whenVisible(boxRef.current, () => {
         renderHousePhoto(attachment, key)
           .then((u) => {
@@ -136,8 +143,22 @@ export default function HousePhoto({ attachment }) {
       stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
+  }, [key, asked]);
   if (failed) return <div className="post-att-housephoto-empty">🏠</div>;
+  if (!src && waiting && !asked)
+    return (
+      <button
+        type="button"
+        className="post-att-housephoto-empty post-att-cityphoto-tap"
+        onClick={(e) => {
+          e.stopPropagation();
+          setWaiting(false);
+          setAsked(true);
+        }}
+      >
+        🏠 Ev fotoğrafı — göstermek için dokun
+      </button>
+    );
   if (!src) return <div ref={boxRef} className="post-att-housephoto-empty">Fotoğraf yükleniyor…</div>;
   return <img className={`post-att-housephoto-img${attachment.vert && !attachment.sq ? ' vert' : ''}`} src={src} alt={attachment.houseName || 'Ev'} />;
 }

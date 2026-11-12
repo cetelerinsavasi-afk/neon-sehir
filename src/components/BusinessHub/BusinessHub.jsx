@@ -126,7 +126,7 @@ function Coin({ gem, v, bad }) {
 // v93: üstteki tür seçici kaldırıldı (kullanıcı isteği) — haritada tıklanan tür gösterilir.
 // v157: initialHouseId / autoGame — şehirdeki mekânın listesinden seçilen işletme doğrudan açılır;
 // çıkınca liste değil şehir (App: cityReturn) görünür
-export default function BusinessHub({ type: initialType, onClose, onOpenGameVenue, initialHouseId = null, initialGuest = false, autoGame = false }) {
+export default function BusinessHub({ type: initialType, onClose, onOpenGameVenue, initialHouseId = null, initialGuest = false, autoGame = false, initialOpenAsk = false }) {
   const type = initialType;
   // v79.3: liste açılır açılmaz gelen (açan dokunuşun) hayalet tıklama bir salona sokmasın
   const openedAtRef = useRef(Date.now());
@@ -163,7 +163,7 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
     list.filter((h) => !h.guest).map((h) => h.id),
     type === 'depo' && Boolean(user) && !houseId && !loading
   );
-  const [openAsk, setOpenAsk] = useState(false);
+  const [openAsk, setOpenAsk] = useState(Boolean(initialOpenAsk)); // v157.8: şehirdeki listeden "aç"
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const [shake, setShake] = useState(0);

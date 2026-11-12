@@ -1501,3 +1501,5 @@ body.ns-streaming .onnumara-fullscreen {
 .st-root > .st-chat.open {
   position: fixed;
 }
+/* v157.4 — şehirde sağ sütunda (Görevler'in üstünde) */
+.st-live-btn.cs-live-inline { position: relative; left: auto; right: auto; bottom: auto; top: auto; height: 34px; padding: 0 9px; align-self: flex-end; }

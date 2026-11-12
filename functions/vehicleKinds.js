@@ -10,7 +10,10 @@ import { VEHICLE_CATALOG } from './catalogData.js';
 
 export const CAR_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 export const TICARI_IDS = [11, 12, 13, 14, 15];
-export const MOTOR_IDS = [21, 22, 23, 24];
+export const MOTOR_IDS = [21, 22, 23, 24, 25, 26]; // v157.4: 25 bisiklet, 26 at
+// yaya alanlarına girebilen binekler (bisiklet, at) — meslek yok
+export const RIDE_IDS = [25, 26];
+export const isRideId = (id) => RIDE_IDS.includes(Number(id));
 export const ALL_VEHICLE_IDS = [...CAR_IDS, ...TICARI_IDS, ...MOTOR_IDS];
 
 export const VEHICLE_KINDS = [

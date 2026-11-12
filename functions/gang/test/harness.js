@@ -39,6 +39,7 @@ export async function createHarness({ start = ist('2026-09-21', '09:00'), dice =
   const logs = [];
   const hooks = [];
   const system = createGangSystem({
+    allowCreateGang: true, // v157.4: canlıda çete kurulamaz; testler kurulumu için açık
     onGangJoined: async (uid) => hooks.push(['joined', uid]),
     onGangMarketBought: async (uid, res) => hooks.push(['market', uid, res.kind, res.material]),
     db,

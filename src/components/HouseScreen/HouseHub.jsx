@@ -49,14 +49,15 @@ export function HouseRow({ h, onEnter, mineRow }) {
 
 // HouseHub — haritada "Ev"e tıklayınca açılan ekran: ev satın al, evlerim,
 // girebileceğim evler. Bir eve girilince HouseScreen açılır.
-export default function HouseHub({ onClose, initialHouseId = null }) {
+// v157.4: mode 'ev' → sadece evler + depolar (Ev binası) · 'ofis' → sadece ofisler (Ofis binası)
+export default function HouseHub({ onClose, initialHouseId = null, mode = null }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const [houseId, setHouseId] = useState(initialHouseId);
   // v73 — evin içindeyken ev listesi dinlenmez (maliyet)
-  const list = useHouseList({ enabled: Boolean(user) && !houseId });
+  const list = useHouseList({ enabled: Boolean(user) && !houseId && mode !== 'ofis' });
   // v100.1 — tek liste, alt alta: Ofisler · Evler · Depolar
-  const offices = useOfficeList({ enabled: Boolean(user) && !houseId });
+  const offices = useOfficeList({ enabled: Boolean(user) && !houseId && mode !== 'ev' });
   const myHouses = list.mine.filter((h) => !h.bizType || houseKind(h) === 'ofis');
   const mineOf = (k) => myHouses.filter((h) => houseKind(h) === k);
   const enterableOf = (k) => list.enterable.filter((h) => houseKind(h) === k);
@@ -118,10 +119,10 @@ export default function HouseHub({ onClose, initialHouseId = null }) {
       <div className="hh-head">
         <button className="hs-icon-btn" onClick={onClose} title="Kapat">✕</button>
         <div className="hh-title">
-          <b>🏠 Evler</b>
-          <span>Evini döşe, arkadaşlarını ağırla</span>
+          <b>{mode === 'ofis' ? '🏢 Ofisler' : '🏠 Evler'}</b>
+          <span>{mode === 'ofis' ? 'Oyuncuların ofisleri' : 'Evini döşe, arkadaşlarını ağırla'}</span>
         </div>
-        {user && (
+        {user && mode !== 'ofis' && (
           <button className="hh-buy" onClick={() => { setMsg(null); setBuyOpen(true); }}>
             Ev Satın Al <span>+</span>
           </button>
@@ -134,13 +135,18 @@ export default function HouseHub({ onClose, initialHouseId = null }) {
 
         {user && (
           <>
-            <div className="hs-list-title hh-sec">🏢 Ofisler</div>
-            {offices.loading && <p className="hs-dim">Yükleniyor…</p>}
-            {!offices.loading && offices.list.length === 0 && <p className="hs-dim hh-empty">Henüz ofis yok.</p>}
-            {offices.list.map((h) => (
-              <HouseRow key={h.id} h={h} onEnter={setHouseId} mineRow={h.mine} />
-            ))}
-
+            {mode !== 'ev' && (
+              <>
+                <div className="hs-list-title hh-sec">🏢 Ofisler</div>
+                {offices.loading && <p className="hs-dim">Yükleniyor…</p>}
+                {!offices.loading && offices.list.length === 0 && <p className="hs-dim hh-empty">Henüz ofis yok.</p>}
+                {offices.list.map((h) => (
+                  <HouseRow key={h.id} h={h} onEnter={setHouseId} mineRow={h.mine} />
+                ))}
+              </>
+            )}
+            {mode !== 'ofis' && (
+            <>
             <div className="hs-list-title hh-sec">🏠 Evler</div>
             {mineOf('ev').map((h) => (
               <HouseRow key={h.id} h={h} onEnter={setHouseId} mineRow />
@@ -159,6 +165,8 @@ export default function HouseHub({ onClose, initialHouseId = null }) {
             {enterableOf('depo').map((h) => (
               <HouseRow key={h.id} h={h} onEnter={setHouseId} />
             ))}
+            </>
+            )}
           </>
         )}
       </div>

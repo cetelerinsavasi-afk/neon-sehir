@@ -315,3 +315,8 @@
   border-color: #ffd23f;
   background: linear-gradient(160deg, rgba(255, 210, 63, 0.18), rgba(255, 122, 26, 0.1));
 }
+/* v157.4 — profil değerleri */
+.home-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; width: 100%; max-width: 360px; margin: 2px auto 4px; }
+.home-stats span { display: flex; align-items: center; justify-content: center; gap: 5px; padding: 7px 8px; border-radius: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); font-size: 13px; color: var(--text, #eee); }
+.home-stats b { font-weight: 900; }
+.home-stats i { display: inline-block; }

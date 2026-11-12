@@ -757,6 +757,16 @@ export function finishCityWorld(W, scene) {
     v.town = true;
     venues.push(v);
   }
+  // v157.4: yol üstü mekânlar (Neon Petrol marketleri) — cebin grubunda; dünya konumu matristen
+  (W.rs.venues || []).forEach((v) => {
+    const c = v.root.localToWorld(new V(v.room.cx, 0, v.room.cz));
+    const o = v.root.getWorldPosition(new V());
+    v.wx = c.x;
+    v.wz = c.z;
+    v.ry = v.pad.ry + v.padRy;
+    v.y0 = o.y;
+    venues.push(v);
+  });
   // kasaba / cep / orman engelleri
   const townSolids = collectSolids(W.town.kits);
   const rsSolids = collectSolids(W.rs.kits);

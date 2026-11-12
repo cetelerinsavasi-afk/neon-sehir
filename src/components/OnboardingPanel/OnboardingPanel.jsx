@@ -14,7 +14,7 @@ import './OnboardingPanel.css';
 // Oyuncu bu göreve geldiğinde şart zaten sağlanıyorsa sunucu otomatik geçirir
 const STATUS_TASK_IDS = [5, 9, 11, 12, 13, 16, 19, 20];
 
-export default function OnboardingPanel({ gangReminders = null, gangChans = null, slotBottom = null, onVisibleChange = null }) {
+export default function OnboardingPanel({ gangReminders = null, gangChans = null, slotBottom = null, onVisibleChange = null, inline = false }) {
   const { user } = useAuth();
   const {
     loading,
@@ -99,10 +99,10 @@ export default function OnboardingPanel({ gangReminders = null, gangChans = null
     <>
       <button
         type="button"
-        className={`onboarding-btn${!onboardingRewardClaimed ? ' onboarding-btn-attention' : ''}${
+        className={`${inline ? 'hs-side-btn onboarding-inline' : 'onboarding-btn'}${!onboardingRewardClaimed ? ' onboarding-btn-attention' : ''}${
           rewardReady ? ' onboarding-btn-reward-ready' : ''
         }`}
-        style={slotBottom ? { bottom: slotBottom } : undefined}
+        style={slotBottom && !inline ? { bottom: slotBottom } : undefined}
         onClick={() => setOpen(true)}
         aria-label="Görevler"
         title="Görevler"

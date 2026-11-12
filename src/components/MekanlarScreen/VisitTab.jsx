@@ -34,8 +34,7 @@ const GAME_VENUES = [
   { key: 'araba_galerisi', region: 'araba_galerisi', openKey: 'dealership' },
   { key: 'silah_magazasi', region: 'silah_magazasi', openKey: 'weaponShop' },
   { key: 'modifiye_garaji', region: 'modifiye_garaji', openKey: 'tuningGarage' },
-  // v146.4 — Polis Teşkilatı: sadece polisler + başkan, yardımcıları, teşkilat bakanı (diğerlerine kilitli)
-  { key: 'teskilat', icon: '🚓', label: 'Polis Teşkilatı', openKey: 'teskilat', houseId: 'game_teskilat', police: true },
+  // v157.4: Polis Teşkilatı mekânı kapandı (teşkilat paneli Çeteler'den açılır)
 ];
 const POLICE_SEATS = { bsk: 1, yrd1: 1, yrd2: 1, guv: 1 };
 const GAME_BY_KEY = Object.fromEntries(GAME_VENUES.map((g) => [g.key, g]));
@@ -45,11 +44,11 @@ const POPULAR_N = 8;
 
 const OPTIONS = [
   { key: 'popular', icon: '🔥', label: 'Popüler' },
-  { key: 'game', icon: '🏙️', label: 'Oyunun mekânları' },
+  // v157.4: "Oyunun mekânları" kaldırıldı — oyunun mekânları şehirde (haritadan / kapıdan girilir)
   ...BIZ_TYPE_KEYS.map((k) => ({ key: k, icon: BIZ_TYPES[k].icon, label: BIZ_TYPES[k].label })),
   { key: 'offices', icon: '🏢', label: 'Ofisler' },
   { key: 'houses', icon: '🏠', label: 'Evler' },
-  { key: 'hq', icon: '🏴', label: 'Karargahlar' }, // v146
+  // v157.4: karargahlar artık haritada (Çete Karargahları) — Ziyaret'te yok
 ];
 
 // v134 — misafir: popüler / evler yok (canlı sayılar girişli); oyunun mekânları,
@@ -97,9 +96,9 @@ function useHqList(enabled) {
 export default function VisitTab({ onVisitVenue, onVisitHouse }) {
   const { user, loading: authLoading } = useAuth();
   const isGuest = !user && !authLoading;
-  const [filter, setFilter] = useState(isGuest ? 'game' : 'popular');
+  const [filter, setFilter] = useState(isGuest ? BIZ_TYPE_KEYS[0] : 'popular');
   useEffect(() => {
-    if (isGuest && (filter === 'popular' || filter === 'houses')) setFilter('game');
+    if (isGuest && (filter === 'popular' || filter === 'houses')) setFilter(BIZ_TYPE_KEYS[0]);
   }, [isGuest, filter]);
   const isBiz = Boolean(BIZ_TYPES[filter]);
   const guestType = isGuest && (isBiz || filter === 'offices') ? (filter === 'offices' ? 'ofis' : filter) : null;
@@ -209,7 +208,7 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
       // dünün en çok ziyaret edilen 8'i
       yVisits.slice(0, POPULAR_N).forEach((r) => {
         if (GAME_BY_KEY[r.key]) cand.set(`v_${r.key}`, gameItem(r.key, r.count));
-        else if (r.houseId) {
+        else if (r.houseId && !isHqId(r.houseId)) {
           const live = liveHouses.find((h) => h.id === r.houseId) || (houseList.liveHq || []).find((h) => h.id === r.houseId);
           cand.set(`h_${r.houseId}`, isHqId(r.houseId) ? hqItem(live || r, r.count) : houseItem(live || r, r.count));
         }
@@ -220,7 +219,7 @@ export default function VisitTab({ onVisitVenue, onVisitHouse }) {
         if (it.people > 0) cand.set(it.id, it);
       });
       liveHouses.forEach((h) => cand.set(`h_${h.id}`, houseItem(h, yv[`h_${h.id}`]?.count || 0)));
-      (houseList.liveHq || []).forEach((h) => h.people > 0 && cand.set(`h_${h.id}`, hqItem(h, yv[`h_${h.id}`]?.count || 0)));
+      // v157.4: karargahlar haritada — Ziyaret listesinde gösterilmez
       // dün hiç kayıt yoksa liste oyunun mekânlarıyla tamamlanır
       GAME_VENUES.forEach((g) => {
         if (g.police && !canTeskilat) return;

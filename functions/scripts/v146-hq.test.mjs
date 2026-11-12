@@ -67,17 +67,9 @@ test('v146 karargah: üye boş karargahı kurar (çeteye ait), üye olmayan gire
   assert.equal((await h.act('zengin', { op: 'enter', houseId: 'hq_g1' })).hqRole, 'baba');
   await assert.rejects(h.act('yabanci', { op: 'enter', houseId: 'hq_g1' }), /Dahil olmadığın/);
   await assert.rejects(h.act('deniz', { op: 'enter', houseId: 'hq_g1' }), /Dahil olmadığın/);
-  // davet: sadece Baba / yetkili
-  await assert.rejects(h.act('ali', { op: 'hqInvite', houseId: 'hq_g1', gangId: 'g2', on: true }), /yetkin yok/);
-  await h.act('zengin', { op: 'hqInvite', houseId: 'hq_g1', gangId: 'g2', on: true });
-  assert.deepEqual(h.G('houses/hq_g1').hqInvites, ['g2']);
-  assert.ok(h.keys(`${h.W}/gangs/g2/chat_genel/`).length >= 1, 'davet edilen çeteye duyuru');
-  assert.equal((await h.act('deniz', { op: 'enter', houseId: 'hq_g1' })).hqRole, 'davetli');
-  // daveti kaldırmak içeridekini atmaz; ama yeniden giremez (içeride değilse)
-  await h.act('zengin', { op: 'hqInvite', houseId: 'hq_g1', gangId: 'g2', on: false });
-  assert.ok(h.G('housePresence/deniz'), 'içeride kalır');
-  h.db._store.delete('housePresence/deniz');
-  await assert.rejects(h.act('deniz', { op: 'enter', houseId: 'hq_g1' }), /Dahil olmadığın/);
+  // v157.4: davet sistemi kaldırıldı (karargahlar haritada) — yeni davet verilemez
+  await assert.rejects(h.act('zengin', { op: 'hqInvite', houseId: 'hq_g1', gangId: 'g2', on: true }), /davetleri kaldırıldı/);
+  assert.deepEqual(h.G('houses/hq_g1').hqInvites, []);
   // arkadaş daveti karargahta yok
   await assert.rejects(h.act('zengin', { op: 'invite', houseId: 'hq_g1', uid: 'yabanci' }), /arkadaş daveti/);
 });

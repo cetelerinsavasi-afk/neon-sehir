@@ -145,7 +145,13 @@ export default function CityPhoto({ attachment, manual = IS_MOBILE_DEVICE }) {
     getCachedPhoto(pk).then((hit) => {
       if (!alive) return;
       if (hit) return setSrc(hit);
-      if (manual && !asked && !getLiveCityEngine()) return setWaiting(true);
+      // v157.4: şehir açıkken de telefonda uzaktaki kareler dokununca çizilir — açık motorla çizmek
+      // o bölgenin tüm doku/geometrisini yeniden GPU'ya yükler; art arda birkaç uzak kare bellek
+      // yetmeyince oyunu kapatıyordu (Sixtagram'a girince çökme)
+      const live = getLiveCityEngine();
+      const lp = live?.selfPos?.();
+      const near = Boolean(lp) && Math.hypot((Number(attachment.cam?.px) || 0) - lp.x, (Number(attachment.cam?.pz) || 0) - lp.z) < 140;
+      if (manual && !asked && !near) return setWaiting(true);
       stop = whenVisible(boxRef.current, () => {
         render(attachment, key)
           .then((u) => {

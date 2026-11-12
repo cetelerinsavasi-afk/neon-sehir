@@ -82,7 +82,7 @@ test('başka çetedeyken yeni çete kurmak: eski çeteden çıkar, prestij silin
   assert.equal(h.get(`intelCodeNames/gölge`), undefined, 'kod adı serbest kalmalı');
 });
 
-test('v41: Baba ayrılırsa 00:00da en yüksek prestijli üye Baba olur; son üye ayrılırsa çete dağılır', async () => {
+test('v41/v157.4: Baba ayrılırsa 00:00da en yüksek prestijli (≥1M) üye Baba olur; son üye ayrılsa da çete kapanmaz', async () => {
   const h = await createHarness();
   const A = await setupGang(h, { members: 2, name: 'Alfa' });
   await h.setPrestige(A.gangId, A.ids[1], 5_000_000);
@@ -97,8 +97,27 @@ test('v41: Baba ayrılırsa 00:00da en yüksek prestijli üye Baba olur; son üy
   await h.act(A.ids[1], 'leaveGang');
   await h.act(A.ids[0], 'leaveGang');
   const g = h.get(`gangs/${A.gangId}`);
-  assert.equal(g.status, 'disbanded');
-  assert.equal(h.get(`gangNames/alfa`), undefined);
+  assert.equal(g.status, 'active');
+  assert.equal(g.memberCount, 0);
+  assert.equal(g.babaId, null);
+  assert.ok(h.get(`gangNames/alfa`), 'ad kalır');
+});
+
+test('v157.4: boş çeteye katılan Çömez başlar; 1M prestije kadar Baba olamaz, sonra 00:00da Baba olur', async () => {
+  const h = await createHarness();
+  const A = await setupGang(h, { members: 0, name: 'Bos' });
+  await h.act(A.baba, 'leaveGang');
+  assert.equal(h.get(`gangs/${A.gangId}`).status, 'active');
+  const u = await h.persona({ displayName: 'Yeni Üye', gold: 1_000_000, power: 10_000, reputation: 60 });
+  await h.act(u, 'joinGang', { gangId: A.gangId });
+  assert.equal(h.member(A.gangId, u).rank, 'comez');
+  await h.nextDay();
+  assert.equal(h.get(`gangs/${A.gangId}`).babaId, null, 'eşik altı: Baba yok');
+  assert.equal(h.member(A.gangId, u).rank, 'comez');
+  await h.setPrestige(A.gangId, u, 1_000_000);
+  await h.nextDay();
+  assert.equal(h.get(`gangs/${A.gangId}`).babaId, u);
+  assert.equal(h.member(A.gangId, u).rank, 'baba');
 });
 
 test('atma yetkileri: Baba → Tetikçi/Çömez, Sağ Kol → sadece Çömez', async () => {

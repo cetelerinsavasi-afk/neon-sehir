@@ -203,6 +203,8 @@ export function createHq({ db, FieldValue, HttpsError, now = () => Date.now(), i
   // ---- davet: başka bir çeteyi karargaha davet et / daveti kaldır ----------------------
   // Daveti kaldırmak içerideki misafirleri ATMAZ (yetkililer elle çıkarabilir).
   async function setInvite(uid, p) {
+    // v157.4: davet sistemi kaldırıldı — karargahlar haritada, herkes girebilir; sadece kaldırmaya izin
+    if (p?.on === true) fail('failed-precondition', 'Karargah davetleri kaldırıldı.');
     const houseId = String(p.houseId || '');
     const target = String(p.gangId || '');
     if (!GANG_ID_RE.test(target)) fail('invalid-argument', 'Geçersiz çete.');

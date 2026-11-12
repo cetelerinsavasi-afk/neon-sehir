@@ -20,6 +20,7 @@ const TICK_LEASE_MS = 9 * 60 * 1000;
 const TICK_MAX_FAILED_ATTEMPTS = 3; // v137: bundan sonra hatalı gün de kapanır
 const MAX_CATCHUP_DAYS = 40;
 
+const hqSlotsDone = new Set(); // v157.4: bu sunucu örneğinde karargah ataması yapıldı
 export function createClock(core, actions) {
   const { db, FV, ledger, gangLog, intelLog, notify } = core;
   const { wars: warActions, votes: voteActions, treasury, intel: intelActions, market: marketActions, roles: roleActions } = actions;
@@ -842,10 +843,16 @@ export function createClock(core, actions) {
       let newBaba = null;
       if (!babaId || !members.some((m) => m.id === babaId)) {
         const sorted = [...members].sort((x, y) => (y.prestige || 0) - (x.prestige || 0) || (x.joinedAtMs || 0) - (y.joinedAtMs || 0) || (x.id < y.id ? -1 : 1));
-        newBaba = sorted[0] || null;
+        // v157.4: Baba olmak için de rütbe eşiği (1M prestij) gerekir — boş kalmış çetede herkes
+        // Çömez başlar, eşiği geçen ilk 00:00'da Baba olur, diğerleri prestije göre yerleşir
+        newBaba = sorted.find((m) => (Number(m.prestige) || 0) >= GANG.RANK_THRESHOLD) || null;
         babaId = newBaba?.id || null;
       }
       const newBabaMs = newBaba ? await core.readMembership(tx, ctx, newBaba.id) : null;
+      // (okumalardan sonra) eski Baba çetede değil ve eşiği geçen yok → koltuk boş
+      if (!newBaba && gang.babaId && !members.some((m) => m.id === gang.babaId)) {
+        tx.update(ctx.ref.gang(gangId), { babaId: null, babaName: null, babaVacantSinceMs: gang.babaVacantSinceMs || ctx.now });
+      }
       const ranks = computeGangRanks(members, babaId);
       if (newBaba) {
         tx.update(ctx.ref.gang(gangId), { babaId: newBaba.id, babaName: newBaba.name, babaVacantSinceMs: null });
@@ -1877,6 +1884,8 @@ export function createClock(core, actions) {
         if (differs || biatDiffers || linksDiffer) await w.ref.update({ display: totals, ...(biatDiffers ? { biatDisplay: via } : {}), ...(links ? biatWarPatch(w.data(), links) : {}) });
       });
     }
+    // v157.4: tek seferlik — 2 yeni çete + 6 karargahın sahipleri (güce göre)
+    if (!ctx0.isTest && !hqSlotsDone.has(ctx0.worldId)) await safe(ctx0, 'hq-slots-v1574', () => ensureHqSlots(ctx0));
     // dağılmış çeteler
     const dis = await ctx0.ref.gangs().where('status', '==', 'disbanded').where('cleanupDone', '==', false).limit(20).get();
     for (const g of dis.docs) await safe(ctx0, `cleanup:${g.id}`, () => cleanupGang(ctx0, g.id));
@@ -1884,5 +1893,58 @@ export function createClock(core, actions) {
     return { ticks: results, errors: ctx0.errors || [] };
   }
 
-  return { runClock, runDailyTick, cleanupGang, resolveTruckTrip, productForSunday, dateKeyOf, processBets, resolveVoteEarly, safe, ensureSundayPowerOwnV111, ensureRouteSaturdayV136 };
+  // ---------------------------------------------------------------------------
+  // v157.4 — KARARGAHLAR HARİTADA: hurdalıktaki 6 hangar çetelere ait. Tek seferlik (idempotent):
+  //   • 2 yeni çete (üyesiz, Baba koltuğu boş) kurulur
+  //   • mevcut çeteler son Pazar gücüne göre sıralanır: en güçlü 2 → girişteki hangarlar (0, 3),
+  //     sonraki 2 → ortadakiler (1, 4); yeni 2 çete → en uzaktakiler (2, 5)
+  //   gangs/{id}.hqSlot (0–5) — istemci hangarı buradan bulur. Bayrak: meta/hqSlots.
+  // ---------------------------------------------------------------------------
+  async function ensureHqSlots(ctx) {
+    const metaRef = ctx.ref.world().collection('meta').doc('hqSlots');
+    const res = await db.runTransaction(async (tx) => {
+      const meta = await tx.get(metaRef);
+      if (meta.exists && meta.data()?.done) return { skipped: true };
+      const gs = await tx.get(ctx.ref.gangs().where('status', '==', 'active').limit(30));
+      const NEW = [
+        { name: 'Kara Kartallar', logo: { emoji: '🦅', color: '#ffd23f', bg: '#231c05' }, note: 'Gökyüzü bizim, şehir de bizim olacak.' },
+        { name: 'Gece Kurtları', logo: { emoji: '🐺', color: '#19e8ff', bg: '#06222b' }, note: 'Gece çökünce sokaklar bizim.' },
+      ];
+      const nameSnaps = await Promise.all(NEW.map((n) => tx.get(ctx.ref.gangName(core.nameKeyOf(n.name)))));
+      const existing = gs.docs.map((d) => ({ id: d.id, ...d.data() })).filter((g) => !NEW.some((n) => n.name === g.name));
+      existing.sort((a, b) => Number(b.lastSundayPower || 0) - Number(a.lastSundayPower || 0) || Number(b.memberCount || 0) - Number(a.memberCount || 0) || Number(a.createdAtMs || 0) - Number(b.createdAtMs || 0));
+      const slots = {};
+      const ORDER = [0, 3, 1, 4];
+      existing.slice(0, 4).forEach((g, i) => {
+        slots[g.id] = ORDER[i];
+        tx.update(ctx.ref.gang(g.id), { hqSlot: ORDER[i] });
+      });
+      const unplaced = existing.slice(4).map((g) => g.id);
+      NEW.forEach((n, i) => {
+        const slot = [2, 5][i];
+        // aynı adla zaten kurulmuşsa (yarım kalmış önceki deneme) sadece yer ata
+        const prev = gs.docs.find((d) => d.data()?.name === n.name);
+        if (prev) {
+          slots[prev.id] = slot;
+          tx.update(prev.ref, { hqSlot: slot });
+          return;
+        }
+        if (nameSnaps[i].exists) return; // ad başka (kapalı) bir çetede — dokunma
+        const ref = ctx.ref.gangs().doc();
+        const nameKey = core.nameKeyOf(n.name);
+        tx.set(ref, { name: n.name, nameKey, logo: n.logo, note: n.note, status: 'active', memberCount: 0, babaId: null, babaName: null, babaVacantSinceMs: ctx.now, routeProducts: [], createdAtMs: ctx.now, hqSlot: slot });
+        tx.set(ctx.ref.gangState(ref.id), { kasa: 0, kasaAtMidnight: 0, midnightDateKey: ctx.dateKey, distributableLeft: 0, orderSpent: { dateKey: null, byProduct: {} } });
+        tx.set(ctx.ref.depot(ref.id), { items: {}, capacity: 0, usedUnits: 0, reservedUnits: 0 });
+        tx.set(ctx.ref.gangName(nameKey), { gangId: ref.id });
+        slots[ref.id] = slot;
+      });
+      tx.set(metaRef, { done: true, atMs: ctx.now, slots, unplaced });
+      return { slots, unplaced };
+    });
+    hqSlotsDone.add(ctx.worldId);
+    if (!res?.skipped) ctx.logs.push({ gang: 'hq_slots', world: ctx.worldId, ...res });
+    return res;
+  }
+
+  return { runClock, runDailyTick, cleanupGang, ensureHqSlots, resolveTruckTrip, productForSunday, dateKeyOf, processBets, resolveVoteEarly, safe, ensureSundayPowerOwnV111, ensureRouteSaturdayV136 };
 }

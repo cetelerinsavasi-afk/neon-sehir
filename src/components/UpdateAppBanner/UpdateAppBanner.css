@@ -3,7 +3,7 @@
   left: 10px;
   right: 10px;
   bottom: calc(96px + env(safe-area-inset-bottom));
-  z-index: 60;
+  z-index: 85; /* v157.4: oyun şehirde açılır (şehir 80) */
   display: flex;
   align-items: center;
   gap: 10px;

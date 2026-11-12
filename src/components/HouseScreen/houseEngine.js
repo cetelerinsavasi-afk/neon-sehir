@@ -205,7 +205,10 @@ function savePerfTier(v) {
 // --- Ortak renderer'lar ------------------------------------------------------
 function makeRenderer(opts) {
   // v106: Android'de kenar yumuşatma (MSAA) kapalı — yüksek çözünürlükte farkı az, maliyeti büyük
-  const r = new THREE.WebGLRenderer({ antialias: !IS_ANDROID, powerPreference: 'high-performance', ...opts });
+  // v157.4: telefonlarda (iPhone dahil) kenar yumuşatma kapalı — yüksek çözünürlüklü ekranda farkı az,
+  // ekran kartı belleği ve ısınma maliyeti büyük (iPhone'da oyundan atmaların bir sebebi)
+  const PHONE = IS_ANDROID || (typeof navigator !== 'undefined' && /iPhone|iPad|Mobile/i.test(navigator.userAgent || ''));
+  const r = new THREE.WebGLRenderer({ antialias: !PHONE, powerPreference: 'high-performance', ...opts });
   r.toneMapping = THREE.ACESFilmicToneMapping;
   r.outputColorSpace = THREE.SRGBColorSpace;
   r.shadowMap.enabled = true;

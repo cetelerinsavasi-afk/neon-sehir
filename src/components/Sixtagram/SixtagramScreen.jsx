@@ -48,6 +48,26 @@ function loadMediaSeen() {
   }
 }
 
+const FEED_STEP = 10;
+// listenin sonuna yaklaşınca sıradaki gönderiler eklenir
+function FeedMore({ onMore }) {
+  const ref = useRef(null);
+  const cb = useRef(onMore);
+  cb.current = onMore;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof IntersectionObserver === 'undefined') return undefined;
+    const io = new IntersectionObserver((ents) => ents.some((e) => e.isIntersecting) && cb.current(), { rootMargin: '600px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return (
+    <button ref={ref} type="button" className="six-hint six-more" onClick={() => cb.current()}>
+      ⋯
+    </button>
+  );
+}
+
 export default function SixtagramScreen() {
   const { user } = useAuth();
   const { player } = usePlayer();
@@ -143,13 +163,17 @@ export default function SixtagramScreen() {
   const openStories = (groups, i, startPi = null) => groups[i] && setViewer({ groups, start: i, startPi });
   const groupOf = (uid) => homeStories.find((g) => g.uid === uid) || null;
 
+  // v157.4: akış parça parça çizilir (eskiden 150 gönderi + ekleri bir anda kuruluyordu)
+  const [shown, setShown] = useState(FEED_STEP);
+  useEffect(() => setShown(FEED_STEP), [tab, media]);
   const list = (posts, empty) => (
     <div className="six-feed">
       {feedLoading && posts.length === 0 && <p className="six-hint">Yükleniyor…</p>}
       {!feedLoading && posts.length === 0 && <p className="six-hint">{empty}</p>}
-      {posts.map((post) => (
+      {posts.slice(0, shown).map((post) => (
         <PostCard key={post.id} post={post} liked={likedIds.has(post.id)} isOwn={post.uid === myUid} />
       ))}
+      {posts.length > shown && <FeedMore onMore={() => setShown((n) => n + FEED_STEP)} />}
     </div>
   );
 

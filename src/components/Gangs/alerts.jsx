@@ -243,7 +243,7 @@ export function useGangAlerts(uid) {
       leak: canLeak && (leakTruck || leakBet),
     };
     // alt çubuktaki "Çeteler" noktası: "Tüm Çeteler" sohbeti de yakar (kullanıcı isteği)
-    return { worldId: w, uid, gang, intel, chans, reminders, any: Object.values(gang).some(Boolean) || Object.values(intel).some(Boolean) };
+    return { worldId: w, uid, gangId, gangRank: rank, rosterId: rid, gang, intel, chans, reminders, any: Object.values(gang).some(Boolean) || Object.values(intel).some(Boolean) };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [now, seenTick, handover, w, uid, gangId, rid, rank, irank, gGen, gYon, gTum, iGen, iYon, pub, mine, intelWars, slot, gVotes, iVotes, gDists, iDists, allianceIn, gUnvoted, iUnvoted, truckReps, betRepsAll, myTrucks, today, hourKey, gJoined, iJoined, canReport, isLead, intelApps, ms.intelTruckReportDay, ms.intelTruckLeakDay]);
 }
