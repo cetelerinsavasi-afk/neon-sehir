@@ -12,9 +12,8 @@ import { VENUES } from '../../../functions/venueLayouts.js';
 import * as J from './jobBuildings.js';
 import { BUS_STOPS, LIMAN_BAY, VENDOR_SPOTS } from '../../../functions/cityJobsData.js';
 
-import { P, BLOCK, SIDE, COLS, ROWS, cx, cz, COAST_Z, BOUNDS, LOTS, COAST_X, OUTER, PARK_GATES, EAST_GATE_Z } from './cityLayout.js';
-import { buildCoast, MARINA } from './coast.js';
-export { P, BLOCK, SIDE, COLS, ROWS, cx, cz, COAST_Z, BOUNDS, COAST_X, OUTER };
+import { P, BLOCK, SIDE, COLS, ROWS, cx, cz, COAST_Z, BOUNDS, LOTS } from './cityLayout.js';
+export { P, BLOCK, SIDE, COLS, ROWS, cx, cz, COAST_Z, BOUNDS };
 
 // tür → oluşturucu. enter: oyundaki gerçek 3D mekân anahtarı (VenueHouseScreen)
 const T = {
@@ -37,12 +36,11 @@ const T = {
   pist: { build: A.buildPist, region: 'yaris_pisti', name: 'Yarış Pisti', icon: '🏁', open: true },
   liman: { build: A.buildLiman, region: 'liman_depo', name: 'Liman & Depo', icon: '⚓' },
   // v151 — meslek yapıları (girilmez; tır / ambulans burada teslim eder)
+  depo_kuzey: { build: J.buildDepoKuzey, name: 'Kuzey Lojistik Deposu', icon: '📦', open: true },
+  depo_dogu: { build: J.buildDepoDogu, name: 'Doğu Lojistik Deposu', icon: '📦', open: true },
   hastane: { build: J.buildHastane, name: 'Hastane', icon: '🏥', open: true },
   benzinlik: { build: J.buildBenzinlik, name: 'Benzinlik', icon: '⛽', open: true },
   taksi_duragi: { build: J.buildTaksiDuragi, name: 'Taksi Durağı', icon: '🚕', open: true },
-  otogar: { build: J.buildOtogar, name: 'Otogar', icon: '🚌', open: true },
-  // v157: limana uzak olan depo kaldı (kuzey deposu kaldırıldı); uzak teslim Kervankent'te
-  depo_dogu: { build: J.buildDepoDogu, name: 'Doğu Lojistik Deposu', icon: '📦', open: true },
 };
 
 // Seyyar satıcılar: mekân değil, sokakta (lot yerel koordinatı)
@@ -59,10 +57,9 @@ export function buildCity() {
   kits.push(ground);
 
   // --- asfalt + yol çizgileri ------------------------------------------------
-  // v155: batı = sahil bulvarının kenarı (ötesi kordon + deniz); doğu/kuzey = dış servis yolu
-  const X0 = COAST_X;
-  const X1 = OUTER.x1;
-  const Z0 = OUTER.z0;
+  const X0 = -200;
+  const X1 = 200;
+  const Z0 = -190;
   const Z1 = COAST_Z;
   const rep = floorRep('asfalt');
   ground.mesh(planeGeo(X1 - X0, Z1 - Z0, (X1 - X0) / rep, (Z1 - Z0) / rep), floorMat('asfalt'), (X0 + X1) / 2, 0, (Z0 + Z1) / 2, 0, { cast: false, rx: -Math.PI / 2 });
@@ -72,14 +69,23 @@ export function buildCity() {
     for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) used.add(`${i},${j}`);
     return { type, i0, j0, i1, j1, face };
   });
-  // v155: batıda (i < 0) bina yok — deniz. Dış halka lotları artık uzatılmaz: aralarındaki
-  // sokaklar açık, arkalarında servis yolu var (araçlar girer).
-  for (let i = 0; i <= COLS + 1; i++) {
+  for (let i = -2; i <= COLS + 1; i++) {
     for (let j = -2; j < ROWS; j++) {
       if (used.has(`${i},${j}`)) continue;
-      const outer = i >= COLS || j < 0;
-      const far = i > COLS || j < -1;
-      lotDefs.push({ type: i === 2 && j === 4 ? 'plaza' : 'filler', i0: i, j0: j, i1: i, j1: j, face: 's', outer, far });
+      const outer = i < 0 || i >= COLS || j < 0;
+      // en dış halka (yolun öbür yanı): sadece görünen bina cepheleri (girilmez, sınır)
+      const far = i < -1 || i > COLS || j < -1;
+      const d = { type: i === 2 && j === 4 ? 'plaza' : 'filler', i0: i, j0: j, i1: i, j1: j, face: 's', outer, far };
+      // v147.5: en dış halka kesintisiz bina duvarı — aradaki (girilemeyen) ara yolları kapat
+      const gap = (P - BLOCK) / 2;
+      if (far && (i < -1 || i > COLS)) {
+        d.ez0 = gap;
+        d.ez1 = j === ROWS - 1 ? COAST_Z + 3 - (cz(j) + BLOCK / 2) : gap; // sahil yolunu da kapat
+      } else if (far) {
+        d.ex0 = i === -1 ? gap * 2 : gap;
+        d.ex1 = i === COLS ? gap * 2 : gap;
+      }
+      lotDefs.push(d);
     }
   }
 
@@ -101,8 +107,8 @@ export function buildCity() {
   void cellOf;
   const roadsX = []; // yatay yollar (z sabit)
   const roadsZ = []; // dikey yollar (x sabit)
-  for (let k = -2; k <= ROWS; k++) roadsX.push(cz(k) - P / 2);
-  for (let k = 0; k <= COLS + 2; k++) roadsZ.push(cx(k) - P / 2);
+  for (let k = -1; k <= ROWS; k++) roadsX.push(cz(k) - P / 2);
+  for (let k = -1; k <= COLS + 1; k++) roadsZ.push(cx(k) - P / 2);
   const dash = (x, z, alongX) => ground.box(alongX ? 2.2 : 0.16, 0.02, alongX ? 0.16 : 2.2, lineM, x, 0.005, z, { cast: false, receive: true });
   roadsX.forEach((z) => {
     for (let x = X0 + 4; x < X1 - 4; x += 5) if (!covered(x, z) && !nearCross(x, roadsZ)) dash(x, z, true);
@@ -116,10 +122,6 @@ export function buildCity() {
       if (covered(x, z)) return;
       for (const [dx, dz, along] of [[0, 6.2, true], [0, -6.2, true], [6.2, 0, false], [-6.2, 0, false]]) {
         if (covered(x + dx * 1.6, z + dz * 1.6)) continue;
-        // v155: asfaltın dışına (yeşil alan / kordon) taşan yaya geçidi çizilmesin
-        const ex = x + dx * 1.6;
-        const ez = z + dz * 1.6;
-        if (ex < X0 + 1 || ex > X1 - 1 || ez < Z0 + 1 || ez > Z1 - 1) continue;
         for (let k = -3; k <= 3; k++) {
           ground.box(along ? 0.55 : 2.4, 0.02, along ? 2.4 : 0.55, lineM, x + dx + (along ? k * 1.05 : 0), 0.006, z + dz + (along ? 0 : k * 1.05), { cast: false });
         }
@@ -202,67 +204,29 @@ export function buildCity() {
   const limanLot = lots.find((l) => l.type === 'liman');
   const qx0 = limanLot.mx - limanLot.bw / 2;
   const qx1 = limanLot.mx + limanLot.bw / 2;
-  sea.box(X1 - X0, 0.7, 3, M('#6b7078', 0.85), (X0 + X1) / 2, -0.58, COAST_Z + 1.5, { cast: false });
-  sea.floor('kaldirim', X1 - X0, 3, (X0 + X1) / 2, COAST_Z + 1.5, 0.125);
-  const gateAt = (x) => MARINA.gates.some((g) => Math.abs(x - g) < 2.2);
+  sea.box(X1 - X0, 0.7, 3, M('#6b7078', 0.85), 0, -0.58, COAST_Z + 1.5, { cast: false });
+  sea.floor('kaldirim', X1 - X0, 3, 0, COAST_Z + 1.5, 0.125);
+  const EDGE = cx(COLS + 1) - BLOCK / 2; // dış bina duvarı (v147.5)
   for (let x = X0 + 1; x < X1; x += 2) {
     if (x > qx0 - 1 && x < qx1 + 1) continue;
-    if (gateAt(x)) continue;
+    if (Math.abs(x) > EDGE - 0.5) continue;
     sea.item('korkuluk', x, COAST_Z + 2.8, 0, 0, { solid: false });
   }
-  // korkuluk çarpışması (marina kapılarında boşluk)
-  const runs = [[X0, qx0]];
-  let a = qx1;
-  [...MARINA.gates].sort((p, q) => p - q).forEach((g) => {
-    runs.push([a, g - 2.2]);
-    a = g + 2.2;
-  });
-  runs.push([a, X1]);
-  runs.forEach(([p, q]) => sea.solid((p + q) / 2, COAST_Z + 2.9, (q - p) / 2, 0.2));
+  sea.solid((X0 + qx0) / 2, COAST_Z + 2.9, (qx0 - X0) / 2, 0.2);
+  sea.solid((qx1 + X1) / 2, COAST_Z + 2.9, (X1 - qx1) / 2, 0.2);
   for (let x = X0 + 10; x < X1; x += 16) {
     if (x > qx0 - 2 && x < qx1 + 2) continue;
-    if (gateAt(x) || MARINA.gates.some((g) => Math.abs(x - g) < 3)) continue;
+    if (Math.abs(x) > EDGE - 1) continue;
     sea.item('streetlamp', x, COAST_Z + 2.2, 4, 0);
   }
-  A.buildSea(sea, { x0: X0 - 400, x1: X1 + 400, z0: COAST_Z + 2, z1: COAST_Z + 420 });
-  // v155: batı denizi (kumsalın önü) — kumsal zemini coast.js'de
-  A.buildSea(sea, { x0: X0 - 900, x1: X0 - 6, z0: Z0 - 600, z1: COAST_Z + 2.01 });
-  // v155: "denizin ortasındaki binalar" (ufuktaki karşı kıyı kutuları) kaldırıldı
-
-  // --- v155: dış servis yolu kenarı (doğu + kuzey): bordür + alçak duvar + ağaçlar --------------
-  const edge = new Kit('dis_kenar');
-  kits.push(edge);
-  const edgeM = M('#a8a294', 0.9);
-  // doğu kenarı: O-77 otoyol ağzında (z = −140) açık
-  const HW = { z0: cz(-1) - P / 2 - 4, z1: cz(-1) - P / 2 + 4 };
-  // ve güneydoğu hurdalık geçidi (z = EAST_GATE_Z ± 4)
-  for (const [p, q] of [[Z0 - 0.6, HW.z0], [HW.z1, EAST_GATE_Z - 4], [EAST_GATE_Z + 4, Z1 + 0.3]]) {
-    edge.box(0.6, 0.7, q - p, edgeM, X1 + 0.3, 0, (p + q) / 2);
-    edge.solid(X1 + 0.3, (p + q) / 2, 0.3, (q - p) / 2);
+  A.buildSea(sea, { x0: X0 - 200, x1: X1 + 200, z0: COAST_Z + 2, z1: COAST_Z + 300 });
+  // ufukta karşı kıyı ışıkları
+  for (let i = 0; i < 40; i++) {
+    const x = -260 + i * 13 + Math.sin(i * 7.1) * 4;
+    const h = 6 + Math.abs(Math.sin(i * 3.3)) * 26;
+    sea.box(8, h, 6, M('#0d0f18', 0.9), x, -0.6, 300 + Math.sin(i) * 10, { cast: false });
+    sea.box(8.05, 0.3, 6.05, glowMat(i % 3 ? '#ffcf7a' : '#ff3fa0', 2), x, h - 1.4, 300 + Math.sin(i) * 10, { cast: false });
   }
-  // kuzey kenarı: orman parkına yaya kapıları (araç babalarla durur)
-  const GW = 2.4;
-  let gx0 = X0 - 0.6;
-  [...PARK_GATES, X1 + 0.6 + GW].forEach((g) => {
-    const p = gx0;
-    const q = g - GW;
-    if (q > p) {
-      edge.box(q - p, 0.7, 0.6, edgeM, (p + q) / 2, 0, Z0 - 0.3);
-      edge.solid((p + q) / 2, Z0 - 0.3, (q - p) / 2, 0.3);
-    }
-    if (g <= X1) {
-      for (const sx of [-1, 1]) edge.box(0.5, 1.6, 0.5, M('#8f8a80', 0.85), g + sx * GW, 0, Z0 - 0.3);
-      for (const bx of [-1.2, 0, 1.2]) edge.cyl(0.12, 0.14, 0.85, M('#2a2d33', 0.5, 0.5), g + bx, 0, Z0 - 0.3, 8, { cast: false });
-      edge.solid(g, Z0 - 0.3, GW, 0.3);
-      edge.solids.at(-1).car = true;
-    }
-    gx0 = g + GW;
-  });
-  for (let z = Z0 + 14; z < Z1 - 8; z += 16) if (Math.abs(z - -140) > 9 && Math.abs(z - EAST_GATE_Z) > 8) edge.item('tree', X1 + 2.4, z, 0, 0);
-  for (let x = X0 + 14; x < X1 - 8; x += 16) if (!PARK_GATES.some((g) => Math.abs(x - g) < 6)) edge.item('tree', x, Z0 - 2.4, 0, 0);
-
-  // --- v155: batı kıyısı (kumsal, beach club, iskele) + Neon Marina ---------------------------
-  kits.push(...buildCoast());
 
   return { kits, lots, roadsX, roadsZ, covered, X0, X1, Z0, Z1 };
 }

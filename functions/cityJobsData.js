@@ -11,20 +11,11 @@
 // =============================================================================
 
 export const LIMAN_BAY = { key: 'liman', name: 'Liman Yükleme Alanı', x: -80, z: 112, r: 7 };
-// v152: limanın (sol alt) TERS tarafında. v157: limana yakın olan kuzey deposu kaldırıldı — şehir içi
-// teslim doğu deposuna, uzak teslim Kervankent'e (FAR_DEPOT)
-export const DEPOTS = [{ key: 'dogu', name: 'Doğu Lojistik Deposu', x: 140, z: -113, r: 7.5 }];
-// v157 — UZAK MESAFE (O-77 otoyolu → Kervankent). Konumlar şehir motorundaki kurulumla aynı
-// (src/components/City/world/town.js · venues.js otogarYard); değişirse burası da güncellenir.
-export const FAR_DEPOT = { key: 'kervankent', name: 'Kervankent Lojistik Terminali', x: 2271.6, z: -2293.6, r: 7.5 };
-export const OTOGARS = [
-  { key: 'neon', name: 'Neon Şehir Otogarı', x: 180, z: -86.6, r: 6 },
-  { key: 'kervankent', name: 'Kervankent Otogarı', x: 2147.3, z: -2316.2, r: 6 },
+// v152: limanın (sol alt) TERS tarafında: kuzey (üst orta) ve kuzeydoğu köşesi
+export const DEPOTS = [
+  { key: 'kuzey', name: 'Kuzey Lojistik Deposu', x: -20, z: -113, r: 7.5 },
+  { key: 'dogu', name: 'Doğu Lojistik Deposu', x: 140, z: -113, r: 7.5 },
 ];
-export const HWY_ENTRY = { x: 160, z: -140 }; // şehirden otoyola çıkılan kavşak
-export const HWY_LEN = 3583; // O-77 otoyolunun uzunluğu (m)
-export const FAR_TIR_LEN = 4160; // liman → otoyol → Kervankent terminali (yaklaşık yol)
-export const FAR_BUS_LEN = 3740; // Neon Şehir Otogarı → Kervankent Otogarı
 export const HOSPITAL = { key: 'hastane', name: 'Hastane — Acil Girişi', x: 131, z: -40, r: 7 };
 export const GAS_STATION = { key: 'benzinlik', name: 'Benzinlik', x: 20, z: -80 };
 
@@ -41,10 +32,10 @@ export const BUS_STOPS = [
   S(3, 'Bar', 60, -58, 0, 1), // z = -60, doğuya
   S(4, 'Hastane', 158, -40, -1, 0), // doğu dış yol, güneye
   S(5, 'Stadyum', 100, 58, 0, -1), // z = 60, batıya (stadyumun güneyi)
-  S(6, 'Evler', 13, 58, 0, -1), // z = 60, batıya (v157: ev + garaj kapısının solunda)
+  S(6, 'Evler', 20, 58, 0, -1), // z = 60, batıya
   S(7, 'Plaza', -20, 98, 0, -1), // sahil yolu, batıya
   S(8, 'Liman', -100, 98, 0, -1), // sahil yolu, batıya
-  S(9, 'Sahil Bulvarı', -118, 0, 1, 0), // v157: batı artık deniz — sahil bulvarı, kuzeye
+  S(9, 'Batı Kapısı', -158, 0, 1, 0), // batı dış yol, kuzeye
   S(10, 'Camii', -100, -58, 0, 1), // z = -60, doğuya
 ];
 
@@ -57,8 +48,7 @@ export function busRouteLen(start = 0) {
 }
 
 // --- yol kenarı noktaları ---------------------------------------------------------------
-// v157: şehrin batısı deniz (x = −120 sahil bulvarı en batı cadde) — eski −160 dış halkası yok
-const XS = [-120, -80, -40, 0, 40, 80, 120, 160];
+const XS = [-160, -120, -80, -40, 0, 40, 80, 120, 160];
 const ZS = [-140, -100, -60, -20, 20, 60, 100];
 // birleşik büyük lotlar (yolun üstünü kaplar): park, stadyum, pist, liman
 const BIG = [
@@ -163,7 +153,7 @@ function lotFront(lot) {
 export const VENDOR_SPOTS = [
   { key: 'kokorecci', name: 'Kokoreççi', food: 'kokoreç', lot: 'casino', x: -8.5, z: 8.5, r: 0 },
   { key: 'donerci', name: 'Balık Ekmekçi', food: 'balık ekmek', lot: 'park', x: -26, z: 6.5, r: 0 },
-  { key: 'kofteci', name: 'Köfteci', food: 'köfte ekmek', lot: 'ev', x: -12.2, z: 14.3, r: 0 }, // v157: ev + garaj kapısını kapatmasın
+  { key: 'kofteci', name: 'Köfteci', food: 'köfte ekmek', lot: 'ev', x: 6.5, z: 8.5, r: 0 },
   { key: 'simitci', name: 'Simitçi', food: 'simit', lot: 'plaza', x: 0, z: 6.5, r: 0 },
   { key: 'midyeci', name: 'Midyeci', food: 'midye', lot: 'bar', x: 13, z: 12, r: 0 },
   { key: 'dondurmaci', name: 'Dondurmacı', food: 'dondurma', lot: 'stadyum', x: 28, z: -28, r: 1 },

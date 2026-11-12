@@ -908,7 +908,7 @@ function k6(t) {
           Ie(qe, T(0, 0)),
           J({ pos: T(-4.5, ee + 1, 1.4), look: () => new xn(qe.x, 1.1, qe.z), k: 0, kl: 6, fov: 46 })),
       Ww(),
-      (u.title.innerHTML = `<small>NEON \u015EEH\u0130R</small><b>${A.title}</b><i>${pn ? "Tek ba\u015F\u0131na" : `${Ge} ki\u015Filik ekip`}</i>`),
+      (u.title.innerHTML = `<small>NEON \u015EEH\u0130R</small><b>${A.title}</b><i>${pn ? "Tek ba\u015F\u0131na" : `${Ge} ki\u015Filik ekip`} \xB7 60 saniye</i>`),
       u.title.classList.add("on"),
       g.sting(),
       await te(1.4),
@@ -931,10 +931,10 @@ function k6(t) {
           Qt && (me(Qt, Vt, !1), Ie(Qt, T(0, 0)));
         }),
         g.thud(),
-        // v157: üstteki 60 sn sayacı kaldırıldı
-        (u.clockOn = !1),
+        u.hud.classList.add("on"),
+        (u.clockOn = !0),
         Ut("driver"),
-        pe("talk", "\u201CMotor \xE7al\u0131\u015F\u0131yor.\u201D", new xn(Wt.x, 2.2, Wt.z)),
+        pe("talk", "\u201CMotor \xE7al\u0131\u015F\u0131yor. 60 saniye.\u201D", new xn(Wt.x, 2.2, Wt.z)),
         await te(0.6));
     }
     let zt = (ee + 2) / _i,
@@ -954,10 +954,9 @@ function k6(t) {
             (Ie(_t, T(-3, 12)), xe(_t, "Sokak temiz. \u{1F440}"), Ut("look"));
           })
           .catch(() => {}));
-    // v157: ekip gerçek kapıdan içeri yürür (kapı açılır, içerisi görünür) — kararma ancak içerideyken
-    let Ea = [be(qe, [T(1, $(0.6)), T(0.3, -0.9), T(0.3, -2.3)], _i)];
+    let Ea = [be(qe, [T(1, $(0.6)), T(0.3, -0.9)], _i)];
     if (
-      (ct && Ea.push(be(ct, [T(-0.4, $(0.54)), T(-0.3, -1), T(-0.3, -2.4)], _i)),
+      (ct && Ea.push(be(ct, [T(-0.4, $(0.54)), T(-0.3, -1)], _i)),
       await Promise.all(Ea),
       await oe(!0, 0.1),
       ke(qe),
@@ -1054,7 +1053,7 @@ function k6(t) {
   }
   async function lt(A) {
     let { W: T, vWalk: ye, sv: G } = b;
-    (u.clockOn = !1); // v157: sayaç yok
+    (u.hud.classList.add("on"), (u.clockOn = !0));
     let Be = Yh.lead;
     (ie(u.opts.crew[0], `${Be} \xB7 TEK BA\u015EINA`), xe(A, "Tek ba\u015F\u0131ma hallederim."));
     let R = (ye + 7) / 4.6;
@@ -1067,8 +1066,8 @@ function k6(t) {
     }),
       (u.dolly = 0),
       ve(R, (ee) => (u.dolly = ee), w1).catch(() => {}),
-      await be(A, [T(1.2, G(0.6)), T(0.3, -0.9), T(0.3, -2.3)], 4.6),
-      await oe(!0, 0.12));
+      await be(A, [T(1.2, G(0.6)), T(0.3, -0.9)], 4.6),
+      await oe(!0, 0.15));
   }
   async function Je(A) {
     let { W: T, o: ye, r: G, vWalk: Be, sv: R, carYaw: ee } = b;

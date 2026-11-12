@@ -32,7 +32,7 @@ const HouseScreen = lazy(retryImport(() => import('../HouseScreen/HouseScreen'))
 
 // Oyunun kendi dükkânı (her zaman açık) — oyuncu dükkânları gibi dünkü kazancına
 // göre sıralanır (gameVenues/{tür}.bizRank); sırası yoksa sıralılardan sonra.
-export const GAME_VENUE = {
+const GAME_VENUE = {
   // loc: interiorPresence.locationId (Soygun › Ziyaret sekmesindeki sayıyla aynı kaynak)
   silahci: { name: 'Neon Silah Mağazası', loc: 'silah_magazasi' },
   galeri: { name: 'Neon Araba Galerisi', loc: 'araba_galerisi' },
@@ -124,9 +124,7 @@ function Coin({ gem, v, bad }) {
 // v77: üstte açılır tür seçici — haritadan hangi türe tıklandıysa o seçili gelir,
 // buradan diğer türlere de geçilebilir. Sıra: önce içerideki kişi, eşitlikte dünkü ciro.
 // v93: üstteki tür seçici kaldırıldı (kullanıcı isteği) — haritada tıklanan tür gösterilir.
-// v157: initialHouseId / autoGame — şehirdeki mekânın listesinden seçilen işletme doğrudan açılır;
-// çıkınca liste değil şehir (App: cityReturn) görünür
-export default function BusinessHub({ type: initialType, onClose, onOpenGameVenue, initialHouseId = null, initialGuest = false, autoGame = false }) {
+export default function BusinessHub({ type: initialType, onClose, onOpenGameVenue }) {
   const type = initialType;
   // v79.3: liste açılır açılmaz gelen (açan dokunuşun) hayalet tıklama bir salona sokmasın
   const openedAtRef = useRef(Date.now());
@@ -134,15 +132,14 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
   const t = BIZ_TYPES[type];
   const { user, loading: authLoading } = useAuth();
   const { player } = usePlayer();
-  const [houseId, setHouseId] = useState(initialGuest ? null : initialHouseId);
-  const direct = Boolean(initialHouseId || autoGame);
+  const [houseId, setHouseId] = useState(null);
   // v142 — depo listesinde oyunun deposunun "Al" fiyatı piyasadan (sadece depo listesinde dinlenir)
   const depoMarket = useDepoMarket({ enabled: type === 'depo' && Boolean(user) && !houseId, excludeOwner: user?.uid || null });
   const { list: userList, loading: userLoading, gameRank, gamePeople: gameHousePeople } = useBusinessList(type, { enabled: Boolean(user) && !houseId });
   // v134 — misafir: işletmeler sunucudan (salt okuma), içine girip gezer
   const isGuest = !user && !authLoading;
   const [guestList, setGuestList] = useState(null);
-  const [guestHouseId, setGuestHouseId] = useState(initialGuest ? initialHouseId : null);
+  const [guestHouseId, setGuestHouseId] = useState(null);
   useEffect(() => {
     if (!isGuest || !type) return undefined;
     let alive = true;
@@ -170,20 +167,6 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
   const [convertAsk, setConvertAsk] = useState(false);
   const [fillAsk, setFillAsk] = useState(false);
   const [fillMsg, setFillMsg] = useState(null);
-  // v157: şehirdeki listeden oyunun deposu seçildi → doğrudan içine
-  const autoRan = useRef(false);
-  useEffect(() => {
-    if (!autoGame || autoRan.current || !user) return;
-    autoRan.current = true;
-    const g = GAME_VENUE[type];
-    if (!g?.house) {
-      onOpenGameVenue?.(type);
-      return;
-    }
-    shopAction({ op: g.ensureOp || 'gymEnsureGame' })
-      .then((r) => setHouseId(r.houseId))
-      .catch((err) => setMsg(bizErrText(err)));
-  }, [autoGame, user, type, onOpenGameVenue]);
   useBackClose(!houseId, () => (fillAsk ? setFillAsk(false) : convertAsk ? setConvertAsk(false) : openAsk ? setOpenAsk(false) : onClose()));
   // "Hepsini al" için envanter + "evini çevir" önerisi için işletme olmayan evlerim
   const [invItems, setInvItems] = useState({});
@@ -204,7 +187,7 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
 
   if (!t) return null;
 
-  if (guestHouseId) return <GuestVenue houseId={guestHouseId} onExit={() => (direct ? onClose() : setGuestHouseId(null))} />;
+  if (guestHouseId) return <GuestVenue houseId={guestHouseId} onExit={() => setGuestHouseId(null)} />;
 
   if (houseId) {
     return (
@@ -221,7 +204,6 @@ export default function BusinessHub({ type: initialType, onClose, onOpenGameVenu
           key={houseId}
           houseId={houseId}
           onExit={(note) => {
-            if (direct) return onClose();
             setHouseId(null);
             if (note) setMsg(note);
           }}

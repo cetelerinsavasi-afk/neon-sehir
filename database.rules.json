@@ -235,10 +235,10 @@
             ".write": "auth != null && auth.uid === $uid && $cell.matches(/^[0-9]{1,2}_[0-9]{1,2}$/)",
             ".validate": "newData.hasChildren(['x','z','t'])",
             "x": {
-              ".validate": "newData.isNumber() && newData.val() >= -3200 && newData.val() <= 3200"
+              ".validate": "newData.isNumber() && newData.val() >= -400 && newData.val() <= 400"
             },
             "z": {
-              ".validate": "newData.isNumber() && newData.val() >= -3200 && newData.val() <= 3200"
+              ".validate": "newData.isNumber() && newData.val() >= -400 && newData.val() <= 400"
             },
             "l": {
               ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1"
@@ -253,7 +253,7 @@
               ".validate": "newData.isString() && newData.val().matches(/^[wsdr]$/)"
             },
             "sy": {
-              ".validate": "newData.isNumber() && newData.val() >= -10 && newData.val() <= 300"
+              ".validate": "newData.isNumber() && newData.val() >= -5 && newData.val() <= 10"
             },
             "e": {
               ".validate": "newData.isString() && newData.val().length <= 12"
@@ -289,10 +289,10 @@
               ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 30"
             },
             "x": {
-              ".validate": "newData.isNumber() && newData.val() >= -3200 && newData.val() <= 3200"
+              ".validate": "newData.isNumber() && newData.val() >= -400 && newData.val() <= 400"
             },
             "z": {
-              ".validate": "newData.isNumber() && newData.val() >= -3200 && newData.val() <= 3200"
+              ".validate": "newData.isNumber() && newData.val() >= -400 && newData.val() <= 400"
             },
             "y": {
               ".validate": "newData.isNumber() && newData.val() >= -1000 && newData.val() <= 1000"

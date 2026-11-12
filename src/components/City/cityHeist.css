@@ -104,6 +104,3 @@
 .hv-skip{top:calc(9.5% + 10px);bottom:auto;right:12px;padding:6px 12px;font-size:12px;background:rgba(8,10,18,.62);border-color:rgba(255,255,255,.18)}
 .hv-loading .hs-spinner{display:none}
 .hv-loading p{animation:hxTitleSub .5s ease-out both}
-
-/* v157: üstteki sayaç (60 sn) kaldırıldı */
-.hx-hud{display:none!important}

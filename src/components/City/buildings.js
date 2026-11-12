@@ -5,7 +5,7 @@
 // (ör. Camii: mermer kaplama + ahşap kapı; Silahçı: tuğla + metal kapı).
 // Yerel koordinat: önü +z. lot = { w, d } parsel iç ölçüsü.
 // =============================================================================
-import { THREE, M, boxGeo, planeGeo, facadeMat, isRealFacade, facadeTrim, facadeKind, FACADE_TILE, glowMat, basicGlow, GLASS, canvasTex, rng, hash, roundRect } from './kit.js';
+import { THREE, M, boxGeo, planeGeo, facadeMat, FACADE_TILE, glowMat, basicGlow, GLASS, canvasTex, rng, hash, roundRect } from './kit.js';
 
 const PI = Math.PI;
 
@@ -13,9 +13,8 @@ const PI = Math.PI;
 // Pencereli kule: 4 yan düzlem (UV ölçekli, paylaşılan cephe malzemesi) + çatı
 export function tower(kit, { w, d, h, x = 0, z = 0, style = 'apt_warm', roof = '#16181f', crown = null, seed = 0, base = null }) {
   const mat = facadeMat(style);
-  const real = isRealFacade(style);
   const ou = (seed % 8) / 8;
-  const ov = real ? 0 : ((seed * 3) % 8) / 8; // gerçekçi cephe: katlar zeminden hizalı
+  const ov = ((seed * 3) % 8) / 8;
   const sides = [
     [w, 0, d / 2, 0],
     [w, 0, -d / 2, PI],
@@ -29,19 +28,9 @@ export function tower(kit, { w, d, h, x = 0, z = 0, style = 'apt_warm', roof = '
     kit.mesh(g, mat, x + sx, y0 + hh / 2, z + sz, ry, { cast: false });
   });
   // gölge için içi dolu gövde (görünmez değil: koyu, yanlardan biraz içeride)
-  kit.box(w - 0.08, h, d - 0.08, M(real ? '#b9b2a6' : '#121319', 0.9), x, 0, z, { receive: false });
-  kit.box(w + 0.3, 0.5, d + 0.3, M(real ? '#d8d1c3' : roof, 0.85), x, h, z); // korkuluk / parapet
-  kit.box(w - 0.6, 0.12, d - 0.6, M(real ? '#8e8a83' : '#1d2028', 0.95), x, h + 0.02, z, { cast: false });
-  if (real) {
-    const trim = M(facadeTrim(style), 0.8);
-    // saçak + zemin kat subasman
-    kit.box(w + 0.55, 0.28, d + 0.55, trim, x, h - 0.4, z);
-    kit.box(w + 0.14, 0.7, d + 0.14, M('#8f8a80', 0.85), x, 0, z, { cast: false });
-    // kat silmeleri (gölge çizgisi veren çıkıntı) — konutlarda
-    if (facadeKind(style) === 'apt' || facadeKind(style) === 'stone') {
-      for (let fy = y0 + 3.2; fy < h - 1.5; fy += 3.2) kit.box(w + 0.22, 0.1, d + 0.22, trim, x, fy - 0.12, z, { cast: false });
-    }
-  }
+  kit.box(w - 0.08, h, d - 0.08, M('#121319', 0.9), x, 0, z, { receive: false });
+  kit.box(w + 0.3, 0.5, d + 0.3, M(roof, 0.85), x, h, z); // korkuluk / parapet
+  kit.box(w - 0.6, 0.12, d - 0.6, M('#1d2028', 0.95), x, h + 0.02, z, { cast: false });
   const r = rng(hash(`roof${x},${z},${seed}`));
   // çatı ayrıntıları: klima, su deposu
   for (let i = 0; i < 3; i++) {
@@ -53,18 +42,7 @@ export function tower(kit, { w, d, h, x = 0, z = 0, style = 'apt_warm', roof = '
     kit.cyl(0.9, 0.9, 1.6, M('#4a4f59', 0.6, 0.3), x + (r() - 0.5) * (w - 4), h + 1.4, z + (r() - 0.5) * (d - 4), 14);
     kit.box(0.1, 1.4, 0.1, M('#2a2d33', 0.6, 0.5), x, h, z);
   }
-  // güneş enerjili su ısıtıcıları (şofben) — Türkiye çatısı
-  if (real && facadeKind(style) === 'apt') {
-    const n = 1 + Math.floor(r() * 3);
-    for (let i = 0; i < n; i++) {
-      const sx = x + (i - (n - 1) / 2) * 2.4;
-      const sz = z + (r() - 0.5) * Math.max(0, d - 5);
-      const panel = kit.box(1.9, 0.08, 1.2, M('#1d3557', 0.25, 0.4), sx, h + 0.9, sz + 0.2);
-      panel.rotation.x = -0.6;
-      kit.cyl(0.28, 0.28, 1.7, M('#e9e9e6', 0.4, 0.3), sx, h + 1.25, sz - 0.6, 10).rotation.z = Math.PI / 2;
-    }
-  }
-  if (crown && !(real && facadeKind(style) !== 'glass')) {
+  if (crown) {
     // tepe neon şeridi (haritadaki kulelerin ışıklı kenarları)
     const gm = glowMat(crown, 2.4);
     kit.box(w + 0.34, 0.12, 0.12, gm, x, h + 0.5, z + d / 2 + 0.15, { cast: false });
@@ -583,8 +561,6 @@ export function buildModifiye(kit, lot) {
   kit.solid(bw / 2, bz, 0.3, bd / 2);
   kit.solid(-bw / 3, bz - 0.5, 1.6, 2.8);
   kit.blocker(bw, 6.5, bd, 0, 0, bz);
-  // v157: garajın içi (açık bölmeler) = mekân → üstte "🔧 Modifiye garajları" düğmesi
-  kit.area(0, bz + 0.5, bw / 2 + 0.6, bd / 2 + 1.2, 'modifiye');
   return { door: { x: 0, z: bz + bd / 2 + 1.0 }, mapLabel: { text: 'MODİFİYE GARAJI', y: 9, z: bz } };
 }
 
@@ -754,11 +730,9 @@ export function buildBar(kit, lot) {
   kit.sign('bar', 'BAR', 1.8, 0, 6.9, bz + bd / 2 + 0.12, 0, { color: '#fff1d0', glow: '#ff9a2a', font: '900 140px Georgia, serif', li: 8, ld: 14 });
   kit.item('door_salon', 0, bz + bd / 2 + 0.15, 0, 0, { solid: false });
   // teras: bar masaları + şemsiyeler + ip ışıklar
-  for (const [x, z] of [[-6, d / 2 - 4.5], [-2.5, d / 2 - 2.2], [3, d / 2 - 4.2], [6.4, d / 2 - 2]]) {
-    kit.item('barreltable', x, z, 0, 0);
-    kit.item('stool', x - 0.85, z, 0, 0);
-    kit.item('stool', x + 0.85, z, 0, 0);
-  }
+  for (const [x, z] of [[-6, d / 2 - 4.5], [-2.5, d / 2 - 2.2], [3, d / 2 - 4.2], [6.4, d / 2 - 2]]) kit.item('bartable', x, z, 0, 0);
+  kit.item('umbrella', -6, d / 2 - 4.5, 0, 0, { solid: false });
+  kit.item('umbrella', 3, d / 2 - 4.2, 0, 0, { solid: false });
   stringLights(kit, [[-bw / 2, 3.4, bz + bd / 2 + 2.2], [-bw / 2, 3.0, d / 2 - 0.5], [bw / 2, 3.0, d / 2 - 0.5], [bw / 2, 3.4, bz + bd / 2 + 2.2]], '#ffcf7a');
   kit.pool(0, d / 2 - 3, '#ffab4a', 14, 0.15, 0.45);
   kit.light(0, 3, d / 2 - 3, '#ffbf6a', 8, 12);
@@ -798,6 +772,7 @@ export function buildCafe(kit, lot) {
   kit.item('door_cam', 0, bz + bd / 2 + 0.25, 0, 0, { solid: false });
   for (const [x, z] of [[-5.5, d / 2 - 2.8], [-1.8, d / 2 - 5], [2.2, d / 2 - 2.6], [5.8, d / 2 - 4.8]]) {
     kit.item('cafetable', x, z, 0, 2);
+    kit.item('umbrella', x, z, 0, 0, { solid: false });
   }
   kit.item('plantb', -bw / 2 + 0.6, bz + bd / 2 + 0.8);
   kit.item('plantb', bw / 2 - 0.6, bz + bd / 2 + 0.8);
@@ -859,9 +834,8 @@ const SHOPS = [
   ['DÖNER', '#ff9f45', '#7a1f2b'], ['TEKEL', '#ffe3ae', '#3a2f1d'], ['PİDE', '#ffbf6a', '#5c1a24'], ['KUAFÖR', '#ff7ad9', '#4a1d5c'],
   ['BÜFE', '#ffd23f', '#1d5c3a'], ['OPTİK', '#bfe3ff', '#1d3d5c'], ['ÇAY OCAĞI', '#ffcf7a', '#5c1a24'], ['TERZİ', '#e8e6df', '#22262f'],
 ];
-// v154 (prototip): açık renkli, gerçekçi cepheler (eski koyu neon cepheler: apt_warm, apt_cool, office, brick, purple)
-const STYLES = ['beyaz', 'bej', 'krem', 'tas', 'cam_ofis', 'somon', 'beyaz', 'tugla_acik', 'bej', 'yesil', 'cam_yesil', 'krem'];
-const CROWNS = [null, null, null, '#19e8ff', null, null, null, null];
+const STYLES = ['apt_warm', 'apt_cool', 'office', 'brick', 'apt_warm', 'purple'];
+const CROWNS = [null, null, '#ff3fa0', '#19e8ff', null, '#ff7ad9', null, '#ffd23f'];
 export function buildFiller(kit, lot, seed, { tall = 1, plaza = false } = {}) {
   const { w, d } = lot;
   const r = rng(seed * 7919 + 13);

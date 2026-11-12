@@ -12,9 +12,8 @@
 //   kurye   : (v154, her motor) satıcıya git (sipariş hazırlanıyor 2 sn) → mekânın önüne teslim et
 // Hız: hedefe yakın + neredeyse durmuş (< 1,4 m/s). Çarpma (> 5 m/s) kazancı düşürür.
 // =============================================================================
-import { LIMAN_BAY, DEPOTS, HOSPITAL, BUS_STOPS, ROAD_SPOTS, KURYE_PICKUPS, KURYE_DROPS, FAR_DEPOT, OTOGARS, HWY_ENTRY } from '../../../functions/cityJobsData.js';
-import { JOBS, jobDailyOf } from '../../../functions/vehicleKinds.js';
-import { frameAt, LEN, LANE, TOWN, fromTown, toTown, inTownRect, nearest } from './world/route.js';
+import { LIMAN_BAY, DEPOTS, HOSPITAL, BUS_STOPS, ROAD_SPOTS, KURYE_PICKUPS, KURYE_DROPS } from '../../../functions/cityJobsData.js';
+import { JOBS } from '../../../functions/vehicleKinds.js';
 
 const STOP_V = 1.4;
 
@@ -100,62 +99,6 @@ export function roadRoute(from, to) {
   if (Math.hypot(to.x - e.x, to.z - e.z) > 1) pts.push({ x: to.x, z: to.z });
   return pts;
 }
-// --- v157: UZAK MESAFE ROTASI (şehir yolu → O-77 otoyolu → Kervankent) -------------------------
-const isFar = (p) => p.x > 260 || p.z < -400 || inTownRect(p.x, p.z, 8);
-// otoyolun sağ şeridi (k = +1 Kervankent yönü, −1 şehir yönü)
-function hwyLane(s0, s1) {
-  const k = s1 >= s0 ? 1 : -1;
-  const out = [];
-  for (let s = s0; k > 0 ? s < s1 : s > s1; s += 10 * k) {
-    const f = frameAt(s);
-    out.push({ x: f.x + f.rx * LANE * k, z: f.z + f.rz * LANE * k });
-  }
-  const f = frameAt(s1);
-  out.push({ x: f.x + f.rx * LANE * k, z: f.z + f.rz * LANE * k });
-  return out;
-}
-// kasaba içi: otoyol ağzından hedefe (tır terminali / otogar) giden cadde noktaları
-// v157: Kervankent otogarı kasaba girişinin hemen yanında — cadde üstünden (ızgarada aranmış, engelsiz)
-const KK_OTOGAR_PATH = [[2, TOWN.zb + 2], [2, 91], [-29, 91], [-29, 83], [-36, 83]];
-function townPath(to, inbound) {
-  const T = toTown(to.x, to.z);
-  const kk = OTOGARS[1] && Math.hypot(to.x - OTOGARS[1].x, to.z - OTOGARS[1].z) < 12;
-  const pts = (kk ? [...KK_OTOGAR_PATH, [T.x, T.z]] : [[2, TOWN.zb + 2], [2, 13], [Math.sign(T.x || 1) * 13, 3], [T.x, 3], [T.x, T.z]]).map(([a, b]) => fromTown(a, b));
-  return inbound ? pts : pts.slice().reverse();
-}
-const hwyS = (p) => {
-  const n = nearest(p.x, p.z);
-  return n && n.dist < 40 ? n.s : null;
-};
-// şehirde roadRoute, dışarıda otoyol + kasaba; çizilen kısım kısaltılır (yol çizgisi ağır olmasın)
-export function worldRoute(from, to, maxLen = 900) {
-  let pts;
-  const fFar = isFar(from);
-  const tFar = isFar(to);
-  if (!fFar && !tFar) return roadRoute(from, to);
-  const inTownF = inTownRect(from.x, from.z, 4);
-  if (tFar && !fFar) {
-    pts = [...roadRoute(from, HWY_ENTRY), { x: 178, z: -140 }, { x: 198, z: -140 }, ...hwyLane(12, LEN), ...townPath(to, true)];
-  } else if (tFar && fFar) {
-    if (inTownRect(to.x, to.z, 4) && inTownRect(from.x, from.z, 4)) pts = [from, to];
-    else {
-      const s = hwyS(from) ?? 12;
-      pts = [from, ...hwyLane(Math.max(12, s + 6), LEN), ...townPath(to, true)];
-    }
-  } else {
-    // dönüş: kasaba / otoyol → şehir
-    const s = inTownF ? LEN : hwyS(from) ?? LEN;
-    pts = [from, ...(inTownF ? townPath({ x: from.x, z: from.z }, false).slice(1) : []), ...hwyLane(Math.min(LEN, Math.max(12, s - 6)), 12), { x: 198, z: -141 }, { x: 178, z: -141 }, ...roadRoute(HWY_ENTRY, to)];
-  }
-  // baştan maxLen kadarı
-  const out = [pts[0]];
-  let L = 0;
-  for (let i = 1; i < pts.length && L < maxLen; i++) {
-    L += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
-    out.push(pts[i]);
-  }
-  return out;
-}
 const fmtT = (s) => {
   const n = Math.max(0, Math.round(s));
   return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`;
@@ -181,7 +124,6 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
   let left = null;
   let daily = null;
   let lastHitAt = 0;
-  let range = 'near'; // v157: tır / otobüs için yakın ya da uzak mesafe
   // v154: duvar saati (sayfa yenilenip iş kaldığı yerden sürerse süre ölçümü bozulmasın)
   const now = () => Date.now() / 1000;
   const E = () => engine();
@@ -254,14 +196,13 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
     if (!p || !tgt) return;
     const t = performance.now();
     const moved = !routeFrom || Math.hypot(p.x - routeFrom.x, p.z - routeFrom.z) > 6;
-    const farR = isFar(p) || isFar(tgt);
-    if (t - routeAt < (tgt.follow ? 700 : farR ? 3000 : 1500) && !moved) return;
-    if (t - routeAt < (farR ? 1200 : 350)) return;
+    if (t - routeAt < (tgt.follow ? 700 : 1500) && !moved) return;
+    if (t - routeAt < 350) return;
     routeAt = t;
     routeFrom = { x: p.x, z: p.z };
     let to = { x: tgt.x, z: tgt.z };
     if (tgt.follow) to = E()?.jobSuspectPos() || to;
-    const pts = farR ? worldRoute({ x: p.x, z: p.z }, to) : roadRoute({ x: p.x, z: p.z }, to);
+    const pts = roadRoute({ x: p.x, z: p.z }, to);
     // v153: şerit aracın tam altından başlar, hedefin kendisinde biter
     if (pts.length && Math.hypot(pts[0].x - p.x, pts[0].z - p.z) > 0.5) pts.unshift({ x: p.x, z: p.z });
     E()?.jobRoute(pts, tgt.color || '#19e8ff');
@@ -314,7 +255,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
     st = { title: 'İş aranıyor…', sub: '', hits: 0 };
     ui();
     try {
-      const r = await call({ op: 'jobStart', vehicleId: veh.id, x: p?.x, z: p?.z, ...(range === 'far' ? { range: 'far' } : {}) });
+      const r = await call({ op: 'jobStart', vehicleId: veh.id, x: p?.x, z: p?.z });
       run = r.run;
       left = r.left;
       daily = r.daily;
@@ -334,19 +275,10 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
     setPax(0);
     if (T.type === 'tir') {
       st.phase = 'pickup';
-      st.depot = T.far ? FAR_DEPOT : DEPOTS[T.depot] || DEPOTS[0];
+      st.depot = DEPOTS[T.depot] || DEPOTS[0];
       st.title = `📦 ${T.cargo} · ${T.ton} t`;
       st.sub = `⚓ Limandaki sarı YÜKLEME alanına gir ve dur, dorseni al → ${st.depot.name}`;
       target({ ...LIMAN_BAY, name: 'Liman — Yükleme', icon: '⚓', color: '#ffd23f', r: 6 });
-    } else if (T.type === 'otobus' && T.far) {
-      // v157: şehirlerarası sefer — kalkış otogarında yolcu al, öbür otogarda indir
-      st.phase = 'toOrigin';
-      st.from = OTOGARS[T.from] || OTOGARS[0];
-      st.to = OTOGARS[1 - (T.from || 0)] || OTOGARS[1];
-      st.onboard = 0;
-      st.title = `🚌 Şehirlerarası: ${st.from.name} → ${st.to.name}`;
-      st.sub = `${st.from.name} peronuna gir ve dur — ${T.pax} yolcu bekliyor`;
-      target({ ...st.from, icon: '🚏', color: '#19e8ff' });
     } else if (T.type === 'otobus') {
       st.phase = 'drive';
       st.route = BUS_STOPS.map((_, k) => BUS_STOPS[(T.start + k) % BUS_STOPS.length]);
@@ -415,12 +347,6 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
         setPax(1);
         if (st.phase === 'deliver') target({ ...st.depot, icon: '📦', color: '#19e8ff' });
       }
-    } else if (T.type === 'otobus' && T.far) {
-      setPax(st.onboard || 0);
-      if (st.phase === 'toOrigin' || st.phase === 'boarding') {
-        st.phase = 'toOrigin';
-        target({ ...st.from, icon: '🚏', color: '#19e8ff' });
-      } else if (st.phase === 'drive') target({ ...st.to, icon: '🏁', color: '#ff2e8c' });
     } else if (T.type === 'otobus') {
       setPax(st.onboard || 0);
       busPeople();
@@ -566,42 +492,6 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
         st.bar = st.phaseT / 3;
         if (st.phaseT >= 3) {
           setPax(0); // dorse depoda kalır
-          return finish(st.dt);
-        }
-      }
-    } else if (T.type === 'otobus' && T.far) {
-      if (st.phase === 'toOrigin' && near(p, st.from, 6)) {
-        st.phase = 'boarding';
-        st.phaseT = 0;
-        target(null);
-      } else if (st.phase === 'boarding') {
-        if (p.speed > STOP_V) st.phaseT = Math.max(0, st.phaseT - dt);
-        else st.phaseT += dt;
-        st.sub = `🚪 Yolcular biniyor… (${T.pax})`;
-        st.bar = st.phaseT / 4;
-        if (st.phaseT >= 4) {
-          st.onboard = T.pax;
-          setPax(Math.min(27, T.pax));
-          st.phase = 'drive';
-          st.t0 = tnow;
-          st.bar = null;
-          target({ ...st.to, icon: '🏁', color: '#ff2e8c' });
-          onToast?.(`🚌 ${T.pax} yolcu bindi — ${st.to.name} seferi başladı`);
-        }
-      } else if (st.phase === 'drive') {
-        st.sub = `🏁 ${st.to.name} · ⏱️ ${fmtT(tnow - st.t0)} / hedef ${fmtT(run.par)} · 💥 ${st.hits}`;
-        if (near(p, st.to, 6)) {
-          st.phase = 'alighting';
-          st.phaseT = 0;
-          st.dt = tnow - st.t0;
-          target(null);
-        }
-      } else if (st.phase === 'alighting') {
-        st.phaseT += p.speed < STOP_V ? dt : 0;
-        st.sub = '🚪 Yolcular iniyor…';
-        st.bar = st.phaseT / 3;
-        if (st.phaseT >= 3) {
-          setPax(0);
           return finish(st.dt);
         }
       }
@@ -781,10 +671,8 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
       daily = null;
       ui();
     },
-    // v157: r = 'near' | 'far' (tır / otobüs)
-    start(r = 'near') {
+    start() {
       if (!veh || !job) return;
-      range = r === 'far' && jobDailyOf(job, true) > 0 ? 'far' : 'near';
       active = true;
       E()?.setJob({ on: true, pax: 0 });
       begin();

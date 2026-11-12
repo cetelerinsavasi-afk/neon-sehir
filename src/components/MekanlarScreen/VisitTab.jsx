@@ -27,13 +27,15 @@ import './VisitTab.css';
 // =============================================================================
 // v149 — park ve seyyar satıcılar artık ayrı bir mekân değil, doğrudan şehir haritasına
 // gömülü → Ziyaret listesinden kaldırıldı (şehirde yürüyerek gidilir)
-// v157: banka / karakol / camii / belediye artık şehirde doğrudan girilen yerler →
-// Ziyaret'te sadece özel girişli mekânlar (oyuncu/çete mekânları + oyunun işletmeleri)
 const GAME_VENUES = [
+  { key: 'banka', region: 'banka', openKey: 'banka' },
+  { key: 'karakol', region: 'karakol', openKey: 'karakol' },
+  { key: 'camii', region: 'camii', openKey: 'mosque' },
   { key: 'gazino', region: 'casino', openKey: 'casino' },
   { key: 'araba_galerisi', region: 'araba_galerisi', openKey: 'dealership' },
   { key: 'silah_magazasi', region: 'silah_magazasi', openKey: 'weaponShop' },
   { key: 'modifiye_garaji', region: 'modifiye_garaji', openKey: 'tuningGarage' },
+  { key: 'belediye', region: 'belediye', openKey: 'belediye' }, // v127
   // v146.4 — Polis Teşkilatı: sadece polisler + başkan, yardımcıları, teşkilat bakanı (diğerlerine kilitli)
   { key: 'teskilat', icon: '🚓', label: 'Polis Teşkilatı', openKey: 'teskilat', houseId: 'game_teskilat', police: true },
 ];

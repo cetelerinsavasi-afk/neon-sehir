@@ -47,16 +47,6 @@ class NeonBridge(private val activity: LauncherActivity) {
             .toString()
     }
 
-    // ------------------------------------------------ v157 yatay mod (şehir)
-    /** mode: "landscape" → yatay (sensörle iki yön), diğerleri → dikey (manifestteki gibi). */
-    @JavascriptInterface
-    fun setOrientation(mode: String?) {
-        if (!trusted()) return
-        val o = if (mode == "landscape") android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        activity.runOnUiThread { activity.requestedOrientation = o }
-    }
-
     // ------------------------------------------------ v155 Google Play Faturalandırma
     // Sonuçlar requestId ile window.__neonNative.resolve(...) üzerinden döner (bkz. PlayBilling).
     // Native taraf zümrüt YÜKLEMEZ; tüketme sadece sunucu doğruladıktan sonra web isteyince.
