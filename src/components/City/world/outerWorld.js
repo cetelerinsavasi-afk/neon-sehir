@@ -18,7 +18,7 @@ import { buildTerrain, buildRoad, buildTunnel, buildBridge, buildToll, buildSign
 import { buildTown } from './town.js';
 import { buildRoadside } from './roadside.js';
 import { Animals } from './animals.js';
-import { PARK, inPark, parkCarve, buildNorthPark, pondY, inPond, pathDist as parkPathDist, CLEAR as PARK_CLEAR } from './northPark.js';
+import { PARK, inPark, parkCarve, buildNorthPark, pondY, inPond } from './northPark.js';
 import { BEACH_RECT, DECKS, coastH, SEA_Y } from '../coast.js';
 import { geo as rsGeo, padAt, branchAt, toPad, fromPad, carve as rsCarve, nearFeature, BR_HALF, pierLocal } from './roadsideGeo.js';
 import { KORDON_X, COAST_X, OUTER, EAST_GATE_Z } from '../cityLayout.js';
@@ -699,7 +699,7 @@ function worldSteps(W, mobile) {
     treePts.forEach(([x, z, sc]) => {
       const k = `${Math.floor(x / 8)},${Math.floor(z / 8)}`;
       if (!W.treeHash.has(k)) W.treeHash.set(k, []);
-      W.treeHash.get(k).push([x, z, 0.32 * sc + 0.1]);
+      W.treeHash.get(k).push([x, z, 0.26 * sc + 0.06]); // v157.3: sadece gövde (ağaç arası rahat geçilsin)
     });
   });
   step(82, () => {
@@ -849,6 +849,16 @@ export function finishCityWorld(W, scene) {
     const g = (walk ? p.walk : p.grid).cell;
     return g(l.x - r, l.z - r) || g(l.x + r, l.z - r) || g(l.x - r, l.z + r) || g(l.x + r, l.z + r) || g(l.x, l.z);
   };
+  // v157.3 — yan yolların ana yola bağlandığı ağızlar: araç için geniş tutulur (köşelere takılmadan
+  // otoyola çıkılsın / sapılsın). Ağzın 18 m çevresinde otoyol bandı ve köy yolu payı genişler.
+  const JUNCS = [];
+  rsGeo().branches.forEach((b) => {
+    [b.pts[0], b.pts[b.pts.length - 1]].forEach(([x, z]) => {
+      const n = nearest(x, z, -1);
+      if (n && n.dist < 60 && Math.abs(n.d) < RAIL + 14) JUNCS.push([x, z]);
+    });
+  });
+  const atJunc = (x, z) => JUNCS.some(([jx, jz]) => (x - jx) ** 2 + (z - jz) ** 2 < 18 * 18);
   function hwyFree(px, pz, r, hint, walk, curY = null) {
     const p = padAt(px, pz);
     if (p) return !padBlocked(p, px, pz, walk ? 0.24 : r, walk);
@@ -858,18 +868,11 @@ export function finishCityWorld(W, scene) {
       if (q && q.on) return true;
       // yaya: arazinin her yeri (orman, tepe, kıyı) — sadece ağaç gövdeleri, park eşyaları ve dünya sınırı
       if (inPark(px, pz)) {
-        // v157: ormanın sık yerine girilmez — yürüyüş yolları, açıklıklar ve çayırlar açık
-        if (inForest(px, pz) && parkPathDist(px, pz) > 3.4 && !PARK_CLEAR.some((c) => Math.hypot(px - c.x, pz - c.z) < c.r + 2)) return false;
+        // v157.3: ormanda serbest yürünür (sadece ağaç gövdeleri / park eşyaları engel)
         return !parkGrid.cell(px, pz);
       }
       if (px < TERRAIN.x0 + 40 || px > TERRAIN.x1 - 40 || pz < TERRAIN.z0 + 40 || pz > TERRAIN.z1 + 400) return false;
       if (inTownRect(px, pz, 6)) return false;
-      if (inForest(px, pz)) {
-        const n = nearest(px, pz, hint);
-        const nearRoad = n && n.dist < 60 && Math.abs(n.d) < RAIL + 4;
-        const br = branchAt(px, pz);
-        if (!nearRoad && !(br && br.d < BR_HALF + 5)) return false;
-      }
       return !treeHit(px, pz, 0.2);
     }
     const n = nearest(px, pz, hint);
@@ -881,7 +884,11 @@ export function finishCityWorld(W, scene) {
       }
     }
     const b = branchAt(px, pz);
-    if (b && b.d <= BR_HALF + 2.2 - r * 0.6 && (curY === null || Math.abs(b.y - curY) < 4)) return true; // köy yolu + hafif çim payı
+    if (b && b.d <= BR_HALF + 3 - r * 0.6 && (curY === null || Math.abs(b.y - curY) < 4)) return true; // köy yolu + çim payı
+    if (atJunc(px, pz)) {
+      if (n && n.dist < 40 && Math.abs(n.d) <= RAIL + 2.5 && (curY === null || Math.abs(n.y - curY) < 4)) return true;
+      if (b && b.d <= BR_HALF + 6 && (curY === null || Math.abs(b.y - curY) < 4)) return true;
+    }
     return false;
   }
   W.hwyFree = hwyFree;

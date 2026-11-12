@@ -88,7 +88,7 @@ function shell(parts, { ext, extH, venue, doorKey, vitrine = false, ceil = '#1a1
   });
   parts.doors.push(door);
   // dışarıdan kamera binanın içine girmesin
-  base.blocker(W + 2 * T, extH, D + 2 * T, RX, 0, RZ);
+  base.blocker(W + 2 * T, extH, D + 2 * T, RX, 0, RZ).userData.venueShell = true;
   ext(hi, W + 2 * T, extH - LOWH, D + 2 * T, 0, LOWH, RZ);
   // çarpışma: kapı boşluğu açık. v157.1: çarpışma boşluğu kapıdan 0,35 m geniş (her yanda) —
   // dar kapıdan girmek çok zordu; görünen kapı/duvar aynı

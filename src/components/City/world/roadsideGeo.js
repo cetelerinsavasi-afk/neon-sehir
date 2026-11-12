@@ -466,7 +466,7 @@ export function geo() {
       const pts = catmull([start, mid1, mid2, at(-16), at(-7.6)], 1.5); // son kısım iskele ekseninde, iskele başında biter
       const y0 = gl.ys[bi] + 0.05;
       const ys = pts.map((_, i) => y0 + (2.05 - y0) * ss(0, pts.length - 1, i));
-      patika = { pts, ys, half: 0.75, x0: Math.min(...pts.map((q) => q[0])) - 4, x1: Math.max(...pts.map((q) => q[0])) + 4, z0: Math.min(...pts.map((q) => q[1])) - 4, z1: Math.max(...pts.map((q) => q[1])) + 4 };
+      patika = { pts, ys, half: 0.75, x0: Math.min(...pts.map((q) => q[0])) - 26, x1: Math.max(...pts.map((q) => q[0])) + 26, z0: Math.min(...pts.map((q) => q[1])) - 26, z1: Math.max(...pts.map((q) => q[1])) + 26 }; // v157.3: arazi düzleştirmesi patikanın 26 m çevresine kadar (eskiden 4 m kutu dışı hiç düzleşmiyordu)
       pier = { x: shore[0], z: shore[1], ux, uz, L0: -8, Lw: 20, PL: 7, PW: 4.5, y: 2.05 };
     }
     // ELMAS MADENİ sapağı (göl yolunun ortalarından batıya)
@@ -604,7 +604,7 @@ export function carve(x, z, h) {
   const pk = patikaAt(x, z);
   if (pk && pk.d < 22) {
     const ty = pk.y - 0.1;
-    const k = ss(5, 22, pk.d); // arazi hücresi 8 m: geniş düz omuz
+    const k = ss(10, 26, pk.d); // v157.3: telefonda arazi hücresi 12 m — düz omuz geniş olmalı (yoksa patika sonu çukura düşüp iskele 3 m havada kalıyordu)
     out = ty + (out - ty) * k;
   }
   const b = branchAt(x, z);

@@ -1157,6 +1157,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     push(s, h(si, sj));
     let found = false;
     let iter = 0;
+    let near = s; // v157.3: hedefe ulaşılamazsa en yakın ulaşılabilen hücreye git
+    let nearH = h(si, sj);
     while (heap.length && iter++ < 120000) {
       const [, n] = pop();
       if (closed[n]) continue;
@@ -1165,6 +1167,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         break;
       }
       closed[n] = 1;
+      const hn = h(n % CW, (n / CW) | 0);
+      if (hn < nearH) {
+        nearH = hn;
+        near = n;
+      }
       const i = n % CW;
       const j = (n / CW) | 0;
       for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
@@ -1183,11 +1190,13 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         }
       }
     }
-    if (!found) return null;
+    const end = found ? goal : near;
+    if (end === s) return null;
     const pts = [];
-    for (let n = goal; n !== -1 && n !== s; n = from[n]) pts.push({ x: GX0 + (n % CW) + 0.5, z: GZ0 + ((n / CW) | 0) + 0.5 });
+    for (let n = end; n !== -1 && n !== s; n = from[n]) pts.push({ x: GX0 + (n % CW) + 0.5, z: GZ0 + ((n / CW) | 0) + 0.5 });
     pts.reverse();
-    pts[pts.length - 1] = { x: tx, z: tz };
+    if (found) pts[pts.length - 1] = { x: tx, z: tz };
+    else pts.push({ x: tx, z: tz }); // son parça düz: yürüyüş duvar boyunca kayarak dener
     // yumuşat
     const out = [];
     let ax = sx;
@@ -2408,8 +2417,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   function walkTo(x, z) {
     const f = freeNear(x, z);
     if (!f) return false;
-    const p = findPath(self.x, self.z, f.x, f.z);
-    if (!p || !p.length) return false;
+    // v157.3: yol bulunamasa da (şehir ızgarası dışı, kapalı alan) dokunulan yere doğru yürünür
+    let p = findPath(self.x, self.z, f.x, f.z);
+    if (!p || !p.length) p = [{ x: f.x, z: f.z }];
     self.path = p;
     self.target = p.shift();
     self.repath = 0;
@@ -2429,7 +2439,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     void onPlayerTap;
     if (self.seat) standUp();
     // önce bir binaya dokunduysa kapısına yürü
-    const hits = ray.intersectObjects(blockers, false);
+    // v157.3: girilebilir mekânların kabuğu dokunuşu yutmaz — mekânın içine / arkasına dokununca
+    // oraya (kapıdan dolaşarak) yürünür; eskiden dokunuş duvarın önünde kalıyordu
+    const hits = ray.intersectObjects(blockers, false).filter((h) => !h.object.userData.venueShell);
     // v157: yokuşta / kumsalda dokunulan yer: önce oyuncunun yüksekliğinde düzlem, sonra o noktanın zemini
     const ground = new THREE.Plane(new V(0, 1, 0), -(Math.max(me.y, -1) + 0.1));
     const gp = new V();
@@ -4240,7 +4252,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     },
     world: () => W,
     // v157: geliştirme testleri (çarpışma / zemin simülasyonu) — canlıda yok
-    ...(import.meta.env?.DEV ? { __dbg: { THREE, scene, renderer, camera, findPath: (a, b, c, d) => findPath(a, b, c, d), carBlockedAt, blockedAt, groundY: (x, z, h, c) => groundY(x, z, h, c), modeAt: (x, z) => W.modeAt(x, z) } } : {}),
+    ...(import.meta.env?.DEV ? { __dbg: { THREE, scene, renderer, camera, me: () => ({ x: self.x, z: self.z, t: self.target, p: self.path, stuck: self.stuckT, seat: Boolean(self.seat) }), findPath: (a, b, c, d) => findPath(a, b, c, d), carBlockedAt, blockedAt, groundY: (x, z, h, c) => groundY(x, z, h, c), modeAt: (x, z) => W.modeAt(x, z) } } : {}),
     // v157 — yeni harita (mini + büyük): ilk açılışta bir kez çizilir
     map() {
       if (!gmap) {

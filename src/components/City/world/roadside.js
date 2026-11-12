@@ -584,7 +584,9 @@ B.dinlenme = (kit, p, ctx) => {
     const zz = zf(z);
     for (let x = 12; x <= 34; x += 22) lineMark(kit, p, x, zz - 5, x, zz + 5, '#f2f2f2');
     lineMark(kit, p, 12, zz + 5, 34, zz + 5, '#f2f2f2');
-    if (i % 2 === 0) parkVehicle(kit, 11, 23, y(23, zz), zz, PI / 2 + (p.dirS > 0 ? PI : 0) * 0, { trailer: i ? 'tenteli' : 'konteyner', trailerColor: i ? '#8a3a2a' : '#2a6fb5', paint: i ? '#f4f4f2' : '#1f9e5a', plate: `${34 + i} TR ${100 + i}` }).root.rotation.y = -PI / 2;
+    // v157.3: dönüş doğrudan verilir (eskiden sonradan çevriliyordu → çarpışma kutusu tırın ters
+    // tarafında kalıyor, park yerinin çıkışında görünmez duvar oluşuyordu)
+    if (i % 2 === 0) parkVehicle(kit, 11, 23, y(23, zz), zz, -PI / 2, { trailer: i ? 'tenteli' : 'konteyner', trailerColor: i ? '#8a3a2a' : '#2a6fb5', paint: i ? '#f4f4f2' : '#1f9e5a', plate: `${34 + i} TR ${100 + i}` });
   });
   kit.sign(`${p.key}_tirp`, 'TIR PARKI', 0.6, 10, y(10, zf(-40)) + 3.2, zf(-40), -PI / 2, { color: '#ffffff', bg: '#1d4f9a', font: '900 100px Arial, sans-serif', light: false });
   kit.box(0.14, 3, 0.14, M('#9aa0a8', 0.4, 0.7), 10, y(10, zf(-40)), zf(-40));
@@ -1045,6 +1047,20 @@ B.maden = (kit, p, ctx) => {
   conv.rotation.x = 0.28;
   for (let k = 0; k < 5; k++) kit.box(0.25, 3.5 + k * 0.9, 0.25, M('#c9a020', 0.5, 0.5), -6 - k * 3.1, Y, pz + 5 + k * 4.4);
   kit.cyl(2.2, 0.8, 3.2, M('#8a8e94', 0.5, 0.6), -18, Y + 6.5, -6, 10);
+  // v157.3: huni havada duruyordu — çelik ayaklar + alt bilezik + boşaltma borusu
+  {
+    const leg = M('#c9a020', 0.5, 0.5);
+    for (const [lx, lz] of [[-1.5, -1.5], [1.5, -1.5], [-1.5, 1.5], [1.5, 1.5]]) kit.box(0.28, 6.7, 0.28, leg, -18 + lx, Y, -6 + lz);
+    kit.box(3.3, 0.22, 3.3, M('#3a3d42', 0.5, 0.5), -18, Y + 6.3, -6);
+    for (const k of [2.2, 4.4]) {
+      kit.box(3.0, 0.12, 0.12, leg, -18, Y + k, -7.5);
+      kit.box(3.0, 0.12, 0.12, leg, -18, Y + k, -4.5);
+      kit.box(0.12, 0.12, 3.0, leg, -19.5, Y + k, -6);
+      kit.box(0.12, 0.12, 3.0, leg, -16.5, Y + k, -6);
+    }
+    kit.cyl(0.35, 0.35, 2.4, M('#5a5e64', 0.5, 0.6), -18, Y + 3.9, -6, 8);
+    kit.solid(-18, -6, 1.7, 1.7);
+  }
   // cevher yığınları (parıltılı)
   [[20, -24, 6], [32, -14, 5], [24, 4, 4]].forEach(([x, z, r], i) => {
     kit.mesh(new THREE.ConeGeometry(r, r * 0.8, 9), M('#4a4642', 0.95), x, Y + r * 0.4, z, i, { cast: true });
