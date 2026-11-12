@@ -60,6 +60,7 @@ function shell(parts, { ext, extH, venue, doorKey, vitrine = false, ceil = '#1a1
   const fz = z1 + T / 2;
   const glassM = new THREE.MeshStandardMaterial({ color: '#cfe8f5', roughness: 0.05, metalness: 0.2, transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide });
   const glassSpans = [];
+  parts.vitrine = Boolean(vitrine); // v158: camlı cephe → içerisi uzaktan da görünür
   if (vitrine) {
     // ön: köşe ayakları + kapı yan ayakları + cam (0,55–2,9 m) + alt parapet + üst kuşak
     const PW = 0.6;
@@ -1143,7 +1144,12 @@ export function buildHqVenue(lot, slot) {
   // kapı üstü lamba + numara (çetenin adı şehirde karargah bilgisi gelince eklenir)
   P.high.box(0.5, 0.14, 0.22, glowMat('#ffd9a0', 1.6), DOOR.x, 4.05, FRONT + 0.12, { cast: false }); // kamera kapı arkasındayken önüne girmesin
   P.high.sign(`hq_no${slot}`, `${slot + 1}`, 0.9, BW / 2 - 1.4, 4.4, FRONT + 0.08, 0, { color: '#e8e2d0', font: '900 120px Impact, Arial Black, sans-serif', light: false });
-  return finish(P, `hq${slot}`, venue, { x: DOOR.x, z: FRONT + 1.2 });
+  // v158 — karargah HARİTADAN BAĞIMSIZ: kapı kapalı ve geçilmez; içeri "İçeri gir", dışarı "Şehre çık"
+  // düğmesiyle geçilir. İçerideyken şehir çizilmez (ayrı bir iç mekân gibi), dışarıdan içerisi görünmez.
+  P.base.solid(DOOR.x, FRONT - T / 2, 1.6, T / 2 + 0.08);
+  const out = finish(P, `hq${slot}`, venue, { x: DOOR.x, z: FRONT + 1.2 });
+  out.isolated = true;
+  return out;
 }
 
 export const VENUE_BUILDERS = {

@@ -658,6 +658,9 @@ export class Kit {
       }
     });
     const ctl = o.userData.ctl;
+    // v158: tavan parçası şehirde de tavanda dursun (yoksa gök dokusu yerde "iz" olarak kalıyor,
+    // zeminle titreşip tavanı yansıtıyormuş gibi görünüyordu — karargah zemini hatası)
+    if (def?.tile === 'ceil') ctl?.setCeil?.(true);
     const live = Boolean(ctl?.tick) || dyn;
     this.add(o, live);
     if (live && ctl?.tick) this.ticks.push({ obj: o, ctl });

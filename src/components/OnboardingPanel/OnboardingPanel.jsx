@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useOnboarding, ONBOARDING_TASKS, ONBOARDING_TASK_COUNT } from '../../hooks/useOnboarding';
+import { useOnboarding, ONBOARDING_TASKS, ONBOARDING_TASK_COUNT, reminderTarget } from '../../hooks/useOnboarding';
 import { checkOnboardingProgress, completeOnboardingChecklist } from '../../services/gameActions';
 import InfoIcon from '../InfoIcon/InfoIcon';
 import './OnboardingPanel.css';
@@ -15,7 +15,7 @@ import './OnboardingPanel.css';
 // Oyuncu bu göreve geldiğinde şart zaten sağlanıyorsa sunucu otomatik geçirir
 const STATUS_TASK_IDS = [5, 9, 11, 12, 13, 16, 19, 20];
 
-export default function OnboardingPanel({ gangReminders = null, gangChans = null, slotBottom = null, onVisibleChange = null, inline = false }) {
+export default function OnboardingPanel({ gangReminders = null, gangChans = null, slotBottom = null, onVisibleChange = null, inline = false, onGo = null }) {
   const { user } = useAuth();
   const {
     loading,
@@ -195,6 +195,19 @@ export default function OnboardingPanel({ gangReminders = null, gangChans = null
                     <div key={r.id} className="onboarding-reminder-item">
                       <span className="onboarding-reminder-emoji">{r.emoji}</span>
                       <span className="onboarding-reminder-text">{r.text}</span>
+                      {/* v158: "Git" — ilgili yere ışınlanır (fabrika, cami, pist…) ya da paneli açar */}
+                      {onGo && reminderTarget(r.id) && (
+                        <button
+                          type="button"
+                          className="onboarding-reminder-go"
+                          onClick={() => {
+                            setOpen(false);
+                            onGo(reminderTarget(r.id), r);
+                          }}
+                        >
+                          Git ➜
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>

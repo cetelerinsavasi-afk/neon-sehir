@@ -647,7 +647,21 @@ function GameShell() {
           sol altta aynı boyut/konumda (bkz. OnboardingPanel.css). */}
       {/* v136: sol alt sütun alttan yukarı Görevler → CANLI → 🗳️ Seçim; görünmeyenin
           yeri boş kalmaz (üsttekiler alta kayar). */}
-      <OnboardingPanel gangReminders={gangAlerts?.reminders} gangChans={gangAlerts?.chans} slotBottom={leftSlotBottom(0)} onVisibleChange={setObVisible} />
+      <OnboardingPanel
+        gangReminders={gangAlerts?.reminders}
+        gangChans={gangAlerts?.chans}
+        slotBottom={leftSlotBottom(0)}
+        onVisibleChange={setObVisible}
+        onGo={(t) => {
+          // v158: anasayfadan "Git" — şehir o yerde açılır; çete / teşkilat işleri Çeteler ekranında
+          if (t === 'gang' || t === 'intel') {
+            setGangsHq(null);
+            setGangsOpen(true);
+            return;
+          }
+          openCityRef.current(t);
+        }}
+      />
 
       {/* v80 Yayıncılık — canlı yayın varken Görevler'in tam üstünde (telefonun
           karşısında) 🔴 CANLI; yoksa görünmez. */}
@@ -832,6 +846,8 @@ function GameShell() {
           spawn={city.spawn}
           onClose={() => setCity(null)}
           gangAlerts={gangAlerts}
+          // v158: şehirdeki 📱 düğmesinde okunmamış sayısı (SMS + ChatsApp + Sixtagram bildirimi)
+          phoneBadge={unread.smsUnreadCount + (chatsAppCount || (unread.chatsAppHasNew ? 1 : 0)) + unread.sixtagramUnreadNotifCount}
           covered={cityCovered}
           onEnterHq={(kind, slot) => {
             // v157.9: şehir kapanmaz — düzenleme ekranı şehrin üstünde açılır, şehir bekler (anında açılır,

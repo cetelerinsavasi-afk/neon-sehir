@@ -29,7 +29,7 @@ export { nearest, frameAt, inTunnel, TOWN, toTown, fromTown, LEN, TAGS, LANE, RO
 
 // şehir modunun yürünebilir sınırı (kumsal / deniz / marina) + otoyol ağzı
 export const WALK = { x0: -345, z1: COAST_Z + 120 };
-export const EXIT = { x0: 196, x1: 206, z0: -143.6, z1: -136.4 };
+export const EXIT = { x0: 196, x1: 206, z0: -146.4, z1: -133.6 }; // v158: yol + banket genişliğinde (eskiden 7 m — dış şeritlerde görünmez duvar vardı)
 export const inExit = (x, z) => x > EXIT.x0 && x < EXIT.x1 && z > EXIT.z0 && z < EXIT.z1;
 // motordaki şehir ızgarasının kapsadığı alan
 export const CITY_GRID = { x0: WALK.x0 - 2, x1: EXIT.x1 + 12, z0: BOUNDS.z0 - 2, z1: WALK.z1 + 1 };
@@ -988,6 +988,7 @@ export function finishCityWorld(W, scene) {
   W.doorObjs = [];
   venues.forEach((v) => (v.doors || []).forEach((o) => {
     if (!o?.userData?.ctl?.tick) return;
+    if (v.isolated) return; // v158: karargah kapısı kendiliğinden açılmaz (düğmeyle girilir)
     const p = o.getWorldPosition(new V());
     W.doorObjs.push({ ctl: o.userData.ctl, x: p.x, z: p.z });
   }));

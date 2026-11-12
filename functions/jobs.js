@@ -12,7 +12,7 @@
 //   Firestore: iş başına 2 yazma (başla + bitir) — şehirdeki hareket RTDB'de.
 // =============================================================================
 import { JOBS, jobOf, jobPerf, jobReward, jobCountKey, jobDailyOf } from './vehicleKinds.js';
-import { LIMAN_BAY, DEPOTS, HOSPITAL, BUS_STOPS, ROAD_SPOTS, manhattan, busRouteLen, KURYE_PICKUPS, KURYE_DROPS, KURYE_MIN_LEN, kuryeMul, OTOGARS, FAR_TIR_LEN, FAR_BUS_LEN } from './cityJobsData.js';
+import { LIMAN_BAY, DEPOTS, HOSPITAL, BUS_STOPS, ROAD_SPOTS, manhattan, busRouteLen, KURYE_PICKUPS, KURYE_DROPS, KURYE_MIN_LEN, kuryeMul, OTOGARS, FAR_TIR_LEN, FAR_BUS_LEN, FAR_DEPOT, HWY_ENTRY } from './cityJobsData.js';
 import { goldTag } from './moneyLog.js';
 
 const isId = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
@@ -55,9 +55,12 @@ export function planJob(job, near = null, far = false) {
   const at = near && Number.isFinite(near.x) && Number.isFinite(near.z) ? { x: near.x, z: near.z } : null;
   if (far && job === 'tir') {
     // v157: liman → O-77 otoyolu → Kervankent Lojistik Terminali (ortalama ~3 kat kazanç)
+    // v158: oyuncu Kervankent'e daha yakınsa yük Kervankent Lojistik Terminali'nden alınır, Neon Şehir'deki
+    // Doğu Lojistik Deposu'na götürülür (Kervankent'e mal bırakan tırcı dönüşte boş gitmez)
     const [cargo, mul] = pick(CARGO);
-    const len = FAR_TIR_LEN;
-    return { task: { type: 'tir', far: true, cargo, ton: 14 + Math.floor(Math.random() * 12) }, mul: mul * JOBS.tir.farMul, len, par: len / 15 + 70, minT: len / VMAX.tir + 6 };
+    const back = Boolean(at && manhattan(at, FAR_DEPOT) < manhattan(at, LIMAN_BAY));
+    const len = back ? FAR_TIR_LEN - (manhattan(LIMAN_BAY, HWY_ENTRY) - manhattan(DEPOTS[0], HWY_ENTRY)) : FAR_TIR_LEN;
+    return { task: { type: 'tir', far: true, cargo, ton: 14 + Math.floor(Math.random() * 12), ...(back ? { from: 1 } : {}) }, mul: mul * JOBS.tir.farMul, len, par: len / 15 + 70, minT: len / VMAX.tir + 6 };
   }
   if (far && job === 'otobus') {
     // v157: şehirlerarası sefer — yakın otogardan öbür otogara (~1,5 kat kazanç)

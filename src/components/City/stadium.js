@@ -309,6 +309,16 @@ export function buildStadyum(kit, lot) {
   const pos = [];
   const nor = [];
   const col = [];
+  // v158 — UZAK AYRINTI (LOD): uzaktan bakınca her koltuk 36 yerine 4 üçgen (sırtlık + oturak yüzü).
+  // Yakındaki ağ ~65 bin üçgendi; tribün uzaktan ~3,6 binle çizilir, görüntü aynı.
+  const fpos = [];
+  const fnor = [];
+  const fcol = [];
+  const FAR_Q = [
+    // [köşeler (yerel x, y, z)], normal
+    [[[-0.23, 0.43, -0.135], [0.23, 0.43, -0.135], [0.23, 0.77, -0.135], [-0.23, 0.43, -0.135], [0.23, 0.77, -0.135], [-0.23, 0.77, -0.135]], [0, 0, 1]],
+    [[[-0.23, 0.46, 0.22], [0.23, 0.46, 0.22], [0.23, 0.46, -0.14], [-0.23, 0.46, 0.22], [0.23, 0.46, -0.14], [-0.23, 0.46, -0.14]], [0, 1, 0]],
+  ];
   const COL = { north: '#ff3fa0', south: '#19e8ff', ends: '#ffd23f', vip: '#f4f6fa' };
   const c3 = new THREE.Color();
   for (let i = 0; i < TIERS; i++) {
@@ -335,6 +345,13 @@ export function buildStadyum(kit, lot) {
         nor.push(cs * nx + sn2 * nz, sn[q + 1], -sn2 * nx + cs * nz);
         col.push(c3.r, c3.g, c3.b);
       }
+      FAR_Q.forEach(([vs, [nx, ny, nz]]) => {
+        vs.forEach(([lx, ly, lz]) => {
+          fpos.push(x + cs * lx + sn2 * lz, y + ly, z - sn2 * lx + cs * lz);
+          fnor.push(cs * nx + sn2 * nz, ny, -sn2 * nx + cs * nz);
+          fcol.push(c3.r, c3.g, c3.b);
+        });
+      });
       kit.seats.push({ o: kit.group, x, y: y + 0.47, z, yaw, tier: true });
     });
   }
@@ -342,8 +359,23 @@ export function buildStadyum(kit, lot) {
   seatsGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   seatsGeo.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
   seatsGeo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
-  const seatsMesh = kit.mesh(seatsGeo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.05 }), 0, 0, 0, 0, { cast: false });
+  const seatMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55, metalness: 0.05 });
+  const seatsMesh = new THREE.Mesh(seatsGeo, seatMat);
+  seatsMesh.receiveShadow = true;
   seatsMesh.userData.seatsMesh = true;
+  const farGeo = new THREE.BufferGeometry();
+  farGeo.setAttribute('position', new THREE.Float32BufferAttribute(fpos, 3));
+  farGeo.setAttribute('normal', new THREE.Float32BufferAttribute(fnor, 3));
+  farGeo.setAttribute('color', new THREE.Float32BufferAttribute(fcol, 3));
+  const farMesh = new THREE.Mesh(farGeo, seatMat);
+  farMesh.receiveShadow = true;
+  // LOD nesnesi: three.js çizerken kameraya uzaklığa göre kendisi seçer (ek işlemci yükü yok).
+  // Uzaklık tribün halkasının MERKEZİNE göre ölçülür → stadın içindeyken (sahada / tribünde) hep yakın ağ.
+  const seatLod = new THREE.LOD();
+  seatLod.addLevel(seatsMesh, 0);
+  seatLod.addLevel(farMesh, Math.max(OUT_RX, OUT_RZ) + 30);
+  seatLod.userData.dyn = true;
+  kit.group.add(seatLod);
 
   // --- localar + üst tribün + çatı ---------------------------------------------------
   kit.mesh(ellLathe([[TOP_RX, TOP_RZ, LOGE_Y0], [TOP_RX, TOP_RZ, LOGE_Y1]], 220), dmat('#2a2f3c', 0.7));

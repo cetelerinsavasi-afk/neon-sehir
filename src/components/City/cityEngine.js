@@ -477,7 +477,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   container.appendChild(layer);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color('#0b1838');
+  const bgCol = new THREE.Color('#0b1838');
+  const isoBg = new THREE.Color('#07080c'); // v158: yalıtılmış iç mekânın (karargah) arka planı
+  scene.background = bgCol;
   // v147.4: sis ufuk rengiyle aynı ve daha seyrek (eskiden karanlık, kasvetli)
   scene.fog = new THREE.Fog('#3a3560', 90, 320);
   const env = shared.env;
@@ -694,7 +696,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const P = TOD[key];
     dome.material.map = skyTex(key);
     dome.material.needsUpdate = true;
-    scene.background.set(P.bg);
+    bgCol.set(P.bg);
     scene.fog.color.set(P.fog);
     hemi.color.set(P.hemi[0]);
     hemi.groundColor.set(P.hemi[1]);
@@ -828,6 +830,57 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     });
   });
 
+  // v158 — haritadaki TÜM ATM'ler + karargah kapıları (şehrin, yol üstünün, kasabanın mekânları dahil)
+  const atmNear = (x, z) => zones.some((q) => (q.kind === 'atm' || (q.kind === 'station' && q.acts?.some((a) => a.act === 'atm'))) && Math.hypot(q.x - x, q.z - z) < 1.2);
+  const addAtm = (x, z) => {
+    if (!Number.isFinite(x) || !Number.isFinite(z) || atmNear(x, z)) return;
+    zones.push({ kind: 'atm', id: `atm_${Math.round(x * 10)}_${Math.round(z * 10)}`, title: '🏧 ATM', x, z, r: 1.4 });
+  };
+  const scanAtm = (root) => root?.traverse?.((o) => {
+    if (o.userData?.itemKey !== 'atm') return;
+    const p = o.localToWorld(new V(0, 0, 0.8));
+    addAtm(p.x, p.z);
+  });
+  city.kits.forEach((k) => !k.__cut && scanAtm(k.group)); // birleştirmeden önce (eşya bilgisi kaybolmasın)
+  function venueExtraZones(late) {
+    W.venues.forEach((v) => {
+      if (v.__z158) return;
+      v.__z158 = true;
+      // sonradan eklenen mekânların (yol üstü market) istasyonları: alışveriş + ATM
+      if (late) {
+        const gk = VENUE_GAME_KEY[v.type];
+        const stations = gk && ['camii', 'banka', 'karakol', 'belediye'].includes(gk) ? GAME_VENUES[gk]?.stations || {} : v.type === 'benzinlik' ? NEW_VENUES.market.stations : {};
+        Object.entries(stations).forEach(([iid, acts]) => {
+          const it = v.venue.items.find((q) => q.i === iid);
+          if (!it) return;
+          const p = fromRoom(v, it.x, it.z);
+          zones.push({ kind: 'station', id: `st_${v.type}_${iid}_${Math.round(v.wx)}`, station: iid, acts, venue: v.type, gameVenue: gk || null, title: `${v.venue.icon || ''} ${v.venue.name}`, x: p.x, z: p.z, r: 2.0 });
+        });
+      }
+      // karargah kapısı: dışarıdan "İçeri gir", içeriden "Şehre çık"
+      if (v.isolated) {
+        const o = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 + 1.7);
+        const i = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 - 1.3);
+        zones.push({ kind: 'hqIn', id: `hqin_${v.type}`, slot: v.hqSlot, title: '🏴 Karargah', x: o.x, z: o.z, r: 1.8 });
+        zones.push({ kind: 'hqOut', id: `hqout_${v.type}`, slot: v.hqSlot, title: '🏴 Karargah', x: i.x, z: i.z, r: 1.8 });
+      }
+      // mekân kitlerinin kendi ATM bölgeleri (ör. bankanın ön cephesi)
+      (v.kits || []).forEach((k) => (k.zones || []).forEach((z) => {
+        if (z.kind !== 'atm' || !z.o) return;
+        const p = z.o.getWorldPosition(new V());
+        addAtm(p.x, p.z);
+      }));
+      // mekân içlerindeki ATM eşyaları (banka salonu, otogar, market…)
+      (v.venue?.items || []).forEach((it) => {
+        if (it.k !== 'atm') return;
+        const ry = ((it.r || 0) * Math.PI) / 4;
+        const p = fromRoom(v, it.x + Math.sin(ry) * 0.8, it.z + Math.cos(ry) * 0.8);
+        addAtm(p.x, p.z);
+      });
+      scanAtm(v.root);
+    });
+  }
+  venueExtraZones();
   // statik geometriyi malzemeye + bölgeye göre birleştir (çizim çağrısı az olsun)
   mergeStatic(scene);
   // v157: mekânların duvar / iç parçaları kendi gruplarında birleşir (kesit + uzaklık kırpması korunur)
@@ -872,6 +925,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   }
   // v157 — şehrin dışı (arazi, otoyol, Kervankent, yol üstü, orman): ızgaralar + yardımcılar
   finishCityWorld(W, scene);
+  venueExtraZones(true); // v158: yol üstü / kasaba mekânları burada eklenir (karargahlar dahil)
+  (W.outerKits || []).forEach((k) => scanAtm(k.group));
   const outerKits = W.outerKits;
   outerKits.forEach((k) => {
     k.lights.forEach((L) => {
@@ -1771,6 +1826,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
           f.moving = false;
         }
       }
+      if (show && isoV && W.inVenueRoom(f.x, f.z) !== isoV) show = false; // v158: karargahtayken sadece içerdekiler
       f.group.visible = show;
       if (show) {
         f.sink = waters.length ? sinkAt(f.x, f.z) : 0;
@@ -2855,6 +2911,36 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     curVenue = v;
     zoneKey = '__venue__';
   }
+  // v158 — YALITILMIŞ İÇ MEKÂN (çete karargahı): içerideyken şehir / dış dünya hiç çizilmez,
+  // karargah ayrı bir mekân gibi durur (haritadaki tasarım hatalarından etkilenmez, çok daha hafif).
+  let isoV = null;
+  let isoSaved = null;
+  function setIso(v) {
+    if (isoSaved) {
+      isoSaved.hidden.forEach((o) => (o.visible = true));
+      if (isoSaved.parent && isoSaved.root.parent === scene) isoSaved.parent.attach(isoSaved.root);
+      cullItems.forEach((c) => (c.iso = false));
+      scene.background = bgCol;
+      isoSaved = null;
+    }
+    isoV = v || null;
+    if (v) {
+      const parent = v.root.parent;
+      if (parent && parent !== scene) scene.attach(v.root);
+      const keep = new Set([v.root, me.group, ring, callRing]);
+      const hidden = [];
+      scene.children.forEach((o) => {
+        if (keep.has(o) || o.isLight || o.isCamera || !o.visible) return;
+        if (o === moonL.target || o === headSpot.target) return;
+        o.visible = false;
+        hidden.push(o);
+      });
+      cullItems.forEach((c) => (c.iso = true));
+      scene.background = isoBg;
+      isoSaved = { root: v.root, parent: parent !== scene ? parent : null, hidden };
+    }
+    cull(true);
+  }
   function cutaway() {
     const v = curVenue;
     if (!v) return;
@@ -3476,8 +3562,15 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     // v157: mekân durumu (yürürken), kesit, iç mekânların görünürlüğü, garaj kepenkleri, hayvanlar
     setVenue((!driving || myCar?.v.walker) && !self.ride && !heist?.active ? W.inVenueRoom(self.x, self.z, -0.1) : null); // v157.4: binekle mekâna girilir
     if (LAZY_INT) lazyInteriors(dt);
+    {
+      const want = curVenue?.isolated && view !== '2d' ? curVenue : null;
+      if (want !== isoV) setIso(want);
+    }
     W.venues.forEach((v) => {
-      const near = (camera.position.x - v.wx) ** 2 + (camera.position.z - v.wz) ** 2 < (IS_MOBILE ? 45 : 70) ** 2;
+      // v158: içerisi sadece görülebildiğinde çizilir — içindeyken, camlı cephede uzaktan, kapalı
+      // binada ancak kapıya yakınken (eskiden 45–70 m'deki her binanın içi çiziliyordu)
+      const iv = v === curVenue ? 1e9 : v.vitrine ? (IS_MOBILE ? 45 : 70) : IS_MOBILE ? 24 : 32;
+      const near = (camera.position.x - v.wx) ** 2 + (camera.position.z - v.wz) ** 2 < iv * iv;
       if (v.int.group.visible !== near) {
         v.int.group.visible = near;
         v.intHidT = near ? 0 : performance.now();
@@ -3493,7 +3586,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     W.water?.tick?.(t);
     npcs.forEach((n) => {
       // uzaktaki NPC çizilmez; mekân NPC'sinin etiketi sadece o mekânın içindeyken
-      const near = (n.x - camera.position.x) ** 2 + (n.z - camera.position.z) ** 2 < 55 * 55;
+      const near = (n.x - camera.position.x) ** 2 + (n.z - camera.position.z) ** 2 < 55 * 55 && (!isoV || n.venue === isoV);
       n.group.visible = near;
       n.hideLabel = Boolean(n.venue) && n.venue !== curVenue;
       if (!near) return;
@@ -3560,6 +3653,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     let bd = Infinity;
     zones.forEach((z) => {
       if (z.kind === 'door') return; // v157: kapı butonu yok — mekânın içine yürüyerek girilir
+      if (z.kind === 'hqIn' && curVenue) return; // v158: karargah kapısı — dışarıdayken
+      if (z.kind === 'hqOut' && (!curVenue || curVenue.hqSlot !== z.slot)) return; // içerideyken
       const d = Math.hypot(z.x - self.x, z.z - self.z);
       if (d < z.r && d < bd) {
         best = z;
@@ -3665,8 +3760,20 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   // --- görüş mesafesi + otomatik grafik ------------------------------------------------
   let cullT = 0;
   const EVICT_MS = IS_MOBILE ? 5000 : 30000;
-  const LOD_NEAR = IS_MOBILE ? 55 : 85;
-  const LOD_MID = IS_MOBILE ? 110 : 170;
+  const LOD_NEAR0 = IS_MOBILE ? 55 : 85;
+  const LOD_MID0 = IS_MOBILE ? 110 : 170;
+  // v158: düşük kalite seviyelerinde ayrıntı mesafeleri de kısalır (yakın model / kutu / yok)
+  const TIER_LOD = [1, 0.85, 0.7, 0.55];
+  let LOD_NEAR = LOD_NEAR0;
+  let LOD_MID = LOD_MID0;
+  // v158 — AKIŞ BÜTÇESİ: GPU'dan bırakılmış (yeniden yüklenmesi gereken) parçalar aynı anda değil,
+  // her kesme turunda en fazla bu kadar — önce bakılan yöndeki ve en yakın olanlar. Hızlı dönünce /
+  // ışınlanınca onlarca parçanın aynı karede yüklenmesinden doğan takılmalar (kasma) yok olur.
+  const STREAM_BUDGET = IS_MOBILE ? 5 : 12;
+  const pendingShow = [];
+  const camFwd = new V();
+  // v158 — İÇ MEKÂN ÖRTMESİ: bir mekânın içindeyken dışarısı duvarlarla kapalı; görüş kısalır
+  const INDOOR_VIEW = IS_MOBILE ? 45 : 60;
   const TEX_KEYS = ['map', 'emissiveMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'alphaMap', 'aoMap', 'bumpMap', 'lightMap'];
   function evictGpu(root) {
     const texs = new Set();
@@ -3697,14 +3804,30 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const t = CITY_TIERS[tier];
     // v157: şehrin dışında (otoyol, dağlar, kasaba) görüş daha uzak — arazi tek parça, ağaçlar örnekli
     const outside = W.modeAt(self.x, self.z) !== 'city';
-    const view = (outside ? Math.max(t.view, OUTER_VIEW[tier] || 300) : t.view) + (view2d() ? topCur.dist * 1.2 : 0);
+    let view = (outside ? Math.max(t.view, OUTER_VIEW[tier] || 300) : t.view) + (view2d() ? topCur.dist * 1.2 : 0);
+    if (curVenue && !view2d()) view = Math.min(view, INDOOR_VIEW);
+    LOD_NEAR = LOD_NEAR0 * TIER_LOD[tier];
+    LOD_MID = LOD_MID0 * TIER_LOD[tier];
     const cx0 = view2d() ? camTarget.x : self.x;
     const cz0 = view2d() ? camTarget.z : self.z;
+    camera.getWorldDirection(camFwd);
+    const fl = Math.hypot(camFwd.x, camFwd.z) || 1;
+    const fx = camFwd.x / fl;
+    const fz = camFwd.z / fl;
+    pendingShow.length = 0;
     for (const c of cullItems) {
       const dc = Math.hypot(c.x - cx0, c.z - cz0);
       const lim = c.outer ? view : Math.min(view, t.view + 60);
       // v157.2 LOD: küçük eşyalar yakında tam model, ortada renkli kutu, uzakta yok
-      const vis = c.lod === 'near' ? dc < LOD_NEAR : c.lod === 'mid' ? dc >= LOD_NEAR && dc < Math.min(lim, LOD_MID) : dc - c.r < lim;
+      let vis = c.lod === 'near' ? dc < LOD_NEAR : c.lod === 'mid' ? dc >= LOD_NEAR && dc < Math.min(lim, LOD_MID) : dc - c.r < lim;
+      if (c.iso) vis = false; // v158: yalıtılmış iç mekândayken (karargah) dış dünya çizilmez
+      if (vis && c.gone && !force && dc - c.r > 12) {
+        // yeniden yüklenecek parça: bütçeye girerse görünür (bakılan yön önce)
+        const ahead = dc > 1 ? ((c.x - cx0) * fx + (c.z - cz0) * fz) / dc : 1;
+        c.score = dc - ahead * 40;
+        pendingShow.push(c);
+        continue;
+      }
       c.o.visible = vis;
       // v157.1 — ekran kartı belleği: uzun süre görünmeyen parçanın GPU kopyası bırakılır
       // (CPU'daki veri kalır; tekrar görününce three.js kendisi yeniden yükler). Eskiden gezdikçe
@@ -3720,6 +3843,15 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         }
       }
     }
+    if (pendingShow.length) {
+      pendingShow.sort((a, b) => a.score - b.score);
+      pendingShow.forEach((c, i) => {
+        if (i >= STREAM_BUDGET) return; // sıradakiler bir sonraki turda (≈0,2 sn)
+        c.o.visible = true;
+        c.hidT = 0;
+        c.gone = false;
+      });
+    }
     scene.fog.near = Math.min(view * 0.6 * fogK, view);
     scene.fog.far = view + 20;
     if (Math.abs(camera.far - (view + 60)) > 1) {
@@ -3728,9 +3860,54 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     }
   }
   const view2d = () => view === '2d';
+  // v158 — DİNAMİK ÇÖZÜNÜRLÜK: kare süresi uzayınca çizim çözünürlüğü kademeli düşer, rahatlayınca
+  // geri çıkar. Kalite seviyesi değişiminin aksine gölgelendirici yeniden derlenmez (donma olmaz);
+  // seviye ancak çözünürlük en alta inmiş ve hâlâ yavaşsa düşer.
+  const DRS_MIN = IS_MOBILE ? 0.6 : 0.72;
+  let drs = 1;
+  let drsAcc = 0;
+  let drsN = 0;
+  let drsSlow = 0;
+  let drsFast = 0;
+  let drsAt = 0;
+  const baseDpr = () => Math.min(window.devicePixelRatio || 1, CITY_TIERS[tier].dpr);
+  function setDrs(v) {
+    const nv = clamp(v, DRS_MIN, 1);
+    if (Math.abs(nv - drs) < 0.01 && Math.abs(renderer.getPixelRatio() - Math.max(0.5, baseDpr() * drs)) < 0.01) return;
+    drs = nv;
+    drsAt = performance.now();
+    renderer.setPixelRatio(Math.max(0.5, baseDpr() * drs));
+  }
+  function drsSample(iv, now) {
+    if (iv > 400) return;
+    drsAcc += iv;
+    drsN += 1;
+    if (drsAcc < 900) return;
+    const avg = drsAcc / drsN;
+    drsAcc = 0;
+    drsN = 0;
+    const want = 1000 / CITY_TIERS[tier].fps;
+    if (avg > want * 1.22) {
+      drsSlow += 1;
+      drsFast = 0;
+    } else if (avg < want * 1.06) {
+      drsFast += 1;
+      drsSlow = 0;
+    } else {
+      drsSlow = 0;
+      drsFast = 0;
+    }
+    if (drsSlow >= 1 && drs > DRS_MIN && now - drsAt > 1200) {
+      setDrs(drs - (avg > want * 1.6 ? 0.15 : 0.08));
+      drsSlow = 0;
+    } else if (drsFast >= 4 && drs < 1 && now - drsAt > 5000) {
+      setDrs(drs + 0.05);
+      drsFast = 0;
+    }
+  }
   function applyTier() {
     const t = CITY_TIERS[tier];
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, t.dpr));
+    renderer.setPixelRatio(Math.max(0.5, Math.min(window.devicePixelRatio || 1, t.dpr) * drs));
     moonL.castShadow = t.shadows;
     moonL.shadow.autoUpdate = t.shadows && t.shadowEvery <= 1;
     pool.forEach((l, i) => (l.visible = i < t.pool));
@@ -3767,7 +3944,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       slowWins = 0;
       fastWins = 0;
     }
-    if (slowWins >= 2 && tier < CITY_TIERS.length - 1) setTier(tier + 1, now);
+    if (slowWins >= 2 && tier < CITY_TIERS.length - 1 && drs <= DRS_MIN + 0.01) setTier(tier + 1, now); // v158: önce çözünürlük
     else if (fastWins >= 8 && tier > 0 && now - lastTierAt > 20000 && !(IS_MOBILE && tier <= 1) && !raiseSaved) {
       // v154 — DONMA DÜZELTMESİ: oyun sırasında kalite ARTIRILMAZ. Her seviye değişimi ışık
       // sayısını / gölgeleri değiştirip tüm shader'ları yeniden derletiyordu (telefonda 0,5–1 sn
@@ -3800,7 +3977,10 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     if (!still) lastBusyAt = now;
     const cap = still && now - lastBusyAt > 1500 ? Math.min(30, CITY_TIERS[tier].fps) : CITY_TIERS[tier].fps;
     if (cap < 58 && lastRenderAt && now - lastRenderAt < 1000 / cap - 3) return;
-    if (lastRenderAt && cap >= CITY_TIERS[tier].fps) perfSample(now - lastRenderAt); // boşta yavaşlatma kalite düşürmesin
+    if (lastRenderAt && cap >= CITY_TIERS[tier].fps) {
+      perfSample(now - lastRenderAt); // boşta yavaşlatma kalite düşürmesin
+      if (!snapshot) drsSample(now - lastRenderAt, now);
+    }
     lastRenderAt = now;
     if (now - lastSweepAt > 15_000) {
       lastSweepAt = now;
@@ -4277,7 +4457,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     renderAtt,
     // v157.4: Sixtagram — telefonda sadece yakındaki fotoğraflar kendiliğinden çizilir
     selfPos: () => ({ x: self.x, z: self.z }),
-    getPerf: () => ({ tier, name: CITY_TIERS[tier].name, dpr: renderer.getPixelRatio() }),
+    getPerf: () => ({ tier, name: CITY_TIERS[tier].name, dpr: renderer.getPixelRatio(), drs }),
+    // v158: önizleme / hata ayıklama (performans ölçümü)
+    dbg: () => ({ renderer, scene, camera, W, carBlocked: (x, z, r = 1) => carBlockedAt(x, z, r), info: { calls: renderer.info.render.calls, tris: renderer.info.render.triangles, geos: renderer.info.memory.geometries, texs: renderer.info.memory.textures, progs: renderer.info.programs?.length } }),
     setPerfTier: (v) => setTier(clamp(Math.round(v), 0, CITY_TIERS.length - 1), performance.now()),
     setView(v) {
       view = v;
@@ -4431,9 +4613,27 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       }
       return true;
     },
-    // kendi karargahına ışınlan (Çeteler › Aç)
+    // kendi karargahına ışınlan (Çeteler › Aç) — v158: kapıdaki "İçeri gir" de bunu kullanır
     enterHq(slot) {
       return api.enterVenue(`hq${slot}`);
+    },
+    // v158: karargahtan şehre (kapının önüne, yüz yola dönük)
+    exitHq(slot) {
+      const v = W.venues.find((q) => q.type === `hq${slot}`);
+      if (!v) return false;
+      const p = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 + 3.6);
+      if (self.seat) standUp();
+      self.x = p.x;
+      self.z = p.z;
+      me.x = p.x;
+      me.z = p.z;
+      me.y = groundY(p.x, p.z);
+      self.camYaw = v.ry + Math.PI;
+      self.target = null;
+      self.path = null;
+      ring.visible = false;
+      first = true;
+      return true;
     },
     // karargahların bulunduğu cebin merkezi (yaklaşınca bilgiler okunur)
     hqArea: () => {

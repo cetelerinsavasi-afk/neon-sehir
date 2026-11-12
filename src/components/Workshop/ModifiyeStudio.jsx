@@ -295,6 +295,34 @@ function Range({ k, value, onChange, fmtV = (v) => v }) {
   );
 }
 
+// v158 — firma adı / tabela: yazı tamamen silinebilir (boşken araçta eski yazı kalır; kutu, yeni yazı yazılana ya da
+// kutudan çıkılana kadar boş durur). Eskiden son harf silinince fabrika yazısı anında geri geliyordu.
+function DraftText({ value, max, clean, onChange }) {
+  const [draft, setDraft] = useState(value);
+  const editing = useRef(false);
+  useEffect(() => {
+    if (!editing.current) setDraft(value);
+  }, [value]);
+  return (
+    <input
+      className="ms-text"
+      maxLength={max}
+      value={draft}
+      placeholder={value}
+      onFocus={() => (editing.current = true)}
+      onChange={(e) => {
+        const v = clean(e.target.value);
+        setDraft(v);
+        onChange(v);
+      }}
+      onBlur={() => {
+        editing.current = false;
+        setDraft(value);
+      }}
+    />
+  );
+}
+
 // v151 — ticari / motor sekme gövdesi (KIND_TABS listesinden)
 function KindBody({ spec, cfg, base, set, priceOf, cid, plateDraft, setPlateDraft }) {
   const diff = (k) => JSON.stringify(cfg[k]) !== JSON.stringify(base[k]);
@@ -322,7 +350,7 @@ function KindBody({ spec, cfg, base, set, priceOf, cid, plateDraft, setPlateDraf
     if (c.t === 'text')
       return (
         <Row key={i} label={c.l} price={diff(c.k) ? priceOf({ [c.k]: cfg[c.k] }) : 0}>
-          <input className="ms-text" maxLength={c.max} value={cfg[c.k]} onChange={(e) => set({ [c.k]: c.clean(e.target.value) })} />
+          <DraftText value={cfg[c.k]} max={c.max} clean={c.clean} onChange={(v) => set({ [c.k]: v })} />
         </Row>
       );
     if (c.t === 'acc') {

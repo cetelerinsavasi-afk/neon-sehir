@@ -437,3 +437,13 @@
 /* v157.4 — şehirde sağ sütundaki Görevler düğmesi (ChatsApp'ın yeri) */
 .onboarding-inline { display: flex; align-items: center; justify-content: center; cursor: pointer; }
 .onboarding-inline .onboarding-badge { position: absolute; top: -4px; right: -4px; }
+
+/* v158 — hatırlatmanın yanında "Git" */
+.onboarding-reminder-item { align-items: center; }
+.onboarding-reminder-text { flex: 1; min-width: 0; }
+.onboarding-reminder-go {
+  flex: none; margin-left: 8px; padding: 6px 12px; border-radius: 10px; cursor: pointer;
+  border: 1px solid rgba(25, 232, 255, 0.65); background: rgba(25, 232, 255, 0.14);
+  color: #dff9ff; font-weight: 800; font-size: 12px; white-space: nowrap;
+}
+.onboarding-reminder-go:active { transform: scale(0.95); }

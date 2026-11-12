@@ -334,10 +334,13 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
     setPax(0);
     if (T.type === 'tir') {
       st.phase = 'pickup';
-      st.depot = T.far ? FAR_DEPOT : DEPOTS[T.depot] || DEPOTS[0];
-      st.title = `📦 ${T.cargo} · ${T.ton} t`;
-      st.sub = `⚓ Limandaki sarı YÜKLEME alanına gir ve dur, dorseni al → ${st.depot.name}`;
-      target({ ...LIMAN_BAY, name: 'Liman — Yükleme', icon: '⚓', color: '#ffd23f', r: 6 });
+      // v158: Kervankent'e yakınken uzak iş ters yönde — Kervankent terminalinden Neon Şehir'e
+      const back = T.far && T.from === 1;
+      st.pick = back ? { ...FAR_DEPOT, name: 'Kervankent Terminali — Yükleme', icon: '🏗️' } : { ...LIMAN_BAY, name: 'Liman — Yükleme', icon: '⚓' };
+      st.depot = back ? DEPOTS[0] : T.far ? FAR_DEPOT : DEPOTS[T.depot] || DEPOTS[0];
+      st.title = `📦 ${T.cargo} · ${T.ton} t${back ? ' · Kervankent → Neon Şehir' : ''}`;
+      st.sub = back ? `🏗️ Kervankent Terminali'nin YÜKLEME alanına gir ve dur, dorseni al → ${st.depot.name}` : `⚓ Limandaki sarı YÜKLEME alanına gir ve dur, dorseni al → ${st.depot.name}`;
+      target({ ...st.pick, color: '#ffd23f', r: 6 });
     } else if (T.type === 'otobus' && T.far) {
       // v157: şehirlerarası sefer — kalkış otogarında yolcu al, öbür otogarda indir
       st.phase = 'toOrigin';
@@ -410,7 +413,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
     if (T.type === 'tir') {
       if (st.phase === 'pickup' || st.phase === 'loading') {
         st.phase = 'pickup';
-        target({ ...LIMAN_BAY, name: 'Liman — Yükleme', icon: '⚓', color: '#ffd23f', r: 6 });
+        target({ ...(st.pick || { ...LIMAN_BAY, name: 'Liman — Yükleme', icon: '⚓' }), color: '#ffd23f', r: 6 });
       } else {
         setPax(1);
         if (st.phase === 'deliver') target({ ...st.depot, icon: '📦', color: '#19e8ff' });
@@ -535,7 +538,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
     const T = run.task;
     const tnow = now();
     if (T.type === 'tir') {
-      if (st.phase === 'pickup' && near(p, LIMAN_BAY, 6)) {
+      if (st.phase === 'pickup' && near(p, st.pick || LIMAN_BAY, 6)) {
         st.phase = 'loading';
         st.phaseT = 0;
         target(null);

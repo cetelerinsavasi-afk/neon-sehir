@@ -64,6 +64,25 @@ export const ONBOARDING_TASKS = ONBOARDING_ORDER.map((id, i) => ({ step: i + 1, 
  * - Tamamlandıktan sonra: koşulları o an sağlananları gösteren hatırlatıcı
  *   listesi.
  */
+// v158 — hatırlatmanın "Git" hedefi: şehirdeki yer (bölge anahtarı) ya da panel ('gang' / 'intel')
+export function reminderTarget(id) {
+  const k = String(id || '');
+  if (k === 'pray') return 'camii';
+  if (k === 'championship') return 'yaris_pisti';
+  if (k === 'lineup') return 'stadyum';
+  if (k === 'work' || k === 'machines') return 'fabrika';
+  if (k === 'park-safe') return 'park';
+  if (k === 'belediye' || k === 'chat-belediye') return 'belediye';
+  if (k.startsWith('gang-') || k === 'chat-gang') return 'gang';
+  if (k === 'chat-intel') return 'intel';
+  if (k === 'gym') return 'spor_salonu';
+  if (k.startsWith('galeri-')) return 'araba_galerisi';
+  if (k.startsWith('depo-')) return 'liman_depo';
+  if (k.startsWith('gz-')) return 'casino';
+  if (k.startsWith('silah-')) return 'silah_magazasi';
+  return null;
+}
+
 export function useOnboarding(gangReminders = null, gangChans = null) {
   const { user } = useAuth();
   const { player, loading: playerLoading } = usePlayer();

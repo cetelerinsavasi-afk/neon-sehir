@@ -640,9 +640,9 @@ WALLS.push(
       });
       ridgeW(g, w, h, h * 0.78, 22, 3, '#3b1450', 0.4);
     } },
-  { key: 'gece', name: 'Yıldızlı Gece', swatch: '#1d2c62', ...MURAL,
+  { key: 'gece', name: 'Yıldızlı Gece', swatch: '#05060a', ...MURAL,
     draw: (g, w, h, r) => {
-      g.fillStyle = skyG(g, h, '#060a22', '#1d2c62');
+      g.fillStyle = skyG(g, h, '#000000', '#07080e');
       g.fillRect(0, 0, w, h);
       for (let i = 0; i < 420; i++) {
         g.fillStyle = `rgba(255,255,255,${0.4 + r() * 0.6})`;
@@ -651,16 +651,23 @@ WALLS.push(
         g.fill();
       }
       wrapX(w, (ox) => {
-        g.fillStyle = '#fff4cf';
+        const mg = g.createRadialGradient(ox + w * 0.76, 110, 40, ox + w * 0.76, 110, 120);
+        mg.addColorStop(0, 'rgba(255,246,220,0.45)');
+        mg.addColorStop(1, 'rgba(255,246,220,0)');
+        g.fillStyle = mg;
+        g.fillRect(ox + w * 0.76 - 120, -10, 240, 240);
+        g.fillStyle = '#fbf5e2';
         g.beginPath();
         g.arc(ox + w * 0.76, 110, 44, 0, PI2);
         g.fill();
-        g.fillStyle = '#0a1030';
-        g.beginPath();
-        g.arc(ox + w * 0.76 + 18, 98, 40, 0, PI2);
-        g.fill();
+        g.fillStyle = 'rgba(170,160,135,0.3)';
+        [[-12, -8, 11], [10, 6, 8], [-2, 16, 6], [14, -14, 5]].forEach(([dx, dy, k]) => {
+          g.beginPath();
+          g.arc(ox + w * 0.76 + dx, 110 + dy, k, 0, PI2);
+          g.fill();
+        });
       });
-      ridgeW(g, w, h, h * 0.86, 18, 2, '#0b1238', 1.1);
+      ridgeW(g, w, h, h * 0.86, 18, 2, '#0a0b10', 1.1);
     } },
   { key: 'deniz', name: 'Deniz', swatch: '#1478c2', ...MURAL,
     draw: (g, w, h, r) => {
@@ -1613,21 +1620,26 @@ const SKY_DRAW = {
     for (let i = 0; i < 10; i++) puffs.push([r() * w, r() * h, 30 + r() * 34]);
     wrap2(w, h, (ox, oy) => puffs.forEach(([x, y, s]) => cloudPuff(g, ox + x, oy + y, s, 'rgba(120,40,110,0.55)')));
   },
+  // v158: siyah gök + yıldızlar. Ay dokuda YOK — tavanda tek bir dolunay ayrı çizilir
+  // (doku her 8 m'de tekrarlandığı için ay dokuda olunca tavanda birden çok ay görünüyordu)
   gece(g, w, h, r) {
-    g.fillStyle = '#0b1336';
+    g.fillStyle = '#000000';
     g.fillRect(0, 0, w, h);
     const stars = [];
     for (let i = 0; i < 700; i++) stars.push([r() * w, r() * h, r() * 1.8 + 0.4, 0.4 + r() * 0.6]);
+    const glints = [];
+    for (let i = 0; i < 14; i++) glints.push([r() * w, r() * h, 5 + r() * 6]);
     wrap2(w, h, (ox, oy) => {
       stars.forEach(([x, y, s, a]) => {
         g.fillStyle = `rgba(255,255,255,${a})`;
         g.beginPath(); g.arc(ox + x, oy + y, s, 0, Math.PI * 2); g.fill();
       });
-      softBlob(g, ox + w * 0.7, oy + h * 0.6, 150, 'rgba(255,244,207,0.35)');
-      g.fillStyle = '#fff4cf';
-      g.beginPath(); g.arc(ox + w * 0.7, oy + h * 0.6, 50, 0, Math.PI * 2); g.fill();
-      g.fillStyle = '#0b1336';
-      g.beginPath(); g.arc(ox + w * 0.7 + 20, oy + h * 0.6 - 12, 46, 0, Math.PI * 2); g.fill();
+      glints.forEach(([x, y, s]) => {
+        softBlob(g, ox + x, oy + y, s * 2.2, 'rgba(220,230,255,0.35)');
+        g.fillStyle = 'rgba(255,255,255,0.95)';
+        g.fillRect(ox + x - s, oy + y - 0.6, s * 2, 1.2);
+        g.fillRect(ox + x - 0.6, oy + y - s, 1.2, s * 2);
+      });
     });
   },
   yildizli(g, w, h, r) {
@@ -1675,6 +1687,37 @@ const SKY_DRAW = {
     });
   },
 };
+// v158 — tek dolunay (tavanda bir kez çizilir): kenarı yumuşak hale + kraterli disk
+export function fullMoonTexture() {
+  return makeTex('fullmoon_v158', 512, 512, (g, w, h, r) => {
+    const cx = w / 2;
+    const cy = h / 2;
+    const R = w * 0.2;
+    const halo = g.createRadialGradient(cx, cy, R * 0.9, cx, cy, w / 2);
+    halo.addColorStop(0, 'rgba(255,248,225,0.55)');
+    halo.addColorStop(0.35, 'rgba(255,244,210,0.16)');
+    halo.addColorStop(1, 'rgba(255,240,200,0)');
+    g.fillStyle = halo;
+    g.fillRect(0, 0, w, h);
+    const disc = g.createRadialGradient(cx - R * 0.25, cy - R * 0.25, R * 0.1, cx, cy, R);
+    disc.addColorStop(0, '#fffdf3');
+    disc.addColorStop(0.75, '#f3ecd6');
+    disc.addColorStop(1, '#ddd3b4');
+    g.fillStyle = disc;
+    g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.fill();
+    g.save();
+    g.beginPath(); g.arc(cx, cy, R, 0, Math.PI * 2); g.clip();
+    [[-0.3, -0.2, 0.28], [0.25, 0.1, 0.22], [-0.05, 0.38, 0.18], [0.35, -0.35, 0.12], [-0.45, 0.25, 0.1], [0.05, -0.05, 0.08]].forEach(([dx, dy, k]) => {
+      g.fillStyle = 'rgba(170,160,135,0.32)';
+      g.beginPath(); g.arc(cx + dx * R, cy + dy * R, k * R, 0, Math.PI * 2); g.fill();
+    });
+    for (let i = 0; i < 26; i++) {
+      g.fillStyle = `rgba(150,140,118,${0.12 + r() * 0.18})`;
+      g.beginPath(); g.arc(cx + (r() - 0.5) * 1.7 * R, cy + (r() - 0.5) * 1.7 * R, 2 + r() * 7, 0, Math.PI * 2); g.fill();
+    }
+    g.restore();
+  }, { srgb: true });
+}
 export function skyCeilTexture(kind) {
   return makeTex(`skyceil_${kind}`, 1024, 1024, (g, w, h, r) => (SKY_DRAW[kind] || SKY_DRAW.gunesli)(g, w, h, r));
 }

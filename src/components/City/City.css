@@ -471,3 +471,9 @@ body.ns-city-open .race-bubble { z-index: 96; }
 }
 /* v157.9: yatay ekranda sağ sütun alt çubuğun yanına (kenarda) iner — üstte haritaya değmesin */
 .cs-root.cs-land:not(.driving) .hs-side.cs-right, .cs-root.cs-land .cs-left { bottom: calc(12px + var(--hs-safe-b, 0px)); }
+
+/* v158 — mekânın sol düğmeleri (İbadet Et, vezne…) şüphe · altın · mekân menüsünün hemen altında, boşluksuz */
+.cs-root .cs-venue-layer .v3-menu:not(.right) { top: calc(var(--cs-lmenu-b, 196px) + 6px) !important; }
+
+/* v158 — 📱 düğmesinde okunmamış sayısı */
+.cs-root .hs-side-btn .cs-phone-badge { position: absolute; top: -4px; right: -4px; line-height: 1; pointer-events: none; }

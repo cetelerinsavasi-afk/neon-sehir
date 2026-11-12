@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
-import { labelTexture, cityTexture, viewTexture, WINDOW_VIEWS, FLOORS as SURF_FLOORS, WALLS as SURF_WALLS, tileBaseTexture, skyCeilTexture, SKY_CEILINGS } from './houseTextures';
+import { labelTexture, cityTexture, viewTexture, WINDOW_VIEWS, FLOORS as SURF_FLOORS, WALLS as SURF_WALLS, tileBaseTexture, skyCeilTexture, SKY_CEILINGS, fullMoonTexture } from './houseTextures';
 import { ITEM_PRICES, HOUSE_TAKEABLES, FLOOR_TILE_KEYS, WALL_PANEL_KEYS, CEIL_TILE_KEYS, CEIL_TILE } from '../../../functions/houseCatalogData.js';
 import { v92CatalogEntries, V92_CATEGORIES, BOSSTABLE_TINTS, V92_TINTS, marketShelfV92 } from './houseCatalogV92';
 import { v135CatalogEntries, V135_TINTS } from './houseCatalogV135';
@@ -93,6 +93,52 @@ function PLANE(g, w, h, m, x, y, z, r) {
   o.receiveShadow = true;
   g.add(o);
   return o;
+}
+// v158 — "Aylı Gece" tavanı: sahnede tek dolunay. Her karede bir kez seçilir.
+const MOON_TILES = new Set();
+const MOON_OF = new WeakMap(); // gök parçası → ay (userData'ya Mesh koymuyoruz: clone() JSON kopyalar)
+const moonElect = { frame: -1, scene: null, pick: null };
+const _mv = new THREE.Vector3();
+function rootOf(o) {
+  let r = o;
+  while (r.parent) r = r.parent;
+  return r;
+}
+function electMoon(renderer, scene, sky) {
+  const f = renderer.info.render.frame;
+  if (moonElect.frame !== f || moonElect.scene !== scene) {
+    moonElect.frame = f;
+    moonElect.scene = scene;
+    const live = [];
+    MOON_TILES.forEach((t) => {
+      const root = rootOf(t);
+      if (!root.isScene) {
+        // sahneden çıkarılmış parça: kayıttan düş
+        if (root === t || !root.parent) MOON_TILES.delete(t);
+        return;
+      }
+      if (root !== scene || !t.visible) return;
+      t.getWorldPosition(_mv);
+      live.push([t, _mv.x, _mv.z]);
+    });
+    let pick = null;
+    if (live.length) {
+      let cx = 0;
+      let cz = 0;
+      live.forEach(([, x, z]) => { cx += x; cz += z; });
+      cx /= live.length;
+      cz /= live.length;
+      let best = Infinity;
+      live.forEach(([t, x, z]) => {
+        const d = (x - cx) ** 2 + (z - cz) ** 2 + x * 1e-6 + z * 1e-9;
+        if (d < best) { best = d; pick = t; }
+      });
+    }
+    if (moonElect.pick && moonElect.pick !== pick && MOON_OF.get(moonElect.pick)) MOON_OF.get(moonElect.pick).visible = false;
+    moonElect.pick = pick;
+    if (pick && MOON_OF.get(pick)) MOON_OF.get(pick).visible = true;
+  }
+  if (sky !== moonElect.pick && MOON_OF.get(sky)) MOON_OF.get(sky).visible = false;
 }
 function own(m) {
   m.userData.own = true;
@@ -3128,9 +3174,26 @@ function tileEntries() {
         mark.position.y = 0.02;
         mark.userData.tileUV = { kind: 'floor', rep: 8 };
         g.add(mark);
+        let moon = null;
+        if (key === 'gece') {
+          // v158 — tek dolunay: odadaki tüm "Aylı Gece" parçaları arasından yalnızca biri
+          // (parçaların ortasına en yakın olan) ayı gösterir
+          const moonM = own(new THREE.MeshBasicMaterial({ map: fullMoonTexture(), transparent: true, depthWrite: false, toneMapped: false, fog: false }));
+          moon = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 1.9), moonM);
+          moon.rotation.x = Math.PI / 2;
+          moon.position.y = H - 0.045;
+          moon.renderOrder = 2;
+          moon.visible = false;
+          moon.userData.noPick = true;
+          g.add(moon);
+          MOON_TILES.add(sky);
+          MOON_OF.set(sky, moon);
+          sky.onBeforeRender = (renderer, scene) => electMoon(renderer, scene, sky);
+        }
         const show = (ceil) => {
           sky.visible = ceil === true;
           mark.visible = ceil === false;
+          if (moon && !sky.visible) moon.visible = false;
         };
         show(false);
         return { setCeil: show, on: true, setOn() {}, noToggle: true };
