@@ -51,8 +51,11 @@ function add(g, geo, m, x, y, z) {
   return me;
 }
 const B = (g, w, h, d, c, x = 0, y = 0, z = 0, o) => add(g, new THREE.BoxGeometry(w, h, d), K(c, o), x, y + h / 2, z);
-const Cy = (g, r, h, c, x = 0, y = 0, z = 0, o, seg = 18, rt) => add(g, new THREE.CylinderGeometry(rt ?? r, r, h, seg), K(c, o), x, y + h / 2, z);
-const Sp = (g, r, c, x = 0, y = 0, z = 0, o, seg = 14) => add(g, new THREE.SphereGeometry(r, seg, Math.max(8, (seg * 0.75) | 0)), K(c, o), x, y, z);
+// v157.2: telefonda yuvarlak eşyalar daha az parçalı (bellek / hız; görünüş aynı)
+const LP = typeof navigator !== 'undefined' && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent || '');
+const sg = (n, cap) => (LP ? Math.min(n, cap) : n);
+const Cy = (g, r, h, c, x = 0, y = 0, z = 0, o, seg = 18, rt) => add(g, new THREE.CylinderGeometry(rt ?? r, r, h, sg(seg, 12)), K(c, o), x, y + h / 2, z);
+const Sp = (g, r, c, x = 0, y = 0, z = 0, o, seg = 14) => add(g, new THREE.SphereGeometry(r, sg(seg, 12), Math.max(8, (sg(seg, 12) * 0.75) | 0)), K(c, o), x, y, z);
 const Tor = (g, r, t, c, x, y, z, rot = [PI / 2, 0, 0], o, arc = PI * 2) => {
   const me = add(g, new THREE.TorusGeometry(r, t, 8, 28, arc), K(c, o), x, y, z);
   me.rotation.set(...rot);

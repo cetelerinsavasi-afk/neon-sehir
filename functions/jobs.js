@@ -11,8 +11,8 @@
 //   (users/{uid}.jobs = { day, n: { tir: 3, … } }). Süren iş araçta: vehicles/{id}.job.run
 //   Firestore: iş başına 2 yazma (başla + bitir) — şehirdeki hareket RTDB'de.
 // =============================================================================
-import { JOBS, jobOf, jobPerf, jobReward } from './vehicleKinds.js';
-import { LIMAN_BAY, DEPOTS, HOSPITAL, BUS_STOPS, ROAD_SPOTS, manhattan, busRouteLen, KURYE_PICKUPS, KURYE_DROPS, KURYE_MIN_LEN, kuryeMul } from './cityJobsData.js';
+import { JOBS, jobOf, jobPerf, jobReward, jobCountKey, jobDailyOf } from './vehicleKinds.js';
+import { LIMAN_BAY, DEPOTS, HOSPITAL, BUS_STOPS, ROAD_SPOTS, manhattan, busRouteLen, KURYE_PICKUPS, KURYE_DROPS, KURYE_MIN_LEN, kuryeMul, OTOGARS, FAR_TIR_LEN, FAR_BUS_LEN } from './cityJobsData.js';
 import { goldTag } from './moneyLog.js';
 
 const isId = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
@@ -47,9 +47,25 @@ function spotAway(from, min, max, not = []) {
   return pick(pool.length ? pool : ROAD_SPOTS);
 }
 
+// v157: uzak işler sadece tır ve otobüste
+export const hasFar = (job) => Boolean(JOBS[job]?.dailyFar);
+
 // İşi seç: istemcinin göstereceği her şey + sunucunun süre sınırları
-export function planJob(job, near = null) {
+export function planJob(job, near = null, far = false) {
   const at = near && Number.isFinite(near.x) && Number.isFinite(near.z) ? { x: near.x, z: near.z } : null;
+  if (far && job === 'tir') {
+    // v157: liman → O-77 otoyolu → Kervankent Lojistik Terminali (ortalama ~3 kat kazanç)
+    const [cargo, mul] = pick(CARGO);
+    const len = FAR_TIR_LEN;
+    return { task: { type: 'tir', far: true, cargo, ton: 14 + Math.floor(Math.random() * 12) }, mul: mul * JOBS.tir.farMul, len, par: len / 15 + 70, minT: len / VMAX.tir + 6 };
+  }
+  if (far && job === 'otobus') {
+    // v157: şehirlerarası sefer — yakın otogardan öbür otogara (~1,5 kat kazanç)
+    let from = 0;
+    if (at && manhattan(at, OTOGARS[1]) < manhattan(at, OTOGARS[0])) from = 1;
+    const len = FAR_BUS_LEN;
+    return { task: { type: 'otobus', far: true, from, pax: 18 + Math.floor(Math.random() * 11) }, mul: JOBS.otobus.farMul, len, par: len / 13 + 60, minT: len / VMAX.otobus + 6 };
+  }
   if (job === 'tir') {
     const d = Math.floor(Math.random() * DEPOTS.length);
     const [cargo, mul] = pick(CARGO);
@@ -122,8 +138,8 @@ export function createJobs({ db, FieldValue, HttpsError, splitIncomeForDebt, now
     if ((v.lifeDays ?? 20) <= 0) fail('failed-precondition', 'life0');
     return job;
   }
-  // oyuncunun bugün bu meslekte tamamladığı iş sayısı (araç sayısından bağımsız)
-  const todayCount = (u, job) => (u?.jobs?.day === dayKey(now()) ? Number(u.jobs.n?.[job]) || 0 : 0);
+  // oyuncunun bugün bu meslekte tamamladığı iş sayısı (araç sayısından bağımsız; v157: uzak ayrı)
+  const todayCount = (u, job, far = false) => (u?.jobs?.day === dayKey(now()) ? Number(u.jobs.n?.[jobCountKey(job, far)]) || 0 : 0);
 
   // { vehicleId, x?, z? } → { run: { id, job, task, par }, left }
   async function jobStart(uid, p) {
@@ -132,14 +148,15 @@ export function createJobs({ db, FieldValue, HttpsError, splitIncomeForDebt, now
       const [s, us] = await Promise.all([tx.get(vRef(p.vehicleId)), tx.get(uRef(uid))]);
       const v = s.exists ? s.data() : null;
       const job = ownedWorkVehicle(v, uid);
-      const n = todayCount(us.data(), job);
-      const J = JOBS[job];
-      if (n >= J.daily) fail('resource-exhausted', 'job-limit');
-      const plan = planJob(job, { x: Number(p.x), z: Number(p.z) });
+      const far = p.range === 'far' && hasFar(job);
+      const n = todayCount(us.data(), job, far);
+      const daily = jobDailyOf(job, far);
+      if (n >= daily) fail('resource-exhausted', 'job-limit');
+      const plan = planJob(job, { x: Number(p.x), z: Number(p.z) }, far);
       const id = `${now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-      const run = { id, job, at: now(), task: plan.task, mul: plan.mul, len: Math.round(plan.len), par: Math.round(plan.par), minT: Math.round(plan.minT * 10) / 10 };
+      const run = { id, job, at: now(), task: plan.task, mul: plan.mul, len: Math.round(plan.len), par: Math.round(plan.par), minT: Math.round(plan.minT * 10) / 10, ...(far ? { far: true } : {}) };
       tx.update(vRef(p.vehicleId), { job: { run } });
-      return { ok: true, run: { id, job, task: plan.task, par: run.par, len: run.len }, left: J.daily - n, daily: J.daily };
+      return { ok: true, run: { id, job, task: plan.task, par: run.par, len: run.len, far }, left: daily - n, daily };
     });
   }
 
@@ -154,8 +171,10 @@ export function createJobs({ db, FieldValue, HttpsError, splitIncomeForDebt, now
       if (!run || run.id !== p.runId) fail('failed-precondition', 'no-run');
       const J = JOBS[job];
       const u = us.data() || {};
-      const n = todayCount(u, job);
-      if (n >= J.daily) fail('resource-exhausted', 'job-limit');
+      const far = Boolean(run.far);
+      const n = todayCount(u, job, far);
+      const daily = jobDailyOf(job, far);
+      if (n >= daily) fail('resource-exhausted', 'job-limit');
       const elapsed = (now() - Number(run.at)) / 1000;
       if (elapsed < (run.minT || 0)) fail('failed-precondition', 'too-fast');
       // ölçülen süre: istemcinin bildirdiği (en az minT, en çok gerçek geçen süre)
@@ -168,13 +187,13 @@ export function createJobs({ db, FieldValue, HttpsError, splitIncomeForDebt, now
       const nn = n + 1;
       const day = dayKey(now());
       const counts = u.jobs?.day === day ? { ...(u.jobs.n || {}) } : {};
-      counts[job] = nn;
+      counts[jobCountKey(job, far)] = nn;
       tx.update(uRef(uid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('meslek'), debtToState: FieldValue.increment(debtDelta), jobs: { day, n: counts } });
       tx.update(vRef(p.vehicleId), {
         job: { run: null, last: { at: now(), total, t: Math.round(t), hits } },
         jobEarned: FieldValue.increment(total),
       });
-      return { ok: true, total, toDebt: total - goldDelta, perf: { speed: Math.round(perf.speed * 100) / 100, dmg: Math.round(perf.dmg * 100) / 100 }, t: Math.round(t), hits, left: J.daily - nn, daily: J.daily };
+      return { ok: true, total, toDebt: total - goldDelta, perf: { speed: Math.round(perf.speed * 100) / 100, dmg: Math.round(perf.dmg * 100) / 100 }, t: Math.round(t), hits, left: daily - nn, daily, far };
     });
   }
 

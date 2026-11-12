@@ -19,16 +19,22 @@ function rnd(seed) {
   };
 }
 
+// v157.1: telefonda dokular yarı çözünürlükte çizilir (aynı desen, ¼ bellek) — şehirde onlarca
+// duvar/zemin dokusu aynı anda yüklü olunca bellek doluyordu
+const TEX_MOBILE = typeof navigator !== 'undefined' && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent || '');
 function makeTex(key, w, h, draw, { srgb = true } = {}) {
   if (texCache.has(key)) return texCache.get(key);
+  const S = TEX_MOBILE && w >= 256 && h >= 256 ? 0.5 : 1;
   const c = document.createElement('canvas');
-  c.width = w;
-  c.height = h;
-  draw(c.getContext('2d'), w, h, rnd(key.length * 7919 + w));
+  c.width = Math.round(w * S);
+  c.height = Math.round(h * S);
+  const g = c.getContext('2d');
+  if (S !== 1) g.scale(S, S);
+  draw(g, w, h, rnd(key.length * 7919 + w));
   const t = new THREE.CanvasTexture(c);
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   if (srgb) t.colorSpace = THREE.SRGBColorSpace;
-  t.anisotropy = 8;
+  t.anisotropy = TEX_MOBILE ? 2 : 8;
   texCache.set(key, t);
   return t;
 }

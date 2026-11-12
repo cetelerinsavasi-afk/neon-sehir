@@ -101,3 +101,7 @@ export function persistentLocalCache() {
 export function persistentMultipleTabManager() {
   return {};
 }
+// v157 önizleme: BusinessHub'ın kullandığı yardımcı
+export function documentId() {
+  return '__name__';
+}

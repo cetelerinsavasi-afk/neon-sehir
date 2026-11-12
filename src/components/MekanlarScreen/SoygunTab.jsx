@@ -3,6 +3,7 @@ import { useWeapons } from '../../hooks/useWeapons';
 import { useOpenHeistPlanCounts } from '../../hooks/useOpenHeistPlanCounts';
 import { useMyActiveHeistPlans } from '../../hooks/useMyActiveHeistPlan';
 import { usePlayer } from '../../hooks/usePlayer';
+import { useDailyActions } from '../../hooks/useDailyActions';
 import HeistPanel, { HEIST_LABELS } from '../HeistPanel/HeistPanel';
 import GuestOverlay from '../GuestOverlay/GuestOverlay';
 import { INITIAL_LIFE_DAYS } from '../VehicleCard/VehicleCard';
@@ -19,8 +20,8 @@ import './MekanlarScreen.css';
 // v132.1 — hedefler büyüklüğe göre gruplanır (görsel liste)
 // v154: yeni liste (Modifiye çıktı, Silahçı + İnternet Kafe + 2 satıcı girdi)
 const GROUPS = [
-  ['Büyük vurgun', ['banka', 'casino', 'araba_galerisi', 'silah_magazasi']],
-  ['Orta boy iş', ['fabrika', 'internet_kafe']],
+  ['Büyük vurgun', ['banka', 'casino', 'araba_galerisi']],
+  ['Orta boy iş', ['silah_magazasi', 'fabrika', 'internet_kafe']],
   ['Sokak haracı', ['seyyar_satici_6', 'seyyar_satici_5', 'seyyar_satici_1', 'seyyar_satici_2', 'seyyar_satici_3', 'seyyar_satici_4']],
 ];
 // oyundaki en yüksek silah gücü (Gücün çubuğu bu değerde dolar)
@@ -30,10 +31,12 @@ const n = (x) => Number(x || 0).toLocaleString('tr-TR');
 const pct = (a, b) => `${Math.max(0, Math.min(100, b > 0 ? (a / b) * 100 : 0))}%`;
 
 // v132.1 — görsel hedef kartı (emoji kutusu · ad · ödül · güç çubuğu · durum)
-function TargetCard({ target, onClick, badge, myPower }) {
+function TargetCard({ target, onClick, badge, myPower, daily }) {
   const meta = HEIST_LABELS[target];
   if (!meta) return null;
   const ok = myPower >= meta.requiredPower;
+  // v157: bugün soyduysa / bağış yaptıysa "Gücün yetiyor" yerine o yazar
+  const done = daily?.heist?.[target] ? 'Bugün soydun' : daily?.vendorPurchases?.[target] ? 'Bugün bağış yaptın' : null;
   return (
     <button className={`sg-card${ok ? ' ready' : ''}`} onClick={onClick}>
       {badge > 0 && <span className="sg-badge">{badge} ekip</span>}
@@ -47,7 +50,7 @@ function TargetCard({ target, onClick, badge, myPower }) {
           <i style={{ width: pct(myPower, meta.requiredPower) }} />
         </span>
         ⚔️ {n(meta.requiredPower)}
-        <span className={`sg-tag ${ok ? 'ok' : 'tm'}`}>{ok ? 'Gücün yetiyor' : 'Ekip gerekir'}</span>
+        <span className={`sg-tag ${done ? 'dn' : ok ? 'ok' : 'tm'}`}>{done || (ok ? 'Gücün yetiyor' : 'Ekip gerekir')}</span>
       </span>
     </button>
   );
@@ -58,6 +61,7 @@ export default function SoygunTab({ initialTarget }) {
   const { weapons } = useWeapons();
   const planCounts = useOpenHeistPlanCounts();
   const myActivePlans = useMyActiveHeistPlans();
+  const { actions: daily } = useDailyActions();
   const [selected, setSelected] = useState(initialTarget || null);
   const [showMyPlans, setShowMyPlans] = useState(false);
 
@@ -127,6 +131,7 @@ export default function SoygunTab({ initialTarget }) {
               {myActivePlans.map((p) => (
                 <TargetCard
                   key={p.planId}
+                  daily={daily}
                   myPower={myPower}
                   target={p.target}
                   onClick={() => {
@@ -149,7 +154,7 @@ export default function SoygunTab({ initialTarget }) {
                   {keys
                     .filter((k) => HEIST_LABELS[k])
                     .map((target) => (
-                      <TargetCard key={target} myPower={myPower} target={target} badge={planCounts[target] || 0} onClick={() => setSelected(target)} />
+                      <TargetCard key={target} daily={daily} myPower={myPower} target={target} badge={planCounts[target] || 0} onClick={() => setSelected(target)} />
                     ))}
                 </div>
               ))}

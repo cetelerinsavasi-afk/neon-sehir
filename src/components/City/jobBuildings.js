@@ -265,3 +265,92 @@ export function buildTaksiDuragi(kit, lot) {
   kit.pool(0, bz + bd / 2 + 2, Y, 12, 0.16, 0.4);
   return { mapLabel: { text: 'TAKSİ DURAĞI', y: 8, z: bz } };
 }
+
+// --- v156 OTOGAR (şehirlerarası otobüs terminali) ------------------------------------------
+// Peron: x0…x1 boyunca, z = zP'nin arkasında 3,2 m (yolcu tarafı, kanopili). Otobüs yerleri
+// peronun önünde (+z), otobüs burnu perona dönük park eder. Dönüş: peron yerleri (lot yereli).
+// makeBus(i) verilirse dolu peronlara park etmiş otobüs koyar (kök grup döner).
+export function otogarYard(kit, { x0, x1, zP, name = 'OTOGAR', parked = [], makeBus = null, roadZ = null, clearX = null }) {
+  const BAY = 5.2;
+  const n = Math.max(1, Math.floor((x1 - x0) / BAY));
+  const span = n * BAY;
+  const xs = x0 + (x1 - x0 - span) / 2;
+  const yel = YELLOW();
+  const white = M('#f2f2f2', 0.6);
+  // peron zemini (granit, alçak — yürürken gömülmez) + sarı hissedilebilir şerit
+  kit.box(span + 1, 0.05, 3.4, M('#c9c4ba', 0.75), xs + span / 2, 0.12, zP - 1.7, { cast: false });
+  kit.box(span + 1, 0.03, 0.4, yel, xs + span / 2, 0.15, zP - 0.35, { cast: false });
+  // araç tarafı: peron bordürü (sadece araç engeli)
+  kit.box(span + 1, 0.22, 0.25, M('#8f8a80', 0.85), xs + span / 2, 0.1, zP + 0.12);
+  kit.solid(xs + span / 2, zP - 1.6, span / 2 + 0.5, 1.75);
+  kit.solids.at(-1).car = true;
+  // kanopi: direkler peronun arka kenarında, saçak otobüs burnunun üstüne uzanır
+  const post = M('#2a2f3a', 0.45, 0.6);
+  // yarı saydam polikarbon saçak (araçtaki takip kamerası üstten bakınca peron görünsün)
+  const roofM = new THREE.MeshStandardMaterial({ color: '#dfe8f0', roughness: 0.3, metalness: 0.1, transparent: true, opacity: 0.42, depthWrite: false, side: THREE.DoubleSide });
+  for (let i = 0; i <= n; i++) {
+    const x = xs + i * BAY;
+    kit.box(0.22, 4.4, 0.22, post, x, 0.12, zP - 3.0);
+    kit.solid(x, zP - 3.0, 0.16, 0.16);
+  }
+  kit.box(span + 1.4, 0.12, 6.4, roofM, xs + span / 2, 4.6, zP - 1.4, { cast: false });
+  for (const z of [zP - 4.5, zP + 1.7]) kit.box(span + 1.4, 0.22, 0.25, M('#2a2f3a', 0.45, 0.6), xs + span / 2, 4.5, z);
+  for (let i = 0; i <= n; i++) kit.box(0.14, 0.18, 6.4, M('#2a2f3a', 0.45, 0.6), xs + i * BAY, 4.52, zP - 1.4);
+  kit.box(span + 1.4, 0.34, 0.12, glowMat('#4fd2ff', 1.6), xs + span / 2, 4.46, zP + 1.8, { cast: false });
+  kit.box(span + 1.4, 0.5, 0.18, M('#c8141e', 0.5), xs + span / 2, 4.2, zP + 1.85);
+  // peron numaraları, banklar, otobüs yerleri
+  const bays = [];
+  for (let i = 0; i < n; i++) {
+    const cx = xs + BAY * (i + 0.5);
+    kit.sign(`${name}_peron${i}`, `PERON ${i + 1}`, 0.42, cx, 3.75, zP + 1.92, 0, { color: '#ffffff', bg: '#1d2a44', font: '900 100px Arial, sans-serif', light: false });
+    if (clearX == null || Math.abs(cx - clearX) > 2.4) kit.item('parkbench', cx, zP - 2.2, 0, 0, { y: 0.15 }); // kapı önü boş
+    // yer çizgileri
+    kit.box(0.16, 0.02, 12.6, white, xs + BAY * i, 0.14, zP + 6.6, { cast: false });
+    const lbl = kit.sign(`${name}_bay${i}`, `${i + 1}`, 1.1, cx, 0.16, zP + 10.6, 0, { color: '#e8b923', font: '900 120px Arial, sans-serif', light: false });
+    lbl.rotation.x = -Math.PI / 2;
+    bays.push({ x: cx, z: zP + 6.4 });
+  }
+  kit.box(0.16, 0.02, 12.6, white, xs + span, 0.14, zP + 6.6, { cast: false });
+  kit.box(span, 0.02, 0.16, white, xs + span / 2, 0.14, zP + 12.9, { cast: false });
+  if (roadZ != null) {
+    // manevra alanı oku
+    for (let x = xs + 4; x < xs + span - 2; x += 10) kit.box(2.6, 0.02, 0.3, white, x, 0.14, (zP + 12.9 + roadZ) / 2, { cast: false });
+  }
+  // dolu peronlar: park etmiş otobüsler (burun perona)
+  if (makeBus) {
+    parked.forEach((i) => {
+      if (i >= n) return;
+      const b = makeBus(i);
+      b.root.position.set(bays[i].x, 0.13, bays[i].z);
+      b.root.rotation.y = Math.PI;
+      kit.add(b.root);
+      kit.solid(bays[i].x, bays[i].z, (b.halfW || 1.25) + 0.1, (b.len || 11.5) / 2 + 0.1);
+    });
+  }
+  kit.pool(xs + span / 2, zP - 1.5, '#4fd2ff', Math.min(30, span), 0.16, 0.25);
+  return { bays, n, xs, span };
+}
+
+// Oyundaki şehir lotu (girilmez dış cephe; prototipte içi gezilebilir mekân olarak açılır)
+export function buildOtogar(kit, lot) {
+  const { w, d } = lot;
+  kit.floor('beton', w, d, 0, 0);
+  const bw = 19;
+  const bd = 15;
+  const bx = -w / 2 + bw / 2 + 1.5;
+  const bz = -d / 2 + bd / 2 + 0.5;
+  kit.wallBox('beton_duvar', bw, 7, bd, bx, 0, bz, { tint: '#eef1f4' });
+  kit.box(bw + 0.6, 0.4, bd + 0.6, M('#1d2a44', 0.5, 0.3), bx, 7, bz);
+  kit.box(bw - 2, 2.4, 0.06, glowMat('#dff2ff', 0.8), bx, 0.6, bz + bd / 2 + 0.03, { cast: false });
+  kit.box(bw - 2, 1.2, 0.06, glowMat('#dff2ff', 0.6), bx, 4.3, bz + bd / 2 + 0.03, { cast: false });
+  kit.sign('otogar_cephe', 'NEON ŞEHİR OTOGARI', 1.1, bx, 6.2, bz + bd / 2 + 0.08, 0, { color: '#ffffff', glow: '#4fd2ff', font: '900 110px Arial, sans-serif', li: 7, ld: 14 });
+  kit.item('door_cift', bx, bz + bd / 2, 0, 0, { solid: false });
+  kit.mass(bw, 7.4, bd, bx, bz);
+  otogarYard(kit, { x0: bx + bw / 2 + 3, x1: w / 2 - 1, zP: -d / 2 + 6.6, name: 'otogar', roadZ: d / 2 });
+  // totem (yoldan görünsün)
+  kit.box(0.5, 7, 0.5, M('#2a2f3a', 0.5, 0.5), w / 2 - 2, 0, d / 2 - 1.5);
+  kit.sign('otogar_totem', 'OTOGAR', 1.3, w / 2 - 2, 7.6, d / 2 - 1.2, 0, { color: '#ffffff', bg: '#c8141e', glow: '#ff3a4a', font: '900 120px Arial, sans-serif', li: 5, ld: 10 });
+  kit.sign('otogar_totem_b', 'OTOGAR', 1.3, w / 2 - 2, 7.6, d / 2 - 1.8, Math.PI, { color: '#ffffff', bg: '#c8141e', font: '900 120px Arial, sans-serif', light: false });
+  kit.solid(w / 2 - 2, d / 2 - 1.5, 0.35, 0.35);
+  return { mapLabel: { text: 'OTOGAR', y: 10, z: bz } };
+}

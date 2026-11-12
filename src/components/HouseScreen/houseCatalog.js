@@ -61,23 +61,26 @@ function add(g, geo, m, x = 0, y = 0, z = 0, r) {
   g.add(shade(o));
   return o;
 }
+// v157.2: telefonda yuvarlak eşyalar daha az parçalı (bellek / hız; görünüş aynı)
+const LP = typeof navigator !== 'undefined' && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent || '');
+const sg = (n, cap) => (LP ? Math.min(n, cap) : n);
 const B = (g, w, h, d, x, y, z, m, r) => add(g, new THREE.BoxGeometry(w, h, d), m, x, y, z, r);
 const RB = (g, w, h, d, rad, x, y, z, m, r) =>
-  add(g, new RoundedBoxGeometry(w, h, d, 3, Math.min(rad, w / 2 - 0.001, h / 2 - 0.001, d / 2 - 0.001)), m, x, y, z, r);
-const C = (g, rt, rb, h, x, y, z, m, r, seg = 24) => add(g, new THREE.CylinderGeometry(rt, rb, h, seg), m, x, y, z, r);
+  add(g, new RoundedBoxGeometry(w, h, d, sg(3, 2), Math.min(rad, w / 2 - 0.001, h / 2 - 0.001, d / 2 - 0.001)), m, x, y, z, r);
+const C = (g, rt, rb, h, x, y, z, m, r, seg = 24) => add(g, new THREE.CylinderGeometry(rt, rb, h, sg(seg, 14)), m, x, y, z, r);
 const SP = (g, rad, x, y, z, m, sx = 1, sy = 1, sz = 1) => {
-  const o = add(g, new THREE.SphereGeometry(rad, 22, 16), m, x, y, z);
+  const o = add(g, new THREE.SphereGeometry(rad, sg(22, 14), sg(16, 10)), m, x, y, z);
   o.scale.set(sx, sy, sz);
   return o;
 };
-const TOR = (g, R, t, x, y, z, m, r, arc = Math.PI * 2) => add(g, new THREE.TorusGeometry(R, t, 12, 36, arc), m, x, y, z, r);
+const TOR = (g, R, t, x, y, z, m, r, arc = Math.PI * 2) => add(g, new THREE.TorusGeometry(R, t, sg(12, 8), sg(36, 20), arc), m, x, y, z, r);
 function LATHE(g, pts, m, x = 0, y = 0, z = 0, seg = 32) {
-  return add(g, new THREE.LatheGeometry(pts.map(([a, b]) => new THREE.Vector2(a, b)), seg), m, x, y, z);
+  return add(g, new THREE.LatheGeometry(pts.map(([a, b]) => new THREE.Vector2(a, b)), sg(seg, 16)), m, x, y, z);
 }
 function TUBE(g, a, b, r, m, seg = 12) {
   const va = new V3(...a);
   const vb = new V3(...b);
-  const o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, va.distanceTo(vb), seg), m);
+  const o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, va.distanceTo(vb), sg(seg, 8)), m);
   o.position.copy(va).add(vb).multiplyScalar(0.5);
   o.quaternion.setFromUnitVectors(new V3(0, 1, 0), vb.clone().sub(va).normalize());
   g.add(shade(o));
@@ -1500,6 +1503,16 @@ function barrel(g, ctx) {
   C(g, 0.33, 0.33, 0.92, 0, 0.46, 0, m);
   [0.18, 0.74].forEach((y) => C(g, 0.342, 0.342, 0.05, 0, y, 0, M('#111', 0.4, 0.8)));
   C(g, 0.3, 0.3, 0.02, 0, 0.93, 0, M('#2a2a2e', 0.3, 0.8));
+}
+// v157 — bar önü: ahşap fıçı masa (üstünde bardak)
+function barrelTable(g) {
+  const wd = M('#7a4a26', 0.85);
+  const hoop = M('#2b2b2e', 0.4, 0.8);
+  C(g, 0.4, 0.33, 0.52, 0, 0.26, 0, wd, null, 16);
+  C(g, 0.33, 0.4, 0.52, 0, 0.78, 0, wd, null, 16);
+  [0.1, 0.42, 0.62, 0.94].forEach((y) => C(g, (y < 0.52 ? 0.33 + (y / 0.52) * 0.07 : 0.4 - ((y - 0.52) / 0.52) * 0.07) + 0.012, (y < 0.52 ? 0.33 + (y / 0.52) * 0.07 : 0.4 - ((y - 0.52) / 0.52) * 0.07) + 0.012, 0.04, 0, y, 0, hoop, null, 16));
+  C(g, 0.34, 0.34, 0.03, 0, 1.055, 0, M('#5a3418', 0.8), null, 16);
+  C(g, 0.035, 0.03, 0.12, 0.1, 1.13, 0.05, M('#ffd27a', 0.1, 0.1, { transparent: true, opacity: 0.75 }), null, 10);
 }
 function crate(g) {
   const w = M('#9a7443', 0.85);
@@ -3218,6 +3231,7 @@ export const CATALOG = [
   { k: 'toolchest', name: 'Takım Dolabı', cat: 'garaj', icon: '🗄️', price: G(4000), build: toolChest, box: [0.45, 0.25] },
   { k: 'tires', name: 'Lastik Yığını', cat: 'garaj', icon: '🛞', price: null, build: tireStack, box: [0.36, 0.36] },
   { k: 'barrel', name: 'Varil', cat: 'garaj', icon: '🛢️', price: null, tints: 'fabric', build: barrel, box: [0.34, 0.34] },
+  { k: 'barreltable', name: 'Fıçı Masa', cat: 'masa', icon: '🍺', price: null, build: barrelTable, box: [0.38, 0.38] },
   { k: 'crate', name: 'Tahta Sandık', cat: 'garaj', icon: '📦', price: null, build: crate, box: [0.46, 0.46] },
 
   // DEKOR

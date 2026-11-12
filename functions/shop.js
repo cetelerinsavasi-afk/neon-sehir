@@ -212,7 +212,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       const { goldDelta, debtDelta } = splitIncomeForDebt(ss.data()?.debtToState, c.amount);
       tx.update(userRef(sid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('ikinciEl'), debtToState: FieldValue.increment(debtDelta) });
       tx.set(userRef(sid).collection('messages').doc(), {
-        text: `2. El: "${c.qty} adet malzeme" ilanın ${c.amount.toLocaleString('tr-TR')} altına satıldı. Vergi (%1): 0 · Eline geçen: ${c.amount.toLocaleString('tr-TR')} altın.`,
+        text: `2. El: "${c.qty} adet malzeme" ilanın ${c.amount.toLocaleString('tr-TR')} altına satıldı, hesabına yattı.`, // v157.2: 2. el satışta vergi yok — vergi satırı kalktı
         createdAt: FieldValue.serverTimestamp(),
         read: false,
         type: 'marketplace_sale',

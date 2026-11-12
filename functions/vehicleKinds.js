@@ -33,8 +33,10 @@ export const canRepairVehicle = (id) => isCarId(id);
 // --- MESLEKLER -----------------------------------------------------------------------
 // daily: araç başına günlük iş hakkı · avg: bir işin ortalama kazancı (altın)
 export const JOBS = {
-  tir: { id: 11, name: 'Tır', icon: '🚛', daily: 10, avg: 5000, unit: 'sevkiyat', verb: 'Sevkiyat' },
-  otobus: { id: 12, name: 'Otobüs', icon: '🚌', daily: 2, avg: 10000, unit: 'sefer', verb: 'Sefer' },
+  // v157: tır ve otobüste iki mesafe — yakın (şehir içi) ve uzak (O-77 → Kervankent). dailyFar: uzak hak,
+  // farMul: uzak işin kazanç çarpanı (yol uzun + kaza riski fazla)
+  tir: { id: 11, name: 'Tır', icon: '🚛', daily: 5, dailyFar: 2, farMul: 3, avg: 5000, unit: 'sevkiyat', verb: 'Sevkiyat' },
+  otobus: { id: 12, name: 'Otobüs', icon: '🚌', daily: 1, dailyFar: 1, farMul: 1.5, avg: 10000, unit: 'sefer', verb: 'Sefer' },
   taksi: { id: 13, name: 'Taksi', icon: '🚕', daily: 10, avg: 1000, unit: 'yolcu', verb: 'Yolcu' },
   polis: { id: 14, name: 'Polis', icon: '🚓', daily: 10, avg: 4000, unit: 'görev', verb: 'Görev' },
   ambulans: { id: 15, name: 'Ambulans', icon: '🚑', daily: 10, avg: 3000, unit: 'hasta', verb: 'Hasta' },
@@ -43,6 +45,9 @@ export const JOBS = {
 };
 // v154: motorlar motokurye mesleği yapar (katalogda job: 'kurye')
 export const jobOf = (catalogId) => VEHICLE_CATALOG[Number(catalogId)]?.job || null;
+// v157: günlük hak sayacı anahtarı (uzak işler ayrı sayılır) ve hak sayısı
+export const jobCountKey = (job, far) => (far ? `${job}_uzak` : job);
+export const jobDailyOf = (job, far) => (far ? JOBS[job]?.dailyFar || 0 : JOBS[job]?.daily || 0);
 
 // Performans çarpanı: hız (hedef süreye göre) × hasar. Ortalama sürüşte ≈ 1.
 //   t / par = 1 → ×1 · yarı sürede → ×1,18 · iki katı sürede → ×0,65 (alt sınır 0,6, üst 1,35)
