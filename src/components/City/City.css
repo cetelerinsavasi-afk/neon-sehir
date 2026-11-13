@@ -491,3 +491,21 @@ body.ns-city-open .ta-root { z-index: 96; }
 .cs-dock.cs-dock-side .cs-dock-btn span { font-size: 17px; }
 .cs-root.cs-land .cs-dock.cs-dock-side { left: auto; right: 70px; }
 .cs-root.cs-land:not(.driving) .hs-chat.cs-chat-always { right: 140px; }
+
+/* v159.1 — şehirde Çeteler / Profil: Soygun paneli gibi alttan açılan pencere */
+.cs-sheet-back {
+  position: absolute; inset: 0; z-index: 85;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.cs-sheet-box {
+  position: relative; width: 100%; max-width: 520px;
+  height: 85vh; max-height: calc(100% - 40px);
+  border-radius: 16px 16px 0 0; overflow: hidden;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.45);
+}
+.cs-sheet-box > .gx-full,
+.cs-sheet-box > .profile-fullscreen { position: absolute; inset: 0; z-index: auto; }
+.cs-sheet-box .gx-full-top { padding-top: 10px; }
+.cs-sheet-box .profile-fullscreen-header { padding-top: 12px; }

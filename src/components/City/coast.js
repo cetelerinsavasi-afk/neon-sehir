@@ -466,7 +466,9 @@ function buildWestCoast(kit) {
     for (const [px, pz] of [[-1.6, -6.5], [-1.6, 6.5], [3, -6.5], [3, 6.5]]) kit.box(0.2, 3.4, 0.2, M('#6b5434', 0.8), bx + px, dy, bz + pz);
     kit.item('drinkfridge', bx + 2.2, bz - 3, 6, 0, { y: dy });
     kit.item('drinkfridge', bx + 2.2, bz + 3, 6, 0, { y: dy });
-    for (let i = -2; i <= 2; i++) kit.item('stool', bx - 2.3, bz + i * 2, 2, 0, { y: dy });
+    // v159.1: bar tabureleri tezgâhtan biraz uzakta ve geçilebilir — oturup kalkınca tezgâh ile
+    // tabure arasında sıkışılıyordu
+    for (let i = -2; i <= 2; i++) kit.item('stool', bx - 2.75, bz + i * 2, 2, 0, { y: dy, solid: false });
     kit.solid(bx, bz, 1.6, 5);
     kit.sign('sunsetclub', 'SUNSET BEACH CLUB', 0.75, bx + 0.5, dy + 4.15, bz, -PI / 2, { color: '#ffffff', glow: '#ff7a3a', font: '900 110px Arial, sans-serif', li: 8, ld: 14 });
     kit.sign('sunsetclub2', 'SUNSET BEACH CLUB', 0.75, bx + 4.55, dy + 4.15, bz, PI / 2, { color: '#ffffff', glow: '#ff7a3a', font: '900 110px Arial, sans-serif', light: false });

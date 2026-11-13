@@ -866,9 +866,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       // karargah kapısı: dışarıdan "İçeri gir", içeriden "Şehre çık"
       if (v.isolated) {
         const o = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 + 1.7);
-        const i = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 - 1.3);
-        zones.push({ kind: 'hqIn', id: `hqin_${v.type}`, slot: v.hqSlot, title: '🏴 Karargah', x: o.x, z: o.z, r: 1.8 });
-        zones.push({ kind: 'hqOut', id: `hqout_${v.type}`, slot: v.hqSlot, title: '🏴 Karargah', x: i.x, z: i.z, r: 1.8 });
+        // v159.1: şehirdeki karargah içi kaldırıldı — sadece kapıda "İçeri gir" (gerçek karargah ekranı açılır)
+        zones.push({ kind: 'hqIn', id: `hqin_${v.type}`, slot: v.hqSlot, title: '🏴 Karargah', x: o.x, z: o.z, r: 2.2 });
       }
       // mekân kitlerinin kendi ATM bölgeleri (ör. bankanın ön cephesi)
       (v.kits || []).forEach((k) => (k.zones || []).forEach((z) => {
@@ -1480,8 +1479,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const v = W.venues.find((q) => q.type === type);
     if (!v) return null;
     // v159: kapalı dükkân → kapının önünde (dışarıda, düğmelerin içinde), yüz kapıya dönük
-    if (v.closedShop) {
-      const o = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 + 2.4);
+    // v159.1: karargah da (şehirdeki içi kaldırıldı) — kapının önünde
+    if (v.closedShop || v.isolated) {
+      const o = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 + (v.isolated ? 1.7 : 2.4));
       return { x: o.x, z: o.z, yaw: v.ry, pitch: 0.36 };
     }
     const p = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 - 3.2);
@@ -3275,7 +3275,20 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     st.taken = false;
     me.sitting = false;
     me.seatYaw = null;
-    const f = freeNear(st.x + Math.sin(st.yaw) * 0.75, st.z + Math.cos(st.yaw) * 0.75);
+    // v159.1: kalkınca masa / tezgâh ile koltuk arasına sıkışılmasın — önce bolca boşluk olan yön
+    // (önü, arkası, yanları; geniş yarıçapla) aranır, yoksa en yakın boş yer
+    const sy = Math.sin(st.yaw);
+    const cy = Math.cos(st.yaw);
+    let f = null;
+    for (const [fw, sd] of [[0.75, 0], [1.1, 0], [-0.75, 0], [-1.1, 0], [0, 0.85], [0, -0.85], [1.2, 0.8], [1.2, -0.8]]) {
+      const x = st.x + sy * fw + cy * sd;
+      const z = st.z + cy * fw - sy * sd;
+      if (!blockedAt(x, z, PLAYER_R * 1.6)) {
+        f = { x, z };
+        break;
+      }
+    }
+    if (!f) f = freeNear(st.x + sy * 0.75, st.z + cy * 0.75);
     if (f) {
       self.x = f.x;
       self.z = f.z;
@@ -4755,7 +4768,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     },
     // kendi karargahına ışınlan (Çeteler › Aç) — v158: kapıdaki "İçeri gir" de bunu kullanır
     enterHq(slot) {
-      return api.enterVenue(`hq${slot}`);
+      return api.exitHq(slot); // v159.1: içeri girilmez — kapının önüne
     },
     // v158: karargahtan şehre (kapının önüne, yüz yola dönük)
     exitHq(slot) {

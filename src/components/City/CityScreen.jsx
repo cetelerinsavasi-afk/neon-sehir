@@ -47,7 +47,7 @@ import PoliticsHomeButton from '../Politics/PoliticsHomeButton';
 import LiveStreamsButton from '../Stream/LiveStreamsButton';
 import { GangAlertsContext } from '../Gangs/alerts';
 import { CityHqContext } from '../Gangs/cityHqNav';
-import { collection, doc, getDoc, getDocs, limit, query, where } from 'firebase/firestore';
+import { collection, getDocs, limit, query, where } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useStadiumMatches } from '../../hooks/useStadiumMatches';
 import { liveState } from './stadiumMatch.js';
@@ -303,19 +303,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       });
       H.state = 'done';
       setHqTick((n) => n + 1);
-      await Promise.all(
-        list.map(async (g) => {
-          try {
-            const hs = await getDoc(doc(db, 'houses', `hq_${g.id}`));
-            if (hs.exists()) {
-              const d = hs.data();
-              engineRef.current?.hqSet(g.hqSlot, { design: { items: Array.isArray(d.items) ? d.items : [], wall: d.wall, floor: d.floor } });
-            }
-          } catch {
-            /* okunamazsa boş karargah */
-          }
-        })
-      );
+      // v159.1: şehirdeki karargah içleri kaldırıldı → tasarımlar artık okunmaz (karargah ekranı kendisi okur)
     })().catch(() => {
       H.state = 'idle';
     });
@@ -332,7 +320,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     if (!Number.isInteger(slot)) return false;
     // v159: karargahın kapısının önüne ışınlan + gerçek karargah ekranını aç (çıkınca kapının önündesin)
     if (!engineRef.current?.exitHq(slot)) return false;
-    enterHqRef.current?.('gang', slot);
+    enterHqRef.current?.('gang', slot, gid);
     return true;
   }, []);
   const enterHqRef = useRef(onEnterHq);
@@ -688,17 +676,6 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     wasCovered.current = false;
     e.reclaim?.();
     e.hidden(false);
-    const gid = gangRef.current?.gangId;
-    const slot = gid ? hqRef.current.byGang[gid] : null;
-    if (Number.isInteger(slot)) {
-      getDoc(doc(db, 'houses', `hq_${gid}`))
-        .then((hs) => {
-          if (!hs.exists()) return;
-          const d = hs.data();
-          engineRef.current?.hqSet(slot, { design: { items: Array.isArray(d.items) ? d.items : [], wall: d.wall, floor: d.floor } });
-        })
-        .catch(() => {});
-    }
   }, [covered, ready]);
 
   // --- v149 STADYUM: sponsor panoları, maç seçici, saha kilidi ---------------------------
@@ -1062,13 +1039,23 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     if (zone.kind === 'market') list.push({ label: '🛒 Market', cls: 'take', on: () => setPanel({ kind: 'market' }) });
     if (zone.kind === 'atm') list.push({ label: '🏧 ATM', cls: 'take', on: () => setPanel({ kind: 'phone', app: 'banka' }) });
     // v158 — karargah kapısı: dışarıdan içeri, içeriden şehre (karargah haritadan bağımsız iç mekân)
-    // v159: KENDİ çetenin karargahına "İçeri gir" → doğrudan gerçek karargah (duvarları sağlam, eşyalarla
-    // etkileşimli — eskiden yalnız "Düzenle" ile açılan ekran). Başka çetelerin karargahı şehirden gezilir.
+    // v159.1: şehirdeki (içinden geçilen) karargah içleri KALDIRILDI. Her karargahın kapısında "İçeri gir"
+    // → Çeteler › Aç ile aynı gerçek karargah ekranı (o karargahın çetesi; girme izni sunucuda)
     if (zone.kind === 'hqIn') {
-      const mineHq = !guest && gangAlerts?.gangId && hqRef.current.bySlot[zone.slot]?.id === gangAlerts.gangId;
-      list.push({ label: '🚪 İçeri gir', cls: 'take', free: true, on: () => (mineHq && onEnterHq ? onEnterHq('gang', zone.slot) : engineRef.current?.enterHq(zone.slot)) });
+      list.push({
+        label: '🚪 İçeri gir',
+        cls: 'take',
+        free: true,
+        on: async () => {
+          if (guest) return setAskSignIn(true);
+          await loadHqRef.current?.();
+          const g = hqRef.current.bySlot[zone.slot];
+          if (!g) return flash('🏴 Bu karargah boş');
+          onEnterHq?.('gang', zone.slot, g.id);
+          return undefined;
+        },
+      });
     }
-    if (zone.kind === 'hqOut') list.push({ label: '🏙️ Şehre çık', cls: 'take', free: true, on: () => engineRef.current?.exitHq(zone.slot) });
     if (zone.kind === 'car') {
       list.push({ label: '🚗 Bin', cls: 'take', on: () => engineRef.current.enterCar() });
       list.push({ label: '🔁 Başka araba', on: () => setPanel({ kind: 'garage' }) });
@@ -1717,12 +1704,18 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       )}
       {(panel?.kind === 'gangs' || panel?.kind === 'soygun' || panel?.kind === 'profile' || watchId) && (
         <Suspense fallback={<div className="hs-loading cs-loading"><div className="hs-spinner" /></div>}>
+          {/* v159.1: Çeteler ve Profil de Soygun paneli gibi alttan açılan pencere (tüm ekranı kaplamaz;
+              dışına dokununca kapanır) */}
           {panel?.kind === 'gangs' && (
-            <GangAlertsContext.Provider value={gangAlerts}>
-              <CityHqContext.Provider value={cityHqNav}>
-                <GangsFullScreen onClose={() => setPanel(null)} />
-              </CityHqContext.Provider>
-            </GangAlertsContext.Provider>
+            <div className="cs-sheet-back" onClick={() => setPanel(null)}>
+              <div className="cs-sheet-box" onClick={(e) => e.stopPropagation()}>
+                <GangAlertsContext.Provider value={gangAlerts}>
+                  <CityHqContext.Provider value={cityHqNav}>
+                    <GangsFullScreen onClose={() => setPanel(null)} />
+                  </CityHqContext.Provider>
+                </GangAlertsContext.Provider>
+              </div>
+            </div>
           )}
           {panel?.kind === 'soygun' && (
             <div className="cs-panel-layer">
@@ -1747,7 +1740,13 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
             />
             </div>
           )}
-          {panel?.kind === 'profile' && <ProfileFullScreen onClose={() => setPanel(null)} />}
+          {panel?.kind === 'profile' && (
+            <div className="cs-sheet-back" onClick={() => setPanel(null)}>
+              <div className="cs-sheet-box" onClick={(e) => e.stopPropagation()}>
+                <ProfileFullScreen onClose={() => setPanel(null)} />
+              </div>
+            </div>
+          )}
           {watchId && <StreamViewer streamId={watchId} onClose={() => setWatchId(null)} />}
         </Suspense>
       )}

@@ -1335,6 +1335,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
   // v147 — mekândan şehre çıkış: giriş kapısının önünde "🌆 Şehre çık" → büyük
   // şehirde o mekânın kapısında doğulur. Çete karargahı / Teşkilat'ın şehirde yeri yok.
   const cityRegion = useMemo(() => {
+    if (user && isHq) return 'hq'; // v159.1: karargahın kapısında da "Şehre çık" (çıkınca karargahın önünde)
     if (!user || isHq || isTeskilat) return null;
     if (venue) {
       const VK = { camii: 'camii', banka: 'banka', karakol: 'karakol', belediye: 'belediye', gazino: 'casino', araba_galerisi: 'araba_galerisi', silah_magazasi: 'silah_magazasi', modifiye_garaji: 'modifiye_garaji', park: 'park', kokorecci: 'kokorecci', simitci: 'simitci', donerci: 'donerci', kofteci: 'kofteci', midyeci: 'midyeci', dondurmaci: 'dondurmaci' };
@@ -1365,6 +1366,11 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
   const goCity = () => {
     const region = cityRegion;
     exit();
+    if (region === 'hq') {
+      const hq = houseDoc?.hq || {};
+      setTimeout(() => window.dispatchEvent(new CustomEvent('neon-city-exit', { detail: { region: 'hq', gangId: hq.gangId || null, worldId: hq.worldId || null } })), 0);
+      return;
+    }
     // önce mekân kapansın, sonra şehir açılsın (App tüm üst ekranları kapatır)
     setTimeout(() => window.dispatchEvent(new CustomEvent('neon-city-exit', { detail: { region } })), 0);
   };

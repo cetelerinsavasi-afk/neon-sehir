@@ -27,6 +27,8 @@ import { IS_ANDROID_APP } from './lib/platform';
 import { quietRestorePlayPurchases, playRestoreSupported } from './lib/playBilling';
 import { exitApp, installBackHandler, rearmBack, useBackClose } from './lib/backStack';
 import { isTaRacing } from './lib/raceGuard';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from './firebase';
 import ConfirmModal from './components/ConfirmModal/ConfirmModal';
 import LiveStreamsButton from './components/Stream/LiveStreamsButton';
 import UpdateAppBanner from './components/UpdateAppBanner/UpdateAppBanner';
@@ -65,6 +67,7 @@ const BusinessHub = lazyScreen(() => import('./components/BusinessHub/BusinessHu
 const NetCreditRing = lazyScreen(() => import('./components/Venue/NetCreditRing'));
 const FutbolFullScreen = lazyScreen(() => import('./components/FutbolScreen/FutbolFullScreen'));
 const GangsFullScreen = lazyScreen(() => import('./components/Gangs/GangsFullScreen'));
+const GangHqScreen = lazyScreen(() => import('./components/Gangs/GangHq')); // v159.1
 const ParkWorldScreen = lazyScreen(() => import('./components/ParkWorldScreen/ParkWorldScreen'));
 const BankWorldScreen = lazyScreen(() => import('./components/BankWorldScreen/BankWorldScreen'));
 const KarakolWorldScreen = lazyScreen(() => import('./components/KarakolWorldScreen/KarakolWorldScreen'));
@@ -203,6 +206,9 @@ function GameShell() {
   const [businessView, setBusinessView] = useState(null);
   const [gangsOpen, setGangsOpen] = useState(false);
   const [gangsHq, setGangsHq] = useState(null); // v157.4: şehirden karargaha giriş
+  // v159.1 — karargah: şehirdeki (içinden geçilen) karargah içleri kaldırıldı. Karargah kapısında
+  // "İçeri gir" / Çeteler › Aç → gerçek karargah ekranı (GangHq) şehrin üstünde açılır, şehir bekler.
+  const [hqView, setHqView] = useState(null); // null | { gangId }
   const [futbolOpen, setFutbolOpen] = useState(false);
   // comingSoon — "Çok yakında" mesajı (mekan adı), 2 sn sonra kendiliğinden kapanır.
   const [comingSoon, setComingSoon] = useState(null);
@@ -423,10 +429,28 @@ function GameShell() {
   }
   const openCityRef = useRef(openCity);
   openCityRef.current = openCity;
+  const cityOpenRef = useRef(false);
+  cityOpenRef.current = Boolean(city);
   // mekânın içinde giriş kapısındaki "Şehre çık" (HouseScreen) → o mekânın kapısında doğ
   useEffect(() => {
     const on = (e) => {
       const r = e?.detail?.region;
+      // v159.1: karargahın kapısındaki "Şehre çık" — şehir arkada bekliyorsa (karargaha şehirden
+      // girildiyse) karargah ekranının kapanması yeter; yoksa şehir karargahın kapısının önünde açılır
+      if (r === 'hq') {
+        if (cityOpenRef.current) return;
+        const { gangId, worldId } = e.detail || {};
+        const fallback = () => openCityRef.current({ region: 'ev', out: true });
+        if (!gangId || !worldId) return fallback();
+        getDoc(doc(db, `gangWorlds/${worldId}/gangs`, gangId))
+          .then((g) => {
+            const slot = g.exists() ? g.data().hqSlot : null;
+            if (Number.isInteger(slot) && slot >= 0 && slot < 6) openCityRef.current(`hq${slot}`);
+            else fallback();
+          })
+          .catch(fallback);
+        return;
+      }
       if (typeof r === 'string' && r) openCityRef.current(r);
     };
     window.addEventListener('neon-city-exit', on);
@@ -534,7 +558,7 @@ function GameShell() {
   // v147.1 — şehirden açılan liste/mekân/soygun ekranı kapanınca (✕) ana sayfa yerine şehre,
   // girilen kapının önüne dönülür
   const somethingOpen = Boolean(
-    watchStreamId || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || teskilatOpen || vendorRegion || heistTarget !== undefined || activeRegion || activeTableId || (effectiveRaceRoomId && raceExpanded)
+    watchStreamId || hqView || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || teskilatOpen || vendorRegion || heistTarget !== undefined || activeRegion || activeTableId || (effectiveRaceRoomId && raceExpanded)
   );
   // v157.4: ana sayfa yok — oyun şehirde açılır (evin önünde); hiçbir mekân / ekran açık değilse
   // oyuncu her zaman şehre (girdiği kapının önüne, yoksa evin önüne) döner → asla boşta kalmaz
@@ -547,7 +571,7 @@ function GameShell() {
     openCityRef.current(cityReturn || { region: 'ev', out: true });
   }, [cityReturn, city, somethingOpen]);
   const mapCovered = Boolean(
-    watchStreamId || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || teskilatOpen || Boolean(vendorRegion) || Boolean(city) || heistTarget !== undefined || (effectiveRaceRoomId && raceExpanded)
+    watchStreamId || hqView || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || teskilatOpen || Boolean(vendorRegion) || Boolean(city) || heistTarget !== undefined || (effectiveRaceRoomId && raceExpanded)
   );
 
   return (
@@ -720,6 +744,17 @@ function GameShell() {
         />
       )}
       {futbolOpen && <FutbolFullScreen onClose={() => setFutbolOpen(false)} />}
+      {hqView && (
+        <GangAlertsContext.Provider value={gangAlerts}>
+          <GangHqScreen
+            gangId={hqView.gangId}
+            onExit={() => {
+              setHqView(null);
+              setCityCovered(false);
+            }}
+          />
+        </GangAlertsContext.Provider>
+      )}
       {gangsOpen && (
         <GangAlertsContext.Provider value={gangAlerts}>
           <GangsFullScreen
@@ -853,13 +888,17 @@ function GameShell() {
           // v158: şehirdeki 📱 düğmesinde okunmamış sayısı (SMS + ChatsApp + Sixtagram bildirimi)
           phoneBadge={unread.smsUnreadCount + (chatsAppCount || (unread.chatsAppHasNew ? 1 : 0)) + unread.sixtagramUnreadNotifCount}
           covered={cityCovered}
-          onEnterHq={(kind, slot) => {
-            // v157.9: şehir kapanmaz — düzenleme ekranı şehrin üstünde açılır, şehir bekler (anında açılır,
-            // dönüşte şehir yeniden kurulmaz). Karargahın içi dönüşte yeniden okunur.
+          onEnterHq={(kind, slot, gangId) => {
+            // v159.1: karargah kapısı / Çeteler › Aç → gerçek karargah şehrin üstünde (şehir bekler,
+            // çıkınca karargahın kapısının önündesin). Teşkilat paneli eskisi gibi Çeteler'de.
             if (Number.isInteger(slot)) setCityReturn(`hq${slot}`);
             setCityCovered(true);
-            setGangsHq(kind);
-            setGangsOpen(true);
+            if (kind === 'intel') {
+              setGangsHq(kind);
+              setGangsOpen(true);
+              return;
+            }
+            setHqView({ gangId: gangId || null });
           }}
           // v157.4: şehrin Soygun panelindeki Ziyaret → mekân / ev (çıkınca şehre dönülür)
           onVisitVenue={(k) => {

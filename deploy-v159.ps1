@@ -45,6 +45,8 @@ $ekle = @(
   'src/components/Phone/PhoneScreen.css',
   'src/components/Phone/PhoneScreen.jsx',
   'src/components/RaceTrackScreen/TimeAttackRace.jsx',
+  'src/components/HouseScreen/HouseScreen.jsx',
+  'src/components/City/coast.js',
   'V159-DEGISIKLIKLER.md',
   'deploy-v159.ps1',
   'v159-yukle.bat'
@@ -52,7 +54,7 @@ $ekle = @(
 git add -- $ekle
 $gizli = git diff --cached --name-only | Select-String -Pattern '(keystore\.properties$|\.keystore$|\.jks$|local\.properties$|\.aab$|\.apk$|\.env$)'
 if ($gizli) { git reset -q; Dur "Gizli/derleme dosyasi commit'e girecekti: $gizli -> commit YAPILMADI." }
-git commit -q -m "v159: sehir netligi (cozunurluk tabani + dinamik gorus mesafesi), Oyuncu adi duzeltmesi, yarista Android geri/kenardan kaydirma yarisi kapatmiyor + yarista sehir grafik bellegini birakir, ic kamera fotografi kokpitle, kendi karargahina dogrudan gercek karargah, hayalet parmak yakinlasmasi, telefonda sola kaydir = Gazete, Flappy Kus oyun salonunda, dukkanlara girilmez (kapida liste + soygun), sohbet hep acik, mesaj yanindaki uyari kalkti (sikayet Yakindakiler'den)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -m "Claude-Session: https://claude.ai/code/session_01YQymXP8ADf1HZUb3p4EzoC"
+git commit -q -m "v159.1: sehirdeki karargah icleri kaldirildi (her karargah kapisinda Iceri gir = gercek karargah, icerde kapida Sehre cik), dukkan kapilari yaklasinca acilmaz, beach club tabureleri + oturup kalkinca sikisma, sehirde Ceteler/Profil alttan acilan pencere | v159: sehir netligi (cozunurluk tabani + dinamik gorus mesafesi), Oyuncu adi duzeltmesi, yarista Android geri/kenardan kaydirma yarisi kapatmiyor + yarista sehir grafik bellegini birakir, ic kamera fotografi kokpitle, kendi karargahina dogrudan gercek karargah, hayalet parmak yakinlasmasi, telefonda sola kaydir = Gazete, Flappy Kus oyun salonunda, dukkanlara girilmez (kapida liste + soygun), sohbet hep acik, mesaj yanindaki uyari kalkti (sikayet Yakindakiler'den)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -m "Claude-Session: https://claude.ai/code/session_01YQymXP8ADf1HZUb3p4EzoC"
 if ($LASTEXITCODE -ne 0) { Dur "git commit basarisiz (degisiklik yok ya da git hatasi). Ciktiyi Claude'a gonder." }
 git push
 if ($LASTEXITCODE -ne 0) { Dur "git push basarisiz. Ciktiyi Claude'a gonder." }

@@ -114,6 +114,13 @@ function patchCity(city) {
     v.closedShop = CLOSED_SHOPS.has(l.type);
     v.base.solid(v.door.x, v.door.z - 1.3, v.closedShop ? 1.6 : 1.4, 0.4);
     if (!v.closedShop) v.base.solids.at(-1).car = true;
+    // v159.1: kapalı dükkânın kapısı yaklaşınca AÇILMAZ (oyuncular girmeye çalışmasın) — karargah kapısı gibi
+    if (v.closedShop) {
+      (v.doors || []).forEach((dr) => {
+        if (dr?.userData?.ctl) dr.userData.ctl.tick = undefined;
+        dr?.traverse?.((o) => o.userData.doorVoid && (o.visible = true));
+      });
+    }
     city.kits.push(...v.kits);
     l.kit = v.base;
     l.info = { ...(l.info || {}), door: v.door };
