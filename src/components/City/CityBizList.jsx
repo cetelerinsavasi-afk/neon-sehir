@@ -9,7 +9,9 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useBusinessList } from '../../hooks/useBusinessList';
 import { usePolledPresence } from '../../hooks/usePolledPresence';
 import { BIZ_TYPES } from '../../../functions/businessCatalogData.js';
-import { GAME_VENUE } from '../BusinessHub/BusinessHub';
+import { GAME_VENUE, bizPriceText, useDepoStocks } from '../BusinessHub/BusinessHub';
+import { useDepoMarket } from '../../hooks/useDepoMarket';
+import { futbolDayKey } from '../../../functions/businessCatalogData.js';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 
 export default function CityBizList({ type, onPick }) {
@@ -21,6 +23,13 @@ export default function CityBizList({ type, onPick }) {
   const gameLoc = gv?.loc || null;
   const interior = usePolledPresence('interiorPresence', { enabled: Boolean(user && gameLoc), max: 400 });
   const gamePeople = gameLoc ? interior.filter((p) => p.locationId === gameLoc).length : gameHousePeople;
+  // v160.3 — eskisi gibi listede fiyatlar (depo: al / sat, "Mal yok"; spor: üyelik, bonus; atölye…)
+  const depoMarket = useDepoMarket({ enabled: type === 'depo' && Boolean(user), excludeOwner: user?.uid || null });
+  const depoStocks = useDepoStocks(
+    list.map((h) => h.id),
+    type === 'depo' && Boolean(user) && !loading
+  );
+  const today = futbolDayKey(Date.now());
   if (!t) return null;
   if (!user) return <p className="cs-biz-empty">Giriş yapmalısın.</p>;
   if (loading) return <p className="cs-biz-empty">Yükleniyor…</p>;
@@ -38,6 +47,7 @@ export default function CityBizList({ type, onPick }) {
             <span className="hh-info">
               <b>{game.name}</b>
               <span>Sahibi: Neon Şehir</span>
+              {bizPriceText(type, null, true, depoMarket) && <span className="bh-price">{bizPriceText(type, null, true, depoMarket)}</span>}
             </span>
             <span className={`hh-count${people ? ' live' : ''}`}>
               <i />
@@ -52,8 +62,11 @@ export default function CityBizList({ type, onPick }) {
             <span className="hh-info">
               <b className="bh-name-row">
                 <span className="bh-name">{h.name || t.label}</span>
+                {type === 'spor' && h.gymBonusDay === today && <em className="bh-bonus">🔥 Bonus %10</em>}
+                {type === 'depo' && depoStocks[h.id] === 0 && <em className="bh-bonus bh-empty">Mal yok</em>}
               </b>
               <span>Sahibi: {h.ownerName || 'Oyuncu'}{h.mine ? ' (sen)' : ''}</span>
+              {bizPriceText(type, h) && <span className="bh-price">{bizPriceText(type, h)}</span>}
             </span>
             <span className={`hh-count${people ? ' live' : ''}`}>
               <i />

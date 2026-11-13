@@ -2060,3 +2060,8 @@
     box-shadow: 0 0 0 200px #000;
   }
 }
+
+/* v160.3 — mekânda şehirdeki gibi: solda hareketler, sağ altta Çeteler · Soygun · Profil */
+.hs-root .hs-left { bottom: calc(168px + var(--hs-safe-b, 0px)); }
+.hs-root .hs-chat:not(.build) { right: 78px; }
+.hs-venue-layer { position: fixed !important; z-index: 950; }

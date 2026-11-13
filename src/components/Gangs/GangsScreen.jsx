@@ -13,7 +13,7 @@ import GuestGangs from './GuestGangs';
 import { Btn } from './ui';
 import './Gangs.css';
 
-function Maintenance({ icon = '🚧', title = 'Tadilatta', children }) {
+export function Maintenance({ icon = '🚧', title = 'Tadilatta', children }) {
   return (
     <div className="gx-maint">
       <div className="gx-maint-icon" aria-hidden="true">
@@ -36,7 +36,8 @@ export function GangHome() {
   );
 }
 
-export default function GangsScreen() {
+// v160.3: canlı çete dünyası (GangPanel de kullanır)
+export function useLiveGangWorld() {
   const { user, loading: authLoading } = useAuth();
   const { data: config, loading } = useDocData(user ? 'gangSystem/config' : null);
   const [hello, setHello] = useState(null);
@@ -56,6 +57,11 @@ export default function GangsScreen() {
 
   const liveWorldId = config?.autoOpened ? (config.liveOpen ? config.liveWorldId : null) : hello?.liveOpen ? hello.liveWorldId : null;
   const liveMode = useMemo(() => ({ world: 'live', worldId: liveWorldId, actorId: user?.uid }), [liveWorldId, user?.uid]);
+  return { user, authLoading, config, hello, setHello, setRetry, liveWorldId, liveMode };
+}
+
+export default function GangsScreen() {
+  const { user, authLoading, config, hello, setHello, setRetry, liveWorldId, liveMode } = useLiveGangWorld();
 
   if (!user) {
     // v134: misafir çeteleri ve savaşları izleyebilir

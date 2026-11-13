@@ -19,7 +19,8 @@ import { useVehicles } from '../../hooks/useVehicles';
 import { useBlocks } from '../../contexts/BlocksContext';
 import { useBackClose } from '../../lib/backStack';
 import { blockProfanity } from '../../lib/profanityGuard';
-import { buyFromVendor, buyFromBufe, sellContrabandAtPark, cityAction, createSixtagramPost, shopAction, houseAction } from '../../services/gameActions';
+import { buyFromVendor, buyFromBufe, sellContrabandAtPark, cityAction, createSixtagramPost, shopAction, houseAction, checkOnboardingProgress } from '../../services/gameActions';
+import { currentOnboardingTaskId } from '../../../functions/onboardingData.js';
 import { FUEL_PRICE, GAS_MARKET_MENU } from '../../../functions/gasStation.js';
 import { GAS_STATION, FAR_DEPOT, LIMAN_BAY, OTOGARS } from '../../../functions/cityJobsData.js';
 import { createJobRunner, worldRoute } from './cityJobs.js';
@@ -77,7 +78,7 @@ const fmt = (n) => Number(n || 0).toLocaleString('tr-TR');
 const FutbolFullScreen = lazy(() => import('../FutbolScreen/FutbolFullScreen'));
 // v157.4 — şehrin alt çubuğundan açılan paneller (şehirden çıkılmaz)
 const GangsFullScreen = lazy(() => import('../Gangs/GangsFullScreen'));
-const OrgPanelSheet = lazy(() => import('../Gangs/OrgPanelSheet'));
+const GangPanel = lazy(() => import('../Gangs/GangPanel')); // v160.3: 5 sekmeli Çeteler paneli
 const MekanlarScreen = lazy(() => import('../MekanlarScreen/MekanlarScreen'));
 const ProfileFullScreen = lazy(() => import('../ProfileFullScreen/ProfileFullScreen'));
 const StreamViewer = lazy(() => import('../Stream/StreamViewer'));
@@ -251,6 +252,16 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     if (user) setAskSignIn(false);
   }, [user]);
   const { player } = usePlayer();
+  // v160.3 — başlangıç görevi 1: mini haritadan ışınlanınca tamamla (sadece görev o an 21 ise tek çağrı)
+  const tpTaskRef = useRef(false);
+  const onTeleported = () => {
+    if (!player || player.onboardingRewardClaimed || tpTaskRef.current) return;
+    if (currentOnboardingTaskId(player) !== 21) return;
+    tpTaskRef.current = true;
+    checkOnboardingProgress({ event: 'teleport' }).catch(() => {
+      tpTaskRef.current = false;
+    });
+  };
   const { actions: daily } = useDailyActions();
   const { inventory } = useInventory();
   const { isBlocked } = useBlocks();
@@ -270,7 +281,9 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const [heistOn, setHeistOn] = useState(false); // v154: soygun videosu oynarken şehir arayüzü gizli
   const [toast, setToast] = useState(null);
   const [msgs, setMsgs] = useState([]);
-  const [run, setRun] = useState(false);
+  const [run, setRun] = useState(true); // v160.3: şehirde hızlı koşma varsayılan açık
+  const runRef = useRef(true);
+  runRef.current = run;
   const [muted, setMuted] = useState(true);
   const [mapOpen, setMapOpen] = useState(false);
   void onClose; // v157.4: şehirden ana sayfaya çıkış yok
@@ -315,8 +328,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const loadHqRef = useRef(loadHq);
   loadHqRef.current = loadHq;
   const [orgPanel, setOrgPanel] = useState(null); // 'gang' | 'intel' — şehrin içinde Çetem / Teşkilat paneli
-  const goMyHq = useCallback(async () => {
-    const gid = gangRef.current?.gangId;
+  // v160.3: herhangi bir çetenin karargahına (Çeteler › Karargaha gir)
+  const goHq = useCallback(async (gid) => {
     if (!gid) return false;
     await loadHqRef.current();
     const slot = hqRef.current.byGang[gid];
@@ -325,6 +338,27 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     if (!engineRef.current?.exitHq(slot)) return false;
     enterHqRef.current?.('gang', slot, gid);
     return true;
+  }, []);
+  const goMyHq = useCallback(() => goHq(gangRef.current?.gangId), [goHq]);
+  // v160.3: karargahın içindeki Çeteler panelinden "Karargaha gir" (HqPanels olay gönderir)
+  useEffect(() => {
+    const on = (e) => {
+      const gid = e.detail?.gangId;
+      if (gid) goHq(gid);
+    };
+    window.addEventListener('neon-enter-gang-hq', on);
+    return () => window.removeEventListener('neon-enter-gang-hq', on);
+  }, [goHq]);
+  // v160.3: mekânın içindeki hatırlatmadan "Git" (App mekânı kapatır, şehir o yere ışınlar)
+  useEffect(() => {
+    const on = (e) => {
+      const t = e.detail?.target;
+      if (!t) return;
+      setPanel(null);
+      setTimeout(() => (e.detail.visit ? visitVenueRef.current?.(t) : engineRef.current?.spawnAt(t)), 0);
+    };
+    window.addEventListener('neon-city-spawn', on);
+    return () => window.removeEventListener('neon-city-spawn', on);
   }, []);
   const enterHqRef = useRef(onEnterHq);
   enterHqRef.current = onEnterHq;
@@ -343,6 +377,27 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       },
     }),
     [goMyHq]
+  );
+  // Mekanlar › mekâna git: şehrin içindeki mekâna doğrudan girilir (çıkınca mekânın önündesin)
+  const visitVenueRef = useRef(null);
+  visitVenueRef.current = (k) => {
+    setPanel(null);
+    const lt = VISIT_LOT[k];
+    const e = engineRef.current;
+    if (lt && e && (e.enterVenue(lt) || (lt === 'park' && (e.spawnAt('park'), true)))) return;
+    onVisitVenue?.(k);
+  };
+  // v160.3: Çeteler › "Karargaha gir" — o çetenin karargahının kapısına ışınlan + karargaha gir
+  const enterGangHqFromPanel = useCallback(
+    (g) => {
+      if (!g?.id) return;
+      setPanel(null);
+      setOrgPanel(null);
+      goHq(g.id).then((ok) => {
+        if (!ok) flashRef.current?.('Bu çetenin karargahı henüz açılmadı.');
+      });
+    },
+    [goHq]
   );
   // v157.4: konum iğnesi — haritada boş bir yere dokun → yol tarifi (ok + mesafe, haritada çizgi)
   const pinRef = useRef(null);
@@ -579,6 +634,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         },
       });
       engineRef.current = eng;
+      eng.setRun?.(runRef.current); // v160.3: hızlı koşma (varsayılan açık)
       setLiveCityEngine(eng); // v147: Sixtagram'daki şehir fotoğrafları bu motorla çizilir
       hqAreaRef.current = eng.hqArea?.() || null;
       if (import.meta.env?.DEV) window.__cityEng = eng;
@@ -755,6 +811,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       getSelfState: () => engineRef.current?.venueLocal?.() || null,
       approach: () => false,
       setSelfTicket: () => {},
+      city: true, // v160.4 — mekân katmanı şehirde (HouseScreen değil)
+      setHolding: (p) => engineRef.current?.setHolding?.(p), // v160.4 — belediye çaycısı
     };
   }
   const rotated = false; // v157.1: yatay mod kaldırıldı
@@ -1750,7 +1808,11 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       {orgPanel && (
         <Suspense fallback={null}>
           <GangAlertsContext.Provider value={gangAlerts}>
-            <OrgPanelSheet org={typeof orgPanel === 'string' ? orgPanel : 'gang'} profileGang={orgPanel?.profile || null} onClose={() => setOrgPanel(null)} />
+            <GangPanel
+              start={typeof orgPanel === 'string' ? { org: orgPanel, tab: 'savas' } : orgPanel?.profile ? { profile: orgPanel.profile, tab: 'profil' } : { tab: 'ceteler' }}
+              onClose={() => setOrgPanel(null)}
+              onEnterHq={enterGangHqFromPanel}
+            />
           </GangAlertsContext.Provider>
         </Suspense>
       )}
@@ -1758,17 +1820,23 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         <Suspense fallback={<div className="hs-loading cs-loading"><div className="hs-spinner" /></div>}>
           {/* v159.1: Çeteler ve Profil de Soygun paneli gibi alttan açılan pencere (tüm ekranı kaplamaz;
               dışına dokununca kapanır) */}
-          {panel?.kind === 'gangs' && (
-            <div className="cs-sheet-back" onClick={() => setPanel(null)}>
-              <div className="cs-sheet-box" onClick={(e) => e.stopPropagation()}>
-                <GangAlertsContext.Provider value={gangAlerts}>
-                  <CityHqContext.Provider value={cityHqNav}>
-                    <GangsFullScreen onClose={() => setPanel(null)} />
-                  </CityHqContext.Provider>
-                </GangAlertsContext.Provider>
+          {panel?.kind === 'gangs' &&
+            (guest ? (
+              <div className="cs-sheet-back" onClick={() => setPanel(null)}>
+                <div className="cs-sheet-box" onClick={(e) => e.stopPropagation()}>
+                  <GangAlertsContext.Provider value={gangAlerts}>
+                    <CityHqContext.Provider value={cityHqNav}>
+                      <GangsFullScreen onClose={() => setPanel(null)} />
+                    </CityHqContext.Provider>
+                  </GangAlertsContext.Provider>
+                </div>
               </div>
-            </div>
-          )}
+            ) : (
+              // v160.3 — 5 sekmeli Çeteler paneli (Çeteler · Sohbet · Savaş · Ticaret · Çete)
+              <GangAlertsContext.Provider value={gangAlerts}>
+                <GangPanel start={{ tab: 'ceteler' }} onClose={() => setPanel(null)} onEnterHq={enterGangHqFromPanel} />
+              </GangAlertsContext.Provider>
+            ))}
           {panel?.kind === 'soygun' && (
             <div className="cs-panel-layer">
             <MekanlarScreen
@@ -1777,17 +1845,16 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
               onTabChange={setMekTab}
               initialHeistTarget={null}
               onClose={() => setPanel(null)}
-              onVisitVenue={(k) => {
-                setPanel(null);
-                // v157.4: şehrin içindeki mekâna doğrudan girilir (çıkınca mekânın önündesin)
-                const lt = VISIT_LOT[k];
-                const e = engineRef.current;
-                if (lt && e && (e.enterVenue(lt) || (lt === 'park' && (e.spawnAt('park'), true)))) return;
-                onVisitVenue?.(k);
-              }}
+              onVisitVenue={(k) => visitVenueRef.current(k)}
               onVisitHouse={(id) => {
                 setPanel(null);
                 onVisitHouse?.(id);
+              }}
+              onVisitHq={(gid) => {
+                setPanel(null);
+                goHq(gid).then((ok) => {
+                  if (!ok) flashRef.current?.('Bu çetenin karargahı henüz açılmadı.');
+                });
               }}
             />
             </div>
@@ -1844,12 +1911,16 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
             } else if (act === 'tp') {
               setPin(null);
               engineRef.current?.teleportWorld(p.x, p.z);
+              onTeleported();
             }
           }}
           onClose={() => setMapOpen(false)}
           onPick={(p) => {
             setMapOpen(false);
-            if (engineRef.current?.mapGo(p)) flash(`📍 ${p.icon && !p.glyph ? `${p.icon} ` : ''}${p.name || ''}`);
+            if (engineRef.current?.mapGo(p)) {
+              flash(`📍 ${p.icon && !p.glyph ? `${p.icon} ` : ''}${p.name || ''}`);
+              onTeleported();
+            }
           }}
         />
       )}

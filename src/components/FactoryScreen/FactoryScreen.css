@@ -1369,3 +1369,6 @@
   cursor: not-allowed;
   border-color: var(--panel-border);
 }
+
+/* v160.3: Makine Al penceresinde eldeki altın */
+.factory-modal-gold { margin-left: auto; margin-right: 10px; display: inline-flex; align-items: center; gap: 5px; font-weight: 800; font-size: 13px; color: #ffd76a; padding: 4px 10px; border-radius: 999px; background: rgba(255, 215, 106, 0.1); border: 1px solid rgba(255, 215, 106, 0.35); }

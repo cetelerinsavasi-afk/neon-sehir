@@ -12,11 +12,13 @@ import { houseAction } from '../../services/gameActions';
 import { retryImport } from '../../lib/lazyRetry';
 import '../HouseScreen/HouseBusiness.css';
 
-const OrgPanelSheet = lazy(retryImport(() => import('../Gangs/OrgPanelSheet')));
+const GangPanel = lazy(retryImport(() => import('../Gangs/GangPanel'))); // v160.3: 5 sekmeli Çeteler paneli
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 const RANK = { baba: 'Mafya Babası', sagkol: 'Sağ Kol', kidemli: 'Kıdemli', tetikci: 'Tetikçi', comez: 'Çömez' };
 
-export function HqLayer({ role, hidden, onSwitchHouse }) {
+// v160.3: herkes "🏴 Çete" görür — kendi çetende Savaş sekmesi, başka çetenin karargahında o
+// çetenin herkese açık bilgileri (Çete sekmesi; Sohbet / Savaş / Ticaret kilitli)
+export function HqLayer({ role, hidden, onSwitchHouse, gangId = null, gangName = '' }) {
   const [open, setOpen] = useState(false);
   const member = role === 'baba' || role === 'yetkili' || role === 'uye';
   const enterHq = onSwitchHouse
@@ -25,22 +27,25 @@ export function HqLayer({ role, hidden, onSwitchHouse }) {
         onSwitchHouse(id);
       }
     : (id) => window.dispatchEvent(new CustomEvent('neon-open-house', { detail: { houseId: id } }));
+  // Çeteler › Karargaha gir: şehirdeki o çetenin karargahına (CityScreen dinler)
+  const enterGangHq = (g) => {
+    setOpen(false);
+    window.dispatchEvent(new CustomEvent('neon-enter-gang-hq', { detail: { gangId: g?.id } }));
+  };
+  const start = member || !gangId ? { org: 'gang', tab: 'savas' } : { profile: { id: gangId, name: gangName }, tab: 'profil' };
   return (
     <>
       {!hidden && !open && (
         <div className="hb-topbtns">
-          {member ? (
-            <button className="hb-topbtn" onClick={() => setOpen(true)}>
-              🏴 Çete
-            </button>
-          ) : role === 'davetli' ? (
-            <span className="hb-topbtn hq-guest">📨 Davetlisin</span>
-          ) : null}
+          <button className="hb-topbtn" onClick={() => setOpen(true)}>
+            🏴 Çete
+          </button>
+          {role === 'davetli' && <span className="hb-topbtn hq-guest">📨 Davetlisin</span>}
         </div>
       )}
-      {open && member && (
+      {open && (
         <Suspense fallback={null}>
-          <OrgPanelSheet org="gang" onClose={() => setOpen(false)} onEnterHq={enterHq} />
+          <GangPanel start={start} onClose={() => setOpen(false)} onEnterHq={enterGangHq} hqNav={{ enterHq }} />
         </Suspense>
       )}
     </>

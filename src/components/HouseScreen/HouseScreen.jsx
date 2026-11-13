@@ -15,6 +15,7 @@ import { createHouseEngine, EMOTES, CART_MAX, lowerPerfAfterContextLoss } from '
 import ItemThumb from './ItemThumb';
 import { MarketShelf, SellSheet, useFurnBest, useListingWatch } from './FurnMarket'; // v132 mobilya pazarı
 import { HqLayer, HqYetkiPanel } from './HqPanels'; // v146 çete karargahı
+import { VenueDock, VenueReminders } from '../City/VenueHud'; // v160.3 mekânda Çeteler · Soygun · Profil + hatırlatmalar
 import { useHouseBots } from './houseBots'; // v132 botlar
 import { BotWaiterButton, BotEditor } from './BotUi';
 import { useHousePets } from './housePets'; // v137 ev hayvanları
@@ -203,6 +204,7 @@ const ownedCount = (items) => {
 export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHouse }) {
   if (import.meta.env?.DEV) window.__hsRenders = (window.__hsRenders || 0) + 1; // önizleme: çizim sayacı
   const { user } = useAuth();
+  const [gangStart, setGangStart] = useState(null); // v160.3: Çeteler paneli (mekânın içinde)
   const { player } = usePlayer();
   const social = useSocial();
   const { isBlocked } = useBlocks();
@@ -2271,12 +2273,12 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
             </div>
           )}
 
-          {/* GEZ: sağ buton sütunu */}
+          {/* v160.3 — GEZ: sol sütun (şehirdeki gibi): hareketler */}
           {mode === 'walk' && (
-            <div className="hs-side">
+            <div className="cs-left hs-left">
               <button className={`hs-side-btn${panel === 'emotes' ? ' on' : ''}`} onClick={() => setPanel(panel === 'emotes' ? null : 'emotes')} title="Hareketler">😀</button>
               {panel === 'emotes' && (
-                <div className="hs-emotes">
+                <div className="hs-emotes cs-emotes">
                   {EMOTES.map((e) => (
                     <button key={e.key} onClick={() => emote(e.key)}>
                       <span>{e.emoji}</span>
@@ -2285,14 +2287,21 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
                   ))}
                 </div>
               )}
+            </div>
+          )}
+          {/* GEZ: sağ buton sütunu (v160.3: en üstte hatırlatmalar, ChatsApp kalktı — şehirdeki gibi) */}
+          {mode === 'walk' && (
+            <div className="hs-side">
+              {user && <VenueReminders onGang={(t) => setGangStart({ org: t, tab: 'savas' })} />}
               <button className="hs-side-btn" onClick={() => setPanel('people')} title="Odadakiler">
                 👥{others.length > 0 && <span className="hs-side-count">{others.length}</span>}
               </button>
-              <button className="hs-side-btn" onClick={() => { setPhoneApp('chatsapp'); setPanel('phone'); }} title="ChatsApp">💬</button>
               <button className="hs-side-btn" onClick={() => { setPhoneApp(null); setPanel('phone'); }} title="Telefon">📱</button>
               {!isTeskilat && <button className="hs-side-btn" onClick={openCamera} title="Fotoğraf çek">📷</button>}
             </div>
           )}
+          {/* v160.3 — sağ altta Çeteler · Soygun · Profil (şehirdeki gibi) */}
+          {mode === 'walk' && user && <VenueDock gangStart={gangStart} setGangStart={setGangStart} />}
 
           {/* GEZ: etkileşim butonları */}
           {mode === 'walk' && atCityDoor && (
@@ -2595,7 +2604,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
           {/* v146 — karargah ayarları (Fiyatlar · Davet · Rapor) ve yetkililer */}
           {panel === 'office' && hqManager && <OfficePanel houseId={houseId} houseDoc={houseDoc} onClose={() => setPanel(null)} flash={flash} hq />}
           {panel === 'hqYetki' && hqManager && <HqYetkiPanel houseId={houseId} role={hqRole} onClose={() => setPanel(null)} flash={flash} />}
-          {isHq && houseDoc && mode === 'walk' && <HqLayer role={hqRole} hidden={Boolean(panel)} onSwitchHouse={onSwitchHouse} />}
+          {isHq && houseDoc && mode === 'walk' && <HqLayer role={hqRole} hidden={Boolean(panel)} onSwitchHouse={onSwitchHouse} gangId={houseDoc.hq?.gangId || null} gangName={houseDoc.ownerName || ''} />}
           {panel === 'biz' && (
             <BizListPanel
               keys={BIZ_TYPE_KEYS}

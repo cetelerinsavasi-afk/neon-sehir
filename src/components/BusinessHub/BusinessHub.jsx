@@ -50,7 +50,7 @@ const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 
 // v137 — depo listesinde stok: yasaklı maddesi 0 olan depoya "Mal yok" etiketi
 // (depotView herkese açık; liste açılınca 30'arlı tek okuma, canlı dinleme yok)
-function useDepoStocks(ids, enabled) {
+export function useDepoStocks(ids, enabled) {
   const [stocks, setStocks] = useState({});
   const key = enabled ? ids.join(',') : '';
   useEffect(() => {
@@ -83,7 +83,7 @@ const WORKSHOP_LINES = {
   silahci: [['Tamir', 'tamirMalzemesi'], ['Geliştirme', 'silahUpgrade']],
   modifiye: [['Tamir', 'tamirMalzemesi'], ['Geliştirme', 'arabaGelistirme']],
 };
-function bizPriceText(type, h, isGame = false, depoMarket = null) {
+export function bizPriceText(type, h, isGame = false, depoMarket = null) {
   if (WORKSHOP_LINES[type]) {
     return WORKSHOP_LINES[type]
       .map(([label, m]) => {

@@ -35,7 +35,8 @@ function mapChars(token, table) {
 const SIK_EXACT = new Set(['sikim', 'sikimi', 'sikime', 'sikimde', 'sikik', 'sikiş', 'sktr', 'skrm', 'skym']);
 const SIK_PREFIX = ['siktir', 'siktiğ', 'sikerim', 'sikeyim', 'sikiyim', 'sikicem', 'sikecem', 'sikeceğ', 'sikerler', 'sikiş', 'sikeyin', 'sikerm', 'sikertir', 'sikimin'];
 // genel (ı→i, ş→s)
-const EXACT = new Set(['amk', 'aq', 'amq', 'amcik', 'pust', 'orspu', 'ibne', 'kahpe', 'yarak', 'yavsak', 'gavat', 'kaltak', 'surtuk', 'pezevenk', 'fck', 'cunt', 'amina', 'aminakoyim', 'aminakoyayim']);
+// v160.4: "amk" (ve aynı kısaltmanın yazımları aq / amq) artık küfür sayılmıyor
+const EXACT = new Set(['amcik', 'pust', 'orspu', 'ibne', 'kahpe', 'yarak', 'yavsak', 'gavat', 'kaltak', 'surtuk', 'pezevenk', 'fck', 'cunt', 'amina', 'aminakoyim', 'aminakoyayim']);
 const PREFIX = ['orospu', 'orosbu', 'oruspu', 'orspu', 'amina', 'aminak', 'amcik', 'amcig', 'yarak', 'yarag', 'dalyarak', 'pezeven', 'yavsak', 'kahpe', 'kaltak', 'surtuk', 'gavat', 'ibne', 'gotveren', 'gotlek', 'gotos', 'fuck', 'motherf', 'sikerim', 'siktir'];
 // ham (Türkçe harfleriyle) — İngilizce/başka anlamla karışmasın diye
 const RAW_EXACT = new Set(['göt', 'götü', 'götün', 'götünü', 'piç', 'piçler', 'piçin', 'oç', 'o.ç']);

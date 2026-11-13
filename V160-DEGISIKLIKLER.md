@@ -46,3 +46,42 @@
 
 ## Yükleme
 - Veritabanı kuralları (`sixImg`) + 3 fonksiyon: `createSixtagramPost`, `cleanupSixtagramPosts`, `cosmeticsAction` + site
+
+# v160.3
+## Şehir
+- **Hızlı koşu** şehirde varsayılan olarak açık
+- **Mekânların içinde** (ev, işletme, karargah, ofis…) şehirdeki gibi **Çeteler / Soygun / Profil** düğmeleri ve **Hatırlatmalar** (görevler) var; "Git" şehirde hedefe götürür
+- Mekân içinde **ChatsApp düğmesi kaldırıldı**, hareket (emote) düğmesi **sola** taşındı
+- **Seçim / imza / darbe:** anasayfadaki 🗳️ düğmesi yerine hatırlatma: "Seçim başladı — oy kullan" → **Belediyeye git** (sandık belediyede)
+- **Belediye:** Belediye düğmesi solda, altında Seçim, altında Darbe (şehir sürümünde garson yok)
+- **Fabrika içinde** Fabrika ve Soygun düğmeleri alt alta
+- Kapı listesinde **depo alış/satış fiyatları** ve **"Mal yok"** yeniden görünüyor
+
+## Çeteler paneli (5 sekme)
+- **Çeteler | Sohbet | Savaş | Ticaret | Çete**
+- Her çete satırında **Çeteye katıl** + **Karargaha gir** (Polis Teşkilatı hariç); kendi çeten **Aç** → Savaş
+- Polisi "Aç" ile açınca panel kapanana kadar tüm sekmeler teşkilatı gösterir
+- **Başka çetenin karargahında** sağ üstte **Çete** düğmesi: o çetenin adı, sloganı, altını, üye sayısı ve 7 kıdemli üyesi. Sadece Çete ve Çeteler açık, diğerleri 🔒
+- Kendi karargahında Çete düğmesi → Savaş sekmesi
+- Panelin üstündeki boş alana dokununca kapanır
+
+## Diğer
+- **Başlangıç görevi 1:** "Mini haritaya dokun ve bir yere ışınlan" (ışınlanınca tamamlanır). 1. görevi bitirmiş olanlar sıfırlanmaz; hâlâ 1. görevde olanlar ve yeni oyuncular bu görevi yapar. Diğer görevler aynı
+- **Fabrikalar sekmesi** hızlı açılır (liste cihazda saklanır, makineler parça parça gelir)
+- **Makine Al** ekranında elindeki altın yazıyor
+- **Kostümler (bilgisayar):** renk seçenekleri artık alt satıra sarıyor (fareyle sağa kaydırma gerekmiyor)
+- Sixtagram: paylaşım görseli üretildikten sonra bellek hemen bırakılıyor (düşük bellekli telefonlarda hikâye paylaşırken çökme)
+
+## Yükleme
+- Site (git push → Cloudflare) + 2 fonksiyon: `checkOnboardingProgress` (ışınlanma görevi), `produceAtFactory` (eski "fabrikada çalış" görevi artık 1. görevi ilerletmesin)
+
+# v160.4
+- **Belediye (şehir):** solda Belediye, altında **🛎️ Garson** (Çaycı Hasan bedava çay getirir, 2 dk elinde), altında **tek düğme**: darbe varsa ⚡ Darbe, yoksa seçim dönemi düğmesi (ikisi aynı anda olmaz)
+- **"amk"** artık küfür sayılmıyor (aynı kısaltmanın yazımları "aq", "amq" de)
+- **Karargaha yol tarifi:** çete karargahları bölgesi "uzak" sayılıp rota otoyoldan Kervankent'e gidiyordu; artık şehirden çakıllı yolla karargahlara gidiyor
+- **Soygun › Ziyaret › 🏴 Karargahlar:** tüm karargahlar listede (herkes girebilir); en kalabalık üstte, eşitlikte dün en çok ziyaret edilen. İçinde biri olan karargahlar **Popüler**'e de girer. Dokununca şehirde o karargaha girilir
+- Kapı listesinde fiyatlar (v160.3'te gelmişti): spor salonu üyelik + bonus, silahçı / modifiye tamir-geliştirme, internet kafe, gazino, depo al/sat + "Mal yok"
+- v160.3'ün tamamı bu pakette de var (yüklenmediyse onu da yükler)
+
+## Yükleme
+- Site + fonksiyonlar: `checkOnboardingProgress`, `produceAtFactory` (v160.3) ve küfür filtresini kullanan yazılı işlemler (sohbet, Sixtagram, çete, belediye, siyaset, ad değiştirme…) — gruplar halinde, aralarda bekleyerek

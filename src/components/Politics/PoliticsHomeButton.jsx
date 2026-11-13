@@ -20,7 +20,10 @@ export const leftSlotBottom = (slot) => `calc(${104 + slot * 64}px + env(safe-ar
 export default function PoliticsHomeButton({ slot = 0, onVisibleChange, inline = false }) {
   const { player } = usePlayer();
   const { phase, cycle, state, now } = usePoliticsState();
-  const need = politicsNeed({ phase, cycle, player, state, now });
+  // v160.3: imza / oy / sayım / darbe artık Görevler'deki hatırlatmada ("Belediyeye git" → seçim
+  // sandığı belediyede). Burada sadece rütbeli polisin gizli darbe oylaması kalır.
+  const all = politicsNeed({ phase, cycle, player, state, now });
+  const need = all === 'coupVote' ? all : null;
   const [open, setOpen] = useState(null); // açılan ekran türü
   useEffect(() => {
     onVisibleChange?.(Boolean(need));

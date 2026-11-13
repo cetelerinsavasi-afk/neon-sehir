@@ -67,6 +67,7 @@ const BusinessHub = lazyScreen(() => import('./components/BusinessHub/BusinessHu
 const NetCreditRing = lazyScreen(() => import('./components/Venue/NetCreditRing'));
 const FutbolFullScreen = lazyScreen(() => import('./components/FutbolScreen/FutbolFullScreen'));
 const GangsFullScreen = lazyScreen(() => import('./components/Gangs/GangsFullScreen'));
+const GangPanel = lazyScreen(() => import('./components/Gangs/GangPanel')); // v160.3
 const GangHqScreen = lazyScreen(() => import('./components/Gangs/GangHq')); // v159.1
 const ParkWorldScreen = lazyScreen(() => import('./components/ParkWorldScreen/ParkWorldScreen'));
 const BankWorldScreen = lazyScreen(() => import('./components/BankWorldScreen/BankWorldScreen'));
@@ -431,6 +432,21 @@ function GameShell() {
   openCityRef.current = openCity;
   const cityOpenRef = useRef(false);
   cityOpenRef.current = Boolean(city);
+  // v160.3: ev / işletme / karargah içindeki hatırlatmalarda "Git" — mekân kapanır, şehirde o yere
+  useEffect(() => {
+    const on = (e) => {
+      const t = e?.detail?.target;
+      if (!t) return;
+      setHouseView(null);
+      setBusinessView(null);
+      setHqView(null);
+      setCityCovered(false);
+      if (cityOpenRef.current) window.dispatchEvent(new CustomEvent('neon-city-spawn', { detail: { target: t, visit: Boolean(e.detail.visit) } }));
+      else openCityRef.current(e.detail.visit ? 'ev' : t);
+    };
+    window.addEventListener('neon-venue-go', on);
+    return () => window.removeEventListener('neon-venue-go', on);
+  }, []);
   // mekânın içinde giriş kapısındaki "Şehre çık" (HouseScreen) → o mekânın kapısında doğ
   useEffect(() => {
     const on = (e) => {
@@ -715,6 +731,7 @@ function GameShell() {
       />
       {profileOpen && <ProfileFullScreen onClose={() => setProfileOpen(false)} />}
       {houseView && (
+        <GangAlertsContext.Provider value={gangAlerts}>
         <HouseHub
           initialHouseId={houseView.houseId}
           mode={houseView.mode || null}
@@ -728,8 +745,10 @@ function GameShell() {
             }
           }}
         />
+        </GangAlertsContext.Provider>
       )}
       {businessView && (
+        <GangAlertsContext.Provider value={gangAlerts}>
         <BusinessHub
           type={businessView.type}
           initialHouseId={businessView.houseId || null}
@@ -742,6 +761,7 @@ function GameShell() {
             open?.(true);
           }}
         />
+        </GangAlertsContext.Provider>
       )}
       {futbolOpen && <FutbolFullScreen onClose={() => setFutbolOpen(false)} />}
       {hqView && (
@@ -757,14 +777,32 @@ function GameShell() {
       )}
       {gangsOpen && (
         <GangAlertsContext.Provider value={gangAlerts}>
-          <GangsFullScreen
-            initialHq={gangsHq}
-            onClose={() => {
-              setGangsOpen(false);
-              setGangsHq(null);
-              setCityCovered(false);
-            }}
-          />
+          {user ? (
+            // v160.3 — 5 sekmeli Çeteler paneli
+            <GangPanel
+              start={gangsHq === 'gang' || gangsHq === 'intel' ? { org: gangsHq, tab: 'savas' } : { tab: 'ceteler' }}
+              onClose={() => {
+                setGangsOpen(false);
+                setGangsHq(null);
+                setCityCovered(false);
+              }}
+              onEnterHq={(g) => {
+                setGangsOpen(false);
+                setGangsHq(null);
+                setCityCovered(false);
+                window.dispatchEvent(new CustomEvent('neon-enter-gang-hq', { detail: { gangId: g?.id } }));
+              }}
+            />
+          ) : (
+            <GangsFullScreen
+              initialHq={gangsHq}
+              onClose={() => {
+                setGangsOpen(false);
+                setGangsHq(null);
+                setCityCovered(false);
+              }}
+            />
+          )}
         </GangAlertsContext.Provider>
       )}
 
@@ -893,6 +931,9 @@ function GameShell() {
             // çıkınca karargahın kapısının önündesin). Teşkilat paneli eskisi gibi Çeteler'de.
             if (Number.isInteger(slot)) setCityReturn(`hq${slot}`);
             setCityCovered(true);
+            // v160.3: ev / işletme içindeki Çeteler › Karargaha gir — açık mekân kapanır
+            setHouseView(null);
+            setBusinessView(null);
             if (kind === 'intel') {
               setGangsHq(kind);
               setGangsOpen(true);

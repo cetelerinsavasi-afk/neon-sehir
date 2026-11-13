@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { factoryTaxRate } from '../../../functions/tax.js';
 import { useAuth } from '../../contexts/AuthContext';
-import { usePlayer } from '../../hooks/usePlayer';
+import { usePlayer, usePlayerSelect } from '../../hooks/usePlayer';
 import { useMyFactory } from '../../hooks/useMyFactory';
 import { useOpenFactories, MACHINE_LABELS } from '../../hooks/useOpenFactories';
 import { useEmployerFactory } from '../../hooks/useEmployerFactory';
@@ -182,6 +182,7 @@ function CreateFactoryModal({ onClose, isEmployed }) {
 // Makine satın alma modalı (sadece fabrika sahibi)
 // ---------------------------------------------------------------------------
 function BuyMachineModal({ onClose, ownedCounts = {} }) {
+  const myGold = usePlayerSelect((p) => p?.gold); // v160.3
   const { prices } = useInvestmentPrices();
   const rates = useBelediyeRates();
   const [busy, setBusy] = useState(null);
@@ -210,6 +211,10 @@ function BuyMachineModal({ onClose, ownedCounts = {} }) {
       <div className="factory-modal" onClick={(e) => e.stopPropagation()}>
         <div className="factory-modal-header">
           <p className="factory-modal-title">Makine Al</p>
+          {/* v160.3: eldeki altın */}
+          <span className="factory-modal-gold">
+            <span className="gold-coin-icon" style={{ width: 13, height: 13 }} /> {Number(myGold || 0).toLocaleString('tr-TR')}
+          </span>
           <button className="factory-modal-close" onClick={onClose}>
             ✕
           </button>
@@ -260,7 +265,7 @@ function BuyMachineModal({ onClose, ownedCounts = {} }) {
 // işten ayrılmadan/rekabeti görmek için kullanır.
 // ---------------------------------------------------------------------------
 function BrowseFactoriesModal({ onClose, onJoin, joinBusy, myUid, canJoin }) {
-  const { factories: allFactories } = useOpenFactories();
+  const { factories: allFactories, machinesLoading } = useOpenFactories();
   const { prices } = useInvestmentPrices();
   // v57: değere göre sıralı; 30 gündür hareketsiz fabrikalar gizli (kendi fabrikan hep görünür)
   const factories = rankFactoriesForList(allFactories, prices.cryptoPrice, { keepIds: [myUid] });
@@ -286,7 +291,7 @@ function BrowseFactoriesModal({ onClose, onJoin, joinBusy, myUid, canJoin }) {
         <div className="factory-browse-list">
           {factories.length === 0 && (
             <p className="factory-hint">
-              {allFactories.length === 0 ? 'Henüz kurulmuş bir fabrika yok.' : 'Şu an listede aktif fabrika yok.'}
+              {machinesLoading ? 'Yükleniyor…' : allFactories.length === 0 ? 'Henüz kurulmuş bir fabrika yok.' : 'Şu an listede aktif fabrika yok.'}
             </p>
           )}
           {factories.map((f) => (
@@ -1169,7 +1174,7 @@ function WorkerView({ player, myUid }) {
 // Fabrika seçmemiş/çalışmayan oyuncu — gezinme ekranı
 // ---------------------------------------------------------------------------
 function BrowseView({ myUid }) {
-  const { factories: allFactories } = useOpenFactories();
+  const { factories: allFactories, machinesLoading } = useOpenFactories();
   const { prices } = useInvestmentPrices();
   // v57: değere göre sıralı; 30 gündür hareketsiz fabrikalar gizli (kendi fabrikan hep görünür)
   const factories = rankFactoriesForList(allFactories, prices.cryptoPrice, { keepIds: [myUid] });
@@ -1204,7 +1209,7 @@ function BrowseView({ myUid }) {
 
       {factories.length === 0 && (
             <p className="factory-hint">
-              {allFactories.length === 0 ? 'Henüz kurulmuş bir fabrika yok.' : 'Şu an listede aktif fabrika yok.'}
+              {machinesLoading ? 'Yükleniyor…' : allFactories.length === 0 ? 'Henüz kurulmuş bir fabrika yok.' : 'Şu an listede aktif fabrika yok.'}
             </p>
           )}
       <div className="factory-browse-list">

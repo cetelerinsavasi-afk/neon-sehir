@@ -80,7 +80,7 @@ export function GangKasa({ gang }) {
   );
 }
 
-export function OrgCard({ logo, name, note, kasa, power, powerNote, members, leader, leaderIcon, routes = [], action, mine, rankNo, biat = null }) {
+export function OrgCard({ logo, name, note, kasa, power, powerNote, members, leader, leaderIcon, routes = [], action, mine, rankNo, biat = null, action2 = null }) {
   return (
     <Card className={`gx-gang-card${mine ? ' mine' : ''}`}>
       <div className="gx-gang-card-rank">#{rankNo}</div>
@@ -114,12 +114,16 @@ export function OrgCard({ logo, name, note, kasa, power, powerNote, members, lea
         {/* v111: bu çeteye biat edenler listede gösterilmez (sadece kimin kime biat ettiği) */}
         {note && <div className="gx-note-quote">“{note}”</div>}
       </div>
-      <div className="gx-gang-card-act">{action}</div>
+      <div className={`gx-gang-card-act${action2 ? ' gx-act2' : ''}`}>
+        {action}
+        {action2}
+      </div>
     </Card>
   );
 }
 
-export default function ListTab({ membership, official = null, onOpen }) {
+// v160.3: onEnterHq(gang) → her çetenin yanında "Karargaha gir" (Polis Teşkilatında yok)
+export default function ListTab({ membership, official = null, onOpen, onEnterHq = null }) {
   const { path } = useGang();
   const { run, busy } = useGangAction();
   const ms = membership || {};
@@ -201,6 +205,13 @@ export default function ListTab({ membership, official = null, onOpen }) {
             leaderIcon="👑"
             routes={x.g.routeProducts || []}
             mine={ms.gangId === x.id}
+            action2={
+              onEnterHq ? (
+                <Btn small kind="ghost" onClick={() => onEnterHq(x.g)}>
+                  Karargaha gir
+                </Btn>
+              ) : null
+            }
             action={
               ms.gangId === x.id ? (
                 <Btn small onClick={() => onOpen('gang')}>

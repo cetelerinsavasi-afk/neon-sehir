@@ -589,8 +589,8 @@ export const listSponsorshipFactoriesForTeam = () =>
 
 // --- Onboarding (görev listesi / hatırlatıcı paneli) ---
 
-export const checkOnboardingProgress = () =>
-  httpsCallable(functions, 'checkOnboardingProgress')();
+export const checkOnboardingProgress = (data) =>
+  httpsCallable(functions, 'checkOnboardingProgress')(data || {});
 
 // completeOnboardingChecklist — 15 görev tamamlandığında checklist'i
 // kapatır (onboardingRewardClaimed = true). ARTIK ALTIN ÖDÜLÜ YOK —

@@ -128,7 +128,28 @@ const hwyS = (p) => {
   return n && n.dist < 40 ? n.s : null;
 };
 // şehirde roadRoute, dışarıda otoyol + kasaba; çizilen kısım kısaltılır (yol çizgisi ağır olmasın)
+// v160.4 — çete karargahları bölgesi (şehrin doğusu, x≈330): şehre çakıllı yolla bağlı. Önceden
+// "uzak" sayıldığı için yol tarifi otoyoldan Kervankent'e gidiyordu.
+const CETE_ROAD = [[201, 60], [214, 60], [232, 57], [248, 42], [258, 31], [262, 30]].map(([x, z]) => ({ x, z }));
+const inCete = (p) => p.x > 256 && p.x < 406 && p.z > -12 && p.z < 72;
+function trimRoute(pts, maxLen) {
+  const out = [pts[0]];
+  let L = 0;
+  for (let i = 1; i < pts.length && L < maxLen; i++) {
+    L += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
+    out.push(pts[i]);
+  }
+  return out;
+}
 export function worldRoute(from, to, maxLen = 900) {
+  const cF = inCete(from);
+  const cT = inCete(to);
+  if (cF || cT) {
+    if (cF && cT) return [from, to];
+    const gate = CETE_ROAD[0];
+    if (cT) return trimRoute([...worldRoute(from, gate, Infinity), ...CETE_ROAD.slice(1), to], maxLen);
+    return trimRoute([from, ...CETE_ROAD.slice().reverse(), ...worldRoute(gate, to, Infinity).slice(1)], maxLen);
+  }
   let pts;
   const fFar = isFar(from);
   const tFar = isFar(to);
@@ -148,13 +169,7 @@ export function worldRoute(from, to, maxLen = 900) {
     pts = [from, ...(inTownF ? townPath({ x: from.x, z: from.z }, false).slice(1) : []), ...hwyLane(Math.min(LEN, Math.max(12, s - 6)), 12), { x: 198, z: -141 }, { x: 178, z: -141 }, ...roadRoute(HWY_ENTRY, to)];
   }
   // baştan maxLen kadarı
-  const out = [pts[0]];
-  let L = 0;
-  for (let i = 1; i < pts.length && L < maxLen; i++) {
-    L += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
-    out.push(pts[i]);
-  }
-  return out;
+  return trimRoute(pts, maxLen);
 }
 const fmtT = (s) => {
   const n = Math.max(0, Math.round(s));

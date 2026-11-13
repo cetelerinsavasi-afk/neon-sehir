@@ -22,7 +22,10 @@
 
 export const ONBOARDING_V = 2;
 export const ONBOARDING_REMOVED_IDS = [8, 15, 18];
-export const ONBOARDING_ORDER = [1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 16, 17, 19, 20];
+// v160.3: 1. görev (fabrikada çalış, id 1) → "mini haritadan ışınlan" (id 21).
+// SIRA aynı kaldığı için V artırılmadı: 1. sıradaki herkes yeni görevi görür,
+// ilerisindekiler etkilenmez.
+export const ONBOARDING_ORDER = [21, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 16, 17, 19, 20];
 export const ONBOARDING_TASK_COUNT = ONBOARDING_ORDER.length; // 17
 
 // Eski (v1) adım numarası → yeni sıra

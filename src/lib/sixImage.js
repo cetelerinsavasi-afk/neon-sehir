@@ -28,12 +28,13 @@ const loadImg = (src) =>
 // Hikâye 360×640, gönderi 432×432; sunucu sınırı (~150 KB) aşılırsa kalite düşürülür
 export async function makeShareImage(previewUrl, { asPost = false, overlay = null } = {}) {
   if (!previewUrl) return null;
+  let c = null;
   try {
     const im = await loadImg(previewUrl);
     const iw = im.naturalWidth || im.width;
     const ih = im.naturalHeight || im.height;
     if (!iw || !ih) return null;
-    const c = document.createElement('canvas');
+    c = document.createElement('canvas');
     const ctx = c.getContext('2d');
     if (asPost) {
       const s = Math.min(iw, ih);
@@ -60,6 +61,12 @@ export async function makeShareImage(previewUrl, { asPost = false, overlay = nul
     return null;
   } catch {
     return null;
+  } finally {
+    // v160.3: düşük bellekli telefonlarda tuvali hemen bırak (hikâye paylaşırken çökme)
+    if (c) {
+      c.width = 0;
+      c.height = 0;
+    }
   }
 }
 

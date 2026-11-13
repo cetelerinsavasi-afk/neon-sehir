@@ -100,3 +100,9 @@
 .cos-line:last-of-type { border: 0; margin-bottom: 14px; }
 .cos-toast { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 90; background: #0f2a22; border: 1px solid #2fe39a77; color: #bff8de; padding: 10px 16px; border-radius: 12px; font-weight: 700; font-size: 13px; pointer-events: none; max-width: 90vw; text-align: center; }
 .cos-toast.bad { background: #2a0f16; border-color: #ff2e8877; color: #ffc4d6; }
+
+/* v160.3 — bilgisayarda (fare) yatay kaydırma yok: renkler alt satıra sarsın, sekmelerde ince kaydırma çubuğu */
+@media (hover: hover) and (pointer: fine) {
+  .cos-sw { flex: 1; min-width: 0; flex-wrap: wrap; overflow-x: visible; }
+  .cos-chips, .cos-sub { scrollbar-width: thin; padding-bottom: 4px; }
+}

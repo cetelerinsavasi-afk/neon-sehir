@@ -15,13 +15,14 @@ import {
 test('17 görev; slot (8), 2. el alışveriş (15), silah malzemesi (18) yok', () => {
   assert.equal(ONBOARDING_TASK_COUNT, 17);
   for (const r of ONBOARDING_REMOVED_IDS) assert.ok(!ONBOARDING_ORDER.includes(r));
-  assert.deepEqual(ONBOARDING_ORDER.slice(0, 3), [1, 2, 3]);
+  assert.deepEqual(ONBOARDING_ORDER.slice(0, 3), [21, 2, 3]); // v160.3: 1. görev = mini haritadan ışınlan
 });
 
 test('geçiş: kaldırılan görevdeyse sonrakine geçer, gerisindeyse onları yapmaz, ilerisindeyse başa dönmez', () => {
   // eski adım → yeni sıradaki görev kimliği
   const taskAfter = (oldStep) => onboardingTaskIdAt(migrateOnboardingStep(oldStep));
-  for (let s = 1; s <= 7; s++) assert.equal(taskAfter(s), s, `eski ${s} aynı görevde`);
+  assert.equal(taskAfter(1), 21, 'eski 1 → yeni 1. görev (ışınlan)');
+  for (let s = 2; s <= 7; s++) assert.equal(taskAfter(s), s, `eski ${s} aynı görevde`);
   assert.equal(taskAfter(8), 9, 'slot görevindeyken → şüphe görevine geçer');
   assert.equal(taskAfter(9), 9);
   assert.equal(taskAfter(14), 14);
@@ -32,7 +33,7 @@ test('geçiş: kaldırılan görevdeyse sonrakine geçer, gerisindeyse onları y
   assert.equal(migrateOnboardingStep(21), 18, 'hepsini bitirmiş → bitti');
   assert.equal(onboardingTaskIdAt(18), null);
   // her eski kalan görev kendi kimliğine eşlenir (kimse geri gitmez / görev atlamaz)
-  for (const id of ONBOARDING_ORDER) assert.equal(taskAfter(id), id);
+  for (const id of ONBOARDING_ORDER) if (id !== 21) assert.equal(taskAfter(id), id);
 });
 
 test('onboardingV: 2 olan oyuncunun adımı çevrilmez; eksik/bozuk adım 1 sayılır', () => {
@@ -58,4 +59,11 @@ test('index.js: kaldırılan görevler okuma yapmaz; ilerleme yeni sırayla yaz�
   assert.ok(!safe.includes('advanceOnboardingStep(uid, 3)'));
   const risky = src.slice(src.indexOf('export const sellContrabandAtPark')).slice(0, 6000);
   assert.ok(risky.includes('advanceOnboardingStep(uid, 3)'));
+});
+
+test('v160.3: 1. görevi bitirenler sıfırlanmaz, 1. görevdekiler/yeni oyuncular ışınlanma görevini yapar', () => {
+  assert.equal(currentOnboardingTaskId({}), 21);
+  assert.equal(currentOnboardingTaskId({ onboardingStep: 1, onboardingV: 2 }), 21);
+  assert.equal(currentOnboardingTaskId({ onboardingStep: 2, onboardingV: 2 }), 2);
+  assert.equal(currentOnboardingTaskId({ onboardingStep: 2 }), 2);
 });

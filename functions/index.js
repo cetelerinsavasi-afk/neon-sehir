@@ -577,7 +577,10 @@ export const checkOnboardingProgress = onCall(async (request) => {
     const pos = onboardingPosOf(user);
     const currentStep = onboardingTaskIdAt(pos);
     const pass = () => tx.update(userRef, { onboardingStep: pos + 1, onboardingV: ONBOARDING_V });
-    if (currentStep === 5) {
+    if (currentStep === 21) {
+      // v160.3 — Görev 1: mini haritadan bir yere ışınlan (istemci ışınlanınca event:'teleport' gönderir)
+      if (request.data?.event === 'teleport') pass();
+    } else if (currentStep === 5) {
       const weaponsSnap = await tx.get(db.collection('weapons').where('ownerId', '==', uid).limit(1));
       if (!weaponsSnap.empty) {
         pass();

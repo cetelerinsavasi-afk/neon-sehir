@@ -534,29 +534,61 @@ const CoupScreen = lazy(() => import('../Politics/Coup').then((m) => ({ default:
 // v136: seçim sürecinde Belediye butonunun hemen altında: İmza (Cuma–Pazar) ·
 // Seçimler (Pazar 00:00 – Salı 00:00). Anasayfadaki buton oy verince kaybolur, bu durur.
 const POL_BTN = { signup: '✍️ İmza', election: '🗳️ Seçimler', counting: '🗳️ Seçimler', results: '🗳️ Seçimler' };
-export function BelediyePart({ panel, setPanel, walk }) {
+let teaT = 0;
+export function BelediyePart({ panel, setPanel, walk, flash, engineRef }) {
   const { user } = useAuth();
   const { phase, state } = usePoliticsState();
-  const coupOn = Boolean(state?.coup); // v136: darbe sürerken (ve karar beklenirken) Belediye altında ⚡ Darbe
+  const coupOn = Boolean(state?.coup); // v136: darbe sürerken (ve karar beklenirken) ⚡ Darbe
+  const [teaBusy, setTeaBusy] = useState(false);
+  const inCity = Boolean(engineRef?.current?.city);
   if (!user) return null;
+  // v160.4: seçim ile darbe aynı anda olmaz → tek düğme (darbe varsa Darbe, yoksa seçim dönemi)
+  const pol = coupOn ? { key: 'darbe', label: '⚡ Darbe' } : POL_BTN[phase] ? { key: 'secim', label: POL_BTN[phase] } : null;
+  // çaycı çayı getirir → elinde 2 dk (sadece şehirdeki eldeki ürün; sunucuya yazma yok)
+  const orderTea = () => {
+    if (teaBusy) return;
+    setTeaBusy(true);
+    setTimeout(() => {
+      const eng = engineRef?.current;
+      eng?.setHolding?.('cay');
+      eng?.say?.('bl_bot_cay', 'Buyur, çayın taze!');
+      clearTimeout(teaT);
+      teaT = setTimeout(() => engineRef?.current?.setHolding?.(null), 120_000);
+      setTeaBusy(false);
+      setPanel(null);
+      flash?.('🍵 Çaycı Hasan çayını getirdi · elinde (2 dk)');
+    }, 700);
+  };
   return (
     <>
-      {/* v132: sol üst garson butonuna yer açmak için sağ üstte */}
-      <Menu show={walk} right>
+      {/* v160.4: solda — Belediye, altında Garson (çaycı), altında Seçim / Darbe (tek düğme) */}
+      {/* 3D ev ekranındaki (eski) belediyede garson botun kendi düğmesi solda → menü sağda kalır */}
+      <Menu show={walk} right={!inCity}>
         <button className="v3-btn" onClick={() => setPanel('belediye')}>
           🏛️ Belediye
         </button>
-        {coupOn && (
-          <button className="v3-btn" onClick={() => setPanel('darbe')}>
-            ⚡ Darbe
+        {inCity && (
+          <button className="v3-btn" onClick={() => setPanel('garson')}>
+            🛎️ Garson
           </button>
         )}
-        {POL_BTN[phase] && (
-          <button className="v3-btn" onClick={() => setPanel('secim')}>
-            {POL_BTN[phase]}
+        {pol && (
+          <button className="v3-btn" onClick={() => setPanel(pol.key)}>
+            {pol.label}
           </button>
         )}
       </Menu>
+      {panel === 'garson' && (
+        <Sheet title="🛎️ Çaycı Hasan" onClose={() => setPanel(null)}>
+          <div className="v3-vendor-acts">
+            <button className="v3-vendor-act buy" disabled={teaBusy} onClick={orderTea}>
+              <span className="v3-vendor-ico">🍵</span>
+              <b>{teaBusy ? 'Getiriliyor…' : 'Çay'}</b>
+              <em>Bedava</em>
+            </button>
+          </div>
+        </Sheet>
+      )}
       {panel === 'belediye' && (
         <Suspense fallback={null}>
           <BelediyeScreen onClose={() => setPanel(null)} />

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
+import { usePoliticsState, politicsNeed } from './usePolitics';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlayer } from './usePlayer';
 import { useDailyActions } from './useDailyActions';
@@ -38,6 +39,7 @@ function istanbulDateKey() {
 // `step` = listedeki sırası (1–17). Kaldırılanlar: slot (8), 2. el alışveriş (15),
 // silah geliştirme malzemesi (18).
 const TASK_DEFS = {
+  21: { emoji: '🗺️', title: 'Mini haritaya dokun ve bir yere ışınlan', info: 'Şehirde sağ üstteki mini haritaya dokun, büyük haritada bir yer seç ve oraya ışınlan.' },
   1: { emoji: '🏭', title: 'Fabrikada çalış', info: 'Maaşı yüksek olan bi fabrikada çalışarak her gün para kazanabilirsin.' },
   2: { emoji: '📦', title: "Liman & Depo'ya git ve 1 adet yasaklı madde satın al", info: 'Yasaklı madde ticareti depolarda döner. Haritadan Liman & Depo’ya git, bir depoya gir ve “Yasaklı madde satın al”a bas.' },
   3: { emoji: '🌳', title: 'Parktaki şüpheli adama 5000 altın karşılığında 1 adet yasaklı madde sat', info: 'Bu görev için RİSKLİ satış yapmalısın (5.000 altın). Şüphen yüksekse yakalanma ihtimalin artar.' },
@@ -65,6 +67,13 @@ export const ONBOARDING_TASKS = ONBOARDING_ORDER.map((id, i) => ({ step: i + 1, 
  *   listesi.
  */
 // v158 — hatırlatmanın "Git" hedefi: şehirdeki yer (bölge anahtarı) ya da panel ('gang' / 'intel')
+const POL_REMIND = {
+  signup: { emoji: '✍️', text: 'Seçim imzaları başladı — imza ver' },
+  vote: { emoji: '🗳️', text: 'Seçim başladı — oy kullan' },
+  count: { emoji: '🗳️', text: 'Oylar sayılıyor' },
+  coup: { emoji: '⚡', text: 'Darbe var — tarafını seç' },
+};
+
 export function reminderTarget(id) {
   const k = String(id || '');
   if (k === 'pray') return 'camii';
@@ -73,6 +82,7 @@ export function reminderTarget(id) {
   if (k === 'work' || k === 'machines') return 'fabrika';
   if (k === 'park-safe') return 'park';
   if (k === 'belediye' || k === 'chat-belediye') return 'belediye';
+  if (k.startsWith('pol-')) return 'belediye'; // v160.3: seçim / imza / darbe → Belediyeye git (seçim sandığı orada)
   if (k.startsWith('gang-') || k === 'chat-gang') return 'gang';
   if (k === 'chat-intel') return 'intel';
   if (k === 'gym') return 'spor_salonu';
@@ -86,6 +96,9 @@ export function reminderTarget(id) {
 export function useOnboarding(gangReminders = null, gangChans = null) {
   const { user } = useAuth();
   const { player, loading: playerLoading } = usePlayer();
+  // v160.3: seçim / imza / darbe dönemi — anasayfadaki 🗳️ düğmesi yerine hatırlatma (Belediyeye git)
+  const pol = usePoliticsState();
+  const polNeed = politicsNeed({ phase: pol.phase, cycle: pol.cycle, player, state: pol.state, now: pol.now });
   // v146 — "Belediyede yeni mesajlar var": sadece belediye koltuğu olanlar (kanal başına
   // tek hafif dinleyici; sohbet açılınca markBelediyeChatSeen → hatırlatma kaybolur)
   const bdUid = user?.uid || null;
@@ -221,6 +234,9 @@ export function useOnboarding(gangReminders = null, gangChans = null) {
       list.push({ id: 'belediye', emoji: '🏛️', text: 'Belediyeye uğra' });
     }
 
+    // v160.3: seçim dönemi hatırlatmaları (gizli polis darbe oylaması 🗳️ düğmesinde kalır)
+    if (polNeed && POL_REMIND[polNeed]) list.push({ id: `pol-${polNeed}`, ...POL_REMIND[polNeed] });
+
     // v38: çete hatırlatıcıları (bkz. components/Gangs/alerts.jsx)
     if (gangReminders?.joinWar) list.push({ id: 'gang-war', emoji: '⚔️', text: 'Savaşa katıl' });
     if (gangReminders?.takeMoney) list.push({ id: 'gang-money', emoji: '💰', text: 'Çeteden para al' });
@@ -234,7 +250,7 @@ export function useOnboarding(gangReminders = null, gangChans = null) {
     list.push(...bizReminders);
 
     return list;
-  }, [player, actions, vehicles, team, futbolRole, employment, employmentMachine, factory, machines, todayKey, win, gangReminders?.joinWar, gangReminders?.takeMoney, gangReminders?.report, gangReminders?.leak, bizReminders, belediyeChat, gangChat, intelChat]);
+  }, [player, actions, vehicles, team, futbolRole, employment, employmentMachine, factory, machines, todayKey, win, gangReminders?.joinWar, gangReminders?.takeMoney, gangReminders?.report, gangReminders?.leak, bizReminders, belediyeChat, gangChat, intelChat, polNeed]);
 
   return {
     loading: playerLoading || actionsLoading,

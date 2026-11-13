@@ -3816,3 +3816,28 @@ button.gx-member.gx-member-btn:active {
 .gx-gprof-stats span { font-size: 11px; color: #8a93a8; font-weight: 700; }
 .gx-gprof-stats b { font-size: 14px; color: #e8edf6; }
 .gx-gprof-extra { margin-bottom: 6px; }
+
+/* v160.3 — 5 sekmeli Çeteler paneli: alttan açılır, üstteki boşluğa dokununca kapanır */
+.gx-panel-back {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: rgba(0, 0, 0, 0.35);
+}
+.gx-panel5.gx-hq-panel.gx-hq-sheet {
+  height: 80%;
+  height: 80dvh;
+}
+.gx-hq-panel-nav.gx-nav5 {
+  grid-template-columns: repeat(5, 1fr);
+}
+.gx-subnav-btn.locked {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+.gx-gang-card-act.gx-act2 {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+}
