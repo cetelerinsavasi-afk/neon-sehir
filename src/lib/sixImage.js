@@ -7,7 +7,7 @@
 // Sunucu: functions/sixImage.js (doğrulama) + createSixtagramPost.
 // =============================================================================
 import { app } from '../firebase';
-import { getCachedPhoto, putCachedPhoto } from './photoCache';
+import { getCachedPhoto, putCachedPhoto, forgetCachedPhoto } from './photoCache';
 import { drawPhotoOverlay, ensureOverlayFonts } from '../../functions/photoOverlay.js';
 
 const DB_URL = import.meta.env.VITE_FIREBASE_DATABASE_URL;
@@ -71,12 +71,14 @@ export async function makeShareImage(previewUrl, { asPost = false, overlay = nul
 }
 
 const inflight = new Map();
-export function loadSixImage(postId) {
+// fresh: önbelleği atla (görsel açılamadıysa — v160.5)
+export function loadSixImage(postId, { fresh = false } = {}) {
   if (!postId) return Promise.resolve(null);
-  if (inflight.has(postId)) return inflight.get(postId);
+  if (!fresh && inflight.has(postId)) return inflight.get(postId);
   const key = `six|${postId}`;
   const p = (async () => {
-    const hit = await getCachedPhoto(key);
+    if (fresh) forgetCachedPhoto(key);
+    const hit = fresh ? null : await getCachedPhoto(key);
     if (hit) return hit;
     if (!DB_URL) return null;
     const { m, db } = await rt();
@@ -85,7 +87,7 @@ export function loadSixImage(postId) {
     if (typeof b64 !== 'string' || !b64) return null;
     const dataUrl = `data:image/jpeg;base64,${b64}`;
     await putCachedPhoto(key, dataUrl);
-    return (await getCachedPhoto(key)) || dataUrl;
+    return dataUrl; // v160.5: doğrudan (iPhone'da blob: adresi açılmıyordu)
   })().catch(() => null);
   inflight.set(postId, p);
   p.then((v) => {

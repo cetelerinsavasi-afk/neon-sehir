@@ -18,6 +18,7 @@ export default function SixPhoto({ post, attachment, onReady, story = false }) {
   const legacyMobile = !remote && IS_MOBILE_DEVICE;
   const [src, setSrc] = useState(null);
   const [done, setDone] = useState(false);
+  const [retried, setRetried] = useState(false);
   useEffect(() => {
     let alive = true;
     setSrc(null);
@@ -46,7 +47,26 @@ export default function SixPhoto({ post, attachment, onReady, story = false }) {
   }, [done, src]);
 
   if (remote || legacyMobile) {
-    if (src) return <img className={`post-att-housephoto-img${vert ? ' vert' : ''}`} src={src} alt="" decoding="async" onLoad={() => onReady?.()} />;
+    if (src)
+      return (
+        <img
+          className={`post-att-housephoto-img${vert ? ' vert' : ''}`}
+          src={src}
+          alt=""
+          decoding="async"
+          onLoad={() => onReady?.()}
+          onError={() => {
+            // v160.5: görsel açılamadı (ör. iPhone'da eski önbellek kaydı) → bir kez sunucudan yeniden
+            if (remote && !retried) {
+              setRetried(true);
+              loadSixImage(post.id, { fresh: true }).then((u) => setSrc(u || null));
+            } else {
+              setSrc(null);
+              onReady?.();
+            }
+          }}
+        />
+      );
     return <div className={`post-att-housephoto-empty${vert ? ' vert' : ''}`}>{done ? (isCity ? '🌆' : '🏠') : ''}</div>;
   }
   return (

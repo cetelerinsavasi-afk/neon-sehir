@@ -42,6 +42,12 @@ export function photoKey(str) {
 }
 
 const mem = new Map(); // aynı oturumda tekrar okumasın
+// iPhone / iPad (iPadOS masaüstü gibi görünür: dokunmatik Mac)
+const IS_IOS = typeof navigator !== 'undefined' && (/iPhone|iPad|iPod/i.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1));
+// görsel açılamadıysa bu kaydı unut (bir dahaki sefere yeniden indirilsin)
+export function forgetCachedPhoto(key) {
+  mem.delete(key);
+}
 
 export async function getCachedPhoto(key) {
   if (mem.has(key)) return mem.get(key);
@@ -53,7 +59,15 @@ export async function getCachedPhoto(key) {
       const rq = tx.objectStore(STORE).get(key);
       rq.onsuccess = () => {
         const v = rq.result;
-        if (!v?.blob) return resolve(null);
+        // v160.5: yeni kayıtlar metin (data URL) — iPhone'da IndexedDB'deki Blob'dan üretilen
+        // blob: adresleri <img>'de AÇILMIYOR (WebKitBlobResource hatası; özellikle ana ekrana
+        // eklenmiş uygulamada) → Sixtagram fotoğrafları / hikâyeleri iPhone'da boş görünüyordu.
+        if (typeof v?.d === 'string' && v.d.startsWith('data:')) {
+          mem.set(key, v.d);
+          return resolve(v.d);
+        }
+        // eski Blob kaydı: iPhone'da kullanılmaz (yeniden indirilip metin olarak kaydedilir)
+        if (!v?.blob || IS_IOS) return resolve(null);
         const url = URL.createObjectURL(v.blob);
         mem.set(key, url);
         resolve(url);
@@ -65,24 +79,15 @@ export async function getCachedPhoto(key) {
   });
 }
 
-function dataUrlToBlob(u) {
-  const [head, b64] = u.split(',');
-  const mime = /data:([^;]+)/.exec(head)?.[1] || 'image/jpeg';
-  const bin = atob(b64);
-  const arr = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-  return new Blob([arr], { type: mime });
-}
-
 export async function putCachedPhoto(key, dataUrl) {
   if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) return;
   const db = await open();
   if (!db) return;
   try {
-    const blob = dataUrlToBlob(dataUrl);
     const tx = db.transaction(STORE, 'readwrite');
     const st = tx.objectStore(STORE);
-    st.put({ k: key, at: Date.now(), blob });
+    st.put({ k: key, at: Date.now(), d: dataUrl }); // v160.5: Blob değil metin (iPhone)
+    mem.set(key, dataUrl);
     // en eskileri sil
     const cnt = st.count();
     cnt.onsuccess = () => {
