@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import CarImg from '../VehicleCard/CarImg'; // v150
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import FutbolCrest from '../FutbolScreen/FutbolCrest';
@@ -24,9 +24,8 @@ import { songFromDoc } from '../../../functions/songData.js';
 import './PostAttachment.css';
 import { vehicleRaceLine } from '../RaceTrackScreen/CarStats';
 
-// v66 — ev fotoğrafı: three.js'i ana pakete sokmamak için tembel yüklenir.
-const HousePhoto = lazy(() => import('../HouseScreen/HousePhoto'));
-const CityPhoto = lazy(() => import('../City/CityPhoto')); // v147
+// v160.2 — ev / şehir fotoğrafı: yeni gönderilerde hazır görsel (SixPhoto), 3D sahne kurulmaz
+import SixPhoto from './SixPhoto';
 
 // Tüm parkPhoto kartları arasında paylaşılan avatar görsel önbelleği —
 // aynı avatarı tekrar tekrar SVG'den <img>'e çevirmemek için (bkz.
@@ -564,9 +563,7 @@ export default function PostAttachment({ attachment, post = null }) {
     return (
       <div className="post-att post-att-parkphoto">
         <div className="post-att-parkphoto-frame post-att-housephoto">
-          <Suspense fallback={<div className="post-att-housephoto-empty">Fotoğraf yükleniyor…</div>}>
-            <CityPhoto attachment={attachment} />
-          </Suspense>
+          <SixPhoto post={post} attachment={attachment} />
         </div>
         <p className="post-att-parkphoto-names">
           📷 {names.length ? `${names.join(' · ')} · ` : ''}🌆 Neon Şehir
@@ -581,9 +578,7 @@ export default function PostAttachment({ attachment, post = null }) {
     return (
       <div className="post-att post-att-parkphoto">
         <div className="post-att-parkphoto-frame post-att-housephoto">
-          <Suspense fallback={<div className="post-att-housephoto-empty">Fotoğraf yükleniyor…</div>}>
-            <HousePhoto attachment={attachment} />
-          </Suspense>
+          <SixPhoto post={post} attachment={attachment} />
         </div>
         <p className="post-att-parkphoto-names">
           📷 {names.length ? `${names.join(' · ')} · ` : ''}🏠 {attachment.houseName || 'Ev'}

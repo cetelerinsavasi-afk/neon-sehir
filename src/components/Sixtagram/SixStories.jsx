@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Eye, Trash2, X } from 'lucide-react';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import PostAttachment from './PostAttachment';
@@ -9,8 +9,7 @@ import { deleteSixtagramPost } from '../../services/gameActions';
 import { patchSixtagramFeedPost } from '../../hooks/useSixtagramFeed';
 import { flushStoryViews, isStorySeen, markStorySeen, useSixtagramPublicProfile } from '../../hooks/useSixtagramSocial';
 
-const HousePhoto = lazy(() => import('../HouseScreen/HousePhoto'));
-const CityPhoto = lazy(() => import('../City/CityPhoto')); // v147
+import SixPhoto from './SixPhoto'; // v160.2: hazır görsel (telefonda 3D sahne kurulmaz)
 
 // =============================================================================
 // v135 — Sixtagram hikâyeleri (mekânda çekilen fotoğraflar).
@@ -90,7 +89,7 @@ function StoryContent({ post, onReady }) {
     return (
       <div className="six-sv-photo">
         <Suspense fallback={<div className="six-sv-wait">📸</div>}>
-          <HousePhotoReady attachment={att} onReady={onReady} />
+          <HousePhotoReady post={post} attachment={att} onReady={onReady} />
         </Suspense>
       </div>
     );
@@ -102,7 +101,7 @@ function StoryContent({ post, onReady }) {
   );
 }
 // HousePhoto yüklenince süre başlasın
-function HousePhotoReady({ attachment, onReady }) {
+function HousePhotoReady({ post, attachment, onReady }) {
   const ref = useRef(null);
   useEffect(() => {
     const el = ref.current;
@@ -126,7 +125,7 @@ function HousePhotoReady({ attachment, onReady }) {
   }, []);
   return (
     <div ref={ref} className="six-sv-hp">
-      {attachment.type === 'cityPhoto' ? <CityPhoto attachment={attachment} manual={false} /> : <HousePhoto attachment={attachment} manual={false} />}
+      <SixPhoto post={post} attachment={attachment} onReady={onReady} story />
     </div>
   );
 }

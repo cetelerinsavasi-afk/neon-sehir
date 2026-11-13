@@ -396,7 +396,8 @@ body.ns-city-open .ta-root { z-index: 96; }
 .cs-bm-tabs { position: absolute; top: 10px; left: 10px; display: flex; gap: 4px; background: rgba(255,255,255,0.94); padding: 4px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
 .cs-bm-tabs button, .cs-bm-close, .cs-bm-zoom button { border: 0; cursor: pointer; font-weight: 800; font-size: 13px; border-radius: 9px; padding: 8px 11px; background: transparent; color: #3a3530; }
 .cs-bm-tabs button.on { background: #2f7cf6; color: #fff; }
-.cs-bm-close { position: absolute; top: 10px; right: 10px; width: 40px; height: 40px; padding: 0; font-size: 16px; background: rgba(255,255,255,0.94); box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+/* v160.2: açık renkli haritada kaybolmasın — koyu zemin, beyaz ✕ */
+.cs-bm-close { position: absolute; top: 10px; right: 10px; z-index: 3; width: 42px; height: 42px; padding: 0; font-size: 19px; font-weight: 900; color: #fff !important; background: #1b1f2e !important; border: 2px solid #fff !important; border-radius: 50%; box-shadow: 0 3px 12px rgba(0,0,0,0.45); }
 .cs-bm-zoom { position: absolute; right: 10px; bottom: 14px; display: flex; flex-direction: column; gap: 4px; background: rgba(255,255,255,0.94); padding: 4px; border-radius: 12px; }
 .cs-bm-zoom button { font-size: 20px; width: 40px; height: 40px; padding: 0; }
 @media (max-width: 420px) { .cs-bm-tabs button { padding: 7px 8px; font-size: 12px; } }

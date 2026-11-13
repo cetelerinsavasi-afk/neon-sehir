@@ -2,6 +2,7 @@ import { useContext, useRef, useState } from 'react';
 import { SixNavContext } from './sixNav';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import PostAttachment from './PostAttachment';
+import { LazyMount } from './sixLazy'; // v160.2
 import PlayerCard from '../PlayerCard/PlayerCard';
 import ActionMenu from '../ActionMenu/ActionMenu';
 import CommentsPanel from './CommentsPanel';
@@ -140,7 +141,10 @@ export default function PostCard({ post, liked, isOwn, commentsInline = false })
             {post.text}
           </p>
         ) : (
-          <PostAttachment attachment={post.attachment} post={post} />
+          // v160.2: ağır ek (fotoğraf, mekân karesi, resim, röportaj) sadece ekrana yaklaşınca kurulur
+          <LazyMount keep={post.attachment?.type === 'song'} minH={post.attachment?.vert && !post.attachment?.sq ? 520 : 300}>
+            <PostAttachment attachment={post.attachment} post={post} />
+          </LazyMount>
         )}
         {burst > 0 && (
           <span key={burst} className="six-burst" aria-hidden="true">

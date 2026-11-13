@@ -17,6 +17,7 @@ import { createSocial } from './social.js';
 import { createDeletionRequests } from './deletionRequests.js';
 import { createHouses } from './houses.js';
 import { createCityPhoto, cityRtdbUrl } from './cityPhoto.js'; // v147 şehir fotoğrafı
+import { cleanSixImage, SIX_IMG_TYPES } from './sixImage.js'; // v160.2 Sixtagram fotoğraf görseli
 import { createBusiness } from './business.js';
 import { newSaleTax, resaleTax, factoryTax, factoryTaxRate, taxLedgerWrite, taxStatWrite, splitSalaryTax, splitLotteryTax, machineTax, loadRates, ratesFor, pctText, lotteryTaxRate, transferTax } from './tax.js';
 import { createBelediye } from './belediye.js'; // v127
@@ -22486,6 +22487,20 @@ export const createSixtagramPost = onCall(async (request) => {
   const nowMs = Date.now();
 
   const postRef = db.collection('sixtagramPosts').doc();
+  // v160.2: ev / şehir fotoğrafının son karesi (çeken cihaz gönderir) → RTDB sixImg/{postId}.
+  // Görsel yoksa / geçersizse gönderi eskisi gibi (görselsiz) paylaşılır.
+  if (builtAttachment && SIX_IMG_TYPES.includes(builtAttachment.type)) {
+    const b64 = cleanSixImage(request.data?.image);
+    if (b64) {
+      try {
+        const rt = await cityDb();
+        await rt.ref(`sixImg/${postRef.id}`).set({ d: b64, u: uid, e: nowMs + SIXTAGRAM_POST_LIFETIME_MS + 3600_000 });
+        builtAttachment.img = 1;
+      } catch (e) {
+        console.error('sixImg yazılamadı', postRef.id, e?.message || e);
+      }
+    }
+  }
   const batch = db.batch();
   batch.set(postRef, {
     uid,
@@ -22728,6 +22743,13 @@ async function deleteSixtagramPostAndLikes(postRef) {
     commentsSnap.forEach((c) => batch.delete(c.ref));
     await batch.commit();
   }
+  // v160.2: fotoğraf görseli (RTDB)
+  try {
+    const rt = await cityDb();
+    await rt.ref(`sixImg/${postRef.id}`).remove();
+  } catch {
+    /* zaten yok */
+  }
   await postRef.delete();
 }
 
@@ -22764,6 +22786,18 @@ export const cleanupSixtagramPosts = onSchedule(
 
     for (const postDoc of expiredSnap.docs) {
       await deleteSixtagramPostAndLikes(postDoc.ref);
+    }
+    // v160.2: süresi dolmuş / sahipsiz kalmış fotoğraf görselleri (RTDB)
+    try {
+      const rt = await cityDb();
+      const old = await rt.ref('sixImg').orderByChild('e').endAt(cutoffMs).limitToFirst(300).get();
+      const rm = {};
+      old.forEach((c) => {
+        rm[c.key] = null;
+      });
+      if (Object.keys(rm).length) await rt.ref('sixImg').update(rm);
+    } catch (e) {
+      console.error('sixImg temizliği', e?.message || e);
     }
   }
 );

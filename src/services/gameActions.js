@@ -153,8 +153,9 @@ export const advertiseListing = (listingId, expect) =>
 
 // --- Telefon: Sixtagram (mini sosyal medya) ---
 
-export const createSixtagramPost = (text, attachment) =>
-  httpsCallable(functions, 'createSixtagramPost')({ text, attachment });
+// v160.2: image — ev / şehir fotoğrafının son karesi (JPEG data URL, bkz. lib/sixImage.js)
+export const createSixtagramPost = (text, attachment, image = null) =>
+  httpsCallable(functions, 'createSixtagramPost')({ text, attachment, ...(image ? { image } : {}) });
 
 // captureCameraSnapshot — fotoğraf makinesi AÇILDIĞI anda çağrılır, o ANKİ
 // kareyi (kendim + yakındaki oyuncular) sunucuda dondurur; "Paylaş"a

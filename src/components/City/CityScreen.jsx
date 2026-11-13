@@ -64,6 +64,7 @@ import { createCityNet } from './cityNet.js';
 import { MAP_SIZE, buildMapping } from './cityMapMath.js';
 import { setLiveCityEngine } from './cityPhotoHub.js';
 import { renderCityPhotoUrl } from './CityPhoto.jsx';
+import { makeShareImage } from '../../lib/sixImage';
 import '../HouseScreen/HouseScreen.css';
 import '../Venue3D/Venue3D.css';
 import '../../styles/worldScreenChrome.css';
@@ -993,7 +994,9 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     if (!cameraShot?.shot || camBusy) return;
     setCamBusy(true);
     try {
-      await createSixtagramPost(asPost ? caption : '', { type: 'cityPhoto', shot: cameraShot.shot, sig: cameraShot.sig, ...(asPost ? { asPost: true } : overlay ? { overlay } : {}) });
+      // v160.2: son kare hazır görsel olarak gider (izleyenler 3D sahne kurmaz)
+      const image = await makeShareImage(cameraShot.img, { asPost, overlay: asPost ? null : overlay });
+      await createSixtagramPost(asPost ? caption : '', { type: 'cityPhoto', shot: cameraShot.shot, sig: cameraShot.sig, ...(asPost ? { asPost: true } : overlay ? { overlay } : {}) }, image);
       invalidateSixtagramFeed();
       setPanel(null);
       setCameraShot(null);

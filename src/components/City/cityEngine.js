@@ -4173,8 +4173,24 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const r3 = (v) => Math.round(v * 1000) / 1000;
     const wy = (v) => r3(Math.atan2(Math.sin(v || 0), Math.cos(v || 0)));
     const cam = { px: r2(camera.position.x), py: r2(camera.position.y), pz: r2(camera.position.z), dx: r3(dir.x), dy: r3(dir.y), dz: r3(dir.z), fov: camera.fov, a: r3(camera.aspect), cw: Math.round(container.clientWidth || 400), td: view === '2d' ? 1 : 0 };
+    // v160.2: motor / bisiklet / at (açık araç) üstünde iç kameradayken fotoğrafta sürücü hiç
+    // görünmüyordu (iç kamerada çeken gizlenir). Açık araçta fotoğraf arkadan-yukarıdan çekilir.
+    const openRide = view !== '2d' && interiorCar && interiorCar.v?.open && (interiorCar.v.moto || interiorCar.v.halfW < 0.8);
+    if (openRide) {
+      const c = interiorCar;
+      const fx = Math.sin(c.yaw);
+      const fz = Math.cos(c.yaw);
+      const py = (c.y || 0) + 2.3;
+      const px = c.x - fx * 5.2;
+      const pz = c.z - fz * 5.2;
+      const tx = c.x + fx * 1.5;
+      const ty = (c.y || 0) + 1.1;
+      const tz = c.z + fz * 1.5;
+      const L = Math.hypot(tx - px, ty - py, tz - pz) || 1;
+      Object.assign(cam, { px: r2(px), py: r2(py), pz: r2(pz), dx: r3((tx - px) / L), dy: r3((ty - py) / L), dz: r3((tz - pz) / L), fov: 60 });
+    }
     // v159: araç içi (iç kamera) fotoğrafı — fotoğraf da içeriden, kokpitle çizilsin
-    if (view !== '2d' && interiorCar && ((driving && myCar) || self.ride)) {
+    if (!openRide && view !== '2d' && interiorCar && ((driving && myCar) || self.ride)) {
       cam.ic = 1;
       cam.io = driving && myCar ? myUid : self.ride.owner;
       cam.ik = driving && myCar ? 0 : self.ride.k || 1;

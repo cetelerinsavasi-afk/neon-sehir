@@ -2,6 +2,13 @@
   "rules": {
     ".read": false,
     ".write": false,
+    "sixImg": {
+      ".indexOn": ["e"],
+      "$postId": {
+        ".read": "auth != null",
+        ".write": false
+      }
+    },
     "arcade": {
       "$game": {
         ".read": "auth != null",

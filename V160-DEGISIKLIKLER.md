@@ -27,3 +27,22 @@
 - Profil düğmeleri: **Günlük Rapor · Kostümler · Aksesuarlar · Mobilyalar** (4 düğme)
 - **Aksesuarlar bilgisayarda düzgün açılmıyordu:** Kaydet çubuğu sağa sıkışıyor, liste kayıyordu. Bilgisayar düzeni yeniden yapıldı (solda sahne, sağda liste, altında Kaydet); telefon düzeni aynı
 - Kostümler ekranı bilgisayarda ortada telefon genişliğinde açılır
+
+# v160.2
+
+## Sixtagram — çökme
+- **Asıl sebep:** ev ve şehir fotoğrafları görsel olarak saklanmıyordu; her telefon akıştaki her fotoğraf için evi / koca şehri ekran dışında 3D olarak yeniden kuruyordu. Çekilen yerin yakınındaki şehir fotoğrafları (çoğu evin önünde çekiliyor) Sixtagram açılır açılmaz otomatik çiziliyordu; hikâye izleyicisi de dokunmadan çiziyordu → telefonun belleği taşıp oyun kapanıyordu
+- **Yeni altyapı:** fotoğrafı çeken cihaz paylaşırken son kareyi küçük bir JPEG olarak gönderir (hikâye 360×640, gönderi 432×432, ~30–60 KB). Sunucu doğrular (gerçek JPEG mi, boyutu uygun mu) ve Realtime Database'e (`sixImg/{gönderi}`) yazar; gönderi belgesine sadece `img: 1` eklenir. **Firestore okuma / yazma sayısı değişmedi**; görsel ekrana yaklaşan gönderi için bir kez iner ve telefonda saklanır. Gönderi silinince / süresi dolunca görsel de silinir
+- Telefonda Sixtagram artık **hiç 3D sahne kurmaz**. Eski (görselsiz) fotoğraflar telefonda simgeyle görünür (24 saatte zaten silinirler)
+- **Tembel yükleme:** akışta sadece ekrana yaklaşan gönderilerin fotoğrafı / mekân karesi / resmi / röportajı kurulur, uzaklaşınca kaldırılır (bellek sabit kalır). Önceden yükleme payı eskiden hiç çalışmıyordu (kaydırma kutusu kök verilmemişti) — düzeltildi; aşağı kaydırdıkça yaklaşılan gönderiler hazır gelir
+- Fotoğraflar artık dokunmadan doğrudan görünür
+
+## Diğer
+- Kostüme dokununca sayfa en üste (önizlemeye) kayar
+- Fiyatlar: **pahalandı** — Volt 90, Kor Perisi 140, Dalga Perisi 130, Orman Perisi 120, Ay Perisi 150, Şafak Perisi 130, Elf Okçu 70, Yeşil Gezgin 60, Zombi 45 · **ucuzladı** — Lale Muhafızı 50, Gizli Ajan 15, Gladyatör 25, Büyük Sihirbaz 25, Baba 60 (nadirlik fiyata göre)
+- Büyük haritanın sağ üstündeki ✕ koyu zemin + beyaz (açık renkli haritada kaybolmuyor)
+- Motor / bisiklet / at üstünde **iç kameradayken** çekilen fotoğrafta sürücü görünmüyordu → açık araçta fotoğraf arkadan-yukarıdan çekilir, sen görünürsün
+- Belediye panelinde ✕ en solda
+
+## Yükleme
+- Veritabanı kuralları (`sixImg`) + 3 fonksiyon: `createSixtagramPost`, `cleanupSixtagramPosts`, `cosmeticsAction` + site

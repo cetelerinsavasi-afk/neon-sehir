@@ -7,6 +7,7 @@ import { useSixtagramProfile } from '../../hooks/useSixtagramProfile';
 import { useSixtagramNotifications } from '../../hooks/useSixtagramNotifications';
 import { useSixtagramSocial, useStorySeenTick } from '../../hooks/useSixtagramSocial';
 import PostCard from './PostCard';
+import { scrollParent } from './sixLazy';
 import { useBlocks } from '../../contexts/BlocksContext';
 import { isHiddenForMe } from '../../lib/ugcVisibility';
 import ComposeModal from './ComposeModal';
@@ -57,7 +58,8 @@ function FeedMore({ onMore }) {
   useEffect(() => {
     const el = ref.current;
     if (!el || typeof IntersectionObserver === 'undefined') return undefined;
-    const io = new IntersectionObserver((ents) => ents.some((e) => e.isIntersecting) && cb.current(), { rootMargin: '600px 0px' });
+    // v160.2: kök kaydırma kutusu (yoksa önceden yükleme payı çalışmıyordu)
+    const io = new IntersectionObserver((ents) => ents.some((e) => e.isIntersecting) && cb.current(), { root: scrollParent(el), rootMargin: '600px 0px' });
     io.observe(el);
     return () => io.disconnect();
   }, []);

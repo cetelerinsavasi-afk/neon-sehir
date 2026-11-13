@@ -100,14 +100,15 @@ function Top({ onClose }) {
   const [sk, setSk] = useState(false);
   return (
     <>
+      {/* v160.2: ✕ en solda (diğer ekranlar gibi) */}
       <div className="gx-full-top">
+        <button className="gx-full-close" onClick={onClose} aria-label="Kapat">
+          ✕
+        </button>
         <span className="gx-full-title">🏛️ Belediye</span>
-        <span className="bd-top-actions">
+        <span className="bd-top-actions" style={{ marginLeft: 'auto' }}>
           <button className="bd-top-btn" onClick={() => setSk(true)}>
             📣 Şikâyet
-          </button>
-          <button className="gx-full-close" onClick={onClose} aria-label="Kapat">
-            ✕
           </button>
         </span>
       </div>

@@ -10,6 +10,7 @@ import { useBlocks } from '../../contexts/BlocksContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useHeldItem } from '../../hooks/useHeldItem';
 import { houseAction, giftHeldItem, createSixtagramPost } from '../../services/gameActions';
+import { makeShareImage } from '../../lib/sixImage'; // v160.2
 import { createHouseEngine, EMOTES, CART_MAX, lowerPerfAfterContextLoss } from './houseEngine';
 import ItemThumb from './ItemThumb';
 import { MarketShelf, SellSheet, useFurnBest, useListingWatch } from './FurnMarket'; // v132 mobilya pazarı
@@ -1799,7 +1800,9 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
     if (!cameraShot?.shot) return;
     setBusy(true);
     try {
-      await createSixtagramPost(asPost ? caption : '', { type: 'housePhoto', houseId, shot: cameraShot.shot, sig: cameraShot.sig, ...(asPost ? { asPost: true } : overlay ? { overlay } : {}) });
+      // v160.2: son kare hazır görsel olarak gider (izleyenler 3D sahne kurmaz)
+      const image = await makeShareImage(cameraShot.img, { asPost, overlay: asPost ? null : overlay });
+      await createSixtagramPost(asPost ? caption : '', { type: 'housePhoto', houseId, shot: cameraShot.shot, sig: cameraShot.sig, ...(asPost ? { asPost: true } : overlay ? { overlay } : {}) }, image);
       invalidateSixtagramFeed();
       setPanel(null);
       setCameraShot(null);
