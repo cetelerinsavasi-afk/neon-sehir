@@ -235,9 +235,17 @@ export function buildPist(kit, lot) {
     const pd = front - back;
     const pz = (back + front) / 2;
     kit.floor('epoksi_siyah', 9, pd, px, pz, 0.16);
-    kit.wallBox('beton_blok', 9.2, 3.6, 0.3, px, 0, back, { tint: '#6a6f7a' }); // v157.2: arkası yoldan kapkara görünüyordu
-    for (const sx of [-1, 1]) kit.wallBox('beton_blok', 0.3, 3.6, pd, px + sx * 4.6, 0, pz, { tint: '#6a6f7a' });
-    kit.box(9.8, 0.3, pd + 0.5, M('#1a1d24', 0.5, 0.4), px, 3.6, pz + 0.1);
+    // v158.2: duvarlar + çatı kameranın önüne gelince şeffaflaşır (birleştirilmez, kendi malzemeleri var)
+    const fade = (o) => {
+      if (!o) return o;
+      o.material = o.material.clone();
+      o.userData.dyn = true;
+      o.userData.camFade = true;
+      return o;
+    };
+    fade(kit.wallBox('beton_blok', 9.2, 3.6, 0.3, px, 0, back, { tint: '#6a6f7a' })); // v157.2: arkası yoldan kapkara görünüyordu
+    for (const sx of [-1, 1]) fade(kit.wallBox('beton_blok', 0.3, 3.6, pd, px + sx * 4.6, 0, pz, { tint: '#6a6f7a' }));
+    fade(kit.box(9.8, 0.3, pd + 0.5, M('#1a1d24', 0.5, 0.4), px, 3.6, pz + 0.1));
     kit.box(9.8, 0.08, 0.08, glowMat('#ff3a2a', 2.6), px, 3.55, front + 0.33, { cast: false });
     kit.sign('pitlounge', 'PIT LOUNGE', 0.62, px, 3.05, front + 0.37, 0, { color: '#ffffff', glow: '#ff3a2a', font: '900 100px Arial, sans-serif', light: false });
     // duvarlar (çarpışma): arka + iki yan

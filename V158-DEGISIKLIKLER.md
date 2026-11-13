@@ -1,3 +1,9 @@
+# v158.2 — yarış pisti
+
+- **Şampiyona / antrenman / bahisli yarış şehirden açılınca görünmüyordu:** yarış ekranı şehrin altında kalıyordu (ses geliyor, yarış görünmüyor, hak gidiyordu). Artık şehrin üstünde açılıyor
+- Hatırlatıcıdaki "Git ➜" ile yarış pistine gidince "🏁 Yarış Pisti" düğmesinin tam içinde doğuluyor (eskiden düğmenin 3,4 m dışında, pit duvarının arkasında kalıyordu); kamera pist tarafında, yüz pite dönük
+- Pit Lounge'un duvarları ve çatısı kameranın önüne gelince şeffaflaşıyor
+
 # v158.1 — karargah düzeltmeleri
 
 - Karargah zemini artık titremiyor / değişmiyor: karargah tasarımı yüklenince eski zeminin üstüne ikinci bir zemin ekleniyordu (iki doku üst üste titreşiyordu). Artık iç mekân bütünüyle yenileniyor; seçtiğin duvar da görünüyor. Zemin parçaları da zeminden biraz yukarıda (telefonda titreşmesin)

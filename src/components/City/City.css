@@ -309,6 +309,9 @@
 /* v154 — şehir açıkken yarış ekranı ve yarış balonu şehrin üstünde (şehir arkada durur) */
 body.ns-city-open .race-fullscreen { z-index: 96; }
 body.ns-city-open .race-bubble { z-index: 96; }
+/* v158.2: zamana karşı yarış (şampiyona / antrenman / bahis) da şehrin üstünde — eskiden şehrin (z 80)
+   altında kalıyordu: ses geliyor, yarış görünmüyor, hak gidiyordu */
+body.ns-city-open .ta-root { z-index: 96; }
 /* v156 — benzinlik: benzin al (sürerken) + market paneli */
 .cs-fuel { margin-left: auto; position: relative; overflow: hidden; background: linear-gradient(180deg, #1c7a46, #12592f) !important; border-color: #3ad07a !important; color: #eafff1 !important; font-weight: 800; }
 .cs-fuel.on i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgba(58, 208, 122, 0.45); animation: csFuel 1.6s linear forwards; }

@@ -883,6 +883,42 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   venueExtraZones();
   // statik geometriyi malzemeye + bölgeye göre birleştir (çizim çağrısı az olsun)
   mergeStatic(scene);
+  // v158.2 — kameraya duvar gelince şeffaflaşan parçalar (ör. pit lounge duvarları / çatısı)
+  const camFades = [];
+  scene.traverse((o) => {
+    if (!o.isMesh || !o.userData.camFade) return;
+    o.updateWorldMatrix(true, false);
+    o.geometry.computeBoundingSphere();
+    const c = o.geometry.boundingSphere.center.clone().applyMatrix4(o.matrixWorld);
+    camFades.push({ o, c, r: o.geometry.boundingSphere.radius, k: 1 });
+  });
+  const fadeRay = new THREE.Raycaster();
+  const fadeEye = new V();
+  const fadeDir = new V();
+  function camFade(dt) {
+    if (!camFades.length) return;
+    fadeEye.set(self.x, me.y + 1.5, self.z);
+    fadeDir.copy(fadeEye).sub(camera.position);
+    const len = fadeDir.length();
+    fadeDir.normalize();
+    fadeRay.set(camera.position, fadeDir);
+    fadeRay.far = Math.max(0.1, len - 0.3);
+    for (const f of camFades) {
+      let want = 1;
+      if (f.o.visible && (f.c.x - self.x) ** 2 + (f.c.z - self.z) ** 2 < (f.r + 14) ** 2 && fadeRay.intersectObject(f.o, false).length) want = 0.22;
+      if (Math.abs(f.k - want) < 0.005) continue;
+      f.k += (want - f.k) * Math.min(1, dt * 10);
+      if (Math.abs(f.k - want) < 0.01) f.k = want;
+      const m = f.o.material;
+      m.opacity = f.k;
+      const tr = f.k < 0.999;
+      if (m.transparent !== tr) {
+        m.transparent = tr;
+        m.depthWrite = !tr;
+        m.needsUpdate = true;
+      }
+    }
+  }
   // v157: mekânların duvar / iç parçaları kendi gruplarında birleşir (kesit + uzaklık kırpması korunur)
   W.venues.forEach((v) => mergeVenue(v));
   // v157.2 — telefonda mekân içleri: sadece yakında ve yavaşken kurulur (aşağıda lazyInteriors)
@@ -1470,6 +1506,12 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       const k = city.kits.find((q) => q.zones?.some((zz) => zz.kind === 'spawn' && zz.key === lt));
       const lp = k ? k.group.localToWorld(new V(sz.lx ?? 0, 0, sz.lz ?? 0)) : { x: sz.x, z: sz.z - 1 };
       return { x: sz.x, z: sz.z, yaw: Math.atan2(sz.x - lp.x, sz.z - lp.z) };
+    }
+    // v158.2: yarış pisti — pitin önündeki "🏁 Pit · Yarış" düğmesinin TAM içinde doğulur (eskiden 3,4 m
+    // ötede, düğme yarıçapının dışında kalıyordu); kamera pist tarafında, yüz pite dönük
+    if (lt === 'pist') {
+      const pz = zones.find((z) => z.kind === 'pist');
+      if (pz) return { x: pz.x + Math.sin(pz.out) * 1.2, z: pz.z + Math.cos(pz.out) * 1.2, yaw: pz.out, pitch: 0.42 };
     }
     const dz = zones.find((z) => z.kind === 'door' && z.type === lt) || (lt === 'pist' ? zones.find((z) => z.kind === 'pist') : null);
     // v147.3: kapının önünde, yüz YOLA dönük (kamera arkada, binanın tarafında)
@@ -3666,6 +3708,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     moonL.target.position.set(self.x, 0, self.z);
     placeCamera(dt);
     cutaway(); // v157: mekân içi kesit (kameraya bakan duvar)
+    camFade(dt); // v158.2
     porchCut(); // v157.1: dışarıda kamera tente / saçak altına girince ön cephe kesilir
     // etkileşim bölgesi
     let best = null;
