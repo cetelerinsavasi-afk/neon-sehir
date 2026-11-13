@@ -21,3 +21,9 @@
 ## Yükleme
 - Site (git push → Cloudflare) + 2 fonksiyon: `cosmeticsAction` (kostümler), `houseAction` (karargaha misafir girişi)
 - Firestore / veritabanı kuralları ve Android uygulaması değişmedi
+
+# v160.1
+- v160 sitesi yayına çıkmamıştı: GitHub'a gitti ama Cloudflare o commit için derleme başlatmadı (Kostümler ve yol tarifi bu yüzden görünmüyordu). Yükleme betiği artık push'tan sonra Cloudflare derlemesini bekleyip sonucunu söylüyor
+- Profil düğmeleri: **Günlük Rapor · Kostümler · Aksesuarlar · Mobilyalar** (4 düğme)
+- **Aksesuarlar bilgisayarda düzgün açılmıyordu:** Kaydet çubuğu sağa sıkışıyor, liste kayıyordu. Bilgisayar düzeni yeniden yapıldı (solda sahne, sağda liste, altında Kaydet); telefon düzeni aynı
+- Kostümler ekranı bilgisayarda ortada telefon genişliğinde açılır

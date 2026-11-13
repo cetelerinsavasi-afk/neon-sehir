@@ -97,9 +97,12 @@ function ProfileHeader({ player, onEditAvatar, onCostumes, onAccessories, onRepo
       <button className="home-btn" onClick={onEditAvatar}>
         🎭 Avatarımı Düzenle
       </button>
-      {/* v146 — yan yana kare butonlar: Aksesuarlar (v78) · Günlük Rapor (v92) · Mobilyalar */}
+      {/* v146 — yan yana kare butonlar · v160.1: Günlük Rapor · Kostümler · Aksesuarlar · Mobilyalar */}
       <div className="home-sq-row">
-        {/* v160 — Kostümler (hazır tipler, zümrütle) aksesuarlardan önce */}
+        <button className="home-sq home-sq-report" onClick={onReport}>
+          <span>📊</span>
+          Günlük Rapor
+        </button>
         <button className="home-sq home-sq-cos" onClick={onCostumes}>
           <span>🎭</span>
           Kostümler
@@ -107,10 +110,6 @@ function ProfileHeader({ player, onEditAvatar, onCostumes, onAccessories, onRepo
         <button className="home-sq home-sq-acc" onClick={onAccessories}>
           <span>🐾</span>
           Aksesuarlar
-        </button>
-        <button className="home-sq home-sq-report" onClick={onReport}>
-          <span>📊</span>
-          Günlük Rapor
         </button>
         <button className="home-sq home-sq-furn" onClick={onFurniture}>
           <span>🛋️</span>

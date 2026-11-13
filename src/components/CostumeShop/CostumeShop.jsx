@@ -293,6 +293,7 @@ export default function CostumeShop({ onBack }) {
 
   return (
     <div className="cos-root">
+      <div className="cos-wrap">
       <div className="cos-head" ref={topRef}>
         <button className="cos-back" onClick={onBack} aria-label="Geri">
           ←
@@ -459,6 +460,7 @@ export default function CostumeShop({ onBack }) {
         </div>
       )}
       {toast && <div className={`cos-toast${toast.ok ? '' : ' bad'}`}>{toast.text}</div>}
+      </div>
     </div>
   );
 }

@@ -361,18 +361,23 @@
   border-color: #ff6b81;
   color: #ffd0d8;
 }
+/* v160: bilgisayar düzeni — eskiden flex-wrap ile Kaydet çubuğu sağa sıkışıyor, sahne kayıyordu.
+   Artık ızgara: üstte başlık, solda sahne, sağda liste + altında Kaydet. */
 @media (min-width: 900px) {
   .acs-root {
-    flex-direction: row;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 460px;
+    grid-template-rows: auto minmax(0, 1fr) auto;
   }
   .acs-head {
-    flex: 0 0 100%;
+    grid-column: 1 / -1;
+    grid-row: 1;
   }
   .acs-stage {
-    flex: 1;
+    grid-column: 1;
+    grid-row: 2 / 4;
     min-height: 0;
-    height: calc(100% - 58px);
+    height: auto;
   }
   .acs-trial {
     position: absolute;
@@ -381,12 +386,18 @@
     max-width: calc(100% - 490px);
     border: 1px dashed var(--ye);
     border-radius: 10px;
+    z-index: 2;
   }
   .acs-panel {
-    flex: none;
-    width: 460px;
-    height: calc(100% - 58px);
+    grid-column: 2;
+    grid-row: 2;
+    min-height: 0;
     border-top: 0;
+    border-left: 2px solid var(--pk);
+  }
+  .acs-savebar {
+    grid-column: 2;
+    grid-row: 3;
     border-left: 2px solid var(--pk);
   }
 }
