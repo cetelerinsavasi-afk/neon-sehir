@@ -1,3 +1,11 @@
+# v159.2
+
+- **Şehirde yanlış ad / varsayılan görünüm:** bazı oyuncular şehirde ilk adları (giriş hesabının adı) ve varsayılan görünümle görünüyordu (fotoğrafta ise doğru ad / görünüm). Sebep: şehir, oyuncu bilgisi gelmeden açılınca ilk ad + varsayılan görünüm yayınlanıyor, diğerleri de bunu oturum boyunca saklıyordu. Artık profil yalnızca oyuncu bilgisi geldikten sonra yayınlanır ve görünen oyuncuların profili 90 sn'de bir tazelenir
+- **Ev, ofis ve depo (liman) binalarına da girilmez:** kapıda "🏠 Evler" / "🏢 Ofisler" / "📦 Depolar" düğmesi
+- Kapalı bir binanın kapısına gelince liste (ör. "🚗 Araba galerileri") **kendiliğinden açılır**; elle kapatılabilir, uzaklaşınca kapanır
+- **Performans:** içi görünmeyen kapalı binaların (bar, silahçı, casino, ev, depo) ve şehirdeki karargahların iç eşyaları, iç ışıkları, NPC'leri tamamen kaldırıldı. Camlı cepheli olanların (araba galerisi, ofisler, cafe, spor salonu, internet kafe) içi görünmeye devam eder
+- **Otobüs durakları:** banka oturulabilir (3 kişilik)
+
 # v159.1 — düzeltmeler
 
 - **Karargah:** şehirdeki (mobilyaların içinden geçilen, haritanın parçası olan) karargah içleri tamamen kaldırıldı. Hangi karargahın kapısında olursan ol "🚪 İçeri gir" → Çeteler › Aç ile aynı gerçek karargah ekranı açılır (o karargahın çetesi; girme izni sunucuda). Şehir arkada bekler

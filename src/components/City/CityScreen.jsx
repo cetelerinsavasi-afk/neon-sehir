@@ -461,8 +461,11 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   // gelince hem kendi etiketimiz hem yayınlanan profil güncellenir; gerçek ad yokken profil yazılmaz.
   const realName = String(player?.displayName || user?.displayName || '').trim();
   const myName = realName || 'Oyuncu';
-  const startRef = useRef({ avatar, myName, spawn });
-  startRef.current = { ...startRef.current, avatar: avatar || startRef.current.avatar, myName: realName ? myName : startRef.current.myName };
+  // v159.1: diğer oyunculara giden profil SADECE oyuncu belgesi (users) geldikten sonra yazılır — eskiden
+  // giriş hesabının ilk adı (Google/kayıt adı) ve varsayılan görünüm yayınlanıyordu
+  const pubName = player ? String(player.displayName || '').trim() : null;
+  const startRef = useRef({ avatar, myName, spawn, pubName });
+  startRef.current = { ...startRef.current, avatar: avatar || startRef.current.avatar, myName: realName ? myName : startRef.current.myName, pubName: pubName ?? startRef.current.pubName };
   const uid = user?.uid || (guest ? '__guest__' : null);
   useEffect(() => {
     if (!uid) return undefined;
@@ -553,8 +556,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       if (isGuest) return; // misafir: ağ yok (Realtime Database girişli okunur)
       net = createCityNet({
         uid,
-        name: st.myName,
-        avatar: st.avatar,
+        name: st.pubName || null,
+        avatar: st.pubName != null ? st.avatar : null,
         onPlayer: (id, rec) => {
           if (blockedRef.current(id)) return eng.removePlayer(id);
           namesRef.current.set(id, { n: rec.n, a: rec.a });
@@ -602,8 +605,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     if (!ready) return;
     if (avatar) engineRef.current?.setAvatar(avatar);
     if (realName) engineRef.current?.setMyName?.(realName);
-    if (realName || avatar) netRef.current?.setProfile(realName || null, avatar);
-  }, [ready, avatar, realName]);
+    if (pubName != null) netRef.current?.setProfile(pubName || null, avatar);
+  }, [ready, avatar, realName, pubName]);
   // engellenen oyuncular anında kaybolsun
   useEffect(() => {
     namesRef.current.forEach((_, id) => {
@@ -1075,9 +1078,11 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const shopDoorVenue = !driving && !riding && !venue && zone?.kind === 'shopDoor' ? zone.venue : null;
   const uiVenue = venue || shopDoorVenue;
   const vui = !driving && !riding ? VENUE_UI[uiVenue] || null : null;
+  // v159.1: kapalı dükkânın / evin kapısına gelince liste (ör. "🚗 Araba galerileri") kendiliğinden açılır;
+  // elle kapatılabilir, uzaklaşınca kapanır
   useEffect(() => {
-    if (shopDoorVenue) setBizOpen(false);
-  }, [shopDoorVenue]);
+    setBizOpen(Boolean(shopDoorVenue && !guest && (VENUE_UI[shopDoorVenue]?.biz || VENUE_UI[shopDoorVenue]?.region)));
+  }, [shopDoorVenue, guest]);
   // v158 — sol üst menünün (şüphe · altın · mekân düğmeleri) gerçek alt kenarı: mekânın kendi
   // düğmeleri (camide "İbadet Et", bankada vezne…) boşluk bırakmadan hemen altına dizilir
   useEffect(() => {

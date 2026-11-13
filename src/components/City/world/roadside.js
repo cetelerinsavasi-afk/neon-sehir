@@ -9,7 +9,7 @@ import { Kit, M, glowMat, floorMat, floorRep } from '../kit.js';
 import { buildVehicle } from '../vehicles.js';
 import { ROAD_HALF, frameAt } from './route.js';
 import { geo, fromPad, BR_HALF } from './roadsideGeo.js';
-import { buildBenzinlikVenue, buildHqVenue, HQ_SLOTS, ROOM as VROOM_RS } from './venues.js';
+import { buildBenzinlikVenue, buildHqVenue, HQ_SLOTS, ROOM as VROOM_RS, stripVenueInt } from './venues.js';
 
 const PI = Math.PI;
 
@@ -872,6 +872,7 @@ B.cete = (kit, p, ctx) => {
     kit.group.add(v.root);
     v.padRy = ry;
     v.hqSlot = slot;
+    stripVenueInt(v); // v159.1: şehirdeki karargah içi kaldırıldı (gerçek karargah ekranı açılır)
     ctx.venues.push(v);
   });
   void quonset;

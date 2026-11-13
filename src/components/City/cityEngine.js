@@ -3044,7 +3044,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     let hit = null;
     if (!curVenue && camera.position.y > 2.2) {
       for (const v of W.venues) {
-        if (v.isolated) continue; // v158.1: karargahın ön cephesi hiç kesilmez (dışarıdan içerisi görünmesin)
+        if (v.isolated || v.noInt) continue; // v158.1: karargahın ön cephesi hiç kesilmez · v159.1: içi kaldırılan binalar da
         if ((camera.position.x - v.wx) ** 2 + (camera.position.z - v.wz) ** 2 > 40 * 40) continue;
         const cp = toRoom(v, camera.position.x, camera.position.z);
         if (Math.abs(cp.x) < VROOM.W / 2 + 1.5 && cp.z > VROOM.D / 2 - 0.2 && cp.z < VROOM.D / 2 + 5) {
@@ -3667,7 +3667,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       // v158: içerisi sadece görülebildiğinde çizilir — içindeyken, camlı cephede uzaktan, kapalı
       // binada ancak kapıya yakınken (eskiden 45–70 m'deki her binanın içi çiziliyordu)
       // v158.1: karargahın içi sadece içerideyken çizilir
-      const iv = v === curVenue ? 1e9 : v.isolated ? 0 : v.vitrine ? (IS_MOBILE ? 45 : 70) : IS_MOBILE ? 24 : 32;
+      const iv = v.noInt ? 0 : v === curVenue ? 1e9 : v.isolated ? 0 : v.vitrine ? (IS_MOBILE ? 45 : 70) : IS_MOBILE ? 24 : 32;
       const near = (camera.position.x - v.wx) ** 2 + (camera.position.z - v.wz) ** 2 < iv * iv;
       if (v.int.group.visible !== near) {
         v.int.group.visible = near;

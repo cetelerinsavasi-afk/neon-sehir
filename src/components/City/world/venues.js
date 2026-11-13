@@ -1164,6 +1164,26 @@ export function buildHqVenue(lot, slot) {
   return out;
 }
 
+// v159.1 — İÇİ GÖRÜNMEYEN, İÇİNE GİRİLMEYEN mekân (kapalı dükkân / ev / depo, çete karargahı): iç eşyalar,
+// iç ışıklar, oturma yerleri, iç engeller ve NPC'ler tamamen kaldırılır (telefonda kasma olmasın).
+// Dış cephe, kapı ve dış duvarlar aynen kalır. Camlı cepheli (içi görünen) mekânlara dokunulmaz.
+export function stripVenueInt(v) {
+  const k = v.int;
+  if (!k) return v;
+  ['solids', 'lights', 'zones', 'labels', 'blockers', 'ticks', 'npcs', 'seats', 'heights', 'areas', 'waters'].forEach((n) => {
+    if (Array.isArray(k[n])) k[n].length = 0;
+  });
+  [...k.group.children].forEach((c) => k.group.remove(c));
+  k.group.visible = false;
+  v.noInt = true;
+  v.intOn = false;
+  v.rebuild = null;
+  v.lowInner = [];
+  v.stubs = [];
+  if (v.venue) v.venue = { ...v.venue, npcs: [], bots: [], items: [] };
+  return v;
+}
+
 export const VENUE_BUILDERS = {
   camii: buildCamiiVenue,
   banka: buildBankaVenue,

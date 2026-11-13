@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { buildCity, BOUNDS, COAST_Z } from '../cityPlan.js';
-import { VENUE_BUILDERS, ROOM as VROOM } from './venues.js';
+import { VENUE_BUILDERS, ROOM as VROOM, stripVenueInt } from './venues.js';
 import { Kit, M } from '../kit.js';
 import { buildSea } from '../areas.js';
 import { nearest, frameAt, inTunnel, RAIL, LANE, TOWN, toTown, fromTown, inTownRect, LAKE, RIVER, TERRAIN, TAGS, LEN, ROAD_HALF } from './route.js';
@@ -38,7 +38,8 @@ export const CITY_GRID = { x0: WALK.x0 - 2, x1: EXIT.x1 + 12, z0: BOUNDS.z0 - 2,
 // v159 — oyuncuların işletme açabildiği dükkânlar artık şehirde içine girilmeyen binalar: kapı kapalı
 // ve geçilmez; kapının önünde mekân düğmeleri çıkar (ör. "🚗 Araba galerileri" listesi + "💰 Soygun yap").
 // Oyuncu listeden istediği işletmeye girer.
-export const CLOSED_SHOPS = new Set(['bar', 'cafe', 'netkafe', 'spor', 'galeri', 'silah', 'casino', 'modifiye']);
+// v159.1: ev, ofis ve depo (liman) binaları da — kapıda "🏠 Evler" / "🏢 Ofisler" / "📦 Depolar" düğmesi
+export const CLOSED_SHOPS = new Set(['bar', 'cafe', 'netkafe', 'spor', 'galeri', 'silah', 'casino', 'modifiye', 'ev', 'ofis', 'liman']);
 export const VENUE_GAME_KEY = { camii: 'camii', banka: 'banka', karakol: 'karakol', belediye: 'belediye', galeri: 'araba_galerisi', silah: 'silah_magazasi', casino: 'gazino' };
 
 const yawOf = (m) => Math.atan2(m.elements[8], m.elements[10]);
@@ -115,6 +116,8 @@ function patchCity(city) {
     v.base.solid(v.door.x, v.door.z - 1.3, v.closedShop ? 1.6 : 1.4, 0.4);
     if (!v.closedShop) v.base.solids.at(-1).car = true;
     // v159.1: kapalı dükkânın kapısı yaklaşınca AÇILMAZ (oyuncular girmeye çalışmasın) — karargah kapısı gibi
+    // içi görünmeyen (camsız) kapalı binanın iç eşyaları tamamen kaldırılır
+    if (v.closedShop && !v.vitrine) stripVenueInt(v);
     if (v.closedShop) {
       (v.doors || []).forEach((dr) => {
         if (dr?.userData?.ctl) dr.userData.ctl.tick = undefined;
@@ -596,7 +599,7 @@ export function mergeInPlace(root, skip = new Set()) {
 // v157.2 — telefonda mekân içi (eşyalar) sadece yakında + yavaşken kurulur, uzaklaşınca bırakılır.
 // İç duvarlar, çarpışma, oturma yerleri, NPC'ler hep kalır; sadece birleştirilmiş eşya görüntüsü gider/gelir.
 export function dropVenueInt(v) {
-  if (v.intOn === false) return;
+  if (v.intOn === false || v.noInt) return;
   [...v.int.group.children].forEach((m) => {
     if (!m.userData.merged && !m.userData.rb) return;
     v.int.group.remove(m);
@@ -608,7 +611,7 @@ export function dropVenueInt(v) {
 // eşyalar. Eskiden yenilemede sadece birleşik parçalar eklenip ilk kurulumun zemini / tavanı yerinde
 // kalıyordu → iki zemin üst üste (farklı dokular) titreşip "devamlı değişiyordu"; duvar seçimi de görünmüyordu.
 export function swapVenueInt(v) {
-  if (!v.rebuild) return;
+  if (!v.rebuild || v.noInt) return;
   const P2 = v.rebuild();
   const walls = [...P2.lowInner, ...(P2.stubs || [])];
   mergeInPlace(P2.int.group, new Set(walls));
@@ -635,7 +638,7 @@ export function swapVenueInt(v) {
   v.intOn = true;
 }
 export function buildVenueInt(v) {
-  if (v.intOn !== false || !v.rebuild) return;
+  if (v.intOn !== false || !v.rebuild || v.noInt) return;
   if (v.isolated) return swapVenueInt(v);
   const P2 = v.rebuild();
   mergeInPlace(P2.int.group, new Set([...P2.lowInner, ...(P2.stubs || [])]));

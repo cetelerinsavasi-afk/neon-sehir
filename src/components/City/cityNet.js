@@ -151,44 +151,40 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
     if (aj.length > 7900) aj = '{}';
     put(`city/u/${uid}`, { n: String(n || '').slice(0, 40), a: aj });
   }
+  // v159.1 — PROFİL TAZELEME: profil eskiden oturum boyunca BİR KEZ okunuyordu. Oyuncu şehre ilk
+  // girdiğinde (oyuncu bilgisi gelmeden) ilk adını / varsayılan görünümünü yazmışsa diğerleri onu
+  // hep o hâliyle görüyordu (fotoğrafta ise sunucudaki gerçek ad / görünüm çıkıyordu). Artık görünen
+  // oyuncuların profili 90 sn'de bir sessizce yeniden okunur (eski hâli gösterilmeye devam eder).
+  function parseAv(v) {
+    try {
+      return v?.a ? JSON.parse(v.a) : null;
+    } catch {
+      return null;
+    }
+  }
+  function fetchProfile(id, prev) {
+    if (prev) prev.busy = true;
+    once(`city/u/${id}`).then((v) => {
+      const now = Date.now();
+      const tries = (prev?.tries || 0) + 1;
+      if (v?.n || v?.a) {
+        const noName = !v.n || v.n === 'Oyuncu';
+        profiles.set(id, { n: v.n || 'Oyuncu', a: parseAv(v), tries: noName ? tries : 0, retryAt: now + (noName && tries < 8 ? 8000 : 90000) });
+      } else if (prev) profiles.set(id, { ...prev, busy: false, tries, retryAt: now + (tries < 8 ? 6000 : 60000) });
+      else profiles.set(id, { n: 'Oyuncu', a: null, tries, retryAt: now + 4000 }); // henüz yazılmamış (yeni girdi)
+      refresh();
+    });
+  }
   function profileOf(id) {
     const p = profiles.get(id);
-    if (p && p !== 'loading' && !(p.retryAt && Date.now() > p.retryAt)) return p;
-    if (p && p !== 'loading' && p.retryAt) {
-      profiles.set(id, 'loading');
-      once(`city/u/${id}`).then((v) => {
-        const tries = (p.tries || 0) + 1;
-        if (v?.n || v?.a) {
-          let a = null;
-          try {
-            a = v.a ? JSON.parse(v.a) : null;
-          } catch {
-            a = null;
-          }
-          // v159: ad eksik / 'Oyuncu' ise bir süre daha yeniden sorulur (ad sonradan yazılabilir)
-          const noName = !v.n || v.n === 'Oyuncu';
-          profiles.set(id, { n: v.n || 'Oyuncu', a, ...(noName && tries < 8 ? { retryAt: Date.now() + 10000, tries } : {}) });
-        } else profiles.set(id, { ...p, tries, retryAt: Date.now() + (tries < 8 ? 8000 : 60000) });
-        refresh();
-      });
-      return p;
-    }
     if (!p) {
       profiles.set(id, 'loading');
-      once(`city/u/${id}`).then((v) => {
-        let a = null;
-        try {
-          a = v?.a ? JSON.parse(v.a) : null;
-        } catch {
-          a = null;
-        }
-        // profil henüz yazılmamışsa (yeni girdi) birazdan tekrar sorulur
-        const noName = !v?.n || v.n === 'Oyuncu';
-        profiles.set(id, { n: v?.n || 'Oyuncu', a, ...(noName ? { retryAt: Date.now() + 4000, tries: 0 } : {}) });
-        refresh();
-      });
+      fetchProfile(id, null);
+      return null;
     }
-    return null;
+    if (p === 'loading') return null;
+    if (!p.busy && p.retryAt && Date.now() > p.retryAt) fetchProfile(id, p);
+    return p;
   }
 
   // --- dinleme (3×3 hücre) -----------------------------------------------------------

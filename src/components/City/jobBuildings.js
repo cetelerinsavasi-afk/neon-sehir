@@ -183,6 +183,8 @@ export function buildBusStop(kit, stop) {
     add(new THREE.BoxGeometry(0.04, 2.1, 1.4), glass, x, 1.25, -0.2); // yan camlar
   }
   add(new THREE.BoxGeometry(2.6, 0.08, 0.45), M('#6b4423', 0.7), 0, 0.5, -0.65); // bank
+  // v159.1: duraktaki banka oturulabilir (3 kişilik, yüz yola dönük)
+  for (const x of [-0.85, 0, 0.85]) kit.seats.push({ o: g, x, y: 0.54, z: -0.66 });
   // tabela direği + durak levhası
   add(new THREE.CylinderGeometry(0.05, 0.05, 3.1, 8), frame, 2.1, 1.55, 0.55);
   const tex = signTex(stop);
