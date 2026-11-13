@@ -1921,9 +1921,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       c.v.root.rotation.set(-Math.atan(c.gp), c.yaw, 0);
       // motor: dönüşe yatar
       if (c.v.moto) {
-        c.roll = (c.roll || 0) + (clamp((-c.spd * dy) / Math.max(dt, 1e-3) * 0.045, -0.6, 0.6) - (c.roll || 0)) * Math.min(1, dt * 6);
+        const horse = c.v.ride === 'horse';
+        c.roll = (c.roll || 0) + (clamp((-c.spd * dy) / Math.max(dt, 1e-3) * (horse ? 0.008 : 0.045), horse ? -0.08 : -0.6, horse ? 0.08 : 0.6) - (c.roll || 0)) * Math.min(1, dt * 6);
         c.v.tilt.rotation.z = c.roll;
       }
+      c.v.gait?.(c.spd, dt, dy / Math.max(dt, 1e-3)); // v159.4: diğer oyuncuların atı da adım atar
       c.v.wheels.forEach((w) => {
         w.spin.rotation.z -= (c.spd * dt) / w.r;
         if (w.front && !w.moto) w.pivot.rotation.y = c.steer;
@@ -2422,9 +2424,13 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     // v152: motor — direksiyon daha yavaş tepki verir ve hızlandıkça çok daha az döner
     // (yatarak geniş dönüş); otobüs / tır — kısa dönüş için daha çok direksiyon açısı
     const moto = Boolean(c.v.moto);
-    c.steer += (-st - c.steer) * Math.min(1, dt * (st ? (moto ? 2.2 : 3.6) : moto ? 4 : 6));
+    const horse = c.v.ride === 'horse';
+    c.steer += (-st - c.steer) * Math.min(1, dt * (st ? (moto && !horse ? 2.2 : 3.6) : moto && !horse ? 4 : 6));
     const delta = (c.steer * P.steer) / (1 + Math.abs(vF0) * (moto ? 0.085 : c.v.len > 6 ? 0.03 : 0.045));
     let yawRate = (vF0 * Math.tan(delta)) / c.v.wb;
+    // v159.4 — AT: tekerlekli araç gibi değil — dururken de yerinde döner, yavaşken keskin, hızlanınca
+    // daha geniş döner (dönüş hızdan bağımsız açısal hız), geri giderken ters
+    if (horse) yawRate = (c.steer * P.steer * 3.4) / (1 + Math.abs(vF0) * 0.07) * (vF0 < -0.3 ? -1 : 1);
     if (hand && Math.abs(vF0) > 3) yawRate *= 1.45;
     c.yaw += yawRate * dt;
     // v154: yön (-π, π] aralığında kalsın — sınırsız büyüyünce fotoğrafta araba ters dönüyordu
@@ -2513,7 +2519,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const longA = (vF - c.lastVF) / Math.max(dt, 1e-3);
     c.lastVF = vF;
     c.pitch += (clamp(-longA * 0.006, -0.05, 0.05) - c.pitch) * Math.min(1, dt * 6);
-    const rollT = c.v.moto ? clamp(-vF * yawRate * 0.045, -0.6, 0.6) : clamp(vF * yawRate * 0.007, -0.075, 0.075);
+    // v159.4: at motor gibi yatmaz — dönüşte gövde çok az içe eğilir
+    const rollT = c.v.ride === 'horse' ? clamp(-vF * yawRate * 0.008, -0.08, 0.08) : c.v.moto ? clamp(-vF * yawRate * 0.045, -0.6, 0.6) : clamp(vF * yawRate * 0.007, -0.075, 0.075);
     c.roll += (rollT - c.roll) * Math.min(1, dt * 6);
     const slip = Math.abs(vL);
     const skidding = slip > 2.2 || (hand && Math.abs(vF) > 5) || (braking && Math.abs(vF) > 10);
@@ -2604,7 +2611,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       w.spin.rotation.z -= (vF * dt) / w.r;
       if (w.front && !w.moto) w.pivot.rotation.y = delta;
     });
-    v.gait?.(vF, dt); // v157.4: atın bacakları
+    v.gait?.(vF, dt, dt > 0 ? dyaw / dt : 0); // v157.4: atın bacakları · v159.4: dönüş hızı (yerinde dönüş)
     stepTrailer(c, vF, dyaw, dt);
     flashVehicle(v, c === myCar && myJob.on);
     v.tlMat.emissiveIntensity = braking ? 5 : 1.4;

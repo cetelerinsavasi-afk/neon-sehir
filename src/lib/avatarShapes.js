@@ -379,6 +379,11 @@ function hatShape(s) {
     case 'headband':
       return `<rect x="100" y="128" width="120" height="16" rx="8" fill="${c}"/>
               <circle cx="160" cy="136" r="6" fill="${accent}"/>`;
+    // v159.4 — takke (imam; oyuncu seçeneklerinde yok, sadece NPC)
+    case 'kufi':
+      return `<path d="M104,136 Q104,96 160,94 Q216,96 216,136 Z" fill="${c}" stroke="${shadeColor(c, -35)}" stroke-width="1.5"/>
+              <path d="M104,134 L216,134 L214,144 L106,144 Z" fill="${shadeColor(c, -15)}"/>
+              <path d="M118,118 Q160,108 202,118" stroke="${shadeColor(c, -30)}" stroke-width="2" fill="none" opacity="0.7"/>`;
     default:
       return '';
   }
@@ -530,6 +535,16 @@ function torsoShape(s) {
         <path d="M${B.tr},${B.ty} L${B.tr - 16},${B.ty} L${B.tr - 8},${B.ty + 30} Z" fill="${s.skin}"/>
         <path d="M126,${B.ty} L138,${B.ty} L138,380 L126,380 Z" fill="${dark}"/>
         <path d="M194,${B.ty} L182,${B.ty} L182,380 L194,380 Z" fill="${dark}"/>`;
+      break;
+    // v159.4 — cübbe (imam; oyuncu seçeneklerinde yok, sadece NPC): uzun, dökümlü, önü süslemeli
+    case 'robe':
+      base = trapezoid(c, { inset: -8, bottomInset: -22, bottomY: 470 });
+      details = `
+        <path d="M142,262 L160,290 L178,262 Z" fill="${dark}"/>
+        <path d="M156,288 L164,288 L166,468 L154,468 Z" fill="#c9a227" opacity="0.85"/>
+        <path d="M${B.tl + 6},${B.ty} Q${B.tl - 6},${B.ty + 60} ${B.tl + 2},${B.ty + 120}" stroke="${dark}" stroke-width="2" fill="none" opacity="0.5"/>
+        <path d="M${B.tr - 6},${B.ty} Q${B.tr + 6},${B.ty + 60} ${B.tr - 2},${B.ty + 120}" stroke="${dark}" stroke-width="2" fill="none" opacity="0.5"/>
+        <path d="M${B.bl - 18},466 L${B.br + 18},466 L${B.br + 22},472 L${B.bl - 22},472 Z" fill="${dark}"/>`;
       break;
     case 'trenchcoat':
       // Uzun, geniş yakalı palto — beldeki diğer kıyafetlerin aksine

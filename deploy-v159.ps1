@@ -48,6 +48,9 @@ $ekle = @(
   'src/components/HouseScreen/HouseScreen.jsx',
   'src/components/City/coast.js',
   'src/components/City/jobBuildings.js',
+  'src/components/City/vehicles.js',
+  'src/components/Workshop/ModifiyeStudio.jsx',
+  'src/lib/avatarShapes.js',
   'src/components/City/world/venues.js',
   'src/components/City/world/roadside.js',
   'V159-DEGISIKLIKLER.md',
@@ -57,7 +60,7 @@ $ekle = @(
 git add -- $ekle
 $gizli = git diff --cached --name-only | Select-String -Pattern '(keystore\.properties$|\.keystore$|\.jks$|local\.properties$|\.aab$|\.apk$|\.env$)'
 if ($gizli) { git reset -q; Dur "Gizli/derleme dosyasi commit'e girecekti: $gizli -> commit YAPILMADI." }
-git commit -q -m "v159.3: uzak esya kupleri kaldirildi, acilista yola yakin dogma, durak banki onden oturulur | v159.2: sehirde ilk ad / varsayilan gorunum (profil oyuncu bilgisi gelince yayinlanir + 90 sn tazeleme), ev/ofis/depo binalarina girilmez, kapida liste kendiliginden acilir, ici gorunmeyen binalarin ve karargahlarin ic esyalari kaldirildi, otobus duragi banki oturulabilir | v159.1: sehirdeki karargah icleri kaldirildi (her karargah kapisinda Iceri gir = gercek karargah, icerde kapida Sehre cik), dukkan kapilari yaklasinca acilmaz, beach club tabureleri + oturup kalkinca sikisma, sehirde Ceteler/Profil alttan acilan pencere | v159: sehir netligi (cozunurluk tabani + dinamik gorus mesafesi), Oyuncu adi duzeltmesi, yarista Android geri/kenardan kaydirma yarisi kapatmiyor + yarista sehir grafik bellegini birakir, ic kamera fotografi kokpitle, kendi karargahina dogrudan gercek karargah, hayalet parmak yakinlasmasi, telefonda sola kaydir = Gazete, Flappy Kus oyun salonunda, dukkanlara girilmez (kapida liste + soygun), sohbet hep acik, mesaj yanindaki uyari kalkti (sikayet Yakindakiler'den)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -m "Claude-Session: https://claude.ai/code/session_01YQymXP8ADf1HZUb3p4EzoC"
+git commit -q -m "v159.4: at kuyrugu + at gibi yuruyus ve donus, bisiklet 1.5 kat hizli, bisiklet/at modifiyesi kendine gore (plaka/yuzey yok), imam cubbe + takke | v159.3: uzak esya kupleri kaldirildi, acilista yola yakin dogma, durak banki onden oturulur | v159.2: sehirde ilk ad / varsayilan gorunum (profil oyuncu bilgisi gelince yayinlanir + 90 sn tazeleme), ev/ofis/depo binalarina girilmez, kapida liste kendiliginden acilir, ici gorunmeyen binalarin ve karargahlarin ic esyalari kaldirildi, otobus duragi banki oturulabilir | v159.1: sehirdeki karargah icleri kaldirildi (her karargah kapisinda Iceri gir = gercek karargah, icerde kapida Sehre cik), dukkan kapilari yaklasinca acilmaz, beach club tabureleri + oturup kalkinca sikisma, sehirde Ceteler/Profil alttan acilan pencere | v159: sehir netligi (cozunurluk tabani + dinamik gorus mesafesi), Oyuncu adi duzeltmesi, yarista Android geri/kenardan kaydirma yarisi kapatmiyor + yarista sehir grafik bellegini birakir, ic kamera fotografi kokpitle, kendi karargahina dogrudan gercek karargah, hayalet parmak yakinlasmasi, telefonda sola kaydir = Gazete, Flappy Kus oyun salonunda, dukkanlara girilmez (kapida liste + soygun), sohbet hep acik, mesaj yanindaki uyari kalkti (sikayet Yakindakiler'den)" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -m "Claude-Session: https://claude.ai/code/session_01YQymXP8ADf1HZUb3p4EzoC"
 if ($LASTEXITCODE -ne 0) { Dur "git commit basarisiz (degisiklik yok ya da git hatasi). Ciktiyi Claude'a gonder." }
 git push
 if ($LASTEXITCODE -ne 0) { Dur "git push basarisiz. Ciktiyi Claude'a gonder." }

@@ -44,6 +44,8 @@ const RIMTIRE = [
 ];
 const NEON = { t: 'sw', k: 'neonColor', l: 'Neon rengi', list: MOD_OPTIONS.neonColor, custom: false, when: (c) => c.acc?.neon };
 const PLATE = { t: 'plate' };
+// v159.4: atın don renkleri (doru, yağız, kır, al, kula, beyaz, alaca kahve)
+const HORSE_COATS = ['#5a3a22', '#2a1a12', '#121010', '#8e8a84', '#c9c4bb', '#8a3b1c', '#c99a5b', '#f1ede4', '#6b4a33'];
 const KIND_TABS = {
   taxi: [
     ['taksi', '🚕', 'Taksi', [{ t: 'opts', k: 'taxiType', l: 'Taksi tipi', list: MOD_OPTIONS.taxiType }, { t: 'opts', k: 'finish', l: 'Yüzey', list: MOD_OPTIONS.finish.filter(([k]) => ['parlak', 'metalik', 'sedef'].includes(k)) }, { t: 'opts', k: 'tint', l: 'Cam filmi', list: MOD_OPTIONS.tint }]],
@@ -81,6 +83,14 @@ const KIND_TABS = {
     ['boya', '🎨', 'Boya', [{ t: 'sw', k: 'paint', l: 'Renk', list: MOD_OPTIONS.paint }, { t: 'opts', k: 'finish', l: 'Yüzey', list: FIN4 }]],
     ['isik', '✨', 'Işık', [{ t: 'acc', l: 'Işık' }, NEON]],
     ['plaka', '🔢', 'Plaka', [PLATE]],
+  ],
+  // v159.4 — bisiklet ve at kendine göre: plaka yok, yüzey (mat / krom…) yok
+  bike: [
+    ['boya', '🎨', 'Renk', [{ t: 'sw', k: 'paint', l: 'Kadro rengi', list: MOD_OPTIONS.paint }]],
+    ['isik', '✨', 'Işık', [{ t: 'acc', l: 'Işık', only: ['neon'] }, NEON]],
+  ],
+  horse: [
+    ['boya', '🐴', 'Don', [{ t: 'sw', k: 'paint', l: 'Don rengi', list: HORSE_COATS, custom: false }]],
   ],
 };
 // araç boyu (kamera uzaklığı için)
@@ -402,7 +412,9 @@ export default function ModifiyeStudio({ vehicle, shop, isOwner = false, onClose
   const modsJson = JSON.stringify(vehicle.mods || null);
   const base = useMemo(() => sanitizeMods(cid, JSON.parse(modsJson)), [cid, modsJson]);
   const [cfg, setCfg] = useState(base);
-  const prof = modProfile(cid);
+  // v159.4: motor profili içinde bisiklet (25) ve at (26) kendi sekmeleriyle
+  const prof0 = modProfile(cid);
+  const prof = prof0 === 'moto' && cid === 25 ? 'bike' : prof0 === 'moto' && cid === 26 ? 'horse' : prof0;
   const tabs = prof === 'car' ? TABS.map(([k, ic, l]) => [k, ic, l]) : KIND_TABS[prof].map(([k, ic, l]) => [k, ic, l]);
   const [tab, setTab] = useState(tabs[0][0]);
   const [spin, setSpin] = useState(true);

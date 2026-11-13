@@ -1964,12 +1964,34 @@ const HORSE_ITEM = {
     };
     box(1.35, 0.55, 0.5, coat, 0, 1.2, 0);
     box(0.5, 0.42, 0.46, coat, 0.55, 1.28, 0, 0.15);
-    box(0.32, 0.75, 0.3, coat, 0.82, 1.62, 0, -0.55);
-    box(0.52, 0.26, 0.26, coat, 1.08, 1.92, 0, -0.25);
-    box(0.1, 0.16, 0.06, coat, 0.9, 2.12, 0.08);
-    box(0.1, 0.16, 0.06, coat, 0.9, 2.12, -0.08);
-    box(0.4, 0.62, 0.06, dark, 0.74, 1.72, 0, -0.55);
-    box(0.08, 0.6, 0.12, dark, -0.72, 1.0, 0, 0.45);
+    // v159.4: boyun + baş ayrı grupta (yürürken başını sallar)
+    const neck = new THREE.Group();
+    neck.position.set(0.62, 1.38, 0);
+    m.add(neck);
+    const nbox = (w, h, d, mat, x, y, z, rz = 0) => {
+      const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      o.position.set(x - 0.62, y - 1.38, z);
+      o.rotation.z = rz;
+      neck.add(o);
+      return o;
+    };
+    nbox(0.32, 0.75, 0.3, coat, 0.82, 1.62, 0, -0.55);
+    nbox(0.52, 0.26, 0.26, coat, 1.08, 1.92, 0, -0.25);
+    nbox(0.1, 0.16, 0.06, coat, 0.9, 2.12, 0.08);
+    nbox(0.1, 0.16, 0.06, coat, 0.9, 2.12, -0.08);
+    nbox(0.4, 0.62, 0.06, dark, 0.74, 1.72, 0, -0.55);
+    // v159.4: kuyruk düzeltildi — sağrıdan başlar, geriye ve aşağı sarkar (eskiden ters, karnın altına doğruydu)
+    const tail = new THREE.Group();
+    tail.position.set(-0.68, 1.38, 0);
+    m.add(tail);
+    const tRoot = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.22, 0.12), dark);
+    tRoot.position.set(-0.07, -0.04, 0);
+    tRoot.rotation.z = 1.0;
+    tail.add(tRoot);
+    const tHang = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.66, 0.14), dark);
+    tHang.position.set(-0.2, -0.38, 0);
+    tHang.rotation.z = -0.28;
+    tail.add(tHang);
     // eyer + üzengi
     box(0.48, 0.1, 0.54, new THREE.MeshStandardMaterial({ color: '#5a2e18', roughness: 0.6 }), -0.08, 1.5, 0);
     box(0.06, 0.32, 0.02, dark, -0.08, 1.3, 0.28);
@@ -1992,6 +2014,8 @@ const HORSE_ITEM = {
       legs.push({ g: lg, ph });
     });
     g.userData.legs = legs;
+    g.userData.neck = neck;
+    g.userData.tail = tail;
   },
 };
 const MOTO_DEF = {
@@ -2000,29 +2024,52 @@ const MOTO_DEF = {
   chopper: { k: 'moto_chopper', name: 'Chopper', seats: 2, phys: { vmax: 36, acc: 8, grip: 8, steer: 0.38 } },
   sport: { k: 'moto_sport', name: 'Spor Motor', seats: 2, phys: { vmax: 48, acc: 13, grip: 11, steer: 0.42 } },
   // v157.4: binekler — motorlardan yavaş (at scooter'dan bir tık hızlı), yaya alanlarına girer
-  bisiklet: { item: BIKE_ITEM, name: 'Bisiklet', seats: 1, ride: 'bike', phys: { vmax: 9, acc: 3.2, grip: 9, steer: 0.6 } },
+  bisiklet: { item: BIKE_ITEM, name: 'Bisiklet', seats: 1, ride: 'bike', phys: { vmax: 13.5, acc: 4.6, grip: 9, steer: 0.6 } }, // v159.4: ~1,5 kat hızlı
   at: { item: HORSE_ITEM, name: 'At', seats: 1, ride: 'horse', phys: { vmax: 24, acc: 6.5, grip: 9, steer: 0.52 } },
 };
 const MOTO_FINISH = { parlak: [0.22, 0.55], metalik: [0.15, 0.9], mat: [0.85, 0.1], krom: [0.05, 1], sedef: [0.18, 0.7] };
 // v157.4: binek (bisiklet / at) — yaya alanı, sessiz (motor sesi yok), atın yürüyüşü
 function rideExtras(t, o) {
   if (!t.ride) return {};
-  const legs = o.children[0]?.userData?.legs || o.userData?.legs || null;
+  const ud = o.children[0]?.userData?.legs ? o.children[0].userData : o.userData;
+  const legs = ud?.legs || null;
+  const neck = ud?.neck || null;
+  const tail = ud?.tail || null;
   let ph = 0;
+  let gal = 0; // 0 = tırıs (çapraz bacaklar), 1 = dörtnala (ön ve arka çiftler birlikte)
+  let sway = 0;
+  // v159.4 — at gibi yürüyüş: yavaşta adım, orta hızda tırıs, hızlıda dörtnala; gövde iner kalkar,
+  // baş sallanır, kuyruk sallanır; yerinde dönerken de bacaklar adım atar
   return {
     walker: true,
     silent: true,
     ride: t.ride,
     gait: legs
-      ? (vF, dt) => {
-          const sp = Math.abs(vF);
-          ph += dt * (2 + sp * 0.9);
-          const amp = Math.min(0.75, sp * 0.09);
-          legs.forEach((l) => (l.g.rotation.z = Math.sin(ph + l.ph) * amp));
+      ? (vF, dt, yawRate = 0) => {
+          const sp = Math.max(Math.abs(vF), Math.abs(yawRate) * 1.4);
+          ph += dt * (2.2 + sp * 0.75);
+          gal += ((sp > 14 ? 1 : 0) - gal) * Math.min(1, dt * 3);
+          const amp = Math.min(0.7, sp * 0.1);
+          legs.forEach((l, i) => {
+            // i: 0 ön-sol, 1 ön-sağ, 2 arka-sol, 3 arka-sağ
+            const trot = l.ph;
+            const gallop = i < 2 ? i * 0.35 : Math.PI + (i - 2) * 0.35;
+            l.g.rotation.z = Math.sin(ph + trot * (1 - gal) + gallop * gal) * amp;
+          });
+          const bob = sp > 0.3 ? Math.abs(Math.sin(ph)) * Math.min(0.07, sp * 0.006) : 0;
+          o.position.y = bob;
+          o.rotation.z = gal * Math.sin(ph) * 0.04 * Math.min(1, sp / 14); // dörtnalada gövde öne arkaya salınır
+          if (neck) neck.rotation.z = Math.sin(ph * 2) * Math.min(0.09, sp * 0.008) * (1 - 0.5 * gal) + Math.sin(ph) * 0.06 * gal;
+          sway += (clamp01(yawRate) - sway) * Math.min(1, dt * 4);
+          if (tail) {
+            tail.rotation.x = sway * 0.5 + Math.sin(ph * 0.5) * 0.08;
+            tail.rotation.z = -Math.min(0.5, sp * 0.03);
+          }
         }
       : null,
   };
 }
+const clamp01 = (v) => Math.max(-1, Math.min(1, v));
 function buildMotoModel(n) {
   const t = MOTO_DEF[n.moto] || MOTO_DEF.scooter;
   const item = t.item || CATALOG_MAP[t.k];
