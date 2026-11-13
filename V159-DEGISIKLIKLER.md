@@ -1,3 +1,9 @@
+# v159.3
+
+- Uzaktaki eşyaların renkli **küp** hâli kaldırıldı: eşya yakında tam görünür, ötesinde hiç çizilmez (kutular kurulmadığı için bellek de azaldı)
+- Oyun açılışında evin kapısına değil, biraz daha **yola yakın** doğulur (Evler listesi açılışta açık gelmez)
+- Otobüs durağının bankına **önden (yol tarafından) da** oturulur
+
 # v159.2
 
 - **Şehirde yanlış ad / varsayılan görünüm:** bazı oyuncular şehirde ilk adları (giriş hesabının adı) ve varsayılan görünümle görünüyordu (fotoğrafta ise doğru ad / görünüm). Sebep: şehir, oyuncu bilgisi gelmeden açılınca ilk ad + varsayılan görünüm yayınlanıyor, diğerleri de bunu oturum boyunca saklıyordu. Artık profil yalnızca oyuncu bilgisi geldikten sonra yayınlanır ve görünen oyuncuların profili 90 sn'de bir tazelenir

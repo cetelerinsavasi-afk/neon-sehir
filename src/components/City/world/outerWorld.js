@@ -474,7 +474,11 @@ export function makeLod() {
     return inf.cell;
   }
   // hücre başına eşya kutuları (tek geometri)
+  // v159.3: uzaktaki eşyaların renkli KUTU hâli kaldırıldı ("küp küp" görünüyordu) — eşya yakında tam
+  // model, ötesinde hiç çizilmez (kutular da artık kurulmuyor → daha az bellek)
+  const LOD_BOXES = false;
   function boxes() {
+    if (!LOD_BOXES) return [];
     const cells = new Map();
     info.forEach((inf) => {
       if (inf.skip) return;

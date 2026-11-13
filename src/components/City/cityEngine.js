@@ -757,7 +757,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     k.seats.forEach((st) => {
       const p = st.o.localToWorld(tv.set(st.x, st.y, st.z + 0.06));
       // v149: tribün koltuğunun kendi yönü (sahaya dönük) — eşya koltuklarında 0
-      seats.push({ x: p.x, y: p.y, z: p.z, yaw: yawOf(st.o.matrixWorld) + (st.yaw || 0), taken: false, tier: Boolean(st.tier) });
+      seats.push({ x: p.x, y: p.y, z: p.z, yaw: yawOf(st.o.matrixWorld) + (st.yaw || 0), taken: false, tier: Boolean(st.tier), reach: st.reach || 0 });
     });
     k.solids.forEach((s) => {
       const p = s.o.localToWorld(tv.set(s.x, 0, s.z));
@@ -1494,8 +1494,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     if (key && typeof key === 'object' && key.region && key.out) {
       const v = W.venues.find((q) => q.type === (REGION_LOT[key.region] || key.region));
       if (v) {
-        const p = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 + 3.5);
-        if (!blockedAt(p.x, p.z)) return { x: p.x, z: p.z, yaw: v.ry + Math.PI, pitch: 0.36 };
+        // v159.3: kapıdan biraz daha uzakta, yola yakın (kapıdaki "Evler" listesi açılış anında açılmasın)
+        for (const dz of [7.2, 6.4, 5.6, 3.5]) {
+          const p = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 + dz);
+          if (!blockedAt(p.x, p.z)) return { x: p.x, z: p.z, yaw: v.ry + Math.PI, pitch: 0.36 };
+        }
       }
     }
     if (typeof key === 'string' || (key && typeof key === 'object' && key.region)) {
@@ -3770,14 +3773,16 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     if (!driving && !self.seat && !self.ride && (!best || best.kind !== 'car')) {
       let sb = null;
       let sd = 1.25;
+      let sdBest = Infinity;
       seats.forEach((st) => {
         if (st.taken) return;
         // v149: başka basamaktaki koltuk sayılmaz (tribün)
         const dy = st.y - me.y;
         if (dy > 1.15 || dy < -0.3) return;
         const d = Math.hypot(st.x - self.x, st.z - self.z);
-        if (d < sd) {
-          sd = d;
+        // v159.3: bazı oturakların erişimi geniş (otobüs durağı banki önden de)
+        if (d < Math.max(sd, st.reach || 0) && d < sdBest) {
+          sdBest = d;
           sb = st;
         }
       });
