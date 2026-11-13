@@ -135,13 +135,19 @@ function AppIcon({ app, badge, dot, onOpen }) {
   );
 }
 
-export default function PhoneScreen({ onClose, initialApp = null }) {
+export default function PhoneScreen({ onClose, initialApp = null, onAppChange = null }) {
   const [openApp, setOpenApp] = useState(isAppBlocked(initialApp) || initialApp === 'flappy' ? null : initialApp);
   const [page, setPage] = useState(HOME_PAGE);
   const [gazeteSeen, setGazeteSeen] = useState(false);
   useEffect(() => {
     if (page === 0) setGazeteSeen(true);
   }, [page]);
+  // v160.5: açık uygulama dışarı bildirilir (şehir, Sixtagram açıkken telefonda grafik belleğini bırakır)
+  useEffect(() => {
+    onAppChange?.(openApp);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openApp]);
+  useEffect(() => () => onAppChange?.(null), []); // eslint-disable-line react-hooks/exhaustive-deps
   // v68 — Android geri tuşu: önce açık uygulama kapanır, sonra telefon
   useBackClose(true, onClose);
   useBackClose(Boolean(openApp), () => setOpenApp(null));

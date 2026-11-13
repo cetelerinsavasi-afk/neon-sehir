@@ -23,7 +23,7 @@ import { buyFromVendor, buyFromBufe, sellContrabandAtPark, cityAction, createSix
 import { currentOnboardingTaskId } from '../../../functions/onboardingData.js';
 import { FUEL_PRICE, GAS_MARKET_MENU } from '../../../functions/gasStation.js';
 import { GAS_STATION, FAR_DEPOT, LIMAN_BAY, OTOGARS } from '../../../functions/cityJobsData.js';
-import { createJobRunner, worldRoute } from './cityJobs.js';
+import { createJobRunner, navRoute } from './cityJobs.js';
 import { JOBS } from '../../../functions/vehicleKinds.js';
 import { invalidateSixtagramFeed } from '../../hooks/useSixtagramFeed';
 import PhotoStoryEditor from '../HouseScreen/PhotoStoryEditor';
@@ -420,7 +420,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     if (!R || R.pin !== pin || Math.hypot(R.x - mx, R.z - mz) > 5 || now - R.at > 2000) {
       let pts = null;
       try {
-        pts = worldRoute({ x: mx, z: mz }, { x: pin.x, z: pin.z }, Infinity);
+        pts = navRoute({ x: mx, z: mz }, { x: pin.x, z: pin.z }); // v160.5: gerçek en kısa yol (köy / göl yolları dahil)
       } catch {
         pts = null;
       }
@@ -722,6 +722,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   }, [panel, watchId, covered]);
   // telefon açıkken sahne durur (pil + ısınma)
   const raceHid = useRef(false);
+  const [phoneApp, setPhoneApp] = useState(null); // v160.5: telefonda açık uygulama
   useEffect(() => {
     const e = engineRef.current;
     if (!e || !ready) return;
@@ -750,10 +751,15 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     if (panel?.kind === 'phone' || panel?.kind === 'futbol' || panel?.kind === 'gangs' || panel?.kind === 'soygun' || panel?.kind === 'profile' || watchId) {
       if (!heistOn) e.pause();
       else e.resume();
+      // v160.5 — SIXTAGRAM'DA OYUNDAN ATMA (iPhone): telefonda Sixtagram açıkken şehir sadece
+      // duruyordu; şehrin bütün grafik verisi bellekte kalırken akıştaki fotoğraflar da çözülünce
+      // iOS sayfayı kapatıyordu. Sixtagram açıkken şehir grafik belleğini bırakır (yarıştaki gibi;
+      // dönünce yakından uzağa yeniden yüklenir).
+      if (IS_MOBILE_DEVICE && !heistOn && panel?.kind === 'phone' && phoneApp === 'sixtagram') e.releaseGpu?.();
     }
     else e.resume();
     return undefined;
-  }, [panel, ready, raceFull, watchId, heistOn, covered]);
+  }, [panel, ready, raceFull, watchId, heistOn, covered, phoneApp]);
   // v157.9: karargah düzenlemesinden dönüş — şehir kapanmadan bekledi; çizici geri alınır ve
   // düzenlenen karargahın iç tasarımı yeniden okunur (tek okuma)
   const wasCovered = useRef(false);
@@ -1804,7 +1810,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         </Sheet>
       )}
       <SaleToast result={sellResult} onClose={() => setSellResult(null)} />
-      {panel?.kind === 'phone' && <PhoneScreen onClose={() => setPanel(null)} initialApp={panel.app} />}
+      {panel?.kind === 'phone' && <PhoneScreen onClose={() => setPanel(null)} initialApp={panel.app} onAppChange={setPhoneApp} />}
       {orgPanel && (
         <Suspense fallback={null}>
           <GangAlertsContext.Provider value={gangAlerts}>
@@ -1901,10 +1907,12 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         <CityBigMap
           engine={engineRef.current}
           pin={pinRef.current}
+          getPin={() => pinRef.current}
           pinPath={pinPath}
           canTeleport={!driving && !riding && !heistOn && !jobUi?.active}
           onSpot={(p, act) => {
-            setMapOpen(false);
+            // v160.5: iğneyi kaldırınca harita açık kalır
+            if (!(act === 'pin' && !p)) setMapOpen(false);
             if (act === 'pin') {
               setPin(p);
               if (p) flash('📍 İğne bırakıldı');
@@ -1949,9 +1957,13 @@ function ChatBox({ onSend, onHide = null }) {
 }
 
 // v157 — büyük harita: sürükle, iki parmakla yakınlaştır, simgeye dokun → oraya git (mekânsa içine)
-function CityBigMap({ engine, onClose, onPick, onSpot, pin, canTeleport, pinPath }) {
+function CityBigMap({ engine, onClose, onPick, onSpot, pin: pin0, getPin, canTeleport, pinPath }) {
   const pinPathRef = useRef(pinPath);
   pinPathRef.current = pinPath;
+  // v160.5: iğne harita açıkken kaldırılabilir (harita kapanmaz) → güncel iğne her karede okunur
+  const [pin, setPinLocal] = useState(pin0);
+  const getPinRef = useRef(getPin);
+  getPinRef.current = getPin;
   const [spot, setSpot] = useState(null); // boş yere dokunuş: { x, z, sx, sy }
   const ref = useRef(null);
   const view = useRef(null);
@@ -1996,10 +2008,11 @@ function CityBigMap({ engine, onClose, onPick, onSpot, pin, canTeleport, pinPath
       const dpr = c.width / (c.clientWidth || 1);
       const jr = engine.jobRoutePts?.();
       let path = jr && jr.pts.length > 1 ? jr.pts.map((p) => [p.x, p.z]) : null;
-      if (!path && pin) {
+      const curPin = getPinRef.current ? getPinRef.current() : pin;
+      if (!path && curPin) {
         // v160: yol tarifi yollar üzerinden (en kısa rota)
         const R = pinPathRef.current?.(m.x, m.z);
-        path = R ? R.pts.map((p) => [p.x, p.z]) : [[m.x, m.z], [pin.x, pin.z]];
+        path = R ? R.pts.map((p) => [p.x, p.z]) : [[m.x, m.z], [curPin.x, curPin.z]];
       }
       gm.draw(c.getContext('2d'), c.width, c.height, { cx: v.cx, cz: v.cz, k: v.k, rot: 0, dpr }, { truck: { x: m.x, z: m.z, yaw: m.driving ? m.yaw : m.yaw }, target: path ? { x: path[path.length - 1][0], z: path[path.length - 1][1] } : null, path, labels: true, streets: true, parked: !m.driving && m.car ? m.car : null, walker: !m.driving });
     };
@@ -2009,7 +2022,8 @@ function CityBigMap({ engine, onClose, onPick, onSpot, pin, canTeleport, pinPath
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', fit);
     };
-  }, [engine, preset, pin]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine, preset]); // v160.5: iğne getPin ile her karede okunur (kaldırınca görünüm sıfırlanmasın)
   // sürükle / kıstır / dokun
   const pts = useRef(new Map());
   const pinch = useRef(null);
@@ -2091,7 +2105,17 @@ function CityBigMap({ engine, onClose, onPick, onSpot, pin, canTeleport, pinPath
           <div className="cs-bm-spot" style={{ left: spot.sx, top: spot.sy }}>
             <button onClick={() => onSpot?.(spot, 'pin')}>📍 Yol tarifi</button>
             {canTeleport && <button onClick={() => onSpot?.(spot, 'tp')}>✨ Işınlan</button>}
-            {pin && <button onClick={() => onSpot?.(null, 'pin')}>✕ İğneyi kaldır</button>}
+            {pin && (
+              <button
+                onClick={() => {
+                  onSpot?.(null, 'pin');
+                  setPinLocal(null);
+                  setSpot(null);
+                }}
+              >
+                ✕ İğneyi kaldır
+              </button>
+            )}
           </div>
         )}
         <div className="cs-bm-zoom">

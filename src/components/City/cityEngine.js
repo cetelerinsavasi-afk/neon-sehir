@@ -4419,8 +4419,16 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         });
         c.v.root.updateMatrixWorld(true);
       });
-      renderer.setPixelRatio(1);
-      renderer.setSize(w, h, false);
+      // v160.5: canlı motorda tuval yeniden boyutlandırılmaz (telefonda her fotoğrafta çizim
+      // tamponu iki kez baştan ayrılıyordu → bellek sıçraması). Kare tuvalin sol alt köşesine
+      // çizilip oradan kopyalanır; tuval küçükse eski yol.
+      save.inPlace = !snapshot && canvas.width >= w && canvas.height >= h;
+      if (save.inPlace) {
+        renderer.setViewport(0, 0, w / save.pr, h / save.pr);
+      } else {
+        renderer.setPixelRatio(1);
+        renderer.setSize(w, h, false);
+      }
       camera.aspect = w / h;
       camera.fov = Number(cam.fov) || 60;
       camera.updateProjectionMatrix();
@@ -4453,17 +4461,28 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         }
       }
       const fp = att.people?.[0] || { x: cam.px, z: cam.pz };
+      // v160.5 — FOTOĞRAF ÇEKİNCE OYUNDAN ATMA (telefon): fotoğraf karesi sabit 90/170 m mesafeyle
+      // ve 300 m siste çiziliyordu; telefonda canlı görüş 80-100 m olduğundan deklanşöre basınca
+      // ekran kartından bırakılmış onlarca bina/eşya bir anda yeniden yükleniyor, iPhone belleği
+      // taşıp sayfayı kapatıyordu. Telefonda fotoğraf, ekranda görünen mesafe ve LOD ile çizilir
+      // (paylaşılan = ekranda görülen). Bilgisayarda eskisi gibi.
+      const tShot = CITY_TIERS[tier];
+      const shotOutside = W.modeAt(fp.x, fp.z) !== 'city';
+      const shotView = IS_MOBILE ? (shotOutside ? Math.max(tShot.view, OUTER_VIEW[tier] || 300) : tShot.view) : 170;
+      const shotNear = IS_MOBILE ? Math.min(90, LOD_NEAR0 * TIER_LOD[tier]) : 90;
+      const shotMid = IS_MOBILE ? Math.min(170, LOD_MID0 * TIER_LOD[tier]) : 170;
       // fotoğrafın çekildiği yer (canlı motorda oyuncu başka yerde olabilir): oranın parçaları görünür
       for (const c of cullItems) {
         // v157.8: hem çekenin hem kameranın yakını tam eşya (bank vb. kutu olarak çıkmasın)
         const d = Math.min(Math.hypot(c.x - fp.x, c.z - fp.z), Number.isFinite(cam.px) && Number.isFinite(cam.pz) ? Math.hypot(c.x - cam.px, c.z - cam.pz) : Infinity);
+        const lim = !IS_MOBILE || c.outer ? shotView : Math.min(shotView, tShot.view + 60);
         // v157.4: fotoğrafta da LOD — yakında tam eşya, ötede kutu (ikisi birden değil)
-        c.o.visible = c.lod === 'near' ? d < 90 : c.lod === 'mid' ? d >= 90 && d < 170 : d - c.r < 170;
+        c.o.visible = c.lod === 'near' ? d < shotNear : c.lod === 'mid' ? d >= shotNear && d < Math.min(lim, shotMid) : d - c.r < lim;
       }
       const fogSave = [scene.fog.near, scene.fog.far, camera.far];
-      scene.fog.near = 70;
-      scene.fog.far = 300;
-      camera.far = 400;
+      scene.fog.near = IS_MOBILE ? shotView * 0.6 : 70;
+      scene.fog.far = IS_MOBILE ? shotView + 20 : 300;
+      camera.far = IS_MOBILE ? shotView + 60 : 400;
       camera.updateProjectionMatrix();
       save.fog = fogSave;
       updateLights(true, fp.x, fp.z);
@@ -4549,7 +4568,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       c2.width = w;
       c2.height = h;
       const ctx = c2.getContext('2d');
-      ctx.drawImage(canvas, 0, 0, w, h);
+      if (save.inPlace) ctx.drawImage(canvas, 0, canvas.height - h, w, h, 0, 0, w, h);
+      else ctx.drawImage(canvas, 0, 0, w, h);
       try {
         drawShotLabels(ctx, w, h, w / Math.max(200, Math.min(2000, Number(cam.cw) || 400)), labels);
       } catch {
@@ -4564,8 +4584,12 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       hidden.forEach((o) => (o.visible = true));
       hidden2.forEach((o) => (o.visible = false));
       headSpot.intensity = hsI;
-      renderer.setPixelRatio(save.pr);
-      renderer.setSize(save.size.x, save.size.y, false);
+      if (save.inPlace) {
+        renderer.setViewport(0, 0, save.size.x, save.size.y);
+      } else {
+        renderer.setPixelRatio(save.pr);
+        renderer.setSize(save.size.x, save.size.y, false);
+      }
       camera.position.copy(save.pos);
       camera.quaternion.copy(save.quat);
       camera.fov = save.fov;

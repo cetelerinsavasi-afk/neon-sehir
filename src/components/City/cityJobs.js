@@ -14,7 +14,8 @@
 // =============================================================================
 import { LIMAN_BAY, DEPOTS, HOSPITAL, BUS_STOPS, ROAD_SPOTS, KURYE_PICKUPS, KURYE_DROPS, FAR_DEPOT, OTOGARS, HWY_ENTRY } from '../../../functions/cityJobsData.js';
 import { JOBS, jobDailyOf } from '../../../functions/vehicleKinds.js';
-import { frameAt, LEN, LANE, TOWN, fromTown, toTown, inTownRect, nearest } from './world/route.js';
+import { frameAt, LEN, LANE, TOWN, fromTown, toTown, inTownRect, nearest, R as HWY } from './world/route.js';
+import { geo as roadsideGeo, padAt as roadsidePadAt } from './world/roadsideGeo.js';
 
 const STOP_V = 1.4;
 
@@ -170,6 +171,243 @@ export function worldRoute(from, to, maxLen = 900) {
   }
   // baştan maxLen kadarı
   return trimRoute(pts, maxLen);
+}
+// =============================================================================
+// v160.5 — YOL TARİFİ (iğne): GERÇEK EN KISA YOL. worldRoute "uzak" her hedefi Kervankent'e
+// gidiş sanıyordu: Gölyaka / Kuğu Gölü gibi otoyol dışı bir iğne için rota önce Kervankent'e
+// çıkıp oradan yolsuz düz çizgilerle geri iniyordu. Artık dış dünyanın bütün yolları (O-77
+// otoyolu, köy sapakları, Akçay vadisi yolu, Kuğu Gölü yolu, maden yolu, köy meydanları) tek
+// bir ağ; şehir içi eskisi gibi yol ızgarası. Ağ bir kez kurulur, Dijkstra ile en kısa rota.
+// (Meslek rotaları worldRoute'u kullanmaya devam eder — dokunulmadı.)
+// =============================================================================
+const NAV_CITY = { x0: -215, x1: 236, z0: -372, z1: 200 }; // şehir + Neon Kent Ormanı (yol ızgarası)
+const inNavCity = (p) => p.x >= NAV_CITY.x0 && p.x <= NAV_CITY.x1 && p.z >= NAV_CITY.z0 && p.z <= NAV_CITY.z1;
+const CITY_LINK = [{ x: 178, z: -140 }, { x: 198, z: -140 }];
+const HWY_S0 = 12;
+let NAV = null;
+function navGraph() {
+  if (NAV) return NAV;
+  const nodes = []; // { x, z }
+  const adj = [];
+  const add = (x, z) => {
+    nodes.push({ x, z });
+    adj.push([]);
+    return nodes.length - 1;
+  };
+  const link = (a, b) => {
+    if (a === b) return;
+    const L = Math.hypot(nodes[a].x - nodes[b].x, nodes[a].z - nodes[b].z);
+    adj[a].push([b, L]);
+    adj[b].push([a, L]);
+  };
+  const lines = []; // her yol: düğüm dizisi (yakın nokta araması için)
+  // O-77: ~10 m'de bir düğüm (orta çizgi)
+  const hw = [];
+  for (let s = HWY_S0; s < LEN; s += 10) {
+    const f = frameAt(s);
+    hw.push(add(f.x, f.z));
+  }
+  const fe = frameAt(LEN);
+  hw.push(add(fe.x, fe.z));
+  for (let i = 1; i < hw.length; i++) link(hw[i - 1], hw[i]);
+  lines.push(hw);
+  // yan yollar (çete yolu hariç — o şehre bağlı ayrı bir çıkmaz, aşağıda ayrıca ele alınır)
+  const G = roadsideGeo();
+  const brLines = [];
+  G.branches.forEach((b) => {
+    if (b.key === 'cete_yol' || !b.pts?.length) return;
+    const ids = [];
+    b.pts.forEach(([x, z], i) => {
+      if (i % 3 === 0 || i === b.pts.length - 1) ids.push(add(x, z));
+    });
+    for (let i = 1; i < ids.length; i++) link(ids[i - 1], ids[i]);
+    lines.push(ids);
+    brLines.push({ b, ids });
+  });
+  // en yakın düğüm (verilen yollar arasında)
+  const nearestOn = (x, z, cand) => {
+    let best = -1;
+    let bd = Infinity;
+    cand.forEach((ids) =>
+      ids.forEach((id) => {
+        const d = (nodes[id].x - x) ** 2 + (nodes[id].z - z) ** 2;
+        if (d < bd) {
+          bd = d;
+          best = id;
+        }
+      })
+    );
+    return { id: best, d: Math.sqrt(bd) };
+  };
+  // kavşaklar: yan yolun uçları (ve otoyola değen noktaları) en yakın başka yola bağlanır
+  const padNodes = new Map(); // köy meydanı → merkez düğüm
+  brLines.forEach(({ ids }) => {
+    [ids[0], ids.at(-1)].forEach((end) => {
+      const others = lines.filter((l) => !l.includes(end));
+      const n = nearestOn(nodes[end].x, nodes[end].z, others);
+      if (n.id >= 0 && n.d < 16) {
+        link(end, n.id);
+        return;
+      }
+      // köy yolu köy meydanında biter: meydanın ortasından diğer uçlara bağlanır (Gölyaka ↔ vadi yolu)
+      const pad = roadsidePadAt(nodes[end].x, nodes[end].z, 8);
+      if (pad?.village) {
+        let c = padNodes.get(pad.key);
+        if (c == null) {
+          c = add(pad.mx, pad.mz);
+          padNodes.set(pad.key, c);
+          lines.push([c]);
+        }
+        link(end, c);
+      }
+    });
+  });
+  // parça listesi (yakın nokta → kenara izdüşüm)
+  const segs = [];
+  adj.forEach((arr, a) => arr.forEach(([b]) => a < b && segs.push([a, b])));
+  NAV = { nodes, adj, segs, hwStart: hw[0], hwEnd: hw.at(-1) };
+  return NAV;
+}
+function navSnap(p) {
+  const { nodes, segs } = navGraph();
+  let best = null;
+  for (const [a, b] of segs) {
+    const A = nodes[a];
+    const B = nodes[b];
+    const dx = B.x - A.x;
+    const dz = B.z - A.z;
+    const l2 = dx * dx + dz * dz || 1e-6;
+    const t = Math.max(0, Math.min(1, ((p.x - A.x) * dx + (p.z - A.z) * dz) / l2));
+    const x = A.x + dx * t;
+    const z = A.z + dz * t;
+    const d = (p.x - x) ** 2 + (p.z - z) ** 2;
+    if (!best || d < best.d) best = { a, b, t, x, z, d };
+  }
+  return best;
+}
+const plen = (pts) => {
+  let L = 0;
+  for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
+  return L;
+};
+// uç noktanın ağa bağlanışı: [{ id, cost, pts (uçtan düğüme) }]
+function navAttach(p) {
+  const N = navGraph();
+  if (inNavCity(p)) {
+    const pts = [...roadRoute(p, HWY_ENTRY), ...CITY_LINK, N.nodes[N.hwStart]];
+    if (Math.hypot(pts[0].x - p.x, pts[0].z - p.z) > 0.5) pts.unshift({ x: p.x, z: p.z });
+    return [{ id: N.hwStart, cost: plen(pts), pts }];
+  }
+  if (inTownRect(p.x, p.z, 4)) {
+    const pts = [p, ...townPath(p, false).slice(1), N.nodes[N.hwEnd]];
+    return [{ id: N.hwEnd, cost: plen(pts), pts }];
+  }
+  const s = navSnap(p);
+  if (!s) return [];
+  const off = Math.sqrt(s.d);
+  const q = { x: s.x, z: s.z };
+  const A = N.nodes[s.a];
+  const B = N.nodes[s.b];
+  return [
+    { id: s.a, cost: off + Math.hypot(q.x - A.x, q.z - A.z), pts: [p, q, A], snap: s },
+    { id: s.b, cost: off + Math.hypot(q.x - B.x, q.z - B.z), pts: [p, q, B], snap: s },
+  ];
+}
+function navDijkstra(starts, goals) {
+  const { nodes, adj } = navGraph();
+  const dist = new Float64Array(nodes.length).fill(Infinity);
+  const prev = new Int32Array(nodes.length).fill(-1);
+  // ikili yığın
+  const heap = [];
+  const push = (id, d) => {
+    heap.push([d, id]);
+    let i = heap.length - 1;
+    while (i > 0) {
+      const pi = (i - 1) >> 1;
+      if (heap[pi][0] <= heap[i][0]) break;
+      [heap[pi], heap[i]] = [heap[i], heap[pi]];
+      i = pi;
+    }
+  };
+  const pop = () => {
+    const top = heap[0];
+    const last = heap.pop();
+    if (heap.length) {
+      heap[0] = last;
+      let i = 0;
+      for (;;) {
+        const l = 2 * i + 1;
+        const r = l + 1;
+        let m = i;
+        if (l < heap.length && heap[l][0] < heap[m][0]) m = l;
+        if (r < heap.length && heap[r][0] < heap[m][0]) m = r;
+        if (m === i) break;
+        [heap[m], heap[i]] = [heap[i], heap[m]];
+        i = m;
+      }
+    }
+    return top;
+  };
+  starts.forEach((s) => {
+    if (s.cost < dist[s.id]) {
+      dist[s.id] = s.cost;
+      push(s.id, s.cost);
+    }
+  });
+  while (heap.length) {
+    const [d, n] = pop();
+    if (d > dist[n]) continue;
+    for (const [m, L] of adj[n]) {
+      const nd = d + L;
+      if (nd < dist[m]) {
+        dist[m] = nd;
+        prev[m] = n;
+        push(m, nd);
+      }
+    }
+  }
+  let best = null;
+  goals.forEach((g) => {
+    const c = dist[g.id] + g.cost;
+    if (Number.isFinite(c) && (!best || c < best.c)) best = { c, g };
+  });
+  if (!best) return null;
+  const chain = [];
+  for (let n = best.g.id; n >= 0; n = prev[n]) chain.unshift(n);
+  const start = starts.find((s) => s.id === chain[0]);
+  return { len: best.c, chain, start, goal: best.g };
+}
+export function navRoute(from, to) {
+  // çete karargahları: şehre çakıllı yolla bağlı çıkmaz (worldRoute'taki gibi)
+  const cF = inCete(from);
+  const cT = inCete(to);
+  if (cF || cT) {
+    if (cF && cT) return [from, to];
+    const gate = CETE_ROAD[0];
+    if (cT) return [...navRoute(from, gate), ...CETE_ROAD.slice(1), to];
+    return [from, ...CETE_ROAD.slice().reverse(), ...navRoute(gate, to).slice(1)];
+  }
+  if (inNavCity(from) && inNavCity(to)) return roadRoute(from, to);
+  if (inTownRect(from.x, from.z, 4) && inTownRect(to.x, to.z, 4)) return [from, to];
+  const S = navAttach(from);
+  const T = navAttach(to);
+  if (!S.length || !T.length) return worldRoute(from, to, Infinity);
+  // ikisi de aynı yol parçasındaysa doğrudan (ağa çıkmadan)
+  const sS = S[0].snap;
+  const tS = T[0].snap;
+  let direct = null;
+  if (sS && tS && ((sS.a === tS.a && sS.b === tS.b) || (sS.a === tS.b && sS.b === tS.a))) {
+    const pts = [from, { x: sS.x, z: sS.z }, { x: tS.x, z: tS.z }, to];
+    direct = { len: plen(pts), pts };
+  }
+  const r = navDijkstra(S, T);
+  if (!r) return direct ? direct.pts : worldRoute(from, to, Infinity);
+  if (direct && direct.len <= r.len) return direct.pts;
+  const { nodes } = navGraph();
+  const mid = r.chain.map((id) => ({ x: nodes[id].x, z: nodes[id].z }));
+  const head = r.start.pts.slice(0, -1);
+  const tail = r.goal.pts.slice(0, -1).reverse();
+  return [...head, ...mid, ...tail];
 }
 const fmtT = (s) => {
   const n = Math.max(0, Math.round(s));
