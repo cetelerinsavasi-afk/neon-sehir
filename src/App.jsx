@@ -26,6 +26,7 @@ import CityPegman from './components/City/CityPegman'; // v147.3 — sürükle-b
 import { IS_ANDROID_APP } from './lib/platform';
 import { quietRestorePlayPurchases, playRestoreSupported } from './lib/playBilling';
 import { exitApp, installBackHandler, rearmBack, useBackClose } from './lib/backStack';
+import { isTaRacing } from './lib/raceGuard';
 import ConfirmModal from './components/ConfirmModal/ConfirmModal';
 import LiveStreamsButton from './components/Stream/LiveStreamsButton';
 import UpdateAppBanner from './components/UpdateAppBanner/UpdateAppBanner';
@@ -267,7 +268,10 @@ function GameShell() {
   useBackClose(tuningGarageOpen, venueClose(setTuningGarageOpen));
   useBackClose(belediyeOpen, venueClose(setBelediyeOpen));
   useBackClose(Boolean(vendorRegion), venueClose(() => setVendorRegion(null)));
-  useBackClose(raceExpanded, () => setRaceExpanded(false));
+  // v159: yarış sürerken geri tuşu / kenardan kaydırma yarışı kapatmaz (bkz. lib/raceGuard.js)
+  useBackClose(raceExpanded, () => {
+    if (!isTaRacing()) setRaceExpanded(false);
+  });
   useBackClose(Boolean(activeTableId), () => setActiveTableId(null));
 
   // Uygulama arka plana alınıp geri geldiğinde (özellikle iOS'ta) Firestore

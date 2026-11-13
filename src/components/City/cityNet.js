@@ -137,13 +137,19 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
   let curName = name;
   let curAvatar = avatar;
   function setProfile(n, a) {
-    curName = n;
-    curAvatar = a;
+    // v159: gerçek ad henüz yoksa son bilinen ad korunur; hiç ad yoksa profil yazılmaz
+    // (eskiden 'Oyuncu' yazılıyor ve diğer oyuncular bu adı oturum boyunca önbellekte tutuyordu)
+    if (n) curName = n;
+    if (a) curAvatar = a;
+    n = curName;
+    a = curAvatar;
+    if (n === 'Oyuncu') n = '';
+    if (!n && !a) return;
     // v147.1: avatar JSON'u kesilmez (kesik JSON → başkalarında varsayılan avatar); çok uzunsa aksesuarsız
     let aj = JSON.stringify(a || {});
     if (aj.length > 7900) aj = JSON.stringify({ ...(a || {}), acc: undefined });
     if (aj.length > 7900) aj = '{}';
-    put(`city/u/${uid}`, { n: String(n || 'Oyuncu').slice(0, 40), a: aj });
+    put(`city/u/${uid}`, { n: String(n || '').slice(0, 40), a: aj });
   }
   function profileOf(id) {
     const p = profiles.get(id);
@@ -151,6 +157,7 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
     if (p && p !== 'loading' && p.retryAt) {
       profiles.set(id, 'loading');
       once(`city/u/${id}`).then((v) => {
+        const tries = (p.tries || 0) + 1;
         if (v?.n || v?.a) {
           let a = null;
           try {
@@ -158,8 +165,10 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
           } catch {
             a = null;
           }
-          profiles.set(id, { n: v.n || 'Oyuncu', a });
-        } else profiles.set(id, { ...p, retryAt: Date.now() + 8000 });
+          // v159: ad eksik / 'Oyuncu' ise bir süre daha yeniden sorulur (ad sonradan yazılabilir)
+          const noName = !v.n || v.n === 'Oyuncu';
+          profiles.set(id, { n: v.n || 'Oyuncu', a, ...(noName && tries < 8 ? { retryAt: Date.now() + 10000, tries } : {}) });
+        } else profiles.set(id, { ...p, tries, retryAt: Date.now() + (tries < 8 ? 8000 : 60000) });
         refresh();
       });
       return p;
@@ -174,7 +183,8 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
           a = null;
         }
         // profil henüz yazılmamışsa (yeni girdi) birazdan tekrar sorulur
-        profiles.set(id, { n: v?.n || 'Oyuncu', a, ...(v ? {} : { retryAt: Date.now() + 4000 }) });
+        const noName = !v?.n || v.n === 'Oyuncu';
+        profiles.set(id, { n: v?.n || 'Oyuncu', a, ...(noName ? { retryAt: Date.now() + 4000, tries: 0 } : {}) });
         refresh();
       });
     }

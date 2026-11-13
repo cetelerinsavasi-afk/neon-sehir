@@ -477,3 +477,14 @@
 .gs-btn {
   touch-action: none;
 }
+
+/* v159 — Flappy Kuş (telefondan oyun salonuna taşındı) */
+.gs-flappy-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 4px 12px;
+}
+.gs-game-flappy .gs-game-emoji {
+  filter: drop-shadow(0 0 6px rgba(255, 214, 10, 0.5));
+}

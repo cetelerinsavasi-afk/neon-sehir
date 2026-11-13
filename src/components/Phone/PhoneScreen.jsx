@@ -4,7 +4,6 @@ import MarketplaceScreen from '../MarketplaceScreen/MarketplaceScreen';
 import BankScreen from '../BankScreen/BankScreen';
 import ChatsAppScreen from '../ChatsAppScreen/ChatsAppScreen';
 import NewspaperScreen from '../NewspaperScreen/NewspaperScreen';
-import FlappyBirdScreen from '../FlappyBirdScreen/FlappyBirdScreen';
 import SixtagramScreen from '../Sixtagram/SixtagramScreen';
 import GuideScreen from '../GuideScreen/GuideScreen';
 import GazeteScreen from '../Gazete/GazeteScreen';
@@ -28,14 +27,15 @@ import './PhoneScreen.css';
 const GoldStoreScreen = lazy(() => import('../GoldStoreScreen/GoldStoreScreen'));
 
 // Telefon 3 sayfa, gerçek telefondaki gibi yana kaydırılır:
-//   [ TV (haberler) ]  ←  [ Ana ekran ]  →  [ Altın · Neon Şehir · Bi fikrin mi var? ]
+//   [ Gazete ]  ←  [ Ana ekran ]  →  [ Altın · Neon Şehir · Bi fikrin mi var? ]
+// v159: sol sayfadaki haberler (Neon TV) kaldırıldı — sola kaydırınca Neon Şehir Gazetesi açılır.
+//       Flappy Kuş telefondan kaldırıldı → bilgisayar oyunları (internet kafe) arasında; skorlar aynı.
 // id'ler geriye dönük uyumluluk için korunuyor (bkz. initialApp kullanımları).
 const APPS = [
   // v124: Amazor uygulaması kaldırıldı (fiyat tablosu AMAZOR_PRICES functions/itemRules.js'te kalır)
   // v124: Casino uygulaması kaldırıldı — kumar oyunları gazinolarda (Casino mekânı + oyuncu gazinoları)
   { id: 'sixtagram', glyph: '📸', note: 'Sixtagram', tone: 'sixtagram' },
-  { id: 'flappy', glyph: '🐤', note: 'Flappy Kuş', tone: 'flappy' },
-  { id: 'neon-gazete', glyph: '📰', note: 'Gazete', tone: 'neongazete' }, // v127 belediye gazetesi
+  // v159: Flappy Kuş → internet kafe bilgisayarları; Gazete → sola kaydırınca açılan sayfa
 ];
 const EXTRA_APPS = [
   { id: 'altin-magazasi', glyph: '', note: 'Zümrüt Mağazası', tone: 'emerald' },
@@ -136,8 +136,12 @@ function AppIcon({ app, badge, dot, onOpen }) {
 }
 
 export default function PhoneScreen({ onClose, initialApp = null }) {
-  const [openApp, setOpenApp] = useState(isAppBlocked(initialApp) ? null : initialApp);
+  const [openApp, setOpenApp] = useState(isAppBlocked(initialApp) || initialApp === 'flappy' ? null : initialApp);
   const [page, setPage] = useState(HOME_PAGE);
+  const [gazeteSeen, setGazeteSeen] = useState(false);
+  useEffect(() => {
+    if (page === 0) setGazeteSeen(true);
+  }, [page]);
   // v68 — Android geri tuşu: önce açık uygulama kapanır, sonra telefon
   useBackClose(true, onClose);
   useBackClose(Boolean(openApp), () => setOpenApp(null));
@@ -205,7 +209,6 @@ export default function PhoneScreen({ onClose, initialApp = null }) {
           {openApp === 'banka' && <BankScreen />}
           {openApp === 'chatsapp' && <ChatsAppScreen />}
           {openApp === 'gazete' && <NewspaperScreen />}
-          {openApp === 'flappy' && <FlappyBirdScreen />}
           {openApp === 'sixtagram' && <SixtagramScreen />}
           {openApp === GOLD_STORE_APP_ID && !isAppBlocked(GOLD_STORE_APP_ID) && (
             <Suspense fallback={null}>
@@ -225,13 +228,10 @@ export default function PhoneScreen({ onClose, initialApp = null }) {
     <div className={`phone-screen home${page === 0 ? ' on-tv' : ''}`}>
       <StatusBar onBack={onClose} />
       <div className="phone-pager" ref={pagerRef} onScroll={onPagerScroll}>
-        {/* Sol sayfa: TV (haberler) */}
-        <section className="phone-page phone-page-tv" aria-label="Neon TV">
-          <div className="phone-tv-head">
-            <span className="phone-tv-logo">📺</span> Neon TV
-          </div>
-          {/* TV sadece bu sayfa görünürken çalışır (sesi/animasyonu arka planda sürmesin) */}
-          <div className="phone-tv-body">{page === 0 ? <NewspaperScreen /> : <div className="phone-tv-idle">📺</div>}</div>
+        {/* Sol sayfa: v159 — Neon Şehir Gazetesi (sola kaydırınca kendiliğinden açılır; sayfaya ilk
+            gelindiğinde yüklenir, sonra açık kalır → tekrar okuma yok) */}
+        <section className="phone-page phone-page-gazete" aria-label="Neon Şehir Gazetesi">
+          {gazeteSeen || page === 0 ? <GazeteScreen /> : <div className="phone-tv-idle">📰</div>}
         </section>
 
         {/* Ana sayfa */}
@@ -266,7 +266,7 @@ export default function PhoneScreen({ onClose, initialApp = null }) {
 
       <div className="phone-dots" role="tablist" aria-label="Sayfalar">
         {Array.from({ length: PAGES }, (_, i) => (
-          <button key={i} role="tab" aria-selected={page === i} aria-label={i === 0 ? 'TV' : i === 1 ? 'Ana ekran' : 'Diğer'} className={`phone-dot${page === i ? ' on' : ''}${i === 0 ? ' tv' : ''}`} onClick={() => goPage(i)} />
+          <button key={i} role="tab" aria-selected={page === i} aria-label={i === 0 ? 'Gazete' : i === 1 ? 'Ana ekran' : 'Diğer'} className={`phone-dot${page === i ? ' on' : ''}${i === 0 ? ' tv' : ''}`} onClick={() => goPage(i)} />
         ))}
       </div>
       <div className="phone-dock">

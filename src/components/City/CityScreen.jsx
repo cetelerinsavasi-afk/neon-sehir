@@ -274,8 +274,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const [mapOpen, setMapOpen] = useState(false);
   void onClose; // v157.4: şehirden ana sayfaya çıkış yok
   // v157.4: alt çubuk — sohbet kapalıyken Çeteler · Soygun · Profil (oyun açılışında kapalı)
-  const [chatOn, setChatOn] = useState(false);
-  const [chatNew, setChatNew] = useState(false);
+  // v159: sohbet modu HEP AÇIK (kapatma düğmesi yok); Çeteler · Soygun · Profil sağ altta, sohbetin yanında
+  const chatOn = !guest;
   const [mekTab, setMekTab] = useState('soygun');
   const [watchId, setWatchId] = useState(null);
   // v157.4 — ÇETE KARARGAHLARI haritada: hangar sahipleri (gangs.hqSlot) + karargah tasarımları
@@ -330,7 +330,10 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     await loadHqRef.current();
     const slot = hqRef.current.byGang[gid];
     if (!Number.isInteger(slot)) return false;
-    return Boolean(engineRef.current?.enterHq(slot));
+    // v159: karargahın kapısının önüne ışınlan + gerçek karargah ekranını aç (çıkınca kapının önündesin)
+    if (!engineRef.current?.exitHq(slot)) return false;
+    enterHqRef.current?.('gang', slot);
+    return true;
   }, []);
   const enterHqRef = useRef(onEnterHq);
   enterHqRef.current = onEnterHq;
@@ -465,8 +468,13 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
 
   // --- motor + ağ (ekran açıkken bir kez kurulur) ---------------------------------------
   const avatar = player?.avatar || null;
-  const myName = player?.displayName || user?.displayName || 'Oyuncu';
+  // v159 — "OYUNCU" ADI DÜZELTMESİ: şehir açılırken oyuncu belgesi henüz gelmemişse ad 'Oyuncu'
+  // olarak donup kalıyordu (kendi etiketimiz + diğerlerine yayınlanan profil). Gerçek ad (realName)
+  // gelince hem kendi etiketimiz hem yayınlanan profil güncellenir; gerçek ad yokken profil yazılmaz.
+  const realName = String(player?.displayName || user?.displayName || '').trim();
+  const myName = realName || 'Oyuncu';
   const startRef = useRef({ avatar, myName, spawn });
+  startRef.current = { ...startRef.current, avatar: avatar || startRef.current.avatar, myName: realName ? myName : startRef.current.myName };
   const uid = user?.uid || (guest ? '__guest__' : null);
   useEffect(() => {
     if (!uid) return undefined;
@@ -572,7 +580,6 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           const n = pr?.n || namesRef.current.get(id)?.n || 'Oyuncu';
           eng.playerSay(id, text);
           setMsgs((m) => [...m.slice(-80), { id: `${id}_${Date.now()}`, uid: id, name: n, text }]);
-          setChatNew(true);
         },
         onStatus: (s) => setOffline(s === 'offline'),
       });
@@ -604,10 +611,11 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   }, [ready]);
   // avatar sonradan değişirse (giyinme vb.)
   useEffect(() => {
-    if (!ready || !avatar) return;
-    engineRef.current?.setAvatar(avatar);
-    netRef.current?.setProfile(myName, avatar);
-  }, [ready, avatar, myName]);
+    if (!ready) return;
+    if (avatar) engineRef.current?.setAvatar(avatar);
+    if (realName) engineRef.current?.setMyName?.(realName);
+    if (realName || avatar) netRef.current?.setProfile(realName || null, avatar);
+  }, [ready, avatar, realName]);
   // engellenen oyuncular anında kaybolsun
   useEffect(() => {
     namesRef.current.forEach((_, id) => {
@@ -634,6 +642,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     return () => document.removeEventListener('visibilitychange', on);
   }, [panel, watchId, covered]);
   // telefon açıkken sahne durur (pil + ısınma)
+  const raceHid = useRef(false);
   useEffect(() => {
     const e = engineRef.current;
     if (!e || !ready) return;
@@ -643,7 +652,23 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       e.releaseGpu?.();
       return undefined;
     }
-    if (panel?.kind === 'phone' || panel?.kind === 'futbol' || panel?.kind === 'gangs' || panel?.kind === 'soygun' || panel?.kind === 'profile' || watchId || raceFull) {
+    // v159 — YARIŞTA OYUNDAN ATMA: şampiyona / antrenman / bahisli yarış şehrin üstünde açıkken şehir
+    // sadece duruyordu; şehrin bütün çizim verisi (binalar, araçlar, dokular) grafik belleğinde kalıyor,
+    // yarışın kendi tuvaliyle birlikte zayıf telefonlarda bellek taşıp uygulama kapanıyordu. Artık
+    // yarış sürerken şehir grafik belleğini bırakır (dönünce yakından uzağa yeniden yüklenir) ve
+    // şehirdeki araba motoru sesi de susar.
+    if (raceFull && !heistOn) {
+      e.pause();
+      e.hidden(true);
+      e.releaseGpu?.();
+      raceHid.current = true;
+      return undefined;
+    }
+    if (raceHid.current) {
+      raceHid.current = false;
+      e.hidden(false);
+    }
+    if (panel?.kind === 'phone' || panel?.kind === 'futbol' || panel?.kind === 'gangs' || panel?.kind === 'soygun' || panel?.kind === 'profile' || watchId) {
       if (!heistOn) e.pause();
       else e.resume();
     }
@@ -800,7 +825,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
 
   // --- geri tuşu: panel → araba → yolculuk → şehirden çık ------------------------------------
   // v157.4: oyun şehirde açılır (ana sayfa yok) — şehirde açık bir şey yokken geri tuşu çıkış sorusuna gider
-  useBackClose(Boolean(report || card || mapOpen || chatOpen || chatOn || watchId || orgPanel || panel || hud.driving || hud.riding), () => {
+  useBackClose(Boolean(report || card || mapOpen || chatOpen || watchId || orgPanel || panel || hud.driving || hud.riding), () => {
     const e = engineRef.current;
     if (report) return setReport(null);
     if (card) return setCard(null);
@@ -810,7 +835,6 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     if (orgPanel) return setOrgPanel(null);
     if (panel?.kind === 'camera') return closeCamera();
     if (panel) return setPanel(null);
-    if (chatOn) return setChatOn(false);
     if (e?.isDriving()) return e.exitCar();
     if (e?.isRiding()) {
       e.rideEnd();
@@ -1038,7 +1062,12 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     if (zone.kind === 'market') list.push({ label: '🛒 Market', cls: 'take', on: () => setPanel({ kind: 'market' }) });
     if (zone.kind === 'atm') list.push({ label: '🏧 ATM', cls: 'take', on: () => setPanel({ kind: 'phone', app: 'banka' }) });
     // v158 — karargah kapısı: dışarıdan içeri, içeriden şehre (karargah haritadan bağımsız iç mekân)
-    if (zone.kind === 'hqIn') list.push({ label: '🚪 İçeri gir', cls: 'take', free: true, on: () => engineRef.current?.enterHq(zone.slot) });
+    // v159: KENDİ çetenin karargahına "İçeri gir" → doğrudan gerçek karargah (duvarları sağlam, eşyalarla
+    // etkileşimli — eskiden yalnız "Düzenle" ile açılan ekran). Başka çetelerin karargahı şehirden gezilir.
+    if (zone.kind === 'hqIn') {
+      const mineHq = !guest && gangAlerts?.gangId && hqRef.current.bySlot[zone.slot]?.id === gangAlerts.gangId;
+      list.push({ label: '🚪 İçeri gir', cls: 'take', free: true, on: () => (mineHq && onEnterHq ? onEnterHq('gang', zone.slot) : engineRef.current?.enterHq(zone.slot)) });
+    }
     if (zone.kind === 'hqOut') list.push({ label: '🏙️ Şehre çık', cls: 'take', free: true, on: () => engineRef.current?.exitHq(zone.slot) });
     if (zone.kind === 'car') {
       list.push({ label: '🚗 Bin', cls: 'take', on: () => engineRef.current.enterCar() });
@@ -1055,7 +1084,13 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     actions = { title: hqName ? `🏴 ${hqName}` : zone.title, list };
   }
 
-  const vui = !driving && !riding ? VENUE_UI[venue] || null : null;
+  // v159: kapalı dükkânın kapısının önündeyken (içine girilmez) o mekânın düğmeleri çıkar
+  const shopDoorVenue = !driving && !riding && !venue && zone?.kind === 'shopDoor' ? zone.venue : null;
+  const uiVenue = venue || shopDoorVenue;
+  const vui = !driving && !riding ? VENUE_UI[uiVenue] || null : null;
+  useEffect(() => {
+    if (shopDoorVenue) setBizOpen(false);
+  }, [shopDoorVenue]);
   // v158 — sol üst menünün (şüphe · altın · mekân düğmeleri) gerçek alt kenarı: mekânın kendi
   // düğmeleri (camide "İbadet Et", bankada vezne…) boşluk bırakmadan hemen altına dizilir
   useEffect(() => {
@@ -1075,7 +1110,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       window.removeEventListener('resize', put);
       root.style.removeProperty('--cs-lmenu-b');
     };
-  }, [driving, riding, guest, venue]);
+  }, [driving, riding, guest, venue, shopDoorVenue]);
   // v157.9: karargah içi (hq0–hq5): kimin karargahı, benim mi
   const hqVenue = (() => {
     const m = !driving && !riding ? /^hq(\d)$/.exec(venue || '') : null;
@@ -1290,7 +1325,19 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
               <NearbyPlayersButton
                 buttonClassName="hs-side-btn"
                 collectionName="city"
-                others={nearby.map((id) => ({ uid: id, displayName: namesRef.current.get(id)?.n || 'Oyuncu', avatar: namesRef.current.get(id)?.a || null }))}
+                others={nearby.map((id) => {
+                  // v159: mesajların yanındaki ⚠️ kalktı — oyuncunun şehirdeki son mesajı burada görünür ve
+                  // Oyuncu Kartı'ndan bu mesajla birlikte bildirilir (moderasyon mesaj metnini yine görür)
+                  const last = [...msgs].reverse().find((m) => m.uid === id && !m.me);
+                  const text = last?.text || null;
+                  return {
+                    uid: id,
+                    displayName: namesRef.current.get(id)?.n || 'Oyuncu',
+                    avatar: namesRef.current.get(id)?.a || null,
+                    chatText: text,
+                    reportItem: text ? { label: 'Son mesajını bildir', targetType: 'user', targetPath: `users/${id}`, preview: text } : null,
+                  };
+                })}
               />
             )}
             {driving && (
@@ -1339,7 +1386,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                     </button>
                   )}
                   {vui.heist && HEIST_LABELS[vui.heist] && (
-                    <button className="cs-venue-btn heist" onClick={() => (guest ? setAskSignIn(true) : setPanel({ kind: 'heist', target: vui.heist, title: VENUE_TITLE[venue] || '' }))}>
+                    <button className="cs-venue-btn heist" onClick={() => (guest ? setAskSignIn(true) : setPanel({ kind: 'heist', target: vui.heist, title: VENUE_TITLE[uiVenue] || '' }))}>
                       💰 Soygun yap
                     </button>
                   )}
@@ -1495,19 +1542,13 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
               </div>
             </div>
           )}
-          {!driving && !chatOn && (
-            <div className="cs-dock">
-              <button
-                className={`cs-dock-btn${chatNew ? ' new' : ''}`}
-                onClick={() => {
-                  if (guest) return setAskSignIn(true);
-                  setChatOn(true);
-                  setChatNew(false);
-                  return undefined;
-                }}
-              >
-                <span>💬</span>Sohbet
-              </button>
+          {!driving && (
+            <div className={`cs-dock${chatOn ? ' cs-dock-side' : ''}`}>
+              {!chatOn && (
+                <button className="cs-dock-btn" onClick={() => setAskSignIn(true)}>
+                  <span>💬</span>Sohbet
+                </button>
+              )}
               <button className="cs-dock-btn" onClick={() => setPanel({ kind: 'gangs' })}>
                 <span>🏴</span>Çeteler
                 {gangAlerts?.any && <i className="cs-dock-dot" />}
@@ -1529,39 +1570,18 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
             </div>
           )}
           {((!driving && chatOn) || (driving && driveChat)) && !guest && (
-            <div className={`hs-chat${chatOpen ? ' expanded' : ''}${driving ? ' cs-drive-chat' : ''}`}>
+            <div className={`hs-chat${chatOpen ? ' expanded' : ''}${driving ? ' cs-drive-chat' : ' cs-chat-always'}`}>
               {/* v151: diğer mekânlardaki gibi — dokununca sohbet açılır (eski mesajlar); şikâyet ⚠️ ile */}
               <div className="hs-chat-feed" onClick={() => setChatOpen((v) => !v)}>
                 {(chatOpen ? msgs : msgs.slice(-3)).map((m) => (
                   <div key={m.id} className={`hs-msg${m.me ? ' me' : ''}`}>
                     <b>{m.name}:</b> {m.text}
-                    {chatOpen && !m.me && (
-                      <button
-                        className="cs-msg-report"
-                        title="Şikâyet et"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setReport({ uid: m.uid, name: m.name, text: m.text });
-                        }}
-                      >
-                        ⚠️
-                      </button>
-                    )}
+                    {/* v159: mesaj yanındaki ⚠️ kaldırıldı — şikâyet 👥 Yakındakiler'den (son mesajı ekli) */}
                   </div>
                 ))}
                 {msgs.length === 0 && <div className="hs-msg dim">Yakındakilerle sohbet et 👋</div>}
               </div>
-              <ChatBox
-                onSend={sendChat}
-                onHide={
-                  driving
-                    ? null
-                    : () => {
-                        setChatOn(false);
-                        setChatOpen(false);
-                      }
-                }
-              />
+              <ChatBox onSend={sendChat} />
             </div>
           )}
           {toast && <div className="hs-toast">{toast}</div>}

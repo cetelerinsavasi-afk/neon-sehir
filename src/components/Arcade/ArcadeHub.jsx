@@ -10,6 +10,8 @@ import { streamBroadcast } from '../Stream/streamShared';
 import './Arcade.css';
 
 const BrickBreaker = lazy(() => import('../HouseScreen/ArcadeGame'));
+// v159: Flappy Kuş telefondan buraya taşındı (internet kafe / oyuncu bilgisayarı). Skor tablosu aynı.
+const FlappyBirdScreen = lazy(() => import('../FlappyBirdScreen/FlappyBirdScreen'));
 
 // =============================================================================
 // v75 — OYUN SALONU (evde Atari Makinesi / Oyuncu Bilgisayarı / İnternet Kafe
@@ -21,6 +23,7 @@ const BrickBreaker = lazy(() => import('../HouseScreen/ArcadeGame'));
 // =============================================================================
 const GAMES = ARCADE_GAMES;
 const BRICK = { id: 'tugla', title: 'Tuğla Kırma', emoji: '🧱', desc: 'Klasik atari: topu sektir, tüm tuğlaları kır.', min: 1, max: 1 };
+const FLAPPY = { id: 'flappy', title: 'Flappy Kuş', emoji: '🐤', desc: 'Borulara çarpmadan uç — günlük ve tüm zamanlar sıralaması.', min: 1, max: 1 };
 const maxOf = (g) => g?.max || 2;
 const botNames = (k) => Array.from({ length: k }, (_, i) => (k > 1 ? `🤖 Bot ${i + 1}` : '🤖 Bot'));
 
@@ -61,7 +64,8 @@ export default function ArcadeHub({ onClose }) {
   const bots = max - 1; // bota karşı: masa botlarla dolar
 
   const back = () => {
-    if (view === 'play' || view === 'brick') {
+    if (view === 'flappy') setView('menu');
+    else if (view === 'play' || view === 'brick') {
       setView(gameId && view === 'play' ? 'mode' : 'menu');
       setMode(null);
     } else if (view === 'waiting') leaveWaiting();
@@ -191,11 +195,34 @@ export default function ArcadeHub({ onClose }) {
     );
   }
 
+  if (view === 'flappy') {
+    return (
+      <div className="gs-backdrop">
+        <div className="gs-sheet gs-flappy">
+          <div className="gs-head">
+            <button type="button" className="gs-back" onClick={back} aria-label="Geri">
+              ‹
+            </button>
+            <span className="gs-title">🐤 Flappy Kuş</span>
+            <button type="button" className="gs-back" onClick={onClose} aria-label="Kapat">
+              ✕
+            </button>
+          </div>
+          <div className="gs-flappy-body">
+            <Suspense fallback={null}>
+              <FlappyBirdScreen />
+            </Suspense>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const seats = (hostName) => {
     const list = [{ name: hostName, uid: 'host' }, ...lobby];
     return Array.from({ length: max }, (_, i) => list[i] || null);
   };
-  const tagOf = (g) => (g.id === 'tugla' ? 'Tek kişilik' : maxOf(g) > 2 ? `👥 2–${maxOf(g)} kişi · 🤖 · 🌐` : '👥 2 kişi · 🤖 · 🌐');
+  const tagOf = (g) => (g.id === 'tugla' || g.id === 'flappy' ? 'Tek kişilik' : maxOf(g) > 2 ? `👥 2–${maxOf(g)} kişi · 🤖 · 🌐` : '👥 2 kişi · 🤖 · 🌐');
   const card = (g) => (
     <button
       key={g.id}
@@ -204,6 +231,7 @@ export default function ArcadeHub({ onClose }) {
       onClick={() => {
         setErr('');
         if (g.id === 'tugla') setView('brick');
+        else if (g.id === 'flappy') setView('flappy');
         else {
           setGameId(g.id);
           setView('mode');
@@ -239,6 +267,7 @@ export default function ArcadeHub({ onClose }) {
             <p className="gs-section">🕹️ TEK KİŞİLİK</p>
             {/* v81: Tuğla Kırma yayına aktarılamıyor → yayındayken listede yok */}
             {!streamBroadcast.uid && card(BRICK)}
+            {!streamBroadcast.uid && card(FLAPPY)}
           </div>
         )}
 

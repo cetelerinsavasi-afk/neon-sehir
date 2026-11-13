@@ -35,6 +35,10 @@ export const inExit = (x, z) => x > EXIT.x0 && x < EXIT.x1 && z > EXIT.z0 && z <
 export const CITY_GRID = { x0: WALK.x0 - 2, x1: EXIT.x1 + 12, z0: BOUNDS.z0 - 2, z1: WALK.z1 + 1 };
 
 // mekân türü → oyundaki 3D mekân (functions/venueLayouts.js VENUES) — içeride oyunun işlemleri
+// v159 — oyuncuların işletme açabildiği dükkânlar artık şehirde içine girilmeyen binalar: kapı kapalı
+// ve geçilmez; kapının önünde mekân düğmeleri çıkar (ör. "🚗 Araba galerileri" listesi + "💰 Soygun yap").
+// Oyuncu listeden istediği işletmeye girer.
+export const CLOSED_SHOPS = new Set(['bar', 'cafe', 'netkafe', 'spor', 'galeri', 'silah', 'casino', 'modifiye']);
 export const VENUE_GAME_KEY = { camii: 'camii', banka: 'banka', karakol: 'karakol', belediye: 'belediye', galeri: 'araba_galerisi', silah: 'silah_magazasi', casino: 'gazino' };
 
 const yawOf = (m) => Math.atan2(m.elements[8], m.elements[10]);
@@ -106,8 +110,10 @@ function patchCity(city) {
     // parselde duran seyyar satıcılar yeni binanın grubuna taşınır (aynı parsel dönüşü)
     l.kit.group.children.filter((c) => c.name?.startsWith('vendor_')).forEach((c) => v.root.add(c));
     // tır kapıdan sığmasın (sadece araç engeli)
-    v.base.solid(v.door.x, v.door.z - 1.3, 1.4, 0.4);
-    v.base.solids.at(-1).car = true;
+    // v159: kapalı dükkânlarda kapı yayalara da geçilmez (kapı aralığının tamamı)
+    v.closedShop = CLOSED_SHOPS.has(l.type);
+    v.base.solid(v.door.x, v.door.z - 1.3, v.closedShop ? 1.6 : 1.4, 0.4);
+    if (!v.closedShop) v.base.solids.at(-1).car = true;
     city.kits.push(...v.kits);
     l.kit = v.base;
     l.info = { ...(l.info || {}), door: v.door };
@@ -1019,7 +1025,7 @@ export function finishCityWorld(W, scene) {
   W.doorObjs = [];
   venues.forEach((v) => (v.doors || []).forEach((o) => {
     if (!o?.userData?.ctl?.tick) return;
-    if (v.isolated) return; // v158: karargah kapısı kendiliğinden açılmaz (düğmeyle girilir)
+    if (v.isolated || v.closedShop) return; // v158: karargah kapısı kendiliğinden açılmaz (düğmeyle girilir) · v159: kapalı dükkân
     const p = o.getWorldPosition(new V());
     W.doorObjs.push({ ctl: o.userData.ctl, x: p.x, z: p.z });
   }));

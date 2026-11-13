@@ -480,3 +480,14 @@ body.ns-city-open .ta-root { z-index: 96; }
 
 /* v158 — 📱 düğmesinde okunmamış sayısı */
 .cs-root .hs-side-btn .cs-phone-badge { position: absolute; top: -4px; right: -4px; line-height: 1; pointer-events: none; }
+
+/* v159 — sohbet hep açık: sohbet solda, Çeteler · Soygun · Profil sağ altta dikey sütun */
+.cs-root:not(.driving) .hs-chat.cs-chat-always { right: 76px; }
+.cs-dock.cs-dock-side {
+  left: auto; right: 8px; width: 62px;
+  grid-template-columns: 1fr; gap: 4px; padding: 4px;
+}
+.cs-dock.cs-dock-side .cs-dock-btn { padding: 5px 2px 4px; font-size: 10px; }
+.cs-dock.cs-dock-side .cs-dock-btn span { font-size: 17px; }
+.cs-root.cs-land .cs-dock.cs-dock-side { left: auto; right: 70px; }
+.cs-root.cs-land:not(.driving) .hs-chat.cs-chat-always { right: 140px; }

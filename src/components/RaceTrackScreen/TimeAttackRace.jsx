@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { setTaRacing } from '../../lib/raceGuard';
+import { useBackClose } from '../../lib/backStack';
 import { doc, onSnapshot, setDoc, serverTimestamp } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { carStats, trainingBotRun, gradeOf, RACE_CAR_LOOKS, FPS } from '../../../functions/raceSim.js';
@@ -322,6 +324,12 @@ export default function TimeAttackRace({ room, myUid, onExit, onSwitchRoom }) {
 
   // çıkış: yarış sürerken çıkmak = bitirememek (bahiste kaybetmek)
   const racingNow = phase === 'running' && room.status === 'racing';
+  // v159: yarış sürerken Android geri tuşu / kenardan kaydırma yarışı kapatmasın — çıkış onayı açılır
+  useEffect(() => {
+    setTaRacing(racingNow);
+    return () => setTaRacing(false);
+  }, [racingNow]);
+  useBackClose(racingNow, () => setConfirmExit(true));
   const handleClose = () => {
     if (racingNow) setConfirmExit(true);
     else onExit();

@@ -281,7 +281,7 @@ export const CATS = [
     { type: 'lines', title: 'Gazete ve Şikâyet',
       kicker: 'Şehir her sabah yeni bir manşetle uyanır.',
       lines: [
-        L('📰', 'Telefondaki Gazete her gece 00:00’da basılır. Sadece büyük haberler: fabrika, esnaf, işçi vergileri, polis ve belediye maaşları. Ayrıntı belediyede.'),
+        L('📰', 'Telefondaki Gazete (ana ekrandan sola kaydır) her gece 00:00’da basılır. Sadece büyük haberler: fabrika, esnaf, işçi vergileri, polis ve belediye maaşları. Ayrıntı belediyede.'),
         L('✒️', 'Başkan ve yardımcıları gazeteye tek bir yazı bırakabilir. Yenisi eskisini siler.'),
         L('📣', 'Belediyede sağ üstteki Şikâyet kutusuna derdini yaz. Günde 3 hakkın var.'),
         L('❤️', 'En çok beğenilen şikâyet ertesi sabah “Halkın Sesi” olur. Şikâyetler 7 gün sonra silinir.'),

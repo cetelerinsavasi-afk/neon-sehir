@@ -522,7 +522,7 @@
   height: 7px;
   border-radius: 2px;
 }
-/* TV sayfasında dock gizli (telefonlardaki haber ekranı gibi) */
+/* Gazete (eskiden TV) sayfasında dock gizli (telefonlardaki haber ekranı gibi) */
 .phone-screen.on-tv .phone-dock {
   display: none;
 }
@@ -582,5 +582,16 @@
   border: 1px solid #5a4a32;
 }
 .phone-app-body.full > .gz-wrap {
+  overflow-y: auto;
+}
+
+/* v159 — sol sayfa: Neon Şehir Gazetesi (haberler / TV yerine) */
+.phone-page-gazete {
+  padding: 0;
+  overflow: hidden;
+}
+.phone-page-gazete > .gz-wrap {
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
 }

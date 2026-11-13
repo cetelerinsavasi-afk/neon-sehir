@@ -94,7 +94,7 @@ export default function NearbyPlayersButton({ others = [], collectionName, varia
           avatar={target.avatar}
           reportItems={
             target.chatText && !isBlocked(target.uid)
-              ? [{ label: 'Konuşma balonunu bildir', targetType: 'bubble', targetPath: `${collectionName}/${target.uid}`, preview: target.chatText }]
+              ? [target.reportItem || { label: 'Konuşma balonunu bildir', targetType: 'bubble', targetPath: `${collectionName}/${target.uid}`, preview: target.chatText }]
               : []
           }
           onClose={() => setTarget(null)}

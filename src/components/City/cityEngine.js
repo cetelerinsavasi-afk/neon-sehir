@@ -49,8 +49,9 @@ const CITY_PERF_KEY = 'city-perf-tier-v1';
 export const CITY_TIERS = [
   { name: 'yüksek', dpr: 1.75, shadows: true, shadowEvery: 1, pool: 10, view: 170, fps: 60 },
   { name: 'orta', dpr: 1.35, shadows: true, shadowEvery: 2, pool: 6, view: 125, fps: 60 },
-  { name: 'düşük', dpr: 1.1, shadows: false, shadowEvery: 0, pool: 4, view: 100, fps: 60 },
-  { name: 'en düşük', dpr: 0.9, shadows: false, shadowEvery: 0, pool: 2, view: 80, fps: 30 },
+  // v159: telefonda şehir "piksel piksel" görünüyordu — düşük seviyelerin çözünürlüğü biraz artırıldı
+  { name: 'düşük', dpr: 1.25, shadows: false, shadowEvery: 0, pool: 4, view: 100, fps: 60 },
+  { name: 'en düşük', dpr: 1.05, shadows: false, shadowEvery: 0, pool: 2, view: 80, fps: 30 },
 ];
 function readCityTier(def) {
   try {
@@ -857,6 +858,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
           zones.push({ kind: 'station', id: `st_${v.type}_${iid}_${Math.round(v.wx)}`, station: iid, acts, venue: v.type, gameVenue: gk || null, title: `${v.venue.icon || ''} ${v.venue.name}`, x: p.x, z: p.z, r: 2.0 });
         });
       }
+      // v159: kapalı dükkânın kapısı — önünde mekân düğmeleri (liste + soygun) çıkar
+      if (v.closedShop) {
+        const o = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 + 2.2);
+        zones.push({ kind: 'shopDoor', id: `shop_${v.type}_${Math.round(v.wx)}`, venue: v.type, title: v.venue?.name ? `${v.venue.icon || '🏪'} ${v.venue.name}` : '🏪 Dükkân', x: o.x, z: o.z, r: 3.2 });
+      }
       // karargah kapısı: dışarıdan "İçeri gir", içeriden "Şehre çık"
       if (v.isolated) {
         const o = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 + 1.7);
@@ -1473,6 +1479,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   function venueSpawn(type) {
     const v = W.venues.find((q) => q.type === type);
     if (!v) return null;
+    // v159: kapalı dükkân → kapının önünde (dışarıda, düğmelerin içinde), yüz kapıya dönük
+    if (v.closedShop) {
+      const o = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 + 2.4);
+      return { x: o.x, z: o.z, yaw: v.ry, pitch: 0.36 };
+    }
     const p = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 - 3.2);
     return { x: p.x, z: p.z, yaw: v.ry, pitch: 0.36, venue: true };
   }
@@ -2644,9 +2655,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       return fromRoom(isoV, clamp(p.x, -VROOM.W / 2 + m, VROOM.W / 2 - m), clamp(p.z, -VROOM.D / 2 + m, VROOM.D / 2 - m));
     }
     for (const v of W.venues) {
-      if (!v.isolated) continue;
+      if (!v.isolated && !v.closedShop) continue; // v159: kapalı dükkâna dokununca da kapısının önüne
       const p = toRoom(v, x, z);
-      if (Math.abs(p.x) < VROOM.W / 2 + 0.8 && Math.abs(p.z) < VROOM.D / 2 + 0.8) return fromRoom(v, v.doorX ?? 0, VROOM.D / 2 + 1.7);
+      if (Math.abs(p.x) < VROOM.W / 2 + 0.8 && Math.abs(p.z) < VROOM.D / 2 + 0.8) return fromRoom(v, v.doorX ?? 0, VROOM.D / 2 + (v.closedShop ? 2.2 : 1.7));
     }
     return { x, z };
   }
@@ -2705,7 +2716,19 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   }
   function onDown(e) {
     if (paused) return; // v157.9: ortak tuval başka ekrandayken (karargah düzenleme) şehir dokunuş almaz
-    canvas.setPointerCapture?.(e.pointerId);
+    // v159 — "TEK PARMAKLA ÇEVİRİRKEN YAKINLAŞMA": bir dokunuşun bırakılışı kaçınca (tuval başka
+    // ekrana taşınınca, sistem hareketi, bildirim perdesi…) o parmak listede "hayalet" kalıyordu;
+    // sonraki tek parmak hareketleri iki parmak (yakınlaştırma) sayılıyordu. Yeni bir hareketin ilk
+    // parmağında (isPrimary) eski kayıtlar temizlenir; yakalama kaybolunca da parmak silinir.
+    if (e.isPrimary || e.pointerType === 'mouse') {
+      pointers.clear();
+      pinch = null;
+    }
+    try {
+      canvas.setPointerCapture?.(e.pointerId);
+    } catch {
+      /* yoksay */
+    }
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 2) {
       const [a, b] = [...pointers.values()];
@@ -2790,6 +2813,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   canvas.addEventListener('pointermove', onMove);
   canvas.addEventListener('pointerup', onUp);
   canvas.addEventListener('pointercancel', onUp);
+  canvas.addEventListener('lostpointercapture', onUp); // v159: bırakılış kaçarsa parmak listede kalmasın
   canvas.addEventListener('wheel', onWheel, { passive: false });
   canvas.addEventListener('contextmenu', (e) => e.preventDefault());
   window.addEventListener('keydown', onKeyDown);
@@ -3868,8 +3892,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const outside = W.modeAt(self.x, self.z) !== 'city';
     let view = (outside ? Math.max(t.view, OUTER_VIEW[tier] || 300) : t.view) + (view2d() ? topCur.dist * 1.2 : 0);
     if (curVenue && !view2d()) view = Math.min(view, INDOOR_VIEW);
-    LOD_NEAR = LOD_NEAR0 * TIER_LOD[tier];
-    LOD_MID = LOD_MID0 * TIER_LOD[tier];
+    if (!view2d()) view *= viewK; // v159: dinamik görüş mesafesi (yavaşlayınca önce bu kısalır)
+    LOD_NEAR = LOD_NEAR0 * TIER_LOD[tier] * (0.85 + 0.15 * viewK);
+    LOD_MID = LOD_MID0 * TIER_LOD[tier] * viewK;
     const cx0 = view2d() ? camTarget.x : self.x;
     const cz0 = view2d() ? camTarget.z : self.z;
     camera.getWorldDirection(camFwd);
@@ -3879,7 +3904,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     pendingShow.length = 0;
     for (const c of cullItems) {
       const dc = Math.hypot(c.x - cx0, c.z - cz0);
-      const lim = c.outer ? view : Math.min(view, t.view + 60);
+      const lim = c.outer ? view : Math.min(view, (t.view + 60) * (view2d() ? 1 : viewK));
       // v157.2 LOD: küçük eşyalar yakında tam model, ortada renkli kutu, uzakta yok
       let vis = c.lod === 'near' ? dc < LOD_NEAR : c.lod === 'mid' ? dc >= LOD_NEAR && dc < Math.min(lim, LOD_MID) : dc - c.r < lim;
       if (c.iso) vis = false; // v158: yalıtılmış iç mekândayken (karargah) dış dünya çizilmez
@@ -3925,7 +3950,16 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   // v158 — DİNAMİK ÇÖZÜNÜRLÜK: kare süresi uzayınca çizim çözünürlüğü kademeli düşer, rahatlayınca
   // geri çıkar. Kalite seviyesi değişiminin aksine gölgelendirici yeniden derlenmez (donma olmaz);
   // seviye ancak çözünürlük en alta inmiş ve hâlâ yavaşsa düşer.
-  const DRS_MIN = IS_MOBILE ? 0.6 : 0.72;
+  // v159 — PİKSELLEŞME DÜZELTMESİ: eskiden telefonda çözünürlük %60'a kadar iniyor (ekran pikseli başına
+  // ~0,6 çizim pikseli → "piksel piksel" şehir) ve geri çıkması ~40 sn sürüyordu. Artık:
+  //  • çizim çözünürlüğü telefonda asla 1 CSS pikselinin altına inmez (PR_FLOOR)
+  //  • zorlanınca ÖNCE görüş mesafesi kısalır (viewK: uzaktaki parçalar daha erken gizlenir — kare
+  //    süresini çözünürlük kadar düşürür ama görüntüyü bulanıklaştırmaz), sonra çözünürlük
+  //  • rahatlayınca önce çözünürlük, sonra görüş mesafesi hızlıca geri gelir
+  const DRS_MIN = IS_MOBILE ? 0.8 : 0.72;
+  const PR_FLOOR = IS_MOBILE ? Math.min(1, window.devicePixelRatio || 1) : 0.5;
+  const VIEWK_MIN = 0.7;
+  let viewK = 1;
   let drs = 1;
   let drsAcc = 0;
   let drsN = 0;
@@ -3935,10 +3969,17 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   const baseDpr = () => Math.min(window.devicePixelRatio || 1, CITY_TIERS[tier].dpr);
   function setDrs(v) {
     const nv = clamp(v, DRS_MIN, 1);
-    if (Math.abs(nv - drs) < 0.01 && Math.abs(renderer.getPixelRatio() - Math.max(0.5, baseDpr() * drs)) < 0.01) return;
+    if (Math.abs(nv - drs) < 0.01 && Math.abs(renderer.getPixelRatio() - Math.max(PR_FLOOR, baseDpr() * drs)) < 0.01) return;
     drs = nv;
     drsAt = performance.now();
-    renderer.setPixelRatio(Math.max(0.5, baseDpr() * drs));
+    renderer.setPixelRatio(Math.max(PR_FLOOR, baseDpr() * drs));
+  }
+  function setViewK(v) {
+    const nv = clamp(v, VIEWK_MIN, 1);
+    if (Math.abs(nv - viewK) < 0.01) return;
+    viewK = nv;
+    drsAt = performance.now();
+    cull(true);
   }
   function drsSample(iv, now) {
     if (iv > 400) return;
@@ -3959,17 +4000,20 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       drsSlow = 0;
       drsFast = 0;
     }
-    if (drsSlow >= 1 && drs > DRS_MIN && now - drsAt > 1200) {
-      setDrs(drs - (avg > want * 1.6 ? 0.15 : 0.08));
+    if (drsSlow >= 1 && now - drsAt > 1200 && (viewK > VIEWK_MIN || drs > DRS_MIN)) {
+      const big = avg > want * 1.6;
+      if (viewK > VIEWK_MIN) setViewK(viewK - (big ? 0.15 : 0.1));
+      else setDrs(drs - (big ? 0.1 : 0.05));
       drsSlow = 0;
-    } else if (drsFast >= 4 && drs < 1 && now - drsAt > 5000) {
-      setDrs(drs + 0.05);
+    } else if (drsFast >= 2 && now - drsAt > 2500 && (drs < 1 || viewK < 1)) {
+      if (drs < 1) setDrs(drs + 0.07);
+      else setViewK(viewK + 0.1);
       drsFast = 0;
     }
   }
   function applyTier() {
     const t = CITY_TIERS[tier];
-    renderer.setPixelRatio(Math.max(0.5, Math.min(window.devicePixelRatio || 1, t.dpr) * drs));
+    renderer.setPixelRatio(Math.max(PR_FLOOR, Math.min(window.devicePixelRatio || 1, t.dpr) * drs));
     moonL.castShadow = t.shadows;
     moonL.shadow.autoUpdate = t.shadows && t.shadowEvery <= 1;
     pool.forEach((l, i) => (l.visible = i < t.pool));
@@ -4006,7 +4050,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       slowWins = 0;
       fastWins = 0;
     }
-    if (slowWins >= 2 && tier < CITY_TIERS.length - 1 && drs <= DRS_MIN + 0.01) setTier(tier + 1, now); // v158: önce çözünürlük
+    if (slowWins >= 2 && tier < CITY_TIERS.length - 1 && drs <= DRS_MIN + 0.01 && viewK <= VIEWK_MIN + 0.01) setTier(tier + 1, now); // v158: önce çözünürlük
     else if (fastWins >= 8 && tier > 0 && now - lastTierAt > 20000 && !(IS_MOBILE && tier <= 1) && !raiseSaved) {
       // v154 — DONMA DÜZELTMESİ: oyun sırasında kalite ARTIRILMAZ. Her seviye değişimi ışık
       // sayısını / gölgeleri değiştirip tüm shader'ları yeniden derletiyordu (telefonda 0,5–1 sn
@@ -4104,6 +4148,13 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const r3 = (v) => Math.round(v * 1000) / 1000;
     const wy = (v) => r3(Math.atan2(Math.sin(v || 0), Math.cos(v || 0)));
     const cam = { px: r2(camera.position.x), py: r2(camera.position.y), pz: r2(camera.position.z), dx: r3(dir.x), dy: r3(dir.y), dz: r3(dir.z), fov: camera.fov, a: r3(camera.aspect), cw: Math.round(container.clientWidth || 400), td: view === '2d' ? 1 : 0 };
+    // v159: araç içi (iç kamera) fotoğrafı — fotoğraf da içeriden, kokpitle çizilsin
+    if (view !== '2d' && interiorCar && ((driving && myCar) || self.ride)) {
+      cam.ic = 1;
+      cam.io = driving && myCar ? myUid : self.ride.owner;
+      cam.ik = driving && myCar ? 0 : self.ride.k || 1;
+      cam.is = r2(interiorCar.steer || 0);
+    }
     const people = [figShot(myUid, me, driving && myCar ? { c: myUid, k: 0 } : self.ride ? { c: self.ride.owner, k: self.ride.k || 1 } : {})];
     [...remotes.values()]
       .filter((r) => (r.d ?? 999) < VIS_DIST)
@@ -4225,7 +4276,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         v.root.add(head);
         v.root.visible = false;
         scene.add(v.root);
-        tmpCars.set(c.o, { v, x: c.x, z: c.z, y: c.y || 0, yaw: c.r || 0, steer: c.st || 0 });
+        tmpCars.set(c.o, { v, x: c.x, z: c.z, y: c.y || 0, yaw: c.r || 0, steer: c.st || 0, mk: typeof c.m === 'string' ? c.m : null });
       });
       (att.people || []).slice(0, 12).forEach((p, i) => {
         const f = new Fig(scene, layer, { id: `shot_${i}`, name: p.n || 'Oyuncu', avatar: p.a || null });
@@ -4274,6 +4325,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         fbBall.material.dispose();
       }
       tmpCars.forEach((c) => {
+        try {
+          c.v.rig?.dispose?.(); // v159: iç kamera fotoğrafının kokpiti (gösterge dokuları)
+        } catch {
+          /* yoksay */
+        }
         scene.remove(c.v.root);
         c.v.root.traverse((o) => {
           if (o.isMesh) {
@@ -4334,6 +4390,27 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         camera.userData.billboardEl = Math.asin(clamp(-cam.dy, -1, 1));
       } else camera.userData.billboardYaw = null;
       camera.updateMatrixWorld(true);
+      // v159 — İÇ KAMERA FOTOĞRAFI: eskiden araç dışarıdan görüldüğü gibi (gövde + koltuklar, kokpit
+      // yok) çiziliyor ve yakın kesme düzlemi (near) içeriyi kesiyordu → fotoğraf ekrandakinden farklı
+      // çıkıyordu. Artık canlı iç kameradaki gibi: gövde gizli, kokpit görünür, near küçük.
+      const icCar = cam.ic ? tmpCars.get(cam.io) : null;
+      save.near = camera.near;
+      if (icCar) {
+        camera.near = 0.06;
+        camera.updateProjectionMatrix();
+        try {
+          const k = Number(cam.ik) || 0;
+          const pv = k > 0 ? passengerView(icCar, k) : null;
+          const rig = !pv || pv.rig ? cockpitRig(icCar, cockpitOf(icCar, 0)) : null;
+          if (rig) {
+            showRig(icCar, true);
+            rig.update(1, { steer: Number(cam.is) || icCar.steer || 0, kmh: 0, gear: 'N', rpm: 0.9, vmaxKmh: 200, heading: icCar.yaw || 0, now: performance.now() });
+          }
+          save.icCar = icCar;
+        } catch {
+          /* kokpit kurulamazsa normal fotoğraf */
+        }
+      }
       const fp = att.people?.[0] || { x: cam.px, z: cam.pz };
       // fotoğrafın çekildiği yer (canlı motorda oyuncu başka yerde olabilir): oranın parçaları görünür
       for (const c of cullItems) {
@@ -4395,6 +4472,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         if (p.h) f.setHolding(p.h);
         f.sink = waters.length ? sinkAt(f.x, f.z) : 0;
         f.sinkCur = f.sitting || f.inCar ? 0 : f.sink;
+        if (i === 0 && icCar) f.group.visible = false; // iç kamerada çekenin kendisi görünmez (canlıdaki gibi)
         f.update(0, camera, now);
         labels.push({ f, says: p.says || [], self: i === 0 });
       });
@@ -4451,6 +4529,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       camera.quaternion.copy(save.quat);
       camera.fov = save.fov;
       camera.aspect = save.aspect;
+      if (save.near != null) camera.near = save.near;
+      if (save.icCar) showRig(save.icCar, false);
       if (save.fog) {
         [scene.fog.near, scene.fog.far, camera.far] = save.fog;
         if (!snapshot) cull(true);
@@ -4827,6 +4907,10 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     setAvatar(av) {
       me.setAvatar(av);
     },
+    // v159: kendi ad etiketimiz (oyuncu belgesi sonradan gelince 'Oyuncu' kalmasın)
+    setMyName(n) {
+      if (n) me.setName(String(n).slice(0, 40));
+    },
     // ağa gönderilecek kendi durumum (kısa alan adları → az veri)
     getNetState() {
       const st = { x: Math.round(self.x * 100) / 100, z: Math.round(self.z * 100) / 100, l: me.facingLeft ? 1 : 0, m: me.moving ? 1 : 0, p: driving ? 'd' : self.ride ? 'r' : self.seat ? 's' : 'w' };
@@ -4999,6 +5083,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       canvas.removeEventListener('pointermove', onMove);
       canvas.removeEventListener('pointerup', onUp);
       canvas.removeEventListener('pointercancel', onUp);
+      canvas.removeEventListener('lostpointercapture', onUp);
       canvas.removeEventListener('wheel', onWheel);
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('keyup', onKeyUp);
