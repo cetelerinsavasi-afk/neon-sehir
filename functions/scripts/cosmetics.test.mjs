@@ -101,3 +101,49 @@ test('v79 kaydet: önizlemedeki görünüm tek seferde kuşanılır, sahip olunm
   await h.c.action('ali', { op: 'save', pet: { id: 'golden', leashColor: 'red;}' } });
   assert.equal(h.G('users/ali').avatar.pet.leashColor, '#ff2e88');
 });
+
+// v160 — KOSTÜMLER (hazır tipler)
+test('v160 kostüm: zümrütle al + renklerle kuşan, renk değiştir, çıkar; aksesuar kaydı kostüme dokunmaz', async () => {
+  const { LOOKS, LOOK_MAP } = await import('../cosmeticsData.js');
+  assert.equal(LOOKS.length, 100);
+  const prices = LOOKS.map((l) => l.gem);
+  assert.equal(Math.min(...prices), 10, 'en ucuzu 10 zümrüt');
+  assert.equal(Math.max(...prices), 200, 'en pahalısı 200 zümrüt');
+  assert.ok(LOOKS.filter((l) => l.r === 'l').every((l) => l.gem >= 120), 'efsaneviler pahalı');
+  const h = setup({ emerald: 40, cosmetics: { accs: { crown: 1 } }, avatar: { gender: 'erkek', hat: 'fedora', acc: { head: 'crown' } } });
+  await h.init();
+  // yetersiz zümrüt
+  await assert.rejects(h.c.action('ali', { op: 'buy', kind: 'look', id: 'zeus' }), /Yetersiz zümrüt/);
+  await assert.rejects(h.c.action('ali', { op: 'buy', kind: 'look', id: 'yok' }), /Geçersiz/);
+  // al (30 zümrüt) + renk; bozuk renk ayıklanır
+  const volt = LOOK_MAP.volt;
+  await h.c.action('ali', { op: 'buy', kind: 'look', id: 'volt', tint: { 0: '#C81D3F', 1: 'red"/>', s: '#6b4226', 7: '#ffffff' } });
+  let u = h.G('users/ali');
+  assert.equal(u.emerald, 40 - volt.gem);
+  assert.ok(u.cosmetics.looks.volt);
+  assert.equal(u.avatar.look, 'volt');
+  assert.deepEqual(u.avatar.lookTint, { 0: '#c81d3f', s: '#6b4226' });
+  assert.deepEqual(u.avatar.acc, { head: 'crown' }, 'aksesuar korunur');
+  await assert.rejects(h.c.action('ali', { op: 'buy', kind: 'look', id: 'volt' }), /zaten sende/);
+  // renk değiştir (ücretsiz)
+  await h.c.action('ali', { op: 'lookTint', tint: { 1: '#22d3ee' } });
+  assert.deepEqual(h.G('users/ali').avatar.lookTint, { 1: '#22d3ee' });
+  // aksesuar Kaydet'i kostümü çıkarmaz
+  await h.c.action('ali', { op: 'save', pet: null, acc: {} });
+  assert.equal(h.G('users/ali').avatar.look, 'volt');
+  assert.equal(h.G('users/ali').avatar.acc, undefined);
+  // sahip olunmayan kuşanılamaz
+  await assert.rejects(h.c.action('ali', { op: 'equip', kind: 'look', id: 'zeus' }), /Önce satın almalısın/);
+  // çıkar
+  await h.c.action('ali', { op: 'unequip', kind: 'look' });
+  u = h.G('users/ali');
+  assert.equal(u.avatar.look, undefined);
+  assert.equal(u.avatar.lookTint, undefined);
+  await assert.rejects(h.c.action('ali', { op: 'lookTint', tint: { 0: '#ffffff' } }), /Önce bir kostüm/);
+  // tekrar kuşan
+  await h.c.action('ali', { op: 'equip', kind: 'look', id: 'volt' });
+  assert.equal(h.G('users/ali').avatar.look, 'volt');
+  // avatar düzenleme (setAvatar → cleanEquipped) kostümü korur; satın alınmayan kostüm düşer
+  assert.deepEqual(cleanEquipped({ look: 'volt', lookTint: { 0: '#AABBCC' } }, { looks: { volt: 1 } }), { look: 'volt', lookTint: { 0: '#aabbcc' } });
+  assert.deepEqual(cleanEquipped({ look: 'zeus' }, { looks: { volt: 1 } }), {});
+});

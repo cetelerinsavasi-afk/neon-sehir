@@ -33,9 +33,9 @@ export function HqLayer({ role, hidden, onSwitchHouse }) {
             <button className="hb-topbtn" onClick={() => setOpen(true)}>
               🏴 Çete
             </button>
-          ) : (
+          ) : role === 'davetli' ? (
             <span className="hb-topbtn hq-guest">📨 Davetlisin</span>
-          )}
+          ) : null}
         </div>
       )}
       {open && member && (

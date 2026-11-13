@@ -276,10 +276,10 @@
 /* v146 — Aksesuarlar · Günlük Rapor · Mobilyalar: yan yana kare butonlar */
 .home-sq-row {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr)); /* v160: + Kostümler */
   gap: 8px;
   width: 100%;
-  max-width: 340px;
+  max-width: 360px;
   margin-top: 6px;
 }
 .home-sq {
@@ -302,6 +302,10 @@
 .home-sq span {
   font-size: 26px;
   line-height: 1;
+}
+.home-sq-cos {
+  border-color: #b44cff;
+  background: linear-gradient(160deg, rgba(180, 76, 255, 0.22), rgba(255, 210, 63, 0.1));
 }
 .home-sq-acc {
   border-color: #ff2e88;

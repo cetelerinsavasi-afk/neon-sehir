@@ -21,12 +21,13 @@ import './HomeScreen.css';
 
 // v146 — Profil › Mobilyalar (3D katalog / three.js ana pakete girmesin diye ayrı parça)
 const FurnitureScreen = lazy(retryImport(() => import('../Furniture/FurnitureScreen')));
+const CostumeShop = lazy(retryImport(() => import('../CostumeShop/CostumeShop'))); // v160
 
 function weaponImage(catalogId) {
   return weaponCatalog.find((w) => w.id === catalogId)?.image;
 }
 
-function ProfileHeader({ player, onEditAvatar, onAccessories, onReport, onFurniture }) {
+function ProfileHeader({ player, onEditAvatar, onCostumes, onAccessories, onReport, onFurniture }) {
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -98,6 +99,11 @@ function ProfileHeader({ player, onEditAvatar, onAccessories, onReport, onFurnit
       </button>
       {/* v146 — yan yana kare butonlar: Aksesuarlar (v78) · Günlük Rapor (v92) · Mobilyalar */}
       <div className="home-sq-row">
+        {/* v160 — Kostümler (hazır tipler, zümrütle) aksesuarlardan önce */}
+        <button className="home-sq home-sq-cos" onClick={onCostumes}>
+          <span>🎭</span>
+          Kostümler
+        </button>
         <button className="home-sq home-sq-acc" onClick={onAccessories}>
           <span>🐾</span>
           Aksesuarlar
@@ -145,6 +151,7 @@ export default function HomeScreen() {
   const { inventory } = useInventory();
   const [editingAvatar, setEditingAvatar] = useState(false);
   const [accShop, setAccShop] = useState(false);
+  const [cosShop, setCosShop] = useState(false); // v160
   const [report, setReport] = useState(false);
   const [furn, setFurn] = useState(false); // v146
 
@@ -154,6 +161,13 @@ export default function HomeScreen() {
 
   if (editingAvatar) {
     return <AvatarBuilder onBack={() => setEditingAvatar(false)} />;
+  }
+  if (cosShop) {
+    return (
+      <Suspense fallback={<div className="app-lazy-fallback" aria-busy="true"><span /></div>}>
+        <CostumeShop onBack={() => setCosShop(false)} />
+      </Suspense>
+    );
   }
   if (accShop) {
     return <AccessoryShop onBack={() => setAccShop(false)} />;
@@ -175,7 +189,7 @@ export default function HomeScreen() {
 
   return (
     <div className="home-screen">
-      <ProfileHeader player={player} onEditAvatar={() => setEditingAvatar(true)} onAccessories={() => setAccShop(true)} onReport={() => setReport(true)} onFurniture={() => setFurn(true)} />
+      <ProfileHeader player={player} onEditAvatar={() => setEditingAvatar(true)} onCostumes={() => setCosShop(true)} onAccessories={() => setAccShop(true)} onReport={() => setReport(true)} onFurniture={() => setFurn(true)} />
 
       {/* UGC D3: yalnızca yetkililere görünür */}
       <AdminPanelEntry uid={user.uid} player={player} />

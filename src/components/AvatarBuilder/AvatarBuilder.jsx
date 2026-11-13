@@ -288,9 +288,11 @@ export default function AvatarBuilder({ onBack }) {
           </button>
         </div>
         <div className="avb-header-preview">
-          <AvatarSvg avatar={avatar} variant="full" pose={walkFrame} />
+          {/* v160: kostüm giyiliyse burada kendi avatarı görünür (düzenlenen o) */}
+          <AvatarSvg avatar={avatar?.look ? { ...avatar, look: undefined, lookTint: undefined } : avatar} variant="full" pose={walkFrame} />
         </div>
       </div>
+      {avatar?.look && <p className="avb-acc-note">🎭 Kostüm giyiyorsun — bu görünüm kostümü çıkarınca görünür (Profil › Kostümler).</p>}
 
       {/* v78: takılı aksesuar aynı yuvadaki avatar parçasını gizler */}
       {(avatar?.acc?.head || avatar?.acc?.face || avatar?.acc?.neck) && (

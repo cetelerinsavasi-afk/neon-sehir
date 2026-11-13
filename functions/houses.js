@@ -258,7 +258,9 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     const kickedUntil = Number(h.kicked?.[uid] || 0);
     if (kickedUntil > t) return { ok: false, msg: `Bu evden çıkarıldın. ${Math.ceil((kickedUntil - t) / 60000)} dk sonra tekrar deneyebilirsin.` };
     // v146 — karargah: sadece çetenin üyeleri ve davet edilen çetelerin üyeleri
-    if (isHqHouse(h)) return (await hq.hqRole(h, uid)) ? { ok: true } : { ok: false, msg: 'Dahil olmadığın çetenin karargahına giremezsin.' };
+    // v160 — karargahlar şehirde: herkes kapıdan misafir olarak girebilir (düzenleme / kasa / çete
+    // paneli yine sadece üyelerde; çıkarılan oyuncu yukarıdaki kicked kontrolüyle giremez)
+    if (isHqHouse(h)) return { ok: true };
     // v146 — polis teşkilatı: polisler + Belediye Başkanı, yardımcıları, Teşkilat Bakanı
     if (h.venue === 'teskilat') return (await hq.policeIdentity(uid)) ? { ok: true } : { ok: false, msg: 'Polis Teşkilatına sadece polisler girebilir.' };
     if (Number(h.invites?.[uid] || 0) > t) return { ok: true };
@@ -337,7 +339,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     if (Object.keys(patch).length) await houseRef(houseId).update(patch);
     // v77: ziyaret sayacı (hesap başına günde 1)
     if (!already && visits) await visits.recordHouseVisit(uid, houseId, { ...h, ...patch });
-    return { status: 'ok', houseId, isOwner, name: patch.name || h.name || defaultHouseName(h.ownerName), ownerName: h.ownerName || 'Oyuncu', ...(presId !== uid ? { presenceId: presId } : {}), ...(houseId === TESKILAT_HOUSE ? { selfShown: { name: shownName, avatar: shownAvatar } } : {}), ...(isHqHouse(h) ? { hqRole: hqRoleNow || 'admin' } : {}) };
+    return { status: 'ok', houseId, isOwner, name: patch.name || h.name || defaultHouseName(h.ownerName), ownerName: h.ownerName || 'Oyuncu', ...(presId !== uid ? { presenceId: presId } : {}), ...(houseId === TESKILAT_HOUSE ? { selfShown: { name: shownName, avatar: shownAvatar } } : {}), ...(isHqHouse(h) ? { hqRole: hqRoleNow || (isAdmin(uid) ? 'admin' : 'misafir') } : {}) };
   }
 
   // ---- kaydet (envanter farkıyla) -------------------------------------------------

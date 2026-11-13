@@ -308,8 +308,37 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
     for (const k of ['l', 'm', 'p', 'sy', 'e', 'et', 'h', 'ro', 'rk', 'r']) if (a[k] !== b[k]) return true;
     return false;
   };
+  // v160 — ŞEHİR ÖRTÜLÜYKEN GÖRÜNMEZ: karargah / ev / işletme ekranı şehrin üstünde açıkken
+  // (şehir arkada bekler) oyuncu eskiden kapının önünde durmaya devam ediyordu (20 sn'de bir
+  // "buradayım"). Artık şehir örtülünce konum + son mesaj + araba kaydı silinir, yazım durur;
+  // dönünce ilk tick'te hemen yeniden yazılır.
+  let away = false;
+  let awayT = 0;
+  function setAway(on) {
+    on = Boolean(on);
+    if (on === away || dead) return;
+    away = on;
+    clearTimeout(awayT);
+    const clear = () => {
+      if (myCell) {
+        drop(`city/p/${myCell}/${uid}`);
+        drop(`city/m/${myCell}/${uid}`);
+      }
+      if (myCarCell) drop(`city/c/${myCarCell}/${uid}`);
+    };
+    if (on) {
+      clear();
+      // yolda olan son bir yazım silmeden sonra ulaşırsa diye bir kez daha
+      awayT = setTimeout(() => away && !dead && clear(), 1500);
+    } else {
+      lastSent = null;
+      lastSentAt = 0;
+      lastCar = null;
+      lastCarAt = 0;
+    }
+  }
   function tick(state, car) {
-    if (dead) return;
+    if (dead || away) return;
     const now = Date.now();
     const cell = cellOf(state.x, state.z);
     if (cell !== myCell) {
@@ -387,6 +416,7 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
     paths.forEach((p) => drop(p));
     dead = true;
     clearInterval(sweep);
+    clearTimeout(awayT);
     clearTimeout(retryT);
     try {
       offConn?.();
@@ -419,7 +449,7 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
       })
       .catch(() => {});
   }
-  const api = { tick, say, claimSeat, releaseSeat, setProfile, stop, isOffline: () => offline };
+  const api = { tick, say, claimSeat, releaseSeat, setProfile, setAway, stop, isOffline: () => offline };
   if (import.meta.env?.DEV) window.__cityNet = { api, dbg: () => ({ offline, failures, myCell, subs: [...subCells], lastSentAt, dead, shown: [...shownPlayers], prof: [...profiles.keys()], unsubs: [...unsubs.keys()], cells: Object.fromEntries([...cellPlayers].map(([c, v]) => [c, Object.keys(v)])) }) };
   return api;
 }

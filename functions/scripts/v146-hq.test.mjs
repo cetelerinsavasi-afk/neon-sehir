@@ -54,7 +54,7 @@ function setup() {
 }
 const it = (i, k, extra = {}) => ({ i, k, x: 0, z: 0, r: 0, c: 0, ...extra });
 
-test('v146 karargah: üye boş karargahı kurar (çeteye ait), üye olmayan giremez, davetli çete girer', async () => {
+test('v146 karargah: üye boş karargahı kurar (çeteye ait), üye olmayan misafir girer (v160), davetli çete girer', async () => {
   const h = setup();
   const r = await h.act('ali', { op: 'hqEnsure' });
   assert.equal(r.houseId, 'hq_g1');
@@ -65,8 +65,9 @@ test('v146 karargah: üye boş karargahı kurar (çeteye ait), üye olmayan gire
   assert.equal(houseKind({ ...doc, office: { keys: { cafecounter: true } }, items: [it('a', 'cafecounter', { p: 1 })] }), 'karargah', 'ücretli ürün açılsa da karargah kalır');
   assert.equal((await h.act('veli', { op: 'enter', houseId: 'hq_g1' })).hqRole, 'uye');
   assert.equal((await h.act('zengin', { op: 'enter', houseId: 'hq_g1' })).hqRole, 'baba');
-  await assert.rejects(h.act('yabanci', { op: 'enter', houseId: 'hq_g1' }), /Dahil olmadığın/);
-  await assert.rejects(h.act('deniz', { op: 'enter', houseId: 'hq_g1' }), /Dahil olmadığın/);
+  // v160: karargahlar şehirde — herkes kapıdan misafir olarak girer (yetkisi yok)
+  assert.equal((await h.act('yabanci', { op: 'enter', houseId: 'hq_g1' })).hqRole, 'misafir');
+  assert.equal((await h.act('deniz', { op: 'enter', houseId: 'hq_g1' })).hqRole, 'misafir');
   // v157.4: davet sistemi kaldırıldı (karargahlar haritada) — yeni davet verilemez
   await assert.rejects(h.act('zengin', { op: 'hqInvite', houseId: 'hq_g1', gangId: 'g2', on: true }), /davetleri kaldırıldı/);
   assert.deepEqual(h.G('houses/hq_g1').hqInvites, []);

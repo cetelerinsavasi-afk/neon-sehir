@@ -1,4 +1,5 @@
 import { accLayers } from './cosmeticsArt.js';
+import { getLook, tintLook, lookHairColor, lookSkinnable, getLookHairSlot } from './avatarLooks.js'; // v160 kostümler
 // Avatar SVG parça üretimi — kullanıcının verdiği "Mafya Kimlik
 // Oluşturucu" prototipinden birebir taşındı. Her fonksiyon ham SVG
 // markup'ı (string) döner; AvatarSvg bileşeni bunları birleştirip
@@ -122,7 +123,15 @@ function neckShape(s) {
   return `<rect x="140" y="222" width="40" height="52" rx="8" fill="${s.skin}"/>`;
 }
 
+// v160: kostümlerde kadın karakterlerin kaşları ince (kavisli, ince çizgi)
+function thinBrowShape(s) {
+  const c = s.hairColor;
+  return `<path d="M127,152 Q139,144.5 151,149.5" stroke="${c}" stroke-width="2.6" fill="none" stroke-linecap="round"/>
+              <path d="M169,149.5 Q181,144.5 193,152" stroke="${c}" stroke-width="2.6" fill="none" stroke-linecap="round"/>`;
+}
+
 function eyebrowShape(s) {
+  if (s.__thinBrow) return thinBrowShape(s);
   const c = s.hairColor;
   switch (s.eyebrowShape) {
     case 'arched':
@@ -581,7 +590,7 @@ function legHipX(s) {
   return { cxL, cxR: 320 - cxL };
 }
 
-function legsShape(s, pose = 'idle') {
+function legsShape(s, pose = 'idle', legArt = null) {
   const { cxL, cxR } = legHipX(s);
   const halfW = s.build === 'zayif' ? 15 : s.build === 'iri' ? 24 : 19;
   const c = s.pantsColor;
@@ -591,7 +600,7 @@ function legsShape(s, pose = 'idle') {
     const spread = 11;
     const leg = (cx, angle) => `
       <g transform="translate(${cx},${WAIST_Y}) rotate(${angle})">
-        <rect x="${-halfW}" y="0" width="${halfW * 2}" height="${SIT_LEG_H}" rx="${halfW * 0.55}" fill="${c}"/>
+        <rect x="${-halfW}" y="0" width="${halfW * 2}" height="${SIT_LEG_H}" rx="${halfW * 0.55}" fill="${c}"/>${legArt ? legArt(halfW, SIT_LEG_H) : ''}
       </g>`;
     return leg(cxL, -spread) + leg(cxR, spread);
   }
@@ -599,7 +608,7 @@ function legsShape(s, pose = 'idle') {
   const swing = pose === 'walk1' ? 16 : pose === 'walk2' ? -16 : 0;
   const leg = (cx, angle, shade) => `
     <g transform="translate(${cx},${WAIST_Y}) rotate(${angle})">
-      <rect x="${-halfW}" y="0" width="${halfW * 2}" height="${LEG_H}" rx="${halfW * 0.55}" fill="${shade}"/>
+      <rect x="${-halfW}" y="0" width="${halfW * 2}" height="${LEG_H}" rx="${halfW * 0.55}" fill="${shade}"/>${legArt ? legArt(halfW, LEG_H, shade !== c) : ''}
     </g>`;
   // Yürürken arkada kalan bacak biraz koyu gölgeli — derinlik hissi için.
   return leg(cxL, swing, swing >= 0 ? c : dark) + leg(cxR, -swing, -swing >= 0 ? c : dark);
@@ -806,7 +815,30 @@ const SCARED_FACE = '<ellipse cx="160" cy="210" rx="11" ry="14" fill="#3a1010"/>
 // görünümde (viewBox 0 0 320 400) bacak/ayakkabı zaten kırpılıp
 // görünmez, bu yüzden pose orada etkisizdir.
 export function buildAvatarSvgInner(rawState, opts = {}) {
-  const s = { ...DEFAULT_AVATAR, ...rawState };
+  // v160 — KOSTÜM (hazır tip): avatar.look kuşanılıysa tipin alanları avatarın üstüne yazılır,
+  // tipin kendi katmanları (gövde, maske, kanat…) eklenir; avatar.lookTint renkleri uygular.
+  const look = rawState && rawState.look ? getLook(rawState.look) : null;
+  const s = { ...DEFAULT_AVATAR, ...rawState, ...(look ? look.base : {}) };
+  const tint = look && rawState.lookTint && typeof rawState.lookTint === 'object' ? rawState.lookTint : null;
+  let origSkin = null;
+  if (look) {
+    // kaş + sakal saçla hep aynı renk (saç yuvası varsa onun rengi; renk değişince birlikte değişir)
+    const hc = lookHairColor(rawState.look);
+    if (hc) s.hairColor = hc;
+    // ten rengi
+    if (tint && typeof tint.s === 'string' && OV_HEX.test(tint.s) && lookSkinnable(rawState.look)) {
+      origSkin = s.skin;
+      s.skin = tint.s;
+    }
+    if (s.gender === 'kadin') s.__thinBrow = true;
+    if (look.cover && s.acc) {
+      const acc = { ...s.acc };
+      for (const k of look.cover) delete acc[k];
+      s.acc = acc;
+    }
+  }
+  const lctx = look ? { B: poseBox(s), s } : null;
+  const layer = (k) => (look && look[k] ? (typeof look[k] === 'function' ? look[k](lctx) : look[k]) : '');
   // v78 — kuşanılmış aksesuarlar (avatar.acc): arka katman (pelerin/kanat/aura)
   // avatarın arkasına, ön katman (şapka/gözlük/kolye) üstüne. Aynı yuvadaki
   // avatar parçası (şapka, yüz/boyun aksesuarı) gizlenir.
@@ -818,10 +850,12 @@ export function buildAvatarSvgInner(rawState, opts = {}) {
   const bob = pose === 'walk1' ? -3 : pose === 'walk2' ? 3 : 0;
 
   let upperBody = '';
-  upperBody += torsoShape(s);
+  upperBody += look && look.t0 ? layer('t0') : torsoShape(s);
+  upperBody += layer('t');
   if (pose === 'handsup') upperBody += handsUpShape(s);
-  else if (pose !== 'aim') upperBody += heldItemShape(s);
+  else if (pose !== 'aim' && !(look && look.f)) upperBody += heldItemShape(s);
   upperBody += neckAccShape(s);
+  upperBody += layer('hb');
   upperBody += hairBackShape(s);
   upperBody += neckShape(s);
   upperBody += headShape(s);
@@ -838,17 +872,42 @@ export function buildAvatarSvgInner(rawState, opts = {}) {
   upperBody += hatShape(s);
   upperBody += faceAccShape(s);
   upperBody += botOverlayShape(s); // v132 — bot kıyafet çizimleri
-  upperBody += L.front;
+  upperBody += layer('h');
+  if (pose !== 'aim' && pose !== 'handsup') upperBody += layer('f');
+  // kostüm renkleri aksesuarları boyamasın: aksesuar katmanları renk uygulanırken yer tutucuyla saklanır
+  const tinting = Boolean(tint);
+  const FRONT = '\u0000F\u0000';
+  const BACK = '\u0000B\u0000';
+  upperBody += tinting && L.front ? FRONT : L.front;
   if (pose === 'aim') upperBody += aimArmShape(s);
   if (pose === 'handsup') upperBody += SCARED_FACE;
 
   let svg = '';
   svg += `<ellipse cx="160" cy="${GROUND_Y}" rx="74" ry="12" fill="#000" opacity="0.35"/>`;
-  if (L.back) svg += `<g transform="translate(0,${bob})">${L.back}</g>`;
-  svg += legsShape(s, pose);
+  if (look && look.b) svg += `<g transform="translate(0,${bob})">${layer('b')}</g>`;
+  if (L.back) svg += `<g transform="translate(0,${bob})">${tinting ? BACK : L.back}</g>`;
+  svg += legsShape(s, pose, look ? look.leg || null : null);
   svg += shoesShape(s, pose);
   svg += `<g transform="translate(0,${bob})">${upperBody}</g>`;
+  if (tinting) {
+    svg = tintLook(svg, rawState.look, tint, s, origSkin);
+    svg = svg.replace(BACK, () => L.back).replace(FRONT, () => L.front);
+  }
   return svg;
+}
+
+// v160: kostüm kuşanılıysa görünen ten / saç (arkadan görünüş gibi ayrı çizimler için)
+export function effectiveAvatar(rawState) {
+  const look = rawState && rawState.look ? getLook(rawState.look) : null;
+  const s = { ...DEFAULT_AVATAR, ...rawState, ...(look ? look.base : {}) };
+  if (!look) return s;
+  const hc = lookHairColor(rawState.look);
+  if (hc) s.hairColor = hc;
+  const tint = rawState.lookTint && typeof rawState.lookTint === 'object' ? rawState.lookTint : null;
+  if (tint && typeof tint.s === 'string' && OV_HEX.test(tint.s) && lookSkinnable(rawState.look)) s.skin = tint.s;
+  const hairIdx = hc ? String(getLookHairSlot(rawState.look)) : null;
+  if (tint && hairIdx && OV_HEX.test(tint[hairIdx] || '')) s.hairColor = tint[hairIdx];
+  return s;
 }
 
 // buildFullAvatarSvgMarkup — buildAvatarSvgInner'ın tam, kendi başına

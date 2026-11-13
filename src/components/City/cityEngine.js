@@ -7,7 +7,7 @@
 // =============================================================================
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
+import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR, effectiveAvatar } from '../../lib/avatarShapes';
 import { heldCanvas } from '../HouseScreen/heldArt';
 import { PetFollower, FireAuraFx, EMOTES, getSharedRenderer } from '../HouseScreen/houseEngine';
 import { PET_ART } from '../../lib/cosmeticsArt';
@@ -90,7 +90,7 @@ function avatarTextures(avatar, light = false) {
   poses.forEach((pose) => {
     let markup = buildFullAvatarSvgMarkup(full, { pose: pose === 'back' ? 'sit' : pose === 'backIdle' ? 'idle' : pose, animFire: full?.acc?.aura === 'fire' }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, '');
     // arkadan görünüş (arabada sürücü): yüzün üstü saç rengiyle kapanır, ense ve kulaklar görünür
-    if (pose === 'back' || pose === 'backIdle') markup = markup.replace('</svg>', backOfHead(full) + '</svg>');
+    if (pose === 'back' || pose === 'backIdle') markup = markup.replace('</svg>', backOfHead(effectiveAvatar(full)) + '</svg>'); // v160: kostümde görünen saç / ten
     const img = new Image();
     img.onload = () => {
       // v157.4: telefonda avatar dokuları küçük (6 poz × her oyuncu — ekran kartı belleği ~2,5 kat az)

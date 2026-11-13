@@ -22,7 +22,7 @@ import { blockProfanity } from '../../lib/profanityGuard';
 import { buyFromVendor, buyFromBufe, sellContrabandAtPark, cityAction, createSixtagramPost, shopAction, houseAction } from '../../services/gameActions';
 import { FUEL_PRICE, GAS_MARKET_MENU } from '../../../functions/gasStation.js';
 import { GAS_STATION, FAR_DEPOT, LIMAN_BAY, OTOGARS } from '../../../functions/cityJobsData.js';
-import { createJobRunner } from './cityJobs.js';
+import { createJobRunner, worldRoute } from './cityJobs.js';
 import { JOBS } from '../../../functions/vehicleKinds.js';
 import { invalidateSixtagramFeed } from '../../hooks/useSixtagramFeed';
 import PhotoStoryEditor from '../HouseScreen/PhotoStoryEditor';
@@ -276,6 +276,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   // v157.4: alt çubuk — sohbet kapalıyken Çeteler · Soygun · Profil (oyun açılışında kapalı)
   // v159: sohbet modu HEP AÇIK (kapatma düğmesi yok); Çeteler · Soygun · Profil sağ altta, sohbetin yanında
   const chatOn = !guest;
+  const coveredRef = useRef(covered); // v160: örtülüyken şehirde görünmeyiz (cityNet.setAway)
+  coveredRef.current = covered;
   const [mekTab, setMekTab] = useState('soygun');
   const [watchId, setWatchId] = useState(null);
   // v157.4 — ÇETE KARARGAHLARI haritada: hangar sahipleri (gangs.hqSlot) + karargah tasarımları
@@ -347,6 +349,32 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const setPin = useCallback((p) => {
     pinRef.current = p ? { x: p.x, z: p.z } : null;
     if (!p) setPinUi(null);
+  }, []);
+  // v160 — YOL TARİFİ yollar üzerinden: iğneye düz çizgi yerine yol ağındaki en kısa rota
+  // (şehirde yol ızgarası, dışarıda otoyol + Kervankent). Oyuncu 5 m yürüyünce / 2 sn'de bir yenilenir.
+  const pinRouteRef = useRef(null);
+  const pinPath = useCallback((mx, mz) => {
+    const pin = pinRef.current;
+    if (!pin) {
+      pinRouteRef.current = null;
+      return null;
+    }
+    const R = pinRouteRef.current;
+    const now = performance.now();
+    if (!R || R.pin !== pin || Math.hypot(R.x - mx, R.z - mz) > 5 || now - R.at > 2000) {
+      let pts = null;
+      try {
+        pts = worldRoute({ x: mx, z: mz }, { x: pin.x, z: pin.z }, Infinity);
+      } catch {
+        pts = null;
+      }
+      if (!pts || pts.length < 2) pts = [{ x: mx, z: mz }, { x: pin.x, z: pin.z }];
+      if (Math.hypot(pts[0].x - mx, pts[0].z - mz) > 0.5) pts.unshift({ x: mx, z: mz });
+      let len = 0;
+      for (let i = 1; i < pts.length; i++) len += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].z - pts[i - 1].z);
+      pinRouteRef.current = { pin, x: mx, z: mz, at: now, pts, len };
+    }
+    return pinRouteRef.current;
   }, []);
   const [carCam, setCarCam] = useState('out'); // v149 — araba içi kamera
   // v149 — stadyum: içindeyken Futbol düğmesi, maç saatinde maç seçici (her cihazda ayrı)
@@ -577,6 +605,9 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       netRef.current = net;
       tickT = setInterval(() => {
         if (document.hidden) return;
+        // v160: karargah / ev / işletme şehrin üstündeyken kapının önünde görünmeyiz
+        net.setAway(coveredRef.current);
+        if (coveredRef.current) return;
         net.tick(eng.getNetState(), eng.getNetCar());
       }, 100);
     };
@@ -764,17 +795,30 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       let path = jr && jr.pts.length > 1 ? jr.pts.map((p) => [p.x, p.z]) : null;
       const pin = pinRef.current;
       if (pin) {
-        const dist = Math.round(Math.hypot(pin.x - me.x, pin.z - me.z));
-        if (dist < 9) {
+        const straight = Math.hypot(pin.x - me.x, pin.z - me.z);
+        if (straight < 9) {
           pinRef.current = null;
+          pinRouteRef.current = null;
           setPinUi(null);
           flashRef.current?.('📍 Vardın');
         } else {
-          let a = Math.atan2(pin.x - me.x, pin.z - me.z) - h;
+          // v160: ok rotanın ilerisindeki noktayı gösterir, mesafe yol boyunca
+          const R = pinPath(me.x, me.z);
+          const dist = Math.round(Math.max(straight, R?.len || 0));
+          let aim = pin;
+          if (R) {
+            for (let i = 1; i < R.pts.length; i++) {
+              if (Math.hypot(R.pts[i].x - me.x, R.pts[i].z - me.z) > 8) {
+                aim = R.pts[i];
+                break;
+              }
+            }
+          }
+          let a = Math.atan2(aim.x - me.x, aim.z - me.z) - h;
           a = Math.atan2(Math.sin(a), Math.cos(a));
           const dir = Math.round((-a * 180) / Math.PI / 4) * 4;
           setPinUi((u) => (u && u.dir === dir && Math.abs(u.dist - dist) < 3 ? u : { dir, dist }));
-          if (!path) path = [[me.x, me.z], [pin.x, pin.z]];
+          if (!path) path = R ? R.pts.map((p) => [p.x, p.z]) : [[me.x, me.z], [pin.x, pin.z]];
         }
       }
       const target = path ? { x: path[path.length - 1][0], z: path[path.length - 1][1] } : null;
@@ -799,7 +843,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     return () => {
       drawMiniRef.current = null;
     };
-  }, [ready]);
+  }, [ready, pinPath]);
   void mapping;
   void imgOk;
 
@@ -1787,6 +1831,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         <CityBigMap
           engine={engineRef.current}
           pin={pinRef.current}
+          pinPath={pinPath}
           canTeleport={!driving && !riding && !heistOn && !jobUi?.active}
           onSpot={(p, act) => {
             setMapOpen(false);
@@ -1830,7 +1875,9 @@ function ChatBox({ onSend, onHide = null }) {
 }
 
 // v157 — büyük harita: sürükle, iki parmakla yakınlaştır, simgeye dokun → oraya git (mekânsa içine)
-function CityBigMap({ engine, onClose, onPick, onSpot, pin, canTeleport }) {
+function CityBigMap({ engine, onClose, onPick, onSpot, pin, canTeleport, pinPath }) {
+  const pinPathRef = useRef(pinPath);
+  pinPathRef.current = pinPath;
   const [spot, setSpot] = useState(null); // boş yere dokunuş: { x, z, sx, sy }
   const ref = useRef(null);
   const view = useRef(null);
@@ -1875,7 +1922,11 @@ function CityBigMap({ engine, onClose, onPick, onSpot, pin, canTeleport }) {
       const dpr = c.width / (c.clientWidth || 1);
       const jr = engine.jobRoutePts?.();
       let path = jr && jr.pts.length > 1 ? jr.pts.map((p) => [p.x, p.z]) : null;
-      if (!path && pin) path = [[m.x, m.z], [pin.x, pin.z]];
+      if (!path && pin) {
+        // v160: yol tarifi yollar üzerinden (en kısa rota)
+        const R = pinPathRef.current?.(m.x, m.z);
+        path = R ? R.pts.map((p) => [p.x, p.z]) : [[m.x, m.z], [pin.x, pin.z]];
+      }
       gm.draw(c.getContext('2d'), c.width, c.height, { cx: v.cx, cz: v.cz, k: v.k, rot: 0, dpr }, { truck: { x: m.x, z: m.z, yaw: m.driving ? m.yaw : m.yaw }, target: path ? { x: path[path.length - 1][0], z: path[path.length - 1][1] } : null, path, labels: true, streets: true, parked: !m.driving && m.car ? m.car : null, walker: !m.driving });
     };
     draw();
