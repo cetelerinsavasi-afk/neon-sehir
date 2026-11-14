@@ -26,7 +26,7 @@ const loadImg = (src) =>
   });
 
 // Hikâye 360×640, gönderi 432×432; sunucu sınırı (~150 KB) aşılırsa kalite düşürülür
-export async function makeShareImage(previewUrl, { asPost = false, overlay = null } = {}) {
+async function makeShareImageOnce(previewUrl, { asPost = false, overlay = null } = {}) {
   if (!previewUrl) return null;
   let c = null;
   try {
@@ -68,6 +68,15 @@ export async function makeShareImage(previewUrl, { asPost = false, overlay = nul
       c.height = 0;
     }
   }
+}
+
+// v160.7: görsel üretilemezse bir kez daha dene — görselsiz gönderi telefonlarda görünmez
+// (sadece "dokun" ile 3D'den çizilebilir), bu yüzden görselin gitmesi önemli
+export async function makeShareImage(previewUrl, opts = {}) {
+  const a = await makeShareImageOnce(previewUrl, opts);
+  if (a) return a;
+  await new Promise((r) => setTimeout(r, 250));
+  return makeShareImageOnce(previewUrl, opts);
 }
 
 const inflight = new Map();

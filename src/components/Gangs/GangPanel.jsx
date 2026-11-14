@@ -119,9 +119,37 @@ export default function GangPanel({ start = {}, onClose, onEnterHq = null, hqNav
   const closed = config?.autoOpened && !config.liveOpen;
   const title = start.profile ? `🏴 ${start.profile.name || 'Çete'}` : '🏴 Çeteler';
   const nav = useMemo(() => hqNav, [hqNav]);
+  // v160.7 — panelin içinde bir pencere (savaş detayı, devam eden savaşlar, onay…) açıkken
+  // üstteki boşluğa dokunmak o pencereyi kapatır (geri), paneli değil. iPhone'da pencerenin
+  // karartması kaydırma kutusunun dışında dokunuş almıyordu: panel başlığının hizasına
+  // (panelin hemen üstü) dokununca hiçbir şey olmuyordu, sadece en üst kapatıyordu.
+  const closeTopSheet = (e) => {
+    const root = e.currentTarget.closest('.gx-panel-back') || e.currentTarget;
+    const list = root.querySelectorAll('.gx-sheet-backdrop');
+    const top = list[list.length - 1];
+    if (!top) return false;
+    top.click();
+    return true;
+  };
   return createPortal(
-    <div className="gx-panel-back" onPointerDown={(e) => e.stopPropagation()} onClick={onClose}>
-      <div className="gx-hq-panel gx-hq-sheet gx-panel5" role="dialog" aria-label="Çeteler" onClick={(e) => e.stopPropagation()}>
+    <div
+      className="gx-panel-back"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        if (!closeTopSheet(e)) onClose?.();
+      }}
+    >
+      <div
+        className="gx-hq-panel gx-hq-sheet gx-panel5"
+        role="dialog"
+        aria-label="Çeteler"
+        onClick={(e) => {
+          e.stopPropagation();
+          // pencere açıkken pencerenin dışına düşen dokunuş = karartmaya dokunuş
+          // (portal ile body'ye açılan pencereler DOM'da panelin içinde değil → dokunulmaz)
+          if (e.currentTarget.contains(e.target) && !e.target.closest?.('.gx-sheet-backdrop')) closeTopSheet(e);
+        }}
+      >
         <div className="gx-full-top">
           <button className="gx-full-close" onClick={onClose} aria-label="Kapat">
             ✕

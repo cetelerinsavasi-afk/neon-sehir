@@ -79,7 +79,7 @@ export function StoryRow({ groups, myUid, onOpen }) {
   );
 }
 
-function StoryContent({ post, onReady }) {
+function StoryContent({ post, onReady, loadNow, onNeedTap }) {
   const att = post.attachment;
   useEffect(() => {
     if (att?.type !== 'housePhoto' && att?.type !== 'cityPhoto') onReady?.();
@@ -89,7 +89,7 @@ function StoryContent({ post, onReady }) {
     return (
       <div className="six-sv-photo">
         <Suspense fallback={<div className="six-sv-wait">📸</div>}>
-          <HousePhotoReady post={post} attachment={att} onReady={onReady} />
+          <HousePhotoReady post={post} attachment={att} onReady={onReady} loadNow={loadNow} onNeedTap={onNeedTap} />
         </Suspense>
       </div>
     );
@@ -101,7 +101,7 @@ function StoryContent({ post, onReady }) {
   );
 }
 // HousePhoto yüklenince süre başlasın
-function HousePhotoReady({ post, attachment, onReady }) {
+function HousePhotoReady({ post, attachment, onReady, loadNow, onNeedTap }) {
   const ref = useRef(null);
   useEffect(() => {
     const el = ref.current;
@@ -125,7 +125,7 @@ function HousePhotoReady({ post, attachment, onReady }) {
   }, []);
   return (
     <div ref={ref} className="six-sv-hp">
-      <SixPhoto post={post} attachment={attachment} onReady={onReady} story />
+      <SixPhoto post={post} attachment={attachment} onReady={onReady} story loadNow={loadNow} onNeedTap={onNeedTap} />
     </div>
   );
 }
@@ -191,9 +191,19 @@ export function StoryViewer({ groups: allGroups, start, startPi = null, myUid, o
   const lastT = useRef(0);
   const [, setFrame] = useState(0);
 
-  useEffect(() => () => flushStoryViews(), []);
+  useEffect(() => () => {
+    flushStoryViews();
+    clearTimeout(tapTimer.current);
+  }, []);
+  // v160.7: telefonda eski (görselsiz) hikâye fotoğrafı → "Fotoğrafı göster" (tek kare çizilir)
+  const [needTap, setNeedTap] = useState(false);
+  const [loadNow, setLoadNow] = useState(false);
+  const tapTimer = useRef(0);
   useEffect(() => {
     setReady(false);
+    setNeedTap(false);
+    setLoadNow(false);
+    clearTimeout(tapTimer.current);
     elapsed.current = 0;
     if (post) markStorySeen(post, myUid);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -344,8 +354,26 @@ export function StoryViewer({ groups: allGroups, start, startPi = null, myUid, o
         onPointerLeave={(e) => swipe.current && onSwUp(e)}
       >
         <div key={g.uid} className={`six-sv-slide ${slide}${dragX ? ' drag' : ''}`} style={dragX ? { transform: `translateX(${dragX}px) rotateY(${-dragX / 18}deg)`, opacity: Math.max(0.35, 1 - Math.abs(dragX) / 500) } : undefined} onAnimationEnd={() => setSlide('')}>
-          <StoryContent key={post.id} post={post} onReady={() => setReady(true)} />
+          <StoryContent key={post.id} post={post} onReady={() => setReady(true)} loadNow={loadNow} onNeedTap={setNeedTap} />
         </div>
+        {needTap && !loadNow && (
+          <button
+            type="button"
+            className="six-sv-tapload"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              // süre fotoğraf görününce yeniden başlar (en geç 15 sn sonra yine akar)
+              setLoadNow(true);
+              setReady(false);
+              elapsed.current = 0;
+              clearTimeout(tapTimer.current);
+              tapTimer.current = setTimeout(() => setReady(true), 15000);
+            }}
+          >
+            📸 Fotoğrafı göster
+          </button>
+        )}
         {post.text && <p className="six-sv-caption">{post.text}</p>}
         <button className="six-sv-zone l" onClick={() => !blockClick.current && prev()} aria-label="Önceki" />
         <button className="six-sv-zone r" onClick={() => !blockClick.current && next()} aria-label="Sonraki" />

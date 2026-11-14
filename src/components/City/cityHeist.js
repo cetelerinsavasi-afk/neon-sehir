@@ -582,15 +582,26 @@ function k6(t) {
       (u.clockEl = u.hud.querySelector(".hx-clock b")),
       (u.lootEl = u.hud.querySelector(".hx-loot b")),
       (u.prog = k("hx-prog", "<span></span><i><u></u></i>")));
+    // v160.7: video sunucu cevabından sonra başlar (dokunuş anı değil) → telefonda ses kilitli kalıyordu;
+    // videodaki ilk dokunuşta ses açılır
+    let un = () => {
+      g.unlock();
+      ["pointerup", "touchend", "click"].forEach(($) => document.removeEventListener($, un, !0));
+    };
+    ["pointerup", "touchend", "click"].forEach(($) => document.addEventListener($, un, !0));
     let T = k("hx-tools"),
       ye = document.createElement("button");
-    ((ye.textContent = g.muted ? "\u{1F507}" : "\u{1F50A}"),
-      (ye.onclick = () => {
-        (g.setMuted(!g.muted), (ye.textContent = g.muted ? "\u{1F507}" : "\u{1F50A}"));
-      }));
+    // v160.7: ses / Geç düğmeleri telefonda çalışmıyordu (yalnız onclick vardı; bazı telefonlarda /
+    // WebView'da click gelmiyor) → sonuç kartındaki gibi pointerup + click, çift tetiklenmez
+    (ye.type = "button"), (ye.textContent = g.muted ? "\u{1F507}" : "\u{1F50A}"), (ye.setAttribute("aria-label", "Ses")),
+      hxTap(ye, () => {
+        (g.unlock(), g.setMuted(!g.muted), (ye.textContent = g.muted ? "\u{1F507}" : "\u{1F50A}"));
+      });
     let G = document.createElement("button");
-    ((G.textContent = "Ge\xE7 \u23ED"),
-      (G.onclick = () => ri(!0)),
+    ((G.type = "button"),
+      (G.textContent = "Ge\xE7 \u23ED"),
+      hxTap(G, () => ri(!0)),
+      ["pointerdown", "touchstart", "mousedown"].forEach(($) => T.addEventListener($, (le) => le.stopPropagation(), { passive: !0 })),
       T.append(ye, G),
       (u.tools = T),
       requestAnimationFrame(() => A.classList.add("on")));
@@ -1644,6 +1655,17 @@ function k6(t) {
       }),
       requestAnimationFrame(() => R.classList.add("on")),
       G ? g.win() : g.lose());
+  }
+  // v160.7: tekrar basılabilen düğme (ses aç/kapa) — pointerup + click, aynı dokunuşta bir kez
+  function hxTap(A, T) {
+    let last = 0,
+      G = (Be) => {
+        Be.preventDefault?.(), Be.stopPropagation?.();
+        let now = performance.now();
+        if (now - last < 450) return;
+        (last = now), T();
+      };
+    (A.addEventListener("click", G), A.addEventListener("pointerup", G));
   }
   // v156: düğme hem click hem pointerup ile çalışır (bazı WebView'larda click gelmiyordu); bir kez
   function Rb(A, T) {

@@ -818,3 +818,20 @@
   font-size: 22px;
   cursor: pointer;
 }
+
+/* v160.7 — telefonda eski hikâye fotoğrafı: dokunma alanlarının üstünde düğme */
+.six-sv-tapload {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 4;
+  padding: 12px 20px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(10, 12, 20, 0.82);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}

@@ -5,6 +5,7 @@ import { useGlobalChat } from '../../hooks/useGlobalChat';
 import { useBlocks } from '../../contexts/BlocksContext';
 import { useSocial } from '../../contexts/SocialContext';
 import { isDmOpen, openDmWith } from '../../lib/chatsappNav';
+import { notificationsHeld, onNotificationHold } from '../../lib/notifHold'; // v160.7
 import './TopNotificationBanner.css';
 
 // TopNotificationBanner — SMS'e ya da ChatsApp'a yeni bir mesaj
@@ -17,7 +18,35 @@ export default function TopNotificationBanner({ onOpenPhone }) {
   const { messages } = useMessages({ max: 1 }); // v90.1: şerit sadece en yeni SMS'e bakar
   const { messages: chatMessages } = useGlobalChat({ max: 1 });
   const { isBlocked } = useBlocks();
-  const [toast, setToast] = useState(null);
+  const [toast, setRawToast] = useState(null);
+  // v160.7: soygun videosu oynarken gelen bildirim bekletilir, video bitince gösterilir
+  const [held, setHeld] = useState(notificationsHeld);
+  const pendingRef = useRef(null);
+  useEffect(() => onNotificationHold(setHeld), []);
+  const setToast = (t) => {
+    if (t && notificationsHeld()) {
+      pendingRef.current = t;
+      return;
+    }
+    setRawToast(t);
+  };
+  useEffect(() => {
+    if (held) {
+      // şerit o an açıksa da gizle; video bitince yeniden gösterilir
+      setRawToast((cur) => {
+        if (cur) pendingRef.current = cur;
+        return null;
+      });
+      return undefined;
+    }
+    if (!pendingRef.current) return undefined;
+    const t = setTimeout(() => {
+      if (notificationsHeld()) return;
+      setRawToast(pendingRef.current);
+      pendingRef.current = null;
+    }, 500);
+    return () => clearTimeout(t);
+  }, [held]);
   const lastSmsIdRef = useRef(null);
   // SMS oturumu: hangi kullanıcı için, hangi andan itibaren gelen SMS'ler
   // "yeni" sayılır. Kullanıcı değişince (sayfa açılışında auth null →
@@ -90,7 +119,7 @@ export default function TopNotificationBanner({ onOpenPhone }) {
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), 4500);
+    const t = setTimeout(() => setRawToast(null), 4500);
     return () => clearTimeout(t);
   }, [toast]);
 
@@ -100,7 +129,7 @@ export default function TopNotificationBanner({ onOpenPhone }) {
     <button
       className="top-notif-banner"
       onClick={() => {
-        setToast(null);
+        setRawToast(null);
         if (toast.type === 'dm') openDmWith(toast.uid, toast.name, toast.avatar);
         else onOpenPhone(toast.type);
       }}

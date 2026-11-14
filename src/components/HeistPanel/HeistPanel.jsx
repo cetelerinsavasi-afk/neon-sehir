@@ -22,6 +22,7 @@ import ResultModal from '../ResultModal/ResultModal';
 import { regionEmojis } from '../../data/regions';
 import { INITIAL_LIFE_DAYS } from '../VehicleCard/VehicleCard';
 import { heistCarOf, heistSceneOf, isVendorHeist } from './heistVideo';
+import { holdNotifications } from '../../lib/notifHold'; // v160.7
 import './HeistPanel.css';
 
 // v154 — şehir dışında soygun videosu (şehir motorunu sadece video açılınca yükler)
@@ -295,7 +296,17 @@ export default function HeistPanel({ target, onRun = null }) {
 
   // v154 — soygunu başlatan için video. Şehirde (onRun verilmiş) şehrin kendi motoru oynatır;
   // burada (Mekanlar › Soygun) tam ekran HeistVideo. Dönüş: { data, played }.
+  // v160.7: video (ve sonuç kartı) bitene kadar üstten SMS bildirimi bekletilir — sonucu
+  // önceden göstermesin, videonun Geç / ses düğmelerinin üstüne binmesin. SMS sonra gelir.
   const runner = async (fn, ctx) => {
+    const release = holdNotifications();
+    try {
+      return await runVideo(fn, ctx);
+    } finally {
+      release();
+    }
+  };
+  const runVideo = async (fn, ctx) => {
     if (onRun) {
       const r = await onRun(fn, ctx);
       return r && 'played' in r ? r : { data: r?.data, played: false };
