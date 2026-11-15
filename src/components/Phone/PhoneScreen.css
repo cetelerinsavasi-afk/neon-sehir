@@ -595,3 +595,255 @@
   min-height: 0;
   overflow-y: auto;
 }
+
+/* ==== v161 — CAPPSTORE ==== */
+.tone-cappstore {
+  background: radial-gradient(120% 90% at 20% 0%, #4ff3ff 0%, transparent 55%), linear-gradient(150deg, #19c8ff 0%, #6a3cff 52%, #ff2e8c 100%);
+  color: #fff;
+}
+.tone-fabrika {
+  background: linear-gradient(160deg, #ffb340, #d2510f);
+  color: #fff;
+}
+.tone-isletme {
+  background: linear-gradient(160deg, #a78bfa, #4c1d95);
+  color: #fff;
+}
+.tone-futbol {
+  background: linear-gradient(160deg, #4ade80, #14632f);
+  color: #fff;
+}
+.tone-belediye {
+  background: linear-gradient(160deg, #fb7185, #9f1239);
+  color: #fff;
+}
+.phone-app-icon svg {
+  display: block;
+}
+/* ızgara hücresi + düzenleme modu */
+.phone-slot {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  transition: opacity 0.15s ease;
+}
+.phone-slot.dragging {
+  opacity: 0.22;
+}
+.phone-apps-grid.editing {
+  touch-action: none;
+}
+.phone-apps-grid.editing .phone-app {
+  touch-action: none;
+}
+.phone-screen.editing .phone-pager {
+  overflow-x: hidden;
+  touch-action: none;
+}
+@keyframes phone-jig {
+  0% {
+    transform: rotate(-2.2deg);
+  }
+  100% {
+    transform: rotate(2.2deg);
+  }
+}
+.phone-app.jig {
+  animation: phone-jig 0.24s ease-in-out infinite alternate;
+  transform-origin: 50% 55%;
+}
+.phone-app.jig2 {
+  animation-delay: -0.12s;
+}
+.phone-app-del {
+  position: absolute;
+  top: -7px;
+  left: calc(50% - 36px);
+  z-index: 2;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(70, 72, 86, 0.96);
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  animation: phone-pop 0.18s ease;
+}
+@keyframes phone-pop {
+  from {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+}
+.phone-drag-ghost {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  transform: scale(1.14);
+  filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.55));
+}
+.phone-app-icon.loading > :not(.phone-app-progress) {
+  filter: saturate(0.4) brightness(0.8);
+}
+.phone-app-progress {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: inherit;
+  background: rgba(0, 0, 0, 0.45);
+}
+.phone-edit-bar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 8px 20px 0;
+  padding: 6px 6px 6px 14px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.85);
+}
+.phone-edit-bar button {
+  height: 32px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  color: #0a0e18;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+/* bildirim afişi (yüklendi / silindi / görevden alındı) */
+.phone-notice {
+  position: absolute;
+  top: calc(52px + env(safe-area-inset-top));
+  left: 10px;
+  right: 10px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 22px;
+  background: rgba(30, 32, 46, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  color: #fff;
+  animation: phone-notice-in 0.25s ease;
+}
+.phone-notice span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.phone-notice b {
+  font-size: 13.5px;
+}
+.phone-notice small {
+  font-size: 12px;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.75);
+}
+@keyframes phone-notice-in {
+  from {
+    transform: translateY(-18px);
+    opacity: 0;
+  }
+}
+/* silme onayı */
+.phone-confirm-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.phone-confirm {
+  width: 280px;
+  overflow: hidden;
+  border-radius: 22px;
+  background: rgba(34, 36, 50, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  text-align: center;
+  animation: phone-pop 0.18s ease;
+}
+.phone-confirm-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 20px 16px;
+}
+.phone-confirm-body b {
+  font-size: 16px;
+}
+.phone-confirm-body span {
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.7);
+}
+.phone-confirm > button {
+  display: block;
+  width: 100%;
+  height: 48px;
+  border: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  background: none;
+  color: #4ff3ff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.phone-confirm > button.danger {
+  color: #ff6b6b;
+  font-weight: 700;
+}
+.phone-app-loading {
+  padding: 40px 0;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.6);
+}
+.phone-app-body.full > .cs-root,
+.phone-app-body.full > .cs-detail {
+  flex: 1;
+  min-height: 0;
+}
+/* v161: widget'taki altın → Zümrüt Mağazası */
+button.phone-widget-gold {
+  border: 1px solid rgba(255, 210, 63, 0.35);
+  background: rgba(255, 210, 63, 0.1);
+  padding: 5px 10px;
+  margin: -5px -8px 0 0;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: #ffd23f;
+  cursor: pointer;
+}
+button.phone-widget-gold:active {
+  transform: scale(0.95);
+}
+button.phone-widget-gold:disabled {
+  border-color: transparent;
+  background: none;
+  cursor: default;
+}

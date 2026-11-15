@@ -10479,6 +10479,8 @@ export const instantSellListing = onCall(async (request) => {
         vehicleTankUpgraded: Boolean(v.tankUpgraded),
         vehicleLifeDays,
         vehicleRepairsUsed: v.repairsUsed || 0,
+        // v161: anında satılan (sisteme) araç da 2. El'de modifiyeli haliyle görünür (alan modifiyesiyle alır)
+        ...(v.mods && typeof v.mods === 'object' && Object.keys(v.mods).length ? { vehicleMods: v.mods } : {}),
         price: Math.ceil(minPrice * 1.1),
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         sold: false,

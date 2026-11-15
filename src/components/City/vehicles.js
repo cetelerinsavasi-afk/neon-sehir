@@ -1216,7 +1216,8 @@ let BUS_TYPES = {
     accent: "#19a0d8",
     seats: 12,
     sign: "TAKS\u0130M - KADIK\xD6Y",
-    vmax: 22,
+    vmax: 30, // v161: ~%40 hızlı (uzun yol)
+    acc: 4.4,
   },
   otobus: {
     name: "\u015Eehir Otob\xFCs\xFC",
@@ -1228,7 +1229,8 @@ let BUS_TYPES = {
     accent: "#f4f4f2",
     seats: 28,
     sign: "34 N\u015E  L\u0130MAN - MERKEZ",
-    vmax: 18,
+    vmax: 27, // v161: %50 hızlı (uzun yol çok uzun sürüyordu)
+    acc: 4.6,
   },
   okul: {
     name: "Okul Servisi",
@@ -1240,7 +1242,8 @@ let BUS_TYPES = {
     accent: "#111111",
     seats: 20,
     sign: "OKUL TA\u015EITI",
-    vmax: 18,
+    vmax: 27, // v161: %50 hızlı
+    acc: 4.6,
     nose: 1.35,
   },
   ambulans: { name: "Ambulans", L: 6.2, W: 2.05, H: 2.7, r: 0.38, paint: "#f4f4f2", accent: "#c8141e", seats: 4, sign: "AMBULANS", vmax: 26 },
@@ -1255,7 +1258,8 @@ let BUS_TYPES = {
     accent: "#ffd23f",
     seats: 30,
     sign: "\u015EEH\u0130R TURU",
-    vmax: 15,
+    vmax: 22, // v161: %50 hızlı
+    acc: 4.2,
     deck2: true,
   },
 };
@@ -1620,7 +1624,7 @@ function buildBusModel(n) {
     e.root.traverse((ft) => {
       ft.isMesh && !ft.material.transparent && ((ft.castShadow = true), (ft.receiveShadow = true));
     }),
-    { ...e, def: { name: t.name, seats: t.seats, phys: { vmax: t.vmax, acc: 3.2, grip: 5, steer: 0.82 } }, len: l, wb: ae - rt, halfW: c / 2, seatPts, seat: seatPts[0], open: true, cabin: { floor: fl, roof: t.deck2 ? x + 2.2 : _ } }
+    { ...e, def: { name: t.name, seats: t.seats, phys: { vmax: t.vmax, acc: t.acc || 3.2, grip: 5, steer: 0.82 } }, len: l, wb: ae - rt, halfW: c / 2, seatPts, seat: seatPts[0], open: true, cabin: { floor: fl, roof: t.deck2 ? x + 2.2 : _ } }
   );
 }
 let TRUCK_TRAILERS = {
@@ -1875,7 +1879,7 @@ function buildTruckModel(n) {
     t.root.traverse((D) => {
       D.isMesh && !D.material.transparent && ((D.castShadow = true), (D.receiveShadow = true));
     }),
-    { ...t, def: { name: "T\u0131r", seats: 2, phys: { vmax: 20, acc: 2.6, grip: 5, steer: 0.74 } }, len: f, wb: d - 1.1 + 1.95, halfW: h / 2, seatPts, seat: seatPts[0], open: true }
+    { ...t, def: { name: "T\u0131r", seats: 2, phys: { vmax: 30, acc: 3.8, grip: 5, steer: 0.74 } /* v161: tır %50 hızlı */ }, len: f, wb: d - 1.1 + 1.95, halfW: h / 2, seatPts, seat: seatPts[0], open: true }
   );
 }
 function sideRails(n, t, e, i, s) {

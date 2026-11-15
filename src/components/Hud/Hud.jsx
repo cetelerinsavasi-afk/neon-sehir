@@ -1,10 +1,8 @@
 import { useAuth } from '../../contexts/AuthContext';
-import { IS_ANDROID_APP } from '../../lib/platform';
 import './Hud.css';
 
-// Android (TWA) içinde altın butonu mağazayı değil Parara Bank'ı açar
-// (bkz. App.jsx onGoldClick) — ipucu metni de ona göre. Web'de metin aynı.
-const GOLD_BUTTON_TITLE = IS_ANDROID_APP ? 'Altın bakiyen' : "Zümrüt Mağazası'nı aç";
+// v161: altın butonu her platformda Zümrüt Mağazası'nı açar (bkz. App.jsx onGoldClick)
+const GOLD_BUTTON_TITLE = "Zümrüt Mağazası'nı aç";
 
 /**
  * Hud — Bölüm 3'teki üst bar. Faz 1'de mock veriyle çalışır,

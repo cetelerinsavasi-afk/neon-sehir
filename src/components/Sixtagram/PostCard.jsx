@@ -84,13 +84,28 @@ export default function PostCard({ post, liked, isOwn, commentsInline = false })
     }
   };
   // çift dokunuş: beğen + büyük kalp
-  const onMediaTap = () => {
+  // v161: dokunma artık "click"e değil pointerup'a bakıyor. Click; tembel yüklenen fotoğraf
+  // (v160.2 LazyMount / SixPhoto <img>) üstünde telefonda bazen hiç gelmiyor ya da gecikiyordu →
+  // iki dokunuş beğeni olarak sayılmıyordu. Aynı yere (±40 px) 350 ms içinde iki dokunuş = beğeni.
+  // Fareyle masaüstünde onDoubleClick de aynı işi yapar (ikisi aynı anda tetiklenmez).
+  const likeByDoubleTap = () => {
+    setBurst((n) => n + 1);
+    handleLike(true);
+  };
+  const onMediaPointerUp = (e) => {
+    if (e.pointerType === 'mouse') return; // fare: onDoubleClick
+    if (e.target?.closest?.('button, a, input, textarea, [data-no-dbl]')) return;
     const t = Date.now();
-    if (t - lastTap.current < 320) {
+    const last = lastTap.current;
+    const near = last && Math.abs(e.clientX - last.x) < 40 && Math.abs(e.clientY - last.y) < 40;
+    if (last && t - last.t < 350 && near) {
       lastTap.current = 0;
-      setBurst((n) => n + 1);
-      handleLike(true);
-    } else lastTap.current = t;
+      likeByDoubleTap();
+    } else lastTap.current = { t, x: e.clientX, y: e.clientY };
+  };
+  const onMediaDoubleClick = (e) => {
+    if (e.target?.closest?.('button, a, input, textarea, [data-no-dbl]')) return;
+    likeByDoubleTap();
   };
   const doDelete = async () => {
     await deleteSixtagramPost(post.id);
@@ -135,7 +150,7 @@ export default function PostCard({ post, liked, isOwn, commentsInline = false })
         </button>
       </header>
 
-      <div className="six-post-media" onClick={onMediaTap}>
+      <div className="six-post-media" onPointerUp={onMediaPointerUp} onDoubleClick={onMediaDoubleClick}>
         {textOnly ? (
           <p className="six-post-text big" style={official ? { whiteSpace: 'pre-line' } : undefined}>
             {post.text}

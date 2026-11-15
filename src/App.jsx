@@ -23,7 +23,6 @@ import { regions } from './data/regions';
 import { BIZ_BY_REGION, BIZ_TYPES } from '../functions/businessCatalogData.js';
 import { vendorVenueKey, VENDORS } from '../functions/vendorData.js';
 import CityPegman from './components/City/CityPegman'; // v147.3 — sürükle-bırak ile şehre gir
-import { IS_ANDROID_APP } from './lib/platform';
 import { quietRestorePlayPurchases, playRestoreSupported } from './lib/playBilling';
 import { exitApp, installBackHandler, rearmBack, useBackClose } from './lib/backStack';
 import { isTaRacing } from './lib/raceGuard';
@@ -613,9 +612,9 @@ function GameShell() {
         reputation={hudRep}
         gold={hudGold}
         onGoldClick={() => {
-          // Android (Google Play TWA): Altın Mağazası yerine telefondaki
-          // Parara Bank açılır (altın bakiyesi başlıkta görünür). Web aynı.
-          setPhoneInitialApp(IS_ANDROID_APP ? 'banka' : 'altin-magazasi');
+          // v161: her yerde Zümrüt Mağazası açılır (Android'de mağaza kapalıysa telefon ana ekranda açılır).
+          // Eskiden Android'de Parara açılıyordu; Parara artık Cappstore'dan indirilen bir uygulama.
+          setPhoneInitialApp('altin-magazasi');
           setPhoneOpen(true);
         }}
       />

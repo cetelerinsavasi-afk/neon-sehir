@@ -100,6 +100,13 @@
   position: relative;
   user-select: none;
   -webkit-user-select: none;
+  touch-action: manipulation; /* v161: çift dokunuş yakınlaştırmaya gitmesin, beğeniye gitsin */
+}
+/* v161: fotoğraf / canvas dokunuşu yutmasın (sürükleme, uzun basma menüsü) — dokunuş kartın kendisine gelir */
+.six-post-media .post-att-housephoto-img {
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+  pointer-events: none;
 }
 .six-post-media .post-att {
   margin: 0;

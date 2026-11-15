@@ -26,6 +26,26 @@
   height: 100% !important;
   display: block;
 }
+/* v161: döndürme katmanı (ortak tuvalin üstünde) + bağlam kaybı uyarısı */
+.ms-input {
+  position: absolute;
+  inset: 0;
+  touch-action: none;
+}
+.ms-lost {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(20, 8, 14, 0.9);
+  border: 1px solid rgba(255, 46, 140, 0.5);
+  color: #ffd0e2;
+  font-size: 13px;
+  line-height: 1.4;
+  pointer-events: none;
+}
 .ms-top {
   position: absolute;
   top: calc(10px + env(safe-area-inset-top, 0px));

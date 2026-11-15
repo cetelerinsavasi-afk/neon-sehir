@@ -566,9 +566,16 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
   // v81: yayında yarış pisti evin üstünde açıkken de duraklat (yarışın ok tuşları
   // avatarı koltuktan kaldırıp yayını kapatmasın)
   const [raceUp, setRaceUp] = useState(false);
+  // v161: Modifiye Stüdyosu açıkken ev sahnesi durur (stüdyo ortak çiziciyi ödünç alır)
+  const [modStudio, setModStudio] = useState(false);
   useEffect(() => {
-    engineRef.current?.setPaused(panel === 'phone' || panel === 'arcade' || raceUp);
-  }, [panel, engineKey, raceUp]);
+    const on = (e) => setModStudio(Boolean(e.detail?.open));
+    window.addEventListener('neon:modstudio', on);
+    return () => window.removeEventListener('neon:modstudio', on);
+  }, []);
+  useEffect(() => {
+    engineRef.current?.setPaused(panel === 'phone' || panel === 'arcade' || raceUp || modStudio);
+  }, [panel, engineKey, raceUp, modStudio]);
 
   // --- 3) ev belgesi ---------------------------------------------------------------
   useEffect(() => {

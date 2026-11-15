@@ -1,4 +1,4 @@
-import { lazy, Suspense, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useVehicles } from '../../hooks/useVehicles';
@@ -25,6 +25,38 @@ const CostumeShop = lazy(retryImport(() => import('../CostumeShop/CostumeShop'))
 
 function weaponImage(catalogId) {
   return weaponCatalog.find((w) => w.id === catalogId)?.image;
+}
+
+// v161 — profildeki şüphe / saygınlık / zümrüt / altın: dokununca ne olduğu kısa bir etiketle
+// görünür (2,5 sn sonra kaybolur). Aynı anda tek etiket açık kalır.
+const STAT_TIP_EVENT = 'neon:stat-tip';
+function StatChip({ label, children }) {
+  const [show, setShow] = useState(false);
+  const timer = useRef(0);
+  useEffect(() => {
+    const other = (e) => e.detail !== label && setShow(false);
+    window.addEventListener(STAT_TIP_EVENT, other);
+    return () => {
+      window.removeEventListener(STAT_TIP_EVENT, other);
+      clearTimeout(timer.current);
+    };
+  }, [label]);
+  const tap = () => {
+    window.dispatchEvent(new CustomEvent(STAT_TIP_EVENT, { detail: label }));
+    clearTimeout(timer.current);
+    setShow(true);
+    timer.current = setTimeout(() => setShow(false), 2500);
+  };
+  return (
+    <button type="button" className="home-stat" onClick={tap} aria-label={label} title={label}>
+      {children}
+      {show && (
+        <span className="home-stat-tip" role="status">
+          {label}
+        </span>
+      )}
+    </button>
+  );
 }
 
 function ProfileHeader({ player, onEditAvatar, onCostumes, onAccessories, onReport, onFurniture }) {
@@ -88,21 +120,18 @@ function ProfileHeader({ player, onEditAvatar, onCostumes, onAccessories, onRepo
 
       {/* v157.4 — profilde şüphe · saygınlık · zümrüt · altın */}
       <div className="home-stats">
-        <span title="Şüphe">🕵️ <b>%{Math.max(0, Math.round(Number(player?.suspicion) || 0))}</b></span>
-        <span title="Saygınlık">⭐ <b>{Math.round(Number(player?.reputation) || 0).toLocaleString('tr-TR')}</b></span>
-        <span title="Zümrüt"><i className="emerald-icon" style={{ width: 14, height: 14 }} /> <b>{Math.round(Number(player?.emerald) || 0).toLocaleString('tr-TR')}</b></span>
-        <span title="Altın"><i className="gold-coin-icon" style={{ width: 14, height: 14 }} /> <b>{Math.round(Number(player?.gold) || 0).toLocaleString('tr-TR')}</b></span>
+        <StatChip label="Şüphe">🕵️ <b>%{Math.max(0, Math.round(Number(player?.suspicion) || 0))}</b></StatChip>
+        <StatChip label="Saygınlık">⭐ <b>{Math.round(Number(player?.reputation) || 0).toLocaleString('tr-TR')}</b></StatChip>
+        <StatChip label="Zümrüt"><i className="emerald-icon" style={{ width: 14, height: 14 }} /> <b>{Math.round(Number(player?.emerald) || 0).toLocaleString('tr-TR')}</b></StatChip>
+        <StatChip label="Altın"><i className="gold-coin-icon" style={{ width: 14, height: 14 }} /> <b>{Math.round(Number(player?.gold) || 0).toLocaleString('tr-TR')}</b></StatChip>
       </div>
 
       <button className="home-btn" onClick={onEditAvatar}>
         🎭 Avatarımı Düzenle
       </button>
-      {/* v146 — yan yana kare butonlar · v160.1: Günlük Rapor · Kostümler · Aksesuarlar · Mobilyalar */}
+      {/* v146 — yan yana kare butonlar: Aksesuarlar (v78) · Günlük Rapor (v92) · Mobilyalar */}
       <div className="home-sq-row">
-        <button className="home-sq home-sq-report" onClick={onReport}>
-          <span>📊</span>
-          Günlük Rapor
-        </button>
+        {/* v160 — Kostümler (hazır tipler, zümrütle) aksesuarlardan önce */}
         <button className="home-sq home-sq-cos" onClick={onCostumes}>
           <span>🎭</span>
           Kostümler
@@ -110,6 +139,10 @@ function ProfileHeader({ player, onEditAvatar, onCostumes, onAccessories, onRepo
         <button className="home-sq home-sq-acc" onClick={onAccessories}>
           <span>🐾</span>
           Aksesuarlar
+        </button>
+        <button className="home-sq home-sq-report" onClick={onReport}>
+          <span>📊</span>
+          Günlük Rapor
         </button>
         <button className="home-sq home-sq-furn" onClick={onFurniture}>
           <span>🛋️</span>

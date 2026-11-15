@@ -39,7 +39,8 @@ const CASES = [
 const PAX = ['Ayşe Hanım', 'Mehmet Bey', 'Turist Hans', 'Kerem', 'Zeynep', 'İş insanı', 'Teyze', 'Öğrenci Ece', 'Ahmet Usta'];
 
 // araçların azami hızı (m/s) — en kısa süre sınırı için (şehir motorundaki değerlerle aynı / biraz üstü)
-const VMAX = { tir: 22, otobus: 20, taksi: 32, polis: 40, ambulans: 30, kurye: 34 };
+// v161: otobüs ve tır ~%50 hızlandı (istemci: City/vehicles.js) → süre sınırı ve hedef süre (par) da aynı oranda
+const VMAX = { tir: 33, otobus: 30, taksi: 32, polis: 40, ambulans: 30, kurye: 34 };
 
 const pick = (a, r = Math.random) => a[Math.floor(r() * a.length) % a.length];
 function spotAway(from, min, max, not = []) {
@@ -60,20 +61,20 @@ export function planJob(job, near = null, far = false) {
     const [cargo, mul] = pick(CARGO);
     const back = Boolean(at && manhattan(at, FAR_DEPOT) < manhattan(at, LIMAN_BAY));
     const len = back ? FAR_TIR_LEN - (manhattan(LIMAN_BAY, HWY_ENTRY) - manhattan(DEPOTS[0], HWY_ENTRY)) : FAR_TIR_LEN;
-    return { task: { type: 'tir', far: true, cargo, ton: 14 + Math.floor(Math.random() * 12), ...(back ? { from: 1 } : {}) }, mul: mul * JOBS.tir.farMul, len, par: len / 15 + 70, minT: len / VMAX.tir + 6 };
+    return { task: { type: 'tir', far: true, cargo, ton: 14 + Math.floor(Math.random() * 12), ...(back ? { from: 1 } : {}) }, mul: mul * JOBS.tir.farMul, len, par: len / 22.5 + 70, minT: len / VMAX.tir + 6 };
   }
   if (far && job === 'otobus') {
     // v157: şehirlerarası sefer — yakın otogardan öbür otogara (~1,5 kat kazanç)
     let from = 0;
     if (at && manhattan(at, OTOGARS[1]) < manhattan(at, OTOGARS[0])) from = 1;
     const len = FAR_BUS_LEN;
-    return { task: { type: 'otobus', far: true, from, pax: 18 + Math.floor(Math.random() * 11) }, mul: JOBS.otobus.farMul, len, par: len / 13 + 60, minT: len / VMAX.otobus + 6 };
+    return { task: { type: 'otobus', far: true, from, pax: 18 + Math.floor(Math.random() * 11) }, mul: JOBS.otobus.farMul, len, par: len / 19.5 + 60, minT: len / VMAX.otobus + 6 };
   }
   if (job === 'tir') {
     const d = Math.floor(Math.random() * DEPOTS.length);
     const [cargo, mul] = pick(CARGO);
     const len = manhattan(LIMAN_BAY, DEPOTS[d]);
-    return { task: { type: 'tir', depot: d, cargo, ton: 6 + Math.floor(Math.random() * 18) }, mul, len, par: len / 8 + 25, minT: len / VMAX.tir + 4 };
+    return { task: { type: 'tir', depot: d, cargo, ton: 6 + Math.floor(Math.random() * 18) }, mul, len, par: len / 12 + 25, minT: len / VMAX.tir + 4 };
   }
   if (job === 'otobus') {
     // en yakın duraktan başlar, 10 durağın hepsini sırayla gezer
@@ -89,7 +90,7 @@ export function planJob(job, near = null, far = false) {
       });
     }
     const len = busRouteLen(s);
-    return { task: { type: 'otobus', start: s, waiting: BUS_STOPS.map(() => 1 + Math.floor(Math.random() * 4)) }, mul: 1, len, par: len / 7 + BUS_STOPS.length * 6, minT: len / VMAX.otobus + BUS_STOPS.length * 3 };
+    return { task: { type: 'otobus', start: s, waiting: BUS_STOPS.map(() => 1 + Math.floor(Math.random() * 4)) }, mul: 1, len, par: len / 10.5 + BUS_STOPS.length * 6, minT: len / VMAX.otobus + BUS_STOPS.length * 3 };
   }
   if (job === 'taksi') {
     const from = spotAway(at, 30, 220);

@@ -44,6 +44,8 @@ const POPULAR_N = 8;
 
 const OPTIONS = [
   { key: 'popular', icon: '🔥', label: 'Popüler' },
+  // v161: kendi evlerim, işletmelerim ve ofislerim tek listede
+  { key: 'mine', icon: '⭐', label: 'Mekanlarım' },
   // v157.4: "Oyunun mekânları" kaldırıldı — oyunun mekânları şehirde (haritadan / kapıdan girilir)
   ...BIZ_TYPE_KEYS.map((k) => ({ key: k, icon: BIZ_TYPES[k].icon, label: BIZ_TYPES[k].label })),
   { key: 'offices', icon: '🏢', label: 'Ofisler' },
@@ -54,7 +56,7 @@ const OPTIONS = [
 
 // v134 — misafir: popüler / evler yok (canlı sayılar girişli); oyunun mekânları,
 // işletmeler ve ofisler sunucudan gelen salt-okuma listeyle gezilir
-const GUEST_OPTIONS = OPTIONS.filter((o) => o.key !== 'popular' && o.key !== 'houses' && o.key !== 'hq');
+const GUEST_OPTIONS = OPTIONS.filter((o) => o.key !== 'popular' && o.key !== 'houses' && o.key !== 'hq' && o.key !== 'mine');
 
 // v146 — karargahlar / teşkilat: kendi çeten (ve davet eden çeteler), teşkilata polisler girer.
 // Üyelik bilgisi bir kez okunur, 5 dk önbellekte (Ziyaret her açıldığında tekrar okunmasın).
@@ -99,7 +101,7 @@ export default function VisitTab({ onVisitVenue, onVisitHouse, onVisitHq = null 
   const isGuest = !user && !authLoading;
   const [filter, setFilter] = useState(isGuest ? BIZ_TYPE_KEYS[0] : 'popular');
   useEffect(() => {
-    if (isGuest && (filter === 'popular' || filter === 'houses')) setFilter(BIZ_TYPE_KEYS[0]);
+    if (isGuest && (filter === 'popular' || filter === 'houses' || filter === 'mine')) setFilter(BIZ_TYPE_KEYS[0]);
   }, [isGuest, filter]);
   const isBiz = Boolean(BIZ_TYPES[filter]);
   const guestType = isGuest && (isBiz || filter === 'offices') ? (filter === 'offices' ? 'ofis' : filter) : null;
@@ -118,7 +120,7 @@ export default function VisitTab({ onVisitVenue, onVisitHouse, onVisitHq = null 
   // v73 — maliyet: canlı dinleyici yerine 30 sn'de bir aktif oyuncu sorgusu
   const houseList = useHouseList({ onlyLive: true });
   // v78 — Evler filtresi: içinde kimse olmasa da girebileceğim tüm evler
-  const allHouses = useHouseList({ enabled: Boolean(user) && filter === 'houses' });
+  const allHouses = useHouseList({ enabled: Boolean(user) && (filter === 'houses' || filter === 'mine') });
   const [showAllHouses, setShowAllHouses] = useState(false);
   const interiorList = usePolledPresence('interiorPresence', { max: 400 });
   const yVisits = useYesterdayVisits(Boolean(user) && (filter === 'popular' || filter === 'houses' || filter === 'hq'));
@@ -244,6 +246,25 @@ export default function VisitTab({ onVisitVenue, onVisitHouse, onVisitHq = null 
       if (offices.loading) return [];
       return offices.list.map((h) => ({ ...houseItem(h, h.yv), icon: h.office?.emoji || '🏢', sub: `Sahibi: ${h.ownerName || 'Oyuncu'}` }));
     }
+    if (filter === 'mine') {
+      // v161 — Mekanlarım: sahibi olduğum her yer (ev, işletme, ofis). İçinde biri olan üstte, sonra ada göre.
+      const seen = new Set();
+      return [...allHouses.mine, ...houseList.mine]
+        .filter((h) => h?.id && !seen.has(h.id) && seen.add(h.id))
+        .map((h) => {
+          const people = Math.max(h.people || 0, allHouses.counts?.[h.id] || 0, houseList.counts?.[h.id] || 0);
+          if (isHqId(h.id)) return hqItem({ ...h, people });
+          const type = h.biz?.type || h.bizType;
+          const office = houseKind(h) === 'ofis';
+          const it = houseItem({ ...h, people });
+          return {
+            ...it,
+            icon: office ? h.office?.emoji || '🏢' : it.icon,
+            sub: type ? BIZ_TYPES[type]?.label || 'İşletme' : office ? 'Ofis' : 'Ev',
+          };
+        })
+        .sort((a, b) => b.people - a.people || a.name.localeCompare(b.name, 'tr'));
+    }
     if (filter === 'houses') {
       // v78: dolu evler kişi sayısına göre en üstte; ardından boş ama girilebilir
       // evler dünün ziyaretine göre (en popüler 8; "tümünü göster" ile hepsi).
@@ -273,7 +294,7 @@ export default function VisitTab({ onVisitVenue, onVisitHouse, onVisitHq = null 
     if (gk) list.push({ ...gameItem(gk), sub: 'Sahibi: Neon Şehir', yv: -rank(biz.gameRank) });
     return list.sort(byPeople);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filter, yVisits, venuePeople, liveHouses, biz.list, biz.gameRank, biz.loading, allHouses, showAllHouses, offices, isGuest, guestType, guestLists, hqs, houseList.counts, houseList.liveHq, access, canTeskilat]);
+  }, [filter, yVisits, venuePeople, liveHouses, houseList.mine, biz.list, biz.gameRank, biz.loading, allHouses, showAllHouses, offices, isGuest, guestType, guestLists, hqs, houseList.counts, houseList.liveHq, access, canTeskilat]);
   const hiddenEmpty = filter === 'houses' ? items.hiddenEmpty || 0 : 0;
 
   return (
@@ -285,7 +306,9 @@ export default function VisitTab({ onVisitVenue, onVisitHouse, onVisitHq = null 
             ? 'En kalabalık mekânlar üstte; boşsa dünün en çok ziyaret edilenleri.'
             : filter === 'houses'
               ? 'İçinde biri olan evler üstte; boş evler dünün en çok ziyaret edilenlerine göre.'
-              : 'En kalabalık üstte. Girmek için dokun; çıkınca bu ekrana dönersin.'}
+              : filter === 'mine'
+                ? 'Sahibi olduğun evler, işletmeler ve ofisler. Girmek için dokun.'
+                : 'En kalabalık üstte. Girmek için dokun; çıkınca bu ekrana dönersin.'}
         </p>
         {lockNote && (
           <p className="visit-hint visit-lock-note" onClick={() => setLockNote(null)}>
@@ -310,9 +333,11 @@ export default function VisitTab({ onVisitVenue, onVisitHouse, onVisitHq = null 
           )}
           {items.length === 0 && (
             <p className="visit-hint">
-              {(isBiz && biz.loading) || (filter === 'houses' && allHouses.loading) || (filter === 'offices' && offices.loading) || (guestType && !guestLists[guestType])
+              {(isBiz && biz.loading) || ((filter === 'houses' || filter === 'mine') && allHouses.loading) || (filter === 'offices' && offices.loading) || (guestType && !guestLists[guestType])
                 ? 'Yükleniyor…'
-                : filter === 'houses'
+                : filter === 'mine'
+                  ? 'Henüz bir mekânın yok. Ev ya da işletme alınca burada listelenir.'
+                  : filter === 'houses'
                   ? 'Girebileceğin bir ev yok.'
                   : filter === 'hq'
                     ? hqs.loading ? 'Yükleniyor…' : 'Henüz açılmış karargah yok.'

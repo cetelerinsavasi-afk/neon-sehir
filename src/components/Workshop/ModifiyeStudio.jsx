@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { getSharedRenderer } from '../HouseScreen/houseEngine.js'; // v161: ortak çizici
+import { IS_MOBILE_DEVICE } from '../../lib/photoCache.js';
 import { buildVehicle, VEHICLE_BY_ID } from '../City/vehicles.js';
 import { shopAction } from '../../services/gameActions';
 import { bizErrText } from '../../lib/bizErrors';
@@ -98,24 +99,62 @@ const KIND_LEN = { taxi: 4.6, police: 4.6, ambulance: 6.2, bus: 11.5, truck: 15.
 const rideLabel = (v) => (v < -0.02 ? 'Basık' : v > 0.12 ? 'Off-road' : v > 0.02 ? 'Yüksek' : 'Standart');
 
 // ---- 3D sahne -----------------------------------------------------------------------
-function useStudio(mountRef, catalogId, cfg, tab, spin) {
+// v161 — MODİFİYEDE OYUNDAN ATMA (telefon): stüdyo eskiden KENDİ WebGL bağlamını açıyordu
+// (kenar yumuşatma + 2x çözünürlük + gölge + ayrı ortam dokusu). Altta ev / mekân sahnesi de
+// ortak çiziciyle çizmeye devam ettiği için telefonda ekran kartı belleği taşıyor, uygulama
+// kapanıyordu. Artık stüdyo oyunun ORTAK çizicisini ('main') ödünç alır: açılınca alttaki
+// sahne duraklar (MODSTUDIO_EVENT), tuval stüdyoya taşınır; kapanınca eski yerine ve eski
+// ayarlarına geri döner. Yeni grafik bağlamı açılmaz.
+export const MODSTUDIO_EVENT = 'neon:modstudio';
+const PHONE = IS_MOBILE_DEVICE;
+function disposeObject(root) {
+  root.traverse((o) => {
+    if (!o.isMesh && !o.isLine && !o.isPoints) return;
+    o.geometry?.dispose?.();
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    // malzemeler bırakılır (dokular paylaşımlı önbellekte kalır; gerekirse yeniden yüklenir)
+    mats.forEach((m) => m?.dispose?.());
+  });
+}
+function useStudio(mountRef, catalogId, cfg, tab, spin, onLost) {
   const S = useRef(null);
+  const lostRef = useRef(onLost);
+  lostRef.current = onLost;
   useEffect(() => {
     const host = mountRef.current;
     if (!host) return undefined;
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    // alttaki sahneyi (ev / mekân / şehir) durdur
+    window.dispatchEvent(new CustomEvent(MODSTUDIO_EVENT, { detail: { open: true } }));
+    const { renderer, env } = getSharedRenderer('main');
+    const canvas = renderer.domElement;
+    const prev = {
+      parent: canvas.parentNode,
+      next: canvas.nextSibling,
+      className: canvas.className,
+      pe: canvas.style.pointerEvents,
+      dpr: renderer.getPixelRatio(),
+      size: renderer.getSize(new THREE.Vector2()),
+      exposure: renderer.toneMappingExposure,
+      toneMapping: renderer.toneMapping,
+      color: renderer.outputColorSpace,
+      shadow: renderer.shadowMap.enabled,
+      onLost: renderer.__onLost,
+    };
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, PHONE ? 1.25 : 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.15;
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-    host.appendChild(renderer.domElement);
+    renderer.__onLost = () => lostRef.current?.();
+    canvas.className = 'ms-gl';
+    canvas.style.pointerEvents = 'none'; // dokunuşlar alttaki sahnenin dinleyicilerine gitmesin
+    host.appendChild(canvas);
+    // döndürme / yakınlaştırma tuvalin üstündeki ayrı katmanda (ev motorunun tuval dinleyicileri tetiklenmez)
+    const input = document.createElement('div');
+    input.className = 'ms-input';
+    host.appendChild(input);
     const scene = new THREE.Scene();
-    const pm = new THREE.PMREMGenerator(renderer);
-    const env = pm.fromScene(new RoomEnvironment(), 0.04).texture;
-    pm.dispose();
-    scene.environment = env;
+    scene.environment = env; // ortak ortam dokusu (bırakılmaz)
     scene.environmentIntensity = 0.9;
     scene.background = new THREE.Color('#090c18');
     scene.fog = new THREE.Fog('#090c18', 18, 40);
@@ -123,7 +162,7 @@ function useStudio(mountRef, catalogId, cfg, tab, spin) {
     const key = new THREE.DirectionalLight('#fff4e8', 2.8);
     key.position.set(8, 14, 9);
     key.castShadow = true;
-    key.shadow.mapSize.set(1024, 1024);
+    key.shadow.mapSize.set(PHONE ? 512 : 1024, PHONE ? 512 : 1024);
     Object.assign(key.shadow.camera, { left: -8, right: 8, top: 8, bottom: -8, near: 1, far: 40 });
     scene.add(key);
     const rimL = new THREE.DirectionalLight('#9fdcff', 1.2);
@@ -148,7 +187,7 @@ function useStudio(mountRef, catalogId, cfg, tab, spin) {
     scene.add(ground);
     const camera = new THREE.PerspectiveCamera(36, 1, 0.1, 120);
     camera.position.set(6.5, 2.8, 6.5);
-    const controls = new OrbitControls(camera, renderer.domElement);
+    const controls = new OrbitControls(camera, input);
     controls.enableDamping = true;
     controls.maxPolarAngle = Math.PI * 0.49;
     controls.minDistance = 2.4;
@@ -171,6 +210,7 @@ function useStudio(mountRef, catalogId, cfg, tab, spin) {
     const loop = (t) => {
       if (!st.alive) return;
       st.raf = requestAnimationFrame(loop);
+      if (document.hidden || renderer.__lost) return;
       const dt = Math.min(0.05, (t - last) / 1000);
       last = t;
       if (st.spin) turn.rotation.y += dt * 0.35;
@@ -186,19 +226,36 @@ function useStudio(mountRef, catalogId, cfg, tab, spin) {
     };
     st.raf = requestAnimationFrame(loop);
     const stopFocus = () => (st.focus = null);
-    renderer.domElement.addEventListener('pointerdown', stopFocus);
+    input.addEventListener('pointerdown', stopFocus);
     return () => {
       st.alive = false;
       cancelAnimationFrame(st.raf);
       ro?.disconnect();
-      renderer.domElement.removeEventListener('pointerdown', stopFocus);
+      input.removeEventListener('pointerdown', stopFocus);
       controls.dispose();
-      scene.traverse((o) => o.isMesh && o.geometry?.dispose?.());
-      env.dispose();
-      renderer.dispose();
-      renderer.forceContextLoss?.();
-      renderer.domElement.remove();
+      input.remove();
+      disposeObject(scene);
+      st.car = null;
+      // ortak çiziciyi eski haline ve eski yerine geri ver
+      try {
+        renderer.renderLists?.dispose?.();
+        renderer.setPixelRatio(prev.dpr);
+        renderer.setSize(Math.max(1, prev.size.x), Math.max(1, prev.size.y), false);
+        renderer.toneMappingExposure = prev.exposure;
+        renderer.toneMapping = prev.toneMapping;
+        renderer.outputColorSpace = prev.color;
+        renderer.shadowMap.enabled = prev.shadow;
+        renderer.shadowMap.needsUpdate = true;
+      } catch {
+        /* bağlam kaybolmuş olabilir */
+      }
+      renderer.__onLost = prev.onLost;
+      canvas.className = prev.className;
+      canvas.style.pointerEvents = prev.pe;
+      if (prev.parent && prev.parent.isConnected) prev.parent.insertBefore(canvas, prev.next && prev.next.parentNode === prev.parent ? prev.next : null);
+      else canvas.remove();
       S.current = null;
+      window.dispatchEvent(new CustomEvent(MODSTUDIO_EVENT, { detail: { open: false } }));
     };
   }, [mountRef]);
 
@@ -207,18 +264,19 @@ function useStudio(mountRef, catalogId, cfg, tab, spin) {
   useEffect(() => {
     const st = S.current;
     if (!st) return undefined;
+    // v161: kaydırıcı / renk seçici sürüklenirken her karede araç yeniden kurulmasın (telefonda bellek)
     const t = setTimeout(() => {
       if (!S.current) return;
       if (st.car) {
         st.turn.remove(st.car.root);
-        st.car.root.traverse((o) => o.isMesh && o.geometry?.dispose?.());
+        disposeObject(st.car.root);
       }
       st.car = buildVehicle(catalogId, cfg);
       st.car.root.traverse((o) => {
         if (o.isMesh && !o.material?.transparent) o.castShadow = true;
       });
       st.turn.add(st.car.root);
-    }, 40);
+    }, PHONE ? 160 : 60);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [catalogId, key]);
@@ -422,7 +480,8 @@ export default function ModifiyeStudio({ vehicle, shop, isOwner = false, onClose
   const [msg, setMsg] = useState(null);
   const [plateDraft, setPlateDraft] = useState(base.plate);
   const mountRef = useRef(null);
-  useStudio(mountRef, cid, cfg, tab, spin);
+  const [gpuLost, setGpuLost] = useState(false); // v161
+  useStudio(mountRef, cid, cfg, tab, spin, () => setGpuLost(true));
   useEffect(() => {
     setCfg(base);
     setPlateDraft(base.plate);
@@ -466,7 +525,13 @@ export default function ModifiyeStudio({ vehicle, shop, isOwner = false, onClose
 
   const body = (
     <div className="ms-root" role="dialog" aria-label="Modifiye">
-      <div className="ms-stage" ref={mountRef} />
+      <div className="ms-stage" ref={mountRef}>
+        {gpuLost && (
+          <div className="ms-lost" role="alert">
+            Grafik belleği doldu, önizleme durdu. Seçimlerin duruyor; “Uygula” ile kaydedebilir ya da stüdyoyu kapatıp yeniden açabilirsin.
+          </div>
+        )}
+      </div>
       <div className="ms-top">
         <button className="ms-x" onClick={onClose} aria-label="Kapat">
           ✕
