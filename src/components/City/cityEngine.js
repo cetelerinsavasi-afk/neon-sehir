@@ -30,6 +30,8 @@ import { VENUES as GAME_VENUES } from '../../../functions/venueLayouts.js';
 
 const IS_ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
 const IS_MOBILE = IS_ANDROID || (typeof navigator !== 'undefined' && /iPhone|iPad|Mobile/i.test(navigator.userAgent || ''));
+// v161: araca engel olan ağaç eşyaları (kaldırım / park ağaçları)
+const TREE_KEYS = new Set(['tree', 'palm']);
 const WALK_SPEED = 3.0; // oyundaki ile aynı
 const RUN_SPEED = 6.2;
 const PLAYER_R = 0.32;
@@ -761,7 +763,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     });
     k.solids.forEach((s) => {
       const p = s.o.localToWorld(tv.set(s.x, 0, s.z));
-      solids.push({ x: p.x, z: p.z, hw: s.hw, hd: s.hd, yaw: yawOf(s.o.matrixWorld), item: s.item || null, ell: Boolean(s.ell), car: Boolean(s.car) });
+      solids.push({ x: p.x, z: p.z, hw: s.hw, hd: s.hd, yaw: yawOf(s.o.matrixWorld), item: s.item || null, key: s.key || null, ell: Boolean(s.ell), car: Boolean(s.car) });
     });
     (k.heights || []).forEach((h) => {
       const p = h.o.getWorldPosition(new V());
@@ -1072,7 +1074,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     }
     // v147.3: arabalar sadece binalara / büyük yapılara çarpar — kaldırımdaki ağaç, lamba,
     // çit, bank, saksı vb. eşyalar araba için engel değil (kaldırıma çıkılabilir)
+    // v161: ağaçlar araca engel (sadece gövdesi, ~0,8 m)
     solids.forEach((s) => {
+      if (TREE_KEYS.has(s.key)) return rasterRect({ ...s, hw: Math.max(s.hw, 0.4), hd: Math.max(s.hd, 0.4), ell: true });
       if (s.item && s.item !== 'araba' && Math.min(s.hw, s.hd) < 1.2) return;
       rasterRect(s);
     });

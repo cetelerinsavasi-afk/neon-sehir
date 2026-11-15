@@ -74,13 +74,19 @@ function curb(kit, p, x0, z0, x1, z1, h = 0.18) {
   const L = Math.hypot(x1 - x0, z1 - z0);
   kit.box(L, h, 0.3, M('#b8b2a6', 0.85), (x0 + x1) / 2, y((x0 + x1) / 2, (z0 + z1) / 2) - 0.02, (z0 + z1) / 2, { ry: -Math.atan2(z1 - z0, x1 - x0) });
 }
+// v161: ada artık yolun eğimini izler (eskiden tek parça düz kutuydu: yokuştaki cepte — ör. Kervankent
+// girişindeki Neon Petrol — bir ucu asfaltın altına gömülüp görünmüyor, ama araç için duvar olarak
+// kalıyordu: "görünmez engel"). 18 cm'lik çim ada araca engel değil (üstünden geçilir).
 function island(kit, p, x, z0, z1, w = 1.6) {
   const y = Yp(p);
-  const L = z1 - z0;
-  kit.box(w, 0.18, L, M('#b8b2a6', 0.85), x, y(x, (z0 + z1) / 2) - 0.02, (z0 + z1) / 2);
-  kit.box(w - 0.3, 0.05, L - 0.3, M('#4f7a34', 0.95), x, y(x, (z0 + z1) / 2) + 0.16, (z0 + z1) / 2, { cast: false });
-  kit.solid(x, (z0 + z1) / 2, w / 2, L / 2);
-  kit.solids.at(-1).car = true;
+  const n = Math.max(1, Math.ceil((z1 - z0) / 4));
+  const L = (z1 - z0) / n;
+  for (let i = 0; i < n; i++) {
+    const zc = z0 + (i + 0.5) * L;
+    const yc = y(x, zc);
+    kit.box(w, 0.18, L + 0.02, M('#b8b2a6', 0.85), x, yc - 0.02, zc);
+    kit.box(w - 0.3, 0.05, Math.max(0.1, L - (i === 0 || i === n - 1 ? 0.15 : 0)), M('#4f7a34', 0.95), x, yc + 0.16, zc, { cast: false });
+  }
 }
 // dürbün: ayak + çatal + gövde (gövde ayağın tepesine oturur)
 function binocular(kit, x, y, z, ry = 0) {

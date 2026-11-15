@@ -1121,6 +1121,25 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const gold = player?.gold ?? 0;
   const sus = Math.round(Number(player?.suspicion || 0));
   const susCls = sus >= 60 ? 'hi' : sus >= 30 ? 'mid' : '';
+  // v161.2 — günlük iş hakkı bittiyse "hakkın doldu" kutusu araca binince 5 sn görünür, sonra kaybolur
+  const jobExhausted = (() => {
+    const J = myVeh ? JOBS[myVeh.job] : null;
+    if (!J) return false;
+    const today = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
+    const cnt = (k) => (player?.jobs?.day === today ? Number(player.jobs.n?.[k]) || 0 : 0);
+    return cnt(myVeh.job) >= J.daily && (!J.dailyFar || cnt(`${myVeh.job}_uzak`) >= J.dailyFar);
+  })();
+  const [doneNote, setDoneNote] = useState(false);
+  const jobActive = Boolean(jobUi?.active);
+  useEffect(() => {
+    if (!driving || jobActive || !jobExhausted) {
+      setDoneNote(false);
+      return undefined;
+    }
+    setDoneNote(true);
+    const t = setTimeout(() => setDoneNote(false), 5000);
+    return () => clearTimeout(t);
+  }, [driving, jobActive, jobExhausted, myVeh?.id]);
 
   // --- etkileşim butonları -------------------------------------------------------------
   let actions = null;
@@ -1305,7 +1324,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           </div>
 
           {/* v151 — MESLEK: ticari araçtayken "İşe başla" / iş paneli */}
-          {myVeh && !guest && (driving || jobUi?.active) && (() => {
+          {myVeh && !guest && (driving || jobUi?.active) && (jobUi?.active || !jobExhausted || doneNote) && (() => {
             const J = JOBS[myVeh.job];
             const today = new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
             const cnt = (k) => (player?.jobs?.day === today ? Number(player.jobs.n?.[k]) || 0 : 0);
@@ -1337,6 +1356,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                     </button>
                   )
                 ) : (
+                  // v161.2: sade iş paneli — yön oku + başlık + mesafe + bırak (✕), altında kısa hedef
                   <div className="cs-job-panel">
                     <b>
                       {jobUi.dist != null && (
@@ -1344,8 +1364,11 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                           ▲
                         </span>
                       )}
-                      {jobUi.title}
+                      <span className="cs-job-title">{jobUi.title}</span>
                       {jobUi.dist != null && <em className="cs-job-dist">{jobUi.dist >= 1000 ? `${(jobUi.dist / 1000).toFixed(1).replace('.', ',')} km` : `${jobUi.dist} m`}</em>}
+                      <button className="cs-job-stop" onClick={() => jobRef.current?.stop()} aria-label="İşi bırak" title="İşi bırak">
+                        ✕
+                      </button>
                     </b>
                     {jobUi.sub && <small>{jobUi.sub}</small>}
                     {jobUi.bar != null && (
@@ -1353,10 +1376,6 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                         <i style={{ width: `${Math.min(100, Math.round(jobUi.bar * 100))}%` }} />
                       </div>
                     )}
-                    <div className="cs-job-foot">
-                      <span>{jobUi.left != null ? `Kalan ${jobUi.left}/${jobUi.daily}` : ''}{jobUi.hits ? ` · 💥 ${jobUi.hits}` : ''}</span>
-                      <button onClick={() => jobRef.current?.stop()}>⏹ İşi bırak</button>
-                    </div>
                   </div>
                 )}
               </div>

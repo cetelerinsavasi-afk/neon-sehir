@@ -83,6 +83,7 @@ function makeGrid(x0, z0, x1, z1, blockedFn) {
   return { raster, cell };
 }
 
+const CAR_TREES = new Set(['tree', 'palm']); // v161: araca engel olan ağaç eşyaları
 // kitlerin engelleri (dünya koordinatı)
 function collectSolids(kits) {
   const out = [];
@@ -90,7 +91,7 @@ function collectSolids(kits) {
   kits.forEach((k) => {
     k.solids.forEach((s) => {
       const p = s.o.localToWorld(tv.set(s.x, 0, s.z));
-      out.push({ x: p.x, z: p.z, hw: s.hw, hd: s.hd, yaw: yawOf(s.o.matrixWorld), item: s.item || null, ell: Boolean(s.ell), car: Boolean(s.car) });
+      out.push({ x: p.x, z: p.z, hw: s.hw, hd: s.hd, yaw: yawOf(s.o.matrixWorld), item: s.item || null, key: s.key || null, ell: Boolean(s.ell), car: Boolean(s.car) });
     });
   });
   return out;
@@ -836,7 +837,8 @@ export function finishCityWorld(W, scene) {
   townSolids.forEach((s) => {
     const p = toTown(s.x, s.z);
     const o = { x: p.x, z: p.z, hw: s.hw, hd: s.hd, yaw: s.yaw - TOWN.ry, ell: s.ell };
-    if (!(s.item && s.item !== 'araba' && Math.min(s.hw, s.hd) < 1.2)) townGrid.raster(o);
+    if (CAR_TREES.has(s.key)) townGrid.raster({ ...o, hw: Math.max(o.hw, 0.4), hd: Math.max(o.hd, 0.4), ell: true }); // v161: ağaç araca engel
+    else if (!(s.item && s.item !== 'araba' && Math.min(s.hw, s.hd) < 1.2)) townGrid.raster(o);
     if (!s.car) walkTown.raster(o);
   });
   rsGeo().pads.forEach((p) => {
@@ -848,7 +850,8 @@ export function finishCityWorld(W, scene) {
     if (!p) return;
     const l = toPad(p, s.x, s.z);
     const o = { x: l.x, z: l.z, hw: s.hw, hd: s.hd, yaw: s.yaw - p.ry, ell: s.ell };
-    if (!(s.item && s.item !== 'araba' && Math.min(s.hw, s.hd) < 1.2)) p.grid.raster(o);
+    if (CAR_TREES.has(s.key)) p.grid.raster({ ...o, hw: Math.max(o.hw, 0.4), hd: Math.max(o.hd, 0.4), ell: true }); // v161
+    else if (!(s.item && s.item !== 'araba' && Math.min(s.hw, s.hd) < 1.2)) p.grid.raster(o);
     if (!s.car) p.walk.raster(o);
   });
   const parkGrid = makeGrid(PARK.x0, PARK.z0, PARK.x1, PARK.z1 + 1, (x, z) => !inPark(x, z) || inPond(x, z, 0.72));
@@ -892,7 +895,8 @@ export function finishCityWorld(W, scene) {
   W.cityCarInit = (x, z) => {
     if (x > EXIT.x0 && z > EXIT.z0 && z < EXIT.z1) return false;
     if (x > BOUNDS.x1 - 2 && Math.abs(z - EAST_GATE_Z) < 3.6) return false; // hurdalık geçidi
-    let b = x < BOUNDS.x0 || x > BOUNDS.x1 || z < BOUNDS.z0 || z > BOUNDS.z1;
+    // v161: şehrin kuzey kenarı (parka / araziye açılan çim) araca açık — eskiden görünmez duvardı
+    let b = x < BOUNDS.x0 || x > BOUNDS.x1 || z > BOUNDS.z1;
     if (!b && z > COAST_Z + 2.9 && !(x > quay.x0 && x < quay.x1 && z < quay.z1)) b = true;
     return b;
   };
@@ -952,7 +956,43 @@ export function finishCityWorld(W, scene) {
       if (n && n.dist < 40 && Math.abs(n.d) <= RAIL + 2.5 && (curY === null || Math.abs(n.y - curY) < 4)) return true;
       if (b && b.d <= BR_HALF + 6 && (curY === null || Math.abs(b.y - curY) < 4)) return true;
     }
-    return false;
+    return offroadFree(px, pz, r, n, curY);
+  }
+  // v161 — ARAZİDE SÜRÜŞ: araçlar çimde / toprakta gezer. Engel: ağaç gövdeleri, otoyol bariyeri
+  // (bariyersiz yerlerden — cep / sapak ağzı / gişe — yola girilip çıkılır), tünel ve köprü kenarı,
+  // park eşyaları + gölet, göl / nehir / deniz, Kervankent'in duvarları (kasaba ızgarası), çok dik
+  // yamaç ve dünya sınırı.
+  const railEx = (side) => [
+    [GISES[0].s0 - 6, GISES[0].s1 + 6],
+    [GISES[1].s0 - 6, GISES[1].s1 + 6],
+    ...rsGeo().gaps.filter((g) => g.side === side).map((g) => [g.s0, g.s1]),
+  ];
+  const RAIL_EX = { 1: railEx(1), [-1]: railEx(-1) };
+  const NO_CROSS = [[TAGS.tunelA - 2, TAGS.tunelB + 2], [TAGS.kopruA - 1, TAGS.kopruB + 1]]; // tünel + köprü: yandan girilmez
+  const railAt = (sv, side) => {
+    if (sv < S_EXIT + 4 || sv > LEN - 6) return false;
+    if (NO_CROSS.some(([a, c]) => sv >= a && sv <= c)) return true;
+    return !RAIL_EX[side].some(([a, c]) => sv >= a && sv <= c);
+  };
+  function offroadFree(px, pz, r, n, curY) {
+    if (px < TERRAIN.x0 + 40 || px > TERRAIN.x1 - 40 || pz < TERRAIN.z0 + 40 || pz > TERRAIN.z1 + 400) return false;
+    if (inTownRect(px, pz, 6)) return false; // Kervankent duvarları (kasabaya sadece caddeden girilir)
+    if (n && n.dist < 40 && n.s > S_EXIT - 30) {
+      const ad = Math.abs(n.d);
+      const level = curY === null || Math.abs(n.y - curY) < 4;
+      if (ad < RAIL + 1.2 + r && level && railAt(n.s, n.d >= 0 ? 1 : -1)) return false; // bariyer
+      if (ad < ROAD_HALF + 4 && !level && n.y > (curY ?? -99)) return false; // köprü / dolgu yolun altı değil, şev
+    }
+    if (inPark(px, pz)) {
+      if (W.parkGrid.cell(px, pz)) return false; // park eşyaları + gölet
+    }
+    if (treeHit(px, pz, Math.max(0.35, r * 0.55))) return false;
+    const gy = W.terrainY(px, pz);
+    if (W.waterLevel?.(px, pz, gy, 'hwy') != null) return false; // göl / nehir / deniz
+    const k = 1.6;
+    const sl = Math.max(Math.abs(W.terrainY(px + k, pz) - gy), Math.abs(W.terrainY(px, pz + k) - gy)) / k;
+    if (sl > 0.8) return false; // ~39°'den dik yamaç
+    return true;
   }
   W.hwyFree = hwyFree;
   // otoyol dışı zemin yüksekliği

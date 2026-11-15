@@ -409,10 +409,6 @@ export function navRoute(from, to) {
   const tail = r.goal.pts.slice(0, -1).reverse();
   return [...head, ...mid, ...tail];
 }
-const fmtT = (s) => {
-  const n = Math.max(0, Math.round(s));
-  return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`;
-};
 const spot = (i) => ROAD_SPOTS[i] || ROAD_SPOTS[0];
 const ERR = {
   'job-limit': 'Bugünkü iş hakkın doldu. Yarın tekrar çalışabilirsin.',
@@ -591,8 +587,8 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
       const back = T.far && T.from === 1;
       st.pick = back ? { ...FAR_DEPOT, name: 'Kervankent Terminali — Yükleme', icon: '🏗️' } : { ...LIMAN_BAY, name: 'Liman — Yükleme', icon: '⚓' };
       st.depot = back ? DEPOTS[0] : T.far ? FAR_DEPOT : DEPOTS[T.depot] || DEPOTS[0];
-      st.title = `📦 ${T.cargo} · ${T.ton} t${back ? ' · Kervankent → Neon Şehir' : ''}`;
-      st.sub = back ? `🏗️ Kervankent Terminali'nin YÜKLEME alanına gir ve dur, dorseni al → ${st.depot.name}` : `⚓ Limandaki sarı YÜKLEME alanına gir ve dur, dorseni al → ${st.depot.name}`;
+      st.title = `📦 ${T.cargo}`; // v161.2: sade başlık
+      st.sub = back ? '🏗️ Terminalin yükleme alanında dur' : '⚓ Limandaki sarı alanda dur';
       target({ ...st.pick, color: '#ffd23f', r: 6 });
     } else if (T.type === 'otobus' && T.far) {
       // v157: şehirlerarası sefer — kalkış otogarında yolcu al, öbür otogarda indir
@@ -601,7 +597,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
       st.to = OTOGARS[1 - (T.from || 0)] || OTOGARS[1];
       st.onboard = 0;
       st.title = `🚌 Şehirlerarası: ${st.from.name} → ${st.to.name}`;
-      st.sub = `${st.from.name} peronuna gir ve dur — ${T.pax} yolcu bekliyor`;
+      st.sub = `${st.from.name} peronunda dur`;
       target({ ...st.from, icon: '🚏', color: '#19e8ff' });
     } else if (T.type === 'otobus') {
       st.phase = 'drive';
@@ -624,7 +620,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
       st.from = KURYE_PICKUPS[T.from] || KURYE_PICKUPS[0];
       st.to = KURYE_DROPS[T.to] || KURYE_DROPS[0];
       st.title = `🛵 Sipariş: ${T.food} · ${st.from.name}`;
-      st.sub = `${st.from.name} tezgâhına git → ${st.to.name} (${T.client})`;
+      st.sub = `${st.from.name} tezgâhına git`;
       target({ x: st.from.x, z: st.from.z, name: `${st.from.name} — siparişi al`, icon: '🥡', color: '#ffd23f', r: 8 });
     } else if (T.type === 'ambulans') {
       st.phase = 'toPatient';
@@ -641,7 +637,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
       st.phase = 'chase';
       const s = spot(T.from);
       st.title = `🚨 İhbar: ${T.crime}`;
-      st.sub = `Şüpheli araç ${s.name} civarında — sirenle yanında 3 sn kal`;
+      st.sub = `${s.name} · sirenle yanında 3 sn kal`;
       st.catchT = 0;
       st.t0 = now();
       E()?.jobSuspect({ car: T.car, x: s.x, z: s.z, yaw: Math.atan2(-s.fz, s.fx) });
@@ -736,7 +732,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
   function busTarget() {
     const s = st.route[st.idx];
     st.title = `🚌 Sıradaki: ${s.name}`;
-    st.sub = `Durak ${st.idx + 1}/${st.route.length} · 👥 ${st.onboard} yolcu`;
+    st.sub = `Durak ${st.idx + 1}/${st.route.length}`;
     target({ x: s.x, z: s.z, name: `Durak ${s.n}: ${s.name}`, icon: '🚏', color: '#19e8ff', r: 7.5 });
   }
   function patrolTarget() {
@@ -809,7 +805,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
           onToast?.(`✅ Yüklendi! ${st.depot.name}'na götür`);
         }
       } else if (st.phase === 'deliver') {
-        st.sub = `${st.depot.name} · ⏱️ ${fmtT(tnow - st.t0)} / hedef ${fmtT(run.par)} · 💥 ${st.hits}`;
+        st.sub = `🏁 ${st.depot.name}`;
         if (near(p, st.depot, 7)) {
           st.phase = 'unloading';
           st.phaseT = 0;
@@ -845,7 +841,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
           onToast?.(`🚌 ${T.pax} yolcu bindi — ${st.to.name} seferi başladı`);
         }
       } else if (st.phase === 'drive') {
-        st.sub = `🏁 ${st.to.name} · ⏱️ ${fmtT(tnow - st.t0)} / hedef ${fmtT(run.par)} · 💥 ${st.hits}`;
+        st.sub = `🏁 ${st.to.name}`;
         if (near(p, st.to, 6)) {
           st.phase = 'alighting';
           st.phaseT = 0;
@@ -901,7 +897,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
         target({ x: st.to.x, z: st.to.z, name: `${st.to.name} (varış)`, icon: '🏁', color: '#ff2e8c', r: 7 });
         onToast?.(`💬 ${T.pax}: “${st.to.name}, lütfen.”`);
       } else if (st.phase === 'ride') {
-        st.sub = `🏁 ${st.to.name} · ⏱️ ${fmtT(tnow - st.t0)}${T.rush ? ` / acil ${fmtT(run.par)}` : ''} · 💥 ${st.hits}`;
+        st.sub = `🏁 ${st.to.name}${T.rush ? ' · ⚡ acil' : ''}`;
         if (near(p, st.to, 7)) return finish(tnow - st.t0);
       }
     } else if (T.type === 'kurye') {
@@ -926,12 +922,12 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
           onToast?.(`✅ Sipariş çantada! ${st.to.name}'a götür — sıcak kalsın 🔥`);
         }
       } else if (st.phase === 'deliver') {
-        st.sub = `📦 ${st.to.name} · ⏱️ ${fmtT(tnow - st.t0)} / hedef ${fmtT(run.par)} · 💥 ${st.hits}`;
+        st.sub = `🏁 ${st.to.name}`;
         if (near(p, st.to, 8)) return finish(tnow - st.t0);
       }
     } else if (T.type === 'ambulans') {
       if (st.phase === 'toPatient') {
-        st.sub = `${T.desc} — ${st.from.name} · ⏱️ ${fmtT(tnow - st.t0)}`;
+        st.sub = `${st.from.name}`;
         if (near(p, st.from, 7)) {
           st.phase = 'loading';
           st.phaseT = 0;
@@ -953,7 +949,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
         }
       } else if (st.phase === 'toHospital') {
         st.title = '🏥 Hastaneye yetiştir';
-        st.sub = `⏱️ ${fmtT(tnow - st.t1)} / hedef ${fmtT(run.par)} · 💥 ${st.hits}`;
+        st.sub = '';
         if (near(p, HOSPITAL, 7)) {
           st.phase = 'unloading';
           st.phaseT = 0;
@@ -973,7 +969,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
         if (d < 10) st.catchT += dt;
         else st.catchT = Math.max(0, st.catchT - dt * 0.5);
         st.bar = st.catchT / 3;
-        st.sub = `Şüpheliye ${Math.round(d)} m · ⏱️ ${fmtT(tnow - st.t0)} · yanında 3 sn kal`;
+        st.sub = 'Yanında 3 sn kal';
         if (st.catchT >= 3) {
           E()?.jobStopSuspect();
           onToast?.('🚔 Şüpheli kenara çekti — yakalandı!');

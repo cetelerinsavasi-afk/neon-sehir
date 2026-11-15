@@ -512,3 +512,65 @@ body.ns-city-open .ta-root { z-index: 96; }
 .cs-sheet-box > .profile-fullscreen { position: absolute; inset: 0; z-index: auto; }
 .cs-sheet-box .gx-full-top { padding-top: 10px; }
 .cs-sheet-box .profile-fullscreen-header { padding-top: 12px; }
+
+/* v161.2 — iş paneli küçük: tek satır başlık + kısa hedef, sayaç / hasar / kalan yok */
+.cs-job {
+  width: min(calc(100vw - 150px), 290px);
+}
+.cs-job-panel {
+  gap: 2px;
+  padding: 6px 8px 7px 8px;
+  border-radius: 13px;
+}
+.cs-job-panel > b {
+  gap: 6px;
+  font-size: 13px;
+  min-width: 0;
+}
+.cs-job-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cs-job-panel .cs-job-dist {
+  margin-left: 0;
+  flex: none;
+}
+.cs-job-panel small {
+  font-size: 11.5px;
+  padding-left: 28px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cs-job-arrow {
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+}
+.cs-job-stop {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  margin: -2px -2px -2px 0;
+  padding: 0;
+  border: 1px solid rgba(255, 80, 80, 0.45);
+  border-radius: 50%;
+  background: rgba(255, 60, 60, 0.14);
+  color: #ffb3b3;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+}
+.cs-job-bar {
+  height: 4px;
+  margin-left: 28px;
+}
+.cs-job-start {
+  padding: 8px 12px;
+  font-size: 14.5px;
+  border-radius: 14px;
+}
