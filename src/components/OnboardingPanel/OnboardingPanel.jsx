@@ -15,7 +15,7 @@ import './OnboardingPanel.css';
 // Oyuncu bu göreve geldiğinde şart zaten sağlanıyorsa sunucu otomatik geçirir
 const STATUS_TASK_IDS = [5, 9, 11, 12, 13, 16, 19, 20];
 
-export default function OnboardingPanel({ gangReminders = null, gangChans = null, slotBottom = null, onVisibleChange = null, inline = false, onGo = null }) {
+export default function OnboardingPanel({ gangReminders = null, gangChans = null, slotBottom = null, onVisibleChange = null, inline = false, onGo = null, inStadium = false }) {
   const { user } = useAuth();
   const {
     loading,
@@ -25,7 +25,7 @@ export default function OnboardingPanel({ gangReminders = null, gangChans = null
     checklistDone,
     reminders,
     shouldHideButton,
-  } = useOnboarding(gangReminders, gangChans);
+  } = useOnboarding(gangReminders, gangChans, { inStadium }); // v163
 
   const [open, setOpen] = useState(false);
   const [claiming, setClaiming] = useState(false);

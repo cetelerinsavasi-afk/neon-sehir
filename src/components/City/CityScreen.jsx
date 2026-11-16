@@ -887,7 +887,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         }
       }
       const target = path ? { x: path[path.length - 1][0], z: path[path.length - 1][1] } : null;
-      gm.draw(g, c.width, c.height, { cx: me.x, cz: me.z, k: mmK.current * (cw / 124), rot, dpr, oy: (c.clientHeight || 124) * 0.58 }, { truck: { x: me.x, z: me.z, yaw: me.driving ? me.yaw : h }, target, path, parked: !me.driving && me.car ? me.car : null, walker: !me.driving });
+      gm.draw(g, c.width, c.height, { cx: me.x, cz: me.z, k: mmK.current * (cw / 124), rot, dpr, oy: (c.clientHeight || 124) * 0.58 }, { truck: { x: me.x, z: me.z, yaw: me.driving ? me.yaw : h }, target, path, parked: !me.driving && me.car ? me.car : null, walker: !me.driving, others: (eng.remoteMapPts?.() || []).filter((o) => !blockedRef.current(o.uid)) });
       // kuzey işareti
       const nx = Math.cos(rot - Math.PI / 2);
       const ny = Math.sin(rot - Math.PI / 2);
@@ -1425,6 +1425,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
             {!guest && !driving && (
               <OnboardingPanel
                 inline
+                inStadium={inStadium}
                 gangReminders={gangAlerts?.reminders}
                 gangChans={gangAlerts?.chans}
                 onGo={(t) => {
@@ -1925,6 +1926,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       {mapOpen && ready && (
         <CityBigMap
           engine={engineRef.current}
+          isBlocked={(id) => blockedRef.current(id)}
           pin={pinRef.current}
           getPin={() => pinRef.current}
           pinPath={pinPath}
@@ -1976,7 +1978,11 @@ function ChatBox({ onSend, onHide = null }) {
 }
 
 // v157 — büyük harita: sürükle, iki parmakla yakınlaştır, simgeye dokun → oraya git (mekânsa içine)
-function CityBigMap({ engine, onClose, onPick, onSpot, pin: pin0, getPin, canTeleport, pinPath }) {
+function CityBigMap({ engine, onClose, onPick, onSpot, pin: pin0, getPin, canTeleport, pinPath, isBlocked = null }) {
+  const isBlockedRef = useRef(isBlocked);
+  isBlockedRef.current = isBlocked;
+  const [othersN, setOthersN] = useState(0); // v163: haritadaki oyuncu sayısı
+  const othersNRef = useRef(0);
   const pinPathRef = useRef(pinPath);
   pinPathRef.current = pinPath;
   // v160.5: iğne harita açıkken kaldırılabilir (harita kapanmaz) → güncel iğne her karede okunur
@@ -2033,7 +2039,14 @@ function CityBigMap({ engine, onClose, onPick, onSpot, pin: pin0, getPin, canTel
         const R = pinPathRef.current?.(m.x, m.z);
         path = R ? R.pts.map((p) => [p.x, p.z]) : [[m.x, m.z], [curPin.x, curPin.z]];
       }
-      gm.draw(c.getContext('2d'), c.width, c.height, { cx: v.cx, cz: v.cz, k: v.k, rot: 0, dpr }, { truck: { x: m.x, z: m.z, yaw: m.driving ? m.yaw : m.yaw }, target: path ? { x: path[path.length - 1][0], z: path[path.length - 1][1] } : null, path, labels: true, streets: true, parked: !m.driving && m.car ? m.car : null, walker: !m.driving });
+      // v163: yakındaki oyuncular (motorun zaten bildiği konumlar — ek okuma yok)
+      const blk = isBlockedRef.current;
+      const others = (engine.remoteMapPts?.() || []).filter((o) => !blk || !blk(o.uid));
+      if (others.length !== othersNRef.current) {
+        othersNRef.current = others.length;
+        setOthersN(others.length);
+      }
+      gm.draw(c.getContext('2d'), c.width, c.height, { cx: v.cx, cz: v.cz, k: v.k, rot: 0, dpr }, { truck: { x: m.x, z: m.z, yaw: m.driving ? m.yaw : m.yaw }, target: path ? { x: path[path.length - 1][0], z: path[path.length - 1][1] } : null, path, labels: true, streets: true, parked: !m.driving && m.car ? m.car : null, walker: !m.driving, others });
     };
     draw();
     window.addEventListener('resize', fit);
@@ -2120,6 +2133,12 @@ function CityBigMap({ engine, onClose, onPick, onSpot, pin: pin0, getPin, canTel
           ))}
         </div>
         <button className="cs-bm-close" onClick={onClose} aria-label="Kapat">✕</button>
+        {/* v163: yakındaki oyuncular haritada pembe (yaya) / turuncu (araçta) nokta */}
+        {othersN > 0 && (
+          <div className="cs-bm-others">
+            <i className="p" /> {othersN} oyuncu yakında <i className="c" /> araçta
+          </div>
+        )}
         {spot && (
           <div className="cs-bm-spot" style={{ left: spot.sx, top: spot.sy }}>
             <button onClick={() => onSpot?.(spot, 'pin')}>📍 Yol tarifi</button>

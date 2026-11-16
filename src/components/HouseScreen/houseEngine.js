@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
-import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
+import { buildFullAvatarSvgMarkup, buildFullAvatarBackSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes'; // v164: arka çizim
 import { drawPet, isPerchPet, petCollarAt, PET_ART, drawFireAura } from '../../lib/cosmeticsArt';
 import { CATALOG_MAP, buildItem, itemBoxes, disposeObject, TINTS, M, gunModel, HELD_GUN_SCALE, DOOR_BUILDERS } from './houseCatalog';
 import { DEFAULT_DOOR, sanitizeDoor, doorSpawn, doorSpawnYaw, doorLocalToWorld, resolveEntrance } from '../../../functions/houseDoor.js';
@@ -279,11 +279,14 @@ function avatarTextures(avatar) {
   entry = { ready: false, tex: {} };
   avatarTexCache.set(key, entry);
   if (avatarTexCache.size > 60) avatarTexCache.delete(avatarTexCache.keys().next().value);
-  const poses = ['idle', 'walk1', 'walk2', 'sit'];
+  // v164: kameradan uzaklaşırken sırtı görünür (backIdle / backWalk1 / backWalk2)
+  const poses = ['idle', 'walk1', 'walk2', 'sit', 'backIdle', 'backWalk1', 'backWalk2'];
+  const BACK_BASE = { backIdle: 'idle', backWalk1: 'walk1', backWalk2: 'walk2' };
   let left = poses.length;
   poses.forEach((pose) => {
     // v135: ateş aurası figürün arkasında ayrıca canlandırılır (FireAuraFx)
-    const markup = buildFullAvatarSvgMarkup(av, { pose, animFire: av?.acc?.aura === 'fire' }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, '');
+    const fire = av?.acc?.aura === 'fire';
+    const markup = (BACK_BASE[pose] ? buildFullAvatarBackSvgMarkup(av, { pose: BACK_BASE[pose], animFire: fire }) : buildFullAvatarSvgMarkup(av, { pose, animFire: fire })).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, '');
     const img = new Image();
     img.onload = () => {
       const c = document.createElement('canvas');
@@ -698,14 +701,29 @@ class AvatarFigure {
     const back = el > 0.35 ? Math.min(el - 0.35, 1.05) : 0;
     this.plane.rotation.order = 'YXZ';
     this.plane.rotation.set(-back, ang, tilt);
-    let pose = 'idle';
+    // v164 — yürüyüş yönü: kameradan uzaklaşıyorsa (ya da o yöne bakıp duruyorsa) sırtı görünür
+    const mdx = this.x - (this.px ?? this.x);
+    const mdz = this.z - (this.pz ?? this.z);
+    this.px = this.x;
+    this.pz = this.z;
+    const md2 = mdx * mdx + mdz * mdz;
+    if (!seatPos && md2 > 0.00004 && md2 < 4) this.faceYaw = Math.atan2(mdx, mdz);
+    let away = false;
+    if (this.faceYaw != null && !seatPos && hd > 0.01 && !forceWalk) {
+      const dot = (Math.sin(this.faceYaw) * (this.x - camera.position.x) + Math.cos(this.faceYaw) * (this.z - camera.position.z)) / hd;
+      away = this.awayOn ? dot > 0.12 : dot > 0.35;
+    }
+    this.awayOn = away;
+    let pose = away ? 'backIdle' : 'idle';
     if (seatPos && !stand) pose = 'sit';
     else if (this.moving || forceWalk) {
       this.walkT += dt * (forceWalk ? 0.7 : 1);
-      pose = Math.floor(this.walkT / 0.16) % 2 ? 'walk2' : 'walk1';
+      const w2 = Math.floor(this.walkT / 0.16) % 2;
+      pose = away ? (w2 ? 'backWalk2' : 'backWalk1') : w2 ? 'walk2' : 'walk1';
     }
     if (this.tex.ready) {
-      const t = this.tex.tex[pose];
+      const T = this.tex.tex;
+      const t = T[pose] || (pose === 'backWalk1' ? T.walk1 : pose === 'backWalk2' ? T.walk2 : null) || T.idle;
       if (this.mat.map !== t) {
         this.mat.map = t;
         this.mat.needsUpdate = true;

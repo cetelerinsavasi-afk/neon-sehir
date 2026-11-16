@@ -7,7 +7,7 @@
 // =============================================================================
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR, effectiveAvatar } from '../../lib/avatarShapes';
+import { buildFullAvatarSvgMarkup, buildFullAvatarBackSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes'; // v164: ayrı arka çizim
 import { heldCanvas } from '../HouseScreen/heldArt';
 import { PetFollower, FireAuraFx, EMOTES, getSharedRenderer } from '../HouseScreen/houseEngine';
 import { PET_ART } from '../../lib/cosmeticsArt';
@@ -87,12 +87,13 @@ function avatarTextures(avatar, light = false) {
   const full = { ...DEFAULT_AVATAR, ...av };
   e = { ready: false, tex: {}, full, refs: 0, last: performance.now() };
   avCache.set(key, e);
-  const poses = light ? ['idle', 'sit'] : ['idle', 'walk1', 'walk2', 'sit', 'back', 'backIdle'];
+  // v164: arka pozlar (back: oturan, backIdle: ayakta, backWalk1/2: uzaklaşarak yürüyen) ayrı arka çizimden
+  const poses = light ? ['idle', 'sit'] : ['idle', 'walk1', 'walk2', 'sit', 'back', 'backIdle', 'backWalk1', 'backWalk2'];
+  const BACK_BASE = { back: 'sit', backIdle: 'idle', backWalk1: 'walk1', backWalk2: 'walk2' };
   let left = poses.length;
   poses.forEach((pose) => {
-    let markup = buildFullAvatarSvgMarkup(full, { pose: pose === 'back' ? 'sit' : pose === 'backIdle' ? 'idle' : pose, animFire: full?.acc?.aura === 'fire' }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, '');
-    // arkadan görünüş (arabada sürücü): yüzün üstü saç rengiyle kapanır, ense ve kulaklar görünür
-    if (pose === 'back' || pose === 'backIdle') markup = markup.replace('</svg>', backOfHead(effectiveAvatar(full)) + '</svg>'); // v160: kostümde görünen saç / ten
+    const fire = full?.acc?.aura === 'fire';
+    const markup = (BACK_BASE[pose] ? buildFullAvatarBackSvgMarkup(full, { pose: BACK_BASE[pose], animFire: fire }) : buildFullAvatarSvgMarkup(full, { pose, animFire: fire })).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, '');
     const img = new Image();
     img.onload = () => {
       // v157.4: telefonda avatar dokuları küçük (6 poz × her oyuncu — ekran kartı belleği ~2,5 kat az)
@@ -129,21 +130,6 @@ function ensurePoseTex(e, pose) {
     e.tex[pose] = t;
   };
   img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(buildFullAvatarSvgMarkup(e.full, { pose }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, ''));
-}
-function backOfHead(s) {
-  const bald = !s.hairStyle || s.hairStyle === 'kel';
-  const hair = bald ? s.skin : s.hairColor;
-  const shadeC = bald ? 'rgba(0,0,0,0.12)' : 'rgba(0,0,0,0.28)';
-  const hat = s.hat && s.hat !== 'none' ? `<path d="M96,150 Q98,92 160,88 Q222,92 224,150 Z" fill="${s.hatColor || '#111'}"/>` : '';
-  return `<g>
-    <rect x="138" y="214" width="44" height="60" rx="10" fill="${s.skin}"/>
-    <ellipse cx="101" cy="178" rx="9" ry="14" fill="${s.skin}"/>
-    <ellipse cx="219" cy="178" rx="9" ry="14" fill="${s.skin}"/>
-    <ellipse cx="160" cy="170" rx="64" ry="72" fill="${hair}"/>
-    <path d="M100,186 Q160,250 220,186 Q214,236 160,244 Q106,236 100,186 Z" fill="${shadeC}"/>
-    ${bald ? '' : `<path d="M112,206 Q160,232 208,206" stroke="rgba(0,0,0,0.25)" stroke-width="5" fill="none"/>`}
-    ${hat}
-  </g>`;
 }
 let blobTex = null;
 function blobShadow() {
@@ -354,6 +340,20 @@ class Fig {
     if (this.sitting && this.seatYaw != null && !this.inCar && (this.x - camera.position.x) * Math.sin(this.seatYaw) + (this.z - camera.position.z) * Math.cos(this.seatYaw) > 0) pose = 'back';
     // v151: tribünde ayakta (sahaya bakarken) kamera arkadaysa da ense görünür
     else if (!this.sitting && !this.inCar && this.standYaw != null && !this.moving && (this.x - camera.position.x) * Math.sin(this.standYaw) + (this.z - camera.position.z) * Math.cos(this.standYaw) > 0) pose = 'backIdle';
+    // v164 — BAKIŞ YÖNÜ: son yürüyüş yönü saklanır; kameradan uzaklaşıyorsa (ya da o yöne bakıp
+    // duruyorsa) sırtı görünür. Eşikte titremesin diye girişte 0,35, çıkışta 0,12.
+    const mdx = this.x - (this.px ?? this.x);
+    const mdz = this.z - (this.pz ?? this.z);
+    this.px = this.x;
+    this.pz = this.z;
+    if (!this.inCar && !this.sitting && mdx * mdx + mdz * mdz > 0.00004 && mdx * mdx + mdz * mdz < 4) this.faceYaw = Math.atan2(mdx, mdz);
+    let away = false;
+    if (this.faceYaw != null && !this.sitting && !this.inCar && hd > 0.01) {
+      const dot = (Math.sin(this.faceYaw) * (this.x - camera.position.x) + Math.cos(this.faceYaw) * (this.z - camera.position.z)) / hd;
+      away = this.awayOn ? dot > 0.12 : dot > 0.35;
+    }
+    this.awayOn = away;
+    if (away && pose === 'idle') pose = 'backIdle';
     if (this.inCar) {
       // kamera arabanın arkasındaysa ense görünür (yüz yola bakıyor)
       const behind = (this.x - camera.position.x) * Math.sin(this.carYaw) + (this.z - camera.position.z) * Math.cos(this.carYaw) > 0;
@@ -361,7 +361,8 @@ class Fig {
     }
     else if (this.moving || forceWalk) {
       this.walkT += dt * (forceWalk ? 0.7 : this.run ? 1.6 : 1);
-      pose = Math.floor(this.walkT / 0.16) % 2 ? 'walk2' : 'walk1';
+      const w2 = Math.floor(this.walkT / 0.16) % 2;
+      pose = away && !forceWalk ? (w2 ? 'backWalk2' : 'backWalk1') : w2 ? 'walk2' : 'walk1';
     }
     // v153: haraç pozu (silah doğrultma / eller havada) + titreme
     if (this.forcePose && this.tex.tex[this.forcePose] && !this.inCar && !this.sitting) pose = this.forcePose;
@@ -369,7 +370,8 @@ class Fig {
     this.syncHat();
     if (this.tex.lazy) this.ensureTex();
     if (this.tex.ready) {
-      const t = this.tex.tex[pose] || this.tex.tex.idle;
+      const T = this.tex.tex;
+      const t = T[pose] || (pose === 'backWalk1' ? T.walk1 : pose === 'backWalk2' ? T.walk2 : null) || T.idle;
       if (this.mat.map !== t) {
         this.mat.map = t;
         this.mat.needsUpdate = true;
@@ -5063,6 +5065,22 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       if (pitch != null) self.camPitch = pitch;
     },
     remoteCount: () => [...remotes.values()].filter((r) => (r.d ?? 999) < VIS_DIST).length,
+    // v163 — haritadaki oyuncu noktaları: zaten indirilmiş konumlar (ek ağ trafiği yok).
+    // near: sadece "X kişi yakında" sayılanlar (mini harita); değilse dinlenen 3×3 hücredeki herkes.
+    remoteMapPts: (near = false) => {
+      const out = [];
+      remotes.forEach((r) => {
+        if (near && (r.d ?? 999) >= VIS_DIST) return;
+        const f = r.fig;
+        const st = r.st || {};
+        const inCar = st.p === 'd' || st.p === 'r';
+        const x = Number.isFinite(f.x) ? f.x : f.tx;
+        const z = Number.isFinite(f.z) ? f.z : f.tz;
+        if (!Number.isFinite(x) || !Number.isFinite(z)) return;
+        out.push({ uid: r.uid, x, z, n: f.nameEl?.textContent || st.n || '', car: inCar });
+      });
+      return out;
+    },
     // v150 — 👥 Yakındakiler listesi (yakından uzağa)
     nearbyPlayers: () => [...remotes.values()].filter((r) => (r.d ?? 999) < VIS_DIST).sort((a, b) => a.d - b.d).slice(0, 40).map((r) => r.uid),
     playerSay(uid, text) {

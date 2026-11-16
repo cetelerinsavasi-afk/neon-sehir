@@ -9,6 +9,7 @@ import { COAST_X, KORDON_X, OUTER, COAST_Z } from '../cityLayout.js';
 import { DECKS, BEACH_POIS } from '../coast.js';
 import { fromPad } from './roadsideGeo.js';
 import { PATHS as PARK_PATHS, POND, PARK } from './northPark.js';
+import { PIST_PLAN, pistMapGeom } from './pistPlan.js'; // v160 taslak: yeni yarış pisti (sadece harita)
 
 const PI = Math.PI;
 export const PAL = {
@@ -663,6 +664,50 @@ export function createMap({ city, cityExtraLots, solids, citySolidCount, town, s
     };
   }
   if (park) park.pois.forEach((q) => pois.push({ ...q, type: `park_${q.key}` }));
+  // v160 taslak — yeni yarış pisti + köy yolu (3D dünyada henüz yok)
+  const pistG = PIST_PLAN.show ? pistMapGeom() : null;
+  if (pistG) {
+    // pist katmanı bir kez çizilir (2 px/m): saha, asfalt, tribün, pit; köprü en üstte gölgeli
+    const xs = pistG.segs.flatMap((q) => q.ground.map((p) => p[0]));
+    const zs = pistG.segs.flatMap((q) => q.ground.map((p) => p[1]));
+    const cs = 2;
+    const cb = { x0: Math.min(...xs) - 30, x1: Math.max(...xs) + 30, z0: Math.min(...zs) - 30, z1: Math.max(...zs) + 60 };
+    const pc = canvas((cb.x1 - cb.x0) * cs, (cb.z1 - cb.z0) * cs);
+    const g = pc.getContext('2d');
+    g.setTransform(cs, 0, 0, cs, -cb.x0 * cs, -cb.z0 * cs);
+    const poly = (pts, col, edge, lw = 0.8) => {
+      g.beginPath();
+      pts.forEach(([x, z], i) => (i ? g.lineTo(x, z) : g.moveTo(x, z)));
+      g.closePath();
+      g.fillStyle = col;
+      g.fill();
+      if (edge) {
+        g.lineWidth = lw;
+        g.strokeStyle = edge;
+        g.stroke();
+      }
+    };
+    const layer = (bridge) => {
+      // önce kenar (bariyer) için biraz geniş koyu, sonra saha, sonra asfalt
+      pistG.segs.forEach((q) => q.bridge === bridge && poly(q.ground, bridge ? '#6b6f78' : '#9a9488', bridge ? '#6b6f78' : '#9a9488', 2.2));
+      pistG.segs.forEach((q) => q.bridge === bridge && poly(q.ground, bridge ? '#c3c6cd' : '#d3e3bf', bridge ? '#c3c6cd' : '#d3e3bf', 0.6));
+      pistG.segs.forEach((q) => q.bridge === bridge && poly(q.asphalt, '#575b64', '#575b64', 0.6));
+    };
+    poly(pistG.park, '#e3dfd5', '#cfc8ba');
+    layer(false);
+    poly(pistG.stands, '#c9ccd4', '#9aa0aa');
+    poly(pistG.pits, '#dfe3ea', '#9aa0aa');
+    g.save();
+    g.shadowColor = 'rgba(0,0,0,0.5)';
+    g.shadowBlur = 10;
+    pistG.segs.forEach((q) => q.bridge && poly(q.ground, '#6b6f78'));
+    g.restore();
+    layer(true);
+    pistG.canvas = pc;
+    pistG.cb = cb;
+    pistG.cs = cs;
+    pois.push({ ...pistG.poi, type: 'pist_yeni', glyph: 'flag', name: PIST_PLAN.name, color: ICON_COL.pist, big: true });
+  }
   BEACH_POIS.forEach((b) => pois.push({ ...b, type: `plaj_${b.key}`, glyph: GLYPH_OF[b.glyph] || b.glyph, color: b.key === 'marina' || b.key === 'yatkulubu' ? '#1d6fa8' : '#e07a1f', big: b.key === 'neon_plaji' || b.key === 'marina' }));
   // yer adları
   const places = [
@@ -676,6 +721,7 @@ export function createMap({ city, cityExtraLots, solids, citySolidCount, town, s
     { x: -175, z: -40, name: 'Batı Denizi', cls: 'water', min: 0.3 },
   ];
   if (roadside) places.push(...roadside.pads.filter((pd) => pd.village).map((pd) => ({ x: pd.mx, z: pd.mz - 64, name: pd.name, cls: 'poi', min: 0.15 })));
+  if (pistG) places.push({ ...pistG.label, name: PIST_PLAN.name.toLocaleUpperCase('tr-TR'), cls: 'poi', min: 0.12, max: 0.9 });
 
   // --- ÇİZİM ----------------------------------------------------------------------------------
   // view: { cx, cz, k (px/m, CSS px), rot (rad), dpr, ox, oy (ekran merkezi, CSS px) }
@@ -695,7 +741,7 @@ export function createMap({ city, cityExtraLots, solids, citySolidCount, town, s
     });
     return best;
   }
-  function draw(g, W, H, view, { truck, target, path, labels = false, streets = false, icons = true, parked = null, walker = false } = {}) {
+  function draw(g, W, H, view, { truck, target, path, labels = false, streets = false, icons = true, parked = null, walker = false, others = null } = {}) {
     if (labels) lastScr = [];
     const { cx, cz, k, rot, dpr } = view;
     const ox = view.ox ?? W / 2 / dpr;
@@ -777,6 +823,13 @@ export function createMap({ city, cityExtraLots, solids, citySolidCount, town, s
         g.fill();
         g.stroke();
       });
+    }
+    // v160 taslak: yeni yarış pisti (pist sahası, asfalt, köprü, tribün, pit, otopark) + köy yolu
+    if (pistG) {
+      line(pistG.road, Math.max(3, hw * 0.6) + 2, PAL.roadEdge);
+      line(pistG.road, Math.max(3, hw * 0.6), '#ffffff');
+      g.drawImage(pistG.canvas, pistG.cb.x0, pistG.cb.z0, pistG.canvas.width / pistG.cs, pistG.canvas.height / pistG.cs);
+      line(pistG.startLine, Math.max(1.5, 2.2 * k), '#ffffff');
     }
     // rota (GPS)
     if (path && path.length > 1) {
@@ -878,6 +931,32 @@ export function createMap({ city, cityExtraLots, solids, citySolidCount, town, s
       g.arc(0, -r * 1.3, r * 0.4, 0, PI * 2);
       g.fill();
       g.restore();
+    }
+    // v163 — YAKINDAKİ OYUNCULAR: motorun zaten bildiği (RTDB'den 3×3 hücre dinlenen) oyuncular.
+    // Ek okuma / yazma YOK — sadece eldeki konumlar noktalanır. Büyük haritada adları da yazılır.
+    if (others && others.length) {
+      const pr = (labels ? 5.5 : 4) * dpr;
+      g.textAlign = 'center';
+      others.forEach((o) => {
+        const q = scr(o.x, o.z);
+        if (!inView(q, 8)) return;
+        g.fillStyle = '#ffffff';
+        g.beginPath();
+        g.arc(q[0], q[1], pr + 1.6 * dpr, 0, PI * 2);
+        g.fill();
+        g.fillStyle = o.car ? '#ff8a00' : '#ff2e88';
+        g.beginPath();
+        g.arc(q[0], q[1], pr, 0, PI * 2);
+        g.fill();
+        if (labels && o.n && k > 0.6) {
+          g.font = `700 ${10.5 * dpr}px system-ui, sans-serif`;
+          g.lineWidth = 3 * dpr;
+          g.strokeStyle = 'rgba(255,255,255,0.95)';
+          g.strokeText(o.n, q[0], q[1] - pr - 4 * dpr);
+          g.fillStyle = '#c4126a';
+          g.fillText(o.n, q[0], q[1] - pr - 4 * dpr);
+        }
+      });
     }
     // park edilmiş tır (yayayken)
     if (parked) {

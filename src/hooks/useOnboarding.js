@@ -6,12 +6,14 @@ import { useAuth } from '../contexts/AuthContext';
 import { usePlayer } from './usePlayer';
 import { useDailyActions } from './useDailyActions';
 import { useVehicles } from './useVehicles';
+import { isCarCatalogId } from '../data/vehicleCatalog'; // v163 — şampiyona hatırlatması sadece arabalar
 import { useWeapons } from './useWeapons'; // v162 — "Gücün 0" hatırlatması
 import { useInventory } from './useInventory'; // v162 — eksik yasaklı madde hatırlatması
 import { useMyFactory } from './useMyFactory';
 import { useMyFutbolTeam } from './useMyFutbolTeam';
 import { currentPrayerWindow } from './useMosqueAttendance';
 import { useBizReminders } from './useBizReminders';
+import { useMatchLive } from './useMatchLive'; // v163 — "Maç başladı" hatırlatması
 import { useBelediyeChatUnread } from './useBelediyeChatUnread'; // v146
 import { SAFE_DAILY_LIMIT } from '../components/ShadyDeal/shadyDeal';
 import { ONBOARDING_ORDER, ONBOARDING_TASK_COUNT, onboardingPosOf, onboardingTaskIdAt } from '../../functions/onboardingData.js';
@@ -80,7 +82,7 @@ export function reminderTarget(id) {
   const k = String(id || '');
   if (k === 'pray') return 'camii';
   if (k === 'championship') return 'yaris_pisti';
-  if (k === 'lineup') return 'stadyum';
+  if (k === 'lineup' || k === 'match-live') return 'stadyum'; // v163: maç başladı → stadyumun içi
   if (k === 'work' || k === 'machines') return 'fabrika';
   if (k === 'park-safe') return 'park_shady'; // v162: şüpheli adamın yanına (düğmesi açık)
   if (k === 'belediye' || k === 'chat-belediye') return 'belediye';
@@ -95,7 +97,8 @@ export function reminderTarget(id) {
   return null;
 }
 
-export function useOnboarding(gangReminders = null, gangChans = null) {
+// v163: opts.inStadium — oyuncu şehirde stadyumun içindeyse "Maç başladı" hatırlatması gösterilmez
+export function useOnboarding(gangReminders = null, gangChans = null, { inStadium = false } = {}) {
   const { user } = useAuth();
   const { player, loading: playerLoading } = usePlayer();
   // v160.3: seçim / imza / darbe dönemi — anasayfadaki 🗳️ düğmesi yerine hatırlatma (Belediyeye git)
@@ -118,6 +121,7 @@ export function useOnboarding(gangReminders = null, gangChans = null) {
   const { factory, machines } = useMyFactory();
   const { team, role: futbolRole } = useMyFutbolTeam();
   const bizReminders = useBizReminders(); // v92: galeri / silahçı / spor salonu
+  const matchLive = useMatchLive(Boolean(user)); // v163: 18:00–19:00 maç günü
 
   // Kullanıcının işveren fabrikasındaki (kendi fabrikası olsun olmasın)
   // ATANDIĞI makinenin lastProducedDateKey'ini dinlemek için ayrı bir
@@ -157,6 +161,12 @@ export function useOnboarding(gangReminders = null, gangChans = null) {
 
     // v124: "Ücretsiz slot haklarını kullan" hatırlatması kaldırıldı (ücretsiz slot yok)
 
+    // v163 — MAÇ BAŞLADI: maç olan günlerde 18:00–19:00 arası, stadyumun dışındayken en üstte.
+    // "Git" → stadyumun içi (güney tüneli; üstte canlı maç skoru görünür)
+    if (matchLive && !inStadium) {
+      list.push({ id: 'match-live', emoji: '⚽', text: 'Maç başladı — stadyumda canlı izle' });
+    }
+
     if (!actions.prayedWindows?.[win]) {
       list.push({ id: 'pray', emoji: '🕌', text: 'İbadet et' });
     }
@@ -166,8 +176,10 @@ export function useOnboarding(gangReminders = null, gangChans = null) {
     // ilana konan araç belge olarak sahibinde kalıyor (listed:true), bu
     // yüzden hatırlatıcı yalnızca GERÇEKTEN yarışabilecek araçları sayar —
     // RaceLobby/ChampionshipScreen'deki raceable() ile aynı kural.
+    // v163 KULLANICI HATASI: "yeni motor aldım, katılabileceğim araç yok ama 'Şampiyonaya katıl'
+    // geliyor" — motor / ticari araç / bisiklet / at yarışa giremez (RaceLobby › raceable ile aynı)
     const raceableVehicles = vehicles.filter(
-      (v) => !v.listed && !v.seizedByBank && (v.lifeDays ?? 20) > 0
+      (v) => isCarCatalogId(v.catalogId) && !v.listed && !v.seizedByBank && (v.lifeDays ?? 20) > 0
     );
     // v129: şampiyona hakkı MODEL başına (championship_{catalogId})
     const hasUnracedVehicleToday = raceableVehicles.some(
@@ -267,7 +279,7 @@ export function useOnboarding(gangReminders = null, gangChans = null) {
     list.push(...bizReminders);
 
     return list;
-  }, [player, actions, vehicles, weapons, weaponsLoading, inventory, invLoading, team, futbolRole, employment, employmentMachine, factory, machines, todayKey, win, gangReminders?.joinWar, gangReminders?.takeMoney, gangReminders?.report, gangReminders?.leak, bizReminders, belediyeChat, gangChat, intelChat, polNeed]);
+  }, [matchLive, inStadium, player, actions, vehicles, weapons, weaponsLoading, inventory, invLoading, team, futbolRole, employment, employmentMachine, factory, machines, todayKey, win, gangReminders?.joinWar, gangReminders?.takeMoney, gangReminders?.report, gangReminders?.leak, bizReminders, belediyeChat, gangChat, intelChat, polNeed]);
 
   return {
     loading: playerLoading || actionsLoading,

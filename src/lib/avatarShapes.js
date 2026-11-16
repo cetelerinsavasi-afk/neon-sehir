@@ -919,3 +919,352 @@ export function buildFullAvatarSvgMarkup(rawState, opts = {}) {
   const inner = buildAvatarSvgInner(rawState, opts);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 ${AVATAR_FULL_VIEWBOX_H}">${inner}</svg>`;
 }
+
+// =============================================================================
+// v164 — ARKADAN GÖRÜNÜŞ (şehirde: arabada / tribünde / kameradan uzaklaşarak yürürken)
+// Eskiden önden çizim kullanılıp sadece başın üstüne "ense" yapıştırılıyordu: kravat, yaka,
+// fermuar, polis rozeti hep bize dönüktü; kostümlerde (taban saçı "kel") ve kasklı / maskeli
+// tiplerde baş arkadan kel görünüyordu. Artık ayrı bir arka çizim var:
+//   • gövde: kıyafetin sırtı (dikiş, yaka bandı, kapüşon, polis yazısı, kemer, yırtmaç…)
+//   • baş: saç modeline göre ense (uzun saç / at kuyruğu / topuz / örgü sırtta), şapkanın arkası
+//   • kostüm: başlık / kask / maske katmanı tek renkli siluet olarak başın üstünü örter
+//   • pelerin / kanat (sırt aksesuarı) gövdenin ÖNÜNDE (arkadan bakınca üstte)
+// =============================================================================
+function torsoBackShape(s) {
+  const c = s.clothColor;
+  const dark = shadeColor(c, -25);
+  const light = shadeColor(c, 25);
+  const B =
+    s.build === 'zayif'
+      ? { tl: 98, tr: 222, bl: 98, br: 222, ty: 264 }
+      : s.build === 'iri'
+        ? { tl: 50, tr: 270, bl: 50, br: 270, ty: 258 }
+        : { tl: 70, tr: 250, bl: 70, br: 250, ty: 262 };
+  const trapezoid = (fill, { inset = 0, bottomInset = 0, bottomY = 380 } = {}) =>
+    `<path d="M${B.tl + inset},${B.ty} L${B.tr - inset},${B.ty} L${B.br - bottomInset},${bottomY} L${B.bl + bottomInset},${bottomY} Z" fill="${fill}"/>`;
+  const collar = (col) => `<path d="M132,${B.ty + 1} Q160,${B.ty - 10} 188,${B.ty + 1} L185,${B.ty + 12} Q160,${B.ty + 3} 135,${B.ty + 12} Z" fill="${col}"/>`;
+  const seam = (col, y1 = B.ty + 12, y2 = 378, w = 2) => `<line x1="160" y1="${y1}" x2="160" y2="${y2}" stroke="${col}" stroke-width="${w}" opacity="0.7"/>`;
+  const blades = (col) => `<path d="M${B.tl + 22},${B.ty + 30} Q${B.tl + 40},${B.ty + 60} 146,${B.ty + 50} M${B.tr - 22},${B.ty + 30} Q${B.tr - 40},${B.ty + 60} 174,${B.ty + 50}" stroke="${col}" stroke-width="2.5" fill="none" opacity="0.45"/>`;
+  switch (s.clothing) {
+    case 'tuxedo':
+      return trapezoid('#0d0d0d') + collar('#1e1e1e') + seam('#000', B.ty + 12, 352) + `<path d="M160,352 L160,380" stroke="#000" stroke-width="3"/>` + blades('#2a2a2a');
+    case 'leather':
+      return trapezoid(c, { inset: 4, bottomInset: 6 }) + collar(light) + `<path d="M${B.tl + 6},${B.ty + 34} Q160,${B.ty + 50} ${B.tr - 6},${B.ty + 34}" stroke="${dark}" stroke-width="3" fill="none"/>` + `<rect x="${B.bl + 8}" y="364" width="${B.br - B.bl - 16}" height="12" rx="3" fill="${dark}"/>`;
+    case 'hawaii':
+      return (
+        trapezoid(c, { inset: -6, bottomInset: -10 }) +
+        `<path d="M${B.tl - 8},${B.ty} Q${B.tl - 22},${B.ty + 14} ${B.tl - 4},${B.ty + 26} L${B.tl + 10},${B.ty + 10} Z" fill="${c}"/>` +
+        `<path d="M${B.tr + 8},${B.ty} Q${B.tr + 22},${B.ty + 14} ${B.tr + 4},${B.ty + 26} L${B.tr - 10},${B.ty + 10} Z" fill="${c}"/>` +
+        collar(dark) +
+        `<circle cx="110" cy="310" r="4" fill="${light}"/><circle cx="150" cy="330" r="4" fill="${light}"/><circle cx="200" cy="300" r="4" fill="${light}"/><circle cx="214" cy="356" r="4" fill="${light}"/><circle cx="128" cy="364" r="4" fill="${light}"/><circle cx="176" cy="370" r="4" fill="${light}"/>`
+      );
+    case 'jumpsuit':
+      return trapezoid(c, { inset: 10, bottomInset: 14 }) + collar(dark) + `<path d="M${B.tl + 12},${B.ty + 36} L${B.tr - 12},${B.ty + 36}" stroke="${dark}" stroke-width="2.5"/>` + blades(dark);
+    case 'hoodie':
+      return (
+        trapezoid(c, { inset: -8, bottomInset: -6 }) +
+        `<path d="M118,${B.ty - 6} Q160,${B.ty - 18} 202,${B.ty - 6} Q208,${B.ty + 46} 160,${B.ty + 60} Q112,${B.ty + 46} 118,${B.ty - 6} Z" fill="${dark}"/>` +
+        `<path d="M130,${B.ty} Q160,${B.ty - 8} 190,${B.ty} Q192,${B.ty + 36} 160,${B.ty + 46} Q128,${B.ty + 36} 130,${B.ty} Z" fill="${shadeColor(c, -40)}"/>` +
+        `<rect x="${B.bl - 6}" y="362" width="${B.br - B.bl + 12}" height="16" rx="5" fill="${dark}"/>`
+      );
+    case 'police':
+      return (
+        trapezoid('#1d3557', { inset: 2 }) +
+        collar('#14263f') +
+        `<rect x="${B.tl - 2}" y="${B.ty - 4}" width="20" height="8" rx="2" fill="#d4af37"/>` +
+        `<rect x="${B.tr - 18}" y="${B.ty - 4}" width="20" height="8" rx="2" fill="#d4af37"/>` +
+        `<text x="160" y="320" font-family="Arial, sans-serif" font-size="24" font-weight="900" fill="#e8e6df" text-anchor="middle" letter-spacing="2">POLİS</text>` +
+        `<rect x="118" y="352" width="84" height="12" fill="#14263f"/>`
+      );
+    case 'vest':
+      return trapezoid(shadeColor(c, -8)) + collar('#e8e6df') + `<rect x="118" y="330" width="84" height="9" rx="3" fill="${dark}"/><rect x="154" y="328" width="12" height="13" rx="2" fill="#b8b8b8"/>` + seam(dark, B.ty + 12, 326);
+    case 'tanktop':
+      return (
+        trapezoid(c, { inset: 16, bottomInset: 4 }) +
+        `<path d="M${B.tl},${B.ty} L${B.tl + 16},${B.ty} L${B.tl + 8},${B.ty + 30} Z" fill="${s.skin}"/>` +
+        `<path d="M${B.tr},${B.ty} L${B.tr - 16},${B.ty} L${B.tr - 8},${B.ty + 30} Z" fill="${s.skin}"/>` +
+        `<path d="M132,${B.ty - 1} Q160,${B.ty + 34} 188,${B.ty - 1} Z" fill="${s.skin}"/>` +
+        `<path d="M140,${B.ty + 10} Q160,${B.ty + 26} 180,${B.ty + 10}" stroke="${shadeColor(s.skin, -15)}" stroke-width="2" fill="none"/>`
+      );
+    case 'robe':
+      return trapezoid(c, { inset: -8, bottomInset: -22, bottomY: 470 }) + collar(dark) + seam(dark, B.ty + 12, 468) + `<path d="M${B.bl - 18},466 L${B.br + 18},466 L${B.br + 22},472 L${B.bl - 22},472 Z" fill="${dark}"/>`;
+    case 'trenchcoat':
+      return (
+        trapezoid(c, { inset: -10, bottomInset: -16, bottomY: 420 }) +
+        `<path d="M${B.tl - 8},${B.ty} L${B.tr + 8},${B.ty} L${B.tr + 6},${B.ty + 40} Q160,${B.ty + 52} ${B.tl - 6},${B.ty + 40} Z" fill="${shadeColor(c, -10)}"/>` +
+        collar(dark) +
+        `<rect x="${B.bl - 4}" y="332" width="${B.br - B.bl + 8}" height="12" rx="3" fill="${dark}"/>` +
+        `<rect x="${B.bl + 22}" y="334" width="10" height="8" rx="2" fill="${shadeColor(c, -40)}"/><rect x="${B.br - 32}" y="334" width="10" height="8" rx="2" fill="${shadeColor(c, -40)}"/>` +
+        seam(dark, 344, 380) +
+        `<path d="M160,380 L160,420" stroke="${dark}" stroke-width="3"/>`
+      );
+    case 'suit':
+    default:
+      return trapezoid(c) + collar(dark) + seam(dark, B.ty + 12, 356) + `<path d="M160,356 L160,380" stroke="${shadeColor(c, -35)}" stroke-width="3"/>` + blades(dark);
+  }
+}
+
+function neckBackShape(s) {
+  return `<rect x="140" y="214" width="40" height="60" rx="9" fill="${s.skin}"/>
+          <path d="M142,248 Q160,256 178,248" stroke="${shadeColor(s.skin, -14)}" stroke-width="3" fill="none"/>`;
+}
+
+function neckAccBackShape(s) {
+  switch (s.neckAcc) {
+    case 'chain':
+      return `<path d="M134,264 Q160,250 186,264" stroke="#d4af37" stroke-width="3.5" fill="none"/>`;
+    case 'dogtag':
+      return `<path d="M136,264 Q160,252 184,264" stroke="#b0b0b0" stroke-width="2" fill="none"/>`;
+    case 'scarf':
+      return `<rect x="128" y="246" width="64" height="24" rx="10" fill="#5c1a24"/><path d="M146,262 Q140,284 150,300" stroke="#5c1a24" stroke-width="10" fill="none" stroke-linecap="round"/>`;
+    default:
+      return ''; // kravat / papyon yaka altında kalır
+  }
+}
+
+// saç — arkadan: başı (ensenin üstüne kadar) örter; uzun saçlar sırta iner
+function hairBackView(s) {
+  const c = s.hairColor;
+  const d = shadeColor(c, -25);
+  const hi = `<path d="M128,120 Q160,104 192,120" stroke="${shadeColor(c, 35)}" stroke-width="5" fill="none" opacity="0.35" stroke-linecap="round"/>`;
+  const cap = (bottom = 216) =>
+    `<path d="M101,168 Q98,98 160,96 Q222,98 219,168 Q219,${bottom - 12} 208,${bottom - 4} Q160,${bottom + 6} 112,${bottom - 4} Q101,${bottom - 12} 101,168 Z" fill="${c}"/>` + hi;
+  switch (s.hairStyle) {
+    case 'kel':
+      return `<ellipse cx="148" cy="134" rx="24" ry="14" fill="#fff" opacity="0.13"/>
+              <path d="M110,206 Q160,232 210,206" stroke="${shadeColor(s.skin, -14)}" stroke-width="3" fill="none" opacity="0.6"/>`;
+    case 'short':
+    case 'slick':
+      return cap(214) + `<path d="M118,206 Q160,222 202,206" stroke="${d}" stroke-width="3" fill="none" opacity="0.5"/>`;
+    case 'pixie':
+      return cap(206);
+    case 'undercut':
+      return `<path d="M104,170 Q100,104 160,100 Q220,104 216,170 Q218,214 160,224 Q102,214 104,170 Z" fill="${shadeColor(s.skin, -18)}" opacity="0.55"/>
+              <path d="M110,152 Q106,100 160,98 Q214,100 210,152 Q160,140 110,152 Z" fill="${c}"/>` + hi;
+    case 'wavy':
+      return cap(218) + `<path d="M108,212 q8,10 16,0 q8,10 16,0 q8,10 16,0 q8,10 16,0 q8,10 16,0 q8,10 16,0 q8,10 16,0" stroke="${c}" stroke-width="7" fill="none" stroke-linecap="round"/>`;
+    case 'curly':
+      return cap(212) + [112, 132, 152, 172, 192, 208].map((x, i) => `<circle cx="${x}" cy="${212 + (i % 2) * 6}" r="11" fill="${c}"/>`).join('') + `<circle cx="104" cy="160" r="12" fill="${c}"/><circle cx="216" cy="160" r="12" fill="${c}"/>`;
+    case 'afro':
+      return `<circle cx="160" cy="140" r="74" fill="${c}"/><circle cx="140" cy="112" r="20" fill="${shadeColor(c, 18)}" opacity="0.35"/>`;
+    case 'mohawk':
+      return `<ellipse cx="148" cy="134" rx="24" ry="14" fill="#fff" opacity="0.1"/>
+              <path d="M148,58 Q160,46 172,58 L174,222 Q160,230 146,222 Z" fill="${c}"/>`;
+    case 'bun':
+      return cap(212) + `<circle cx="160" cy="104" r="22" fill="${c}"/><path d="M142,104 Q160,92 178,104" stroke="${d}" stroke-width="2" fill="none" opacity="0.6"/>`;
+    case 'ponytail':
+      return cap(212) + `<path d="M150,196 Q136,262 152,318 Q160,326 168,318 Q184,262 170,196 Z" fill="${c}"/><ellipse cx="160" cy="198" rx="13" ry="7" fill="${d}"/>`;
+    case 'braids':
+      return (
+        cap(212) +
+        [146, 174]
+          .map((x) => `<path d="M${x - 8},200 L${x - 6},322 Q${x},330 ${x + 6},322 L${x + 8},200 Z" fill="${c}"/>` + [228, 252, 276, 300].map((y) => `<line x1="${x - 7}" y1="${y}" x2="${x + 7}" y2="${y + 6}" stroke="${d}" stroke-width="2"/>`).join(''))
+          .join('')
+      );
+    case 'long':
+      return `<path d="M100,160 Q94,258 106,336 Q160,352 214,336 Q226,258 220,160 Z" fill="${c}"/>` + cap(220) + `<path d="M130,250 Q134,300 128,334 M160,252 L160,344 M190,250 Q186,300 192,334" stroke="${d}" stroke-width="2" fill="none" opacity="0.45"/>`;
+    default:
+      return cap(214);
+  }
+}
+
+// şapka — arkadan (siper / rozet yok)
+function hatBackShape(s) {
+  const c = s.hatColor;
+  const accent = shadeColor(c, 60);
+  const dk = shadeColor(c, -30);
+  switch (s.hat) {
+    case 'cap':
+      return `<path d="M100,140 Q100,90 160,88 Q220,90 220,140 Q190,128 160,128 Q130,128 100,140 Z" fill="${c}"/>
+              <path d="M136,136 Q160,124 184,136 L184,144 Q160,134 136,144 Z" fill="${dk}"/>
+              <path d="M146,130 L174,130" stroke="${accent}" stroke-width="4" stroke-linecap="round"/>`;
+    case 'hoodup':
+      return `<path d="M92,132 Q92,50 160,46 Q228,50 228,132 Q232,214 206,262 L114,262 Q88,214 92,132 Z" fill="${c}"/>
+              <path d="M160,50 L160,252" stroke="${dk}" stroke-width="3" opacity="0.6"/>
+              <path d="M100,150 Q100,80 160,70" stroke="${shadeColor(c, 25)}" stroke-width="6" fill="none" opacity="0.25" stroke-linecap="round"/>`;
+    case 'helmet':
+      return `<path d="M96,158 Q96,68 160,66 Q224,68 224,158 Q224,214 198,226 L122,226 Q96,214 96,158 Z" fill="${c}"/>
+              <path d="M150,68 L170,68 L170,224 L150,224 Z" fill="${accent}" opacity="0.55"/>
+              <path d="M110,150 Q112,92 150,78" stroke="#fff" stroke-width="6" fill="none" opacity="0.18" stroke-linecap="round"/>`;
+    case 'policecap':
+      return `<ellipse cx="160" cy="116" rx="58" ry="20" fill="#1d3557"/>
+              <ellipse cx="160" cy="108" rx="46" ry="16" fill="#14263f"/>
+              <ellipse cx="160" cy="130" rx="70" ry="10" fill="#0d0d0d"/>`;
+    case 'bandana':
+      return `<path d="M100,150 C100,104 130,90 160,90 C190,90 220,104 220,150 Q220,170 160,170 Q100,170 100,150 Z" fill="${c}"/>
+              <path d="M152,166 L136,200 L150,198 Z M168,166 L184,200 L170,198 Z" fill="${c}"/><circle cx="160" cy="166" r="7" fill="${dk}"/>`;
+    case 'headband':
+      return `<rect x="100" y="128" width="120" height="16" rx="8" fill="${c}"/>
+              <path d="M154,140 L144,176 L152,176 Z M166,140 L176,176 L168,176 Z" fill="${c}"/><circle cx="160" cy="138" r="6" fill="${dk}"/>`;
+    case 'beret':
+      return `<ellipse cx="160" cy="108" rx="56" ry="26" fill="${c}"/><circle cx="160" cy="86" r="5" fill="${accent}"/>`;
+    case 'crown':
+      return `<path d="M108,124 L124,90 L142,116 L160,82 L178,116 L196,90 L212,124 Z" fill="#d4af37" stroke="#a67c1e" stroke-width="2"/>`;
+    case 'none':
+    case undefined:
+    case null:
+      return '';
+    default:
+      return hatShape(s); // fedora, silindir, bere, takke: arkadan da aynı siluet
+  }
+}
+
+// kostüm başlığı / kask / maske → tek renkli siluet (göz, ağız, yüz çizgileri görünmez)
+const HEX_FILL = /(fill|stroke)="(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})"/g;
+function mainColorOf(markup, fallback) {
+  // en geniş alanı kaplayan dolgu rengi (kaskın / başlığın / saçın ana rengi); yarı saydamlar sayılmaz
+  const area = new Map();
+  const re = /<(path|ellipse|circle|rect)\b([^>]*)>/g;
+  const num = (a, k) => Number((new RegExp(`\\b${k}="(-?[\\d.]+)"`).exec(a) || [])[1]) || 0;
+  let m;
+  while ((m = re.exec(String(markup)))) {
+    const a = m[2];
+    const f = /fill="(#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3})"/.exec(a);
+    if (!f) continue;
+    const op = /opacity="([\d.]+)"/.exec(a);
+    if (op && Number(op[1]) < 0.5) continue;
+    let A = 0;
+    if (m[1] === 'ellipse') A = Math.PI * num(a, 'rx') * num(a, 'ry');
+    else if (m[1] === 'circle') A = Math.PI * num(a, 'r') ** 2;
+    else if (m[1] === 'rect') A = num(a, 'width') * num(a, 'height');
+    else {
+      const d = (/\sd="([^"]*)"/.exec(' ' + a) || [])[1] || '';
+      const xs = [];
+      const ys = [];
+      d.replace(/([MLQCTS])([^A-Za-z]*)/g, (_, __, args) => {
+        const n = args.match(/-?\d*\.?\d+/g) || [];
+        for (let i = 0; i + 1 < n.length; i += 2) {
+          xs.push(Number(n[i]));
+          ys.push(Number(n[i + 1]));
+        }
+        return _;
+      });
+      if (xs.length) A = (Math.max(...xs) - Math.min(...xs)) * (Math.max(...ys) - Math.min(...ys)) * 0.6;
+    }
+    const k = f[1].toLowerCase();
+    area.set(k, (area.get(k) || 0) + A);
+  }
+  let best = fallback;
+  let n = 0;
+  area.forEach((v, k) => {
+    if (v > n) {
+      n = v;
+      best = k;
+    }
+  });
+  return best;
+}
+function silhouette(markup, col) {
+  return String(markup)
+    .replace(/\sfill-rule="evenodd"/g, '') // halka şekilleri (göz yarığı) arkadan dolu görünür
+    .replace(HEX_FILL, (_, a) => `${a}="${col}"`)
+    .replace(/fill="(white|black|#fff|#000)"/gi, `fill="${col}"`)
+    .replace(/fill="url\([^)]*\)"/g, `fill="${col}"`);
+}
+// başın üstünü örten bir katman mı (alnın yukarısına çıkıyor)? — değilse sadece yüz maskesi
+function coversCrown(markup) {
+  let minY = Infinity;
+  String(markup).replace(/\sd="([^"]*)"/g, (_, d) => {
+    // sadece mutlak komutlar (M L Q C T S): sayılar x,y çiftleri
+    d.replace(/([MLQCTS])([^A-Za-z]*)/g, (__, cmd, args) => {
+      const nums = args.match(/-?\d*\.?\d+/g) || [];
+      for (let i = 1; i < nums.length; i += 2) minY = Math.min(minY, Number(nums[i]));
+      return __;
+    });
+    return _;
+  });
+  String(markup).replace(/<(ellipse|circle)\b[^>]*>/g, (tag) => {
+    const cy = Number((/\bcy="(-?[\d.]+)"/.exec(tag) || [])[1]);
+    const r = Number((/\br[y]?="([\d.]+)"/.exec(tag) || [])[1]) || 0;
+    if (Number.isFinite(cy) && !/transform=/.test(tag)) minY = Math.min(minY, cy - r);
+    return tag;
+  });
+  return minY < 118;
+}
+
+export function buildAvatarBackSvgInner(rawState, opts = {}) {
+  const look = rawState && rawState.look ? getLook(rawState.look) : null;
+  const s = { ...DEFAULT_AVATAR, ...rawState, ...(look ? look.base : {}) };
+  const tint = look && rawState.lookTint && typeof rawState.lookTint === 'object' ? rawState.lookTint : null;
+  let origSkin = null;
+  if (look) {
+    const hc = lookHairColor(rawState.look);
+    if (hc) s.hairColor = hc;
+    if (tint && typeof tint.s === 'string' && OV_HEX.test(tint.s) && lookSkinnable(rawState.look)) {
+      origSkin = s.skin;
+      s.skin = tint.s;
+    }
+    if (look.cover && s.acc) {
+      const acc = { ...s.acc };
+      for (const k of look.cover) delete acc[k];
+      s.acc = acc;
+    }
+  }
+  const lctx = look ? { B: poseBox(s), s } : null;
+  const layer = (k) => (look && look[k] ? (typeof look[k] === 'function' ? look[k](lctx) : look[k]) : '');
+  // aksesuarlar yuva yuva: aura arkada kalır, sırt (pelerin/kanat) arkadan bakınca ÖNDE, şapka siluet
+  const acc = s.acc && typeof s.acc === 'object' ? s.acc : {};
+  const one = (slot) => (acc[slot] ? accLayers({ [slot]: acc[slot] }, { animAura: Boolean(opts.animAura), animFire: Boolean(opts.animFire) }) : { back: '', front: '' });
+  const aAura = one('aura');
+  const aBack = one('back');
+  const aHead = one('head');
+  if (aHead.hideHat) s.hat = 'none';
+  if (one('neck').hideNeck) s.neckAcc = 'none';
+  const pose = opts.pose || 'idle';
+  const bob = pose === 'walk1' ? -3 : pose === 'walk2' ? 3 : 0;
+
+  // baş: kostümün başlığı başın üstünü örtüyorsa (kask, kapüşon, maske-başlık) tek renk siluet
+  const hLayer = layer('h');
+  const lookHat = hLayer && coversCrown(hLayer);
+  const headCol = lookHat ? mainColorOf(hLayer, s.hairColor) : null;
+
+  let upper = '';
+  upper += look && look.t0 ? layer('t0') + `<path d="M140,${poseBox(s).ty + 14} L160,${poseBox(s).ty + 4} L180,${poseBox(s).ty + 14}" stroke="#000" stroke-opacity=".18" stroke-width="3" fill="none"/>` : torsoBackShape(s);
+  upper += neckBackShape(s);
+  upper += neckAccBackShape(s);
+  upper += earsShape(s);
+  upper += headShape(s);
+  if (lookHat) {
+    // başlığın altından görünen saç (uzun saç, at kuyruğu) + kostümün arka saçı, en üstte başlık
+    if (s.hairStyle && s.hairStyle !== 'kel') upper += hairBackView(s);
+    upper += layer('hb');
+    upper += `<g>${silhouette(hLayer, headCol)}</g>`;
+    upper += `<path d="M110,150 Q112,100 150,86" stroke="#fff" stroke-width="6" fill="none" opacity="0.14" stroke-linecap="round"/>`;
+  } else {
+    // kostümün arka saç katmanı (hb) arkadan bakınca başın önünde
+    upper += hairBackView(s);
+    upper += layer('hb');
+    // yüz maskesi vb. (başın üstüne çıkmayan) → arkadan sadece bağı görünür
+    if (hLayer) upper += `<path d="M102,170 Q160,184 218,170" stroke="${mainColorOf(hLayer, '#111')}" stroke-width="5" fill="none"/>`;
+  }
+  if (s.faceAcc === 'eyepatch' || s.faceAcc === 'mask') upper += `<path d="M102,166 Q160,180 218,166" stroke="#111" stroke-width="3" fill="none"/>`;
+  if (s.faceAcc === 'sunglasses') upper += `<path d="M102,168 Q160,176 218,168" stroke="#111" stroke-width="2.5" fill="none"/>`;
+  upper += hatBackShape(s);
+  // kostüm renkleri aksesuarları boyamasın (önden çizimdeki gibi yer tutucu)
+  const tinting = Boolean(tint);
+  const ACC_H = '\u0000H\u0000';
+  const ACC_B = '\u0000S\u0000';
+  const ACC_A = '\u0000A\u0000';
+  const headAcc = aHead.front ? silhouette(aHead.front, mainColorOf(aHead.front, s.hatColor || '#222')) : '';
+  if (headAcc) upper += tinting ? ACC_H : headAcc;
+  // sırt aksesuarı (pelerin / kanat): arkadan bakınca gövdenin üstünde
+  if (aBack.back) upper += tinting ? ACC_B : aBack.back;
+
+  let svg = '';
+  svg += `<ellipse cx="160" cy="${GROUND_Y}" rx="74" ry="12" fill="#000" opacity="0.35"/>`;
+  if (look && look.b) svg += `<g transform="translate(0,${bob})">${layer('b')}</g>`;
+  if (aAura.back) svg += `<g transform="translate(0,${bob})">${tinting ? ACC_A : aAura.back}</g>`;
+  svg += legsShape(s, pose, look ? look.leg || null : null);
+  svg += shoesShape(s, pose);
+  svg += `<g transform="translate(0,${bob})">${upper}</g>`;
+  if (tinting) {
+    svg = tintLook(svg, rawState.look, tint, s, origSkin);
+    svg = svg.replace(ACC_H, () => headAcc).replace(ACC_B, () => aBack.back).replace(ACC_A, () => aAura.back);
+  }
+  return svg;
+}
+
+export function buildFullAvatarBackSvgMarkup(rawState, opts = {}) {
+  const inner = buildAvatarBackSvgInner(rawState, opts);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 ${AVATAR_FULL_VIEWBOX_H}">${inner}</svg>`;
+}
