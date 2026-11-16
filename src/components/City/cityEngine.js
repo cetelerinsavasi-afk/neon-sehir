@@ -87,13 +87,12 @@ function avatarTextures(avatar, light = false) {
   const full = { ...DEFAULT_AVATAR, ...av };
   e = { ready: false, tex: {}, full, refs: 0, last: performance.now() };
   avCache.set(key, e);
-  // v164: arka pozlar (back: oturan, backIdle: ayakta, backWalk1/2: uzaklaşarak yürüyen) ayrı arka çizimden
-  const poses = light ? ['idle', 'sit'] : ['idle', 'walk1', 'walk2', 'sit', 'back', 'backIdle', 'backWalk1', 'backWalk2'];
-  const BACK_BASE = { back: 'sit', backIdle: 'idle', backWalk1: 'walk1', backWalk2: 'walk2' };
+  // v164: arka pozlar (back / backIdle) BAŞTAN çizilmez — sadece figür arabada / tribünde arkadan
+  // görüldüğü ilk anda (ensureBackTex). Çoğu oyuncu için avatar başına 6 yerine 4 doku.
+  const poses = light ? ['idle', 'sit'] : ['idle', 'walk1', 'walk2', 'sit'];
   let left = poses.length;
   poses.forEach((pose) => {
-    const fire = full?.acc?.aura === 'fire';
-    const markup = (BACK_BASE[pose] ? buildFullAvatarBackSvgMarkup(full, { pose: BACK_BASE[pose], animFire: fire }) : buildFullAvatarSvgMarkup(full, { pose, animFire: fire })).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, '');
+    const markup = buildFullAvatarSvgMarkup(full, { pose, animFire: full?.acc?.aura === 'fire' }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, '');
     const img = new Image();
     img.onload = () => {
       // v157.4: telefonda avatar dokuları küçük (6 poz × her oyuncu — ekran kartı belleği ~2,5 kat az)
@@ -120,6 +119,7 @@ function ensurePoseTex(e, pose) {
   (e.pending ||= {})[pose] = true;
   const img = new Image();
   img.onload = () => {
+    if (e.disposed) return;
     const c = document.createElement('canvas');
     c.width = 320;
     c.height = 580;
@@ -130,6 +130,27 @@ function ensurePoseTex(e, pose) {
     e.tex[pose] = t;
   };
   img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(buildFullAvatarSvgMarkup(e.full, { pose }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, ''));
+}
+// v164 — arka görünüş (back: oturan, backIdle: ayakta) ilk istendiğinde çizilir; hazır olana kadar önden poz
+const BACK_BASE = { back: 'sit', backIdle: 'idle' };
+function ensureBackTex(e, pose) {
+  if (!e || !BACK_BASE[pose] || e.tex[pose] || e.pending?.[pose] || e.lazy) return;
+  (e.pending ||= {})[pose] = true;
+  const img = new Image();
+  img.onload = () => {
+    if (e.disposed) return;
+    const AW = IS_MOBILE ? 208 : 320;
+    const AH = IS_MOBILE ? 377 : 580;
+    const c = document.createElement('canvas');
+    c.width = AW;
+    c.height = AH;
+    c.getContext('2d').drawImage(img, 0, 0, AW, AH);
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = IS_MOBILE ? 1 : 4;
+    e.tex[pose] = t;
+  };
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(buildFullAvatarBackSvgMarkup(e.full, { pose: BACK_BASE[pose], animFire: e.full?.acc?.aura === 'fire' }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, ''));
 }
 let blobTex = null;
 function blobShadow() {
@@ -168,6 +189,7 @@ function texUse(prev, next) {
 export function sweepAvatarTextures(now = performance.now(), idleMs = 60_000) {
   for (const [k, e] of avCache) {
     if (e.refs > 0 || !e.ready || now - (e.last || 0) < idleMs) continue;
+    e.disposed = true; // v164: geç gelen (tembel) arka doku bırakılmış girdiye eklenmesin
     Object.values(e.tex).forEach((t) => t?.dispose?.());
     avCache.delete(k);
   }
@@ -340,20 +362,6 @@ class Fig {
     if (this.sitting && this.seatYaw != null && !this.inCar && (this.x - camera.position.x) * Math.sin(this.seatYaw) + (this.z - camera.position.z) * Math.cos(this.seatYaw) > 0) pose = 'back';
     // v151: tribünde ayakta (sahaya bakarken) kamera arkadaysa da ense görünür
     else if (!this.sitting && !this.inCar && this.standYaw != null && !this.moving && (this.x - camera.position.x) * Math.sin(this.standYaw) + (this.z - camera.position.z) * Math.cos(this.standYaw) > 0) pose = 'backIdle';
-    // v164 — BAKIŞ YÖNÜ: son yürüyüş yönü saklanır; kameradan uzaklaşıyorsa (ya da o yöne bakıp
-    // duruyorsa) sırtı görünür. Eşikte titremesin diye girişte 0,35, çıkışta 0,12.
-    const mdx = this.x - (this.px ?? this.x);
-    const mdz = this.z - (this.pz ?? this.z);
-    this.px = this.x;
-    this.pz = this.z;
-    if (!this.inCar && !this.sitting && mdx * mdx + mdz * mdz > 0.00004 && mdx * mdx + mdz * mdz < 4) this.faceYaw = Math.atan2(mdx, mdz);
-    let away = false;
-    if (this.faceYaw != null && !this.sitting && !this.inCar && hd > 0.01) {
-      const dot = (Math.sin(this.faceYaw) * (this.x - camera.position.x) + Math.cos(this.faceYaw) * (this.z - camera.position.z)) / hd;
-      away = this.awayOn ? dot > 0.12 : dot > 0.35;
-    }
-    this.awayOn = away;
-    if (away && pose === 'idle') pose = 'backIdle';
     if (this.inCar) {
       // kamera arabanın arkasındaysa ense görünür (yüz yola bakıyor)
       const behind = (this.x - camera.position.x) * Math.sin(this.carYaw) + (this.z - camera.position.z) * Math.cos(this.carYaw) > 0;
@@ -361,8 +369,7 @@ class Fig {
     }
     else if (this.moving || forceWalk) {
       this.walkT += dt * (forceWalk ? 0.7 : this.run ? 1.6 : 1);
-      const w2 = Math.floor(this.walkT / 0.16) % 2;
-      pose = away && !forceWalk ? (w2 ? 'backWalk2' : 'backWalk1') : w2 ? 'walk2' : 'walk1';
+      pose = Math.floor(this.walkT / 0.16) % 2 ? 'walk2' : 'walk1';
     }
     // v153: haraç pozu (silah doğrultma / eller havada) + titreme
     if (this.forcePose && this.tex.tex[this.forcePose] && !this.inCar && !this.sitting) pose = this.forcePose;
@@ -371,7 +378,8 @@ class Fig {
     if (this.tex.lazy) this.ensureTex();
     if (this.tex.ready) {
       const T = this.tex.tex;
-      const t = T[pose] || (pose === 'backWalk1' ? T.walk1 : pose === 'backWalk2' ? T.walk2 : null) || T.idle;
+      if (BACK_BASE[pose] && !T[pose]) ensureBackTex(this.tex, pose);
+      const t = T[pose] || T[BACK_BASE[pose]] || T.idle;
       if (this.mat.map !== t) {
         this.mat.map = t;
         this.mat.needsUpdate = true;
