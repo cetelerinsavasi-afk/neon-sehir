@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import CarImg from '../VehicleCard/CarImg'; // v150
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import FutbolCrest from '../FutbolScreen/FutbolCrest';
@@ -9,13 +9,6 @@ import { createAvatarImageCache, renderPhotoFrame as parkRenderPhotoFrame } from
 import {
   createAvatarImageCache as createAvatarImageCache2, renderPhotoFrame, INTERIOR_AVATAR_SCALE,
 } from '../../lib/canvasWorldKit';
-import { drawBankSceneBackground } from '../BankWorldScreen/BankWorldScreen';
-import { drawKarakolSceneBackground } from '../KarakolWorldScreen/KarakolWorldScreen';
-import { drawMosqueSceneBackground } from '../MosqueWorldScreen/MosqueWorldScreen';
-import { drawCasinoSceneBackground } from '../CasinoWorldScreen/CasinoWorldScreen';
-import { drawDealershipSceneBackground } from '../CarDealershipWorldScreen/CarDealershipWorldScreen';
-import { drawWeaponShopSceneBackground } from '../WeaponShopWorldScreen/WeaponShopWorldScreen';
-import { drawGarageSceneBackground } from '../TuningGarageWorldScreen/TuningGarageWorldScreen';
 import InterviewPlayer from '../Broadcast/InterviewPlayer';
 import DrawingView from './DrawingView';
 import SongView from './SongView';
@@ -51,15 +44,41 @@ const interiorPhotoImageCache = createAvatarImageCache2(buildFullAvatarSvgMarkup
 // sunucuda dondurulup doğrudan post'un attachment'ına gömülüyor (bkz.
 // functions/index.js buildMosqueNpcSnapshot) — burada SADECE o gömülü veri
 // (attachment.imam/attachment.beggars) okunuyor, canlı dinleyici YOK.
-const INTERIOR_BACKGROUNDS = {
-  banka: (ctx, getAvatarImage) => drawBankSceneBackground(ctx, getAvatarImage),
-  karakol: (ctx, getAvatarImage) => drawKarakolSceneBackground(ctx, getAvatarImage),
-  camii: (ctx, getAvatarImage, extra) => drawMosqueSceneBackground(ctx, getAvatarImage, extra),
-  gazino: (ctx, getAvatarImage) => drawCasinoSceneBackground(ctx, getAvatarImage),
-  araba_galerisi: (ctx, getAvatarImage) => drawDealershipSceneBackground(ctx, getAvatarImage),
-  silah_magazasi: (ctx, getAvatarImage) => drawWeaponShopSceneBackground(ctx, getAvatarImage),
-  modifiye_garaji: (ctx, getAvatarImage) => drawGarageSceneBackground(ctx, getAvatarImage),
+// v162 HIZ — mekân çizimleri artık açılışta yüklenmiyor: 7 mekân ekranı (~300 KB) yalnızca
+// akışta o mekânda çekilmiş bir fotoğraf görününce indirilir (eskiden telefon/Sixtagram
+// üzerinden ana pakete giriyordu). Çizim kodu aynı — sadece ne zaman yüklendiği değişti.
+const INTERIOR_LOADERS = {
+  banka: () => import('../BankWorldScreen/BankWorldScreen').then((m) => (ctx, get) => m.drawBankSceneBackground(ctx, get)),
+  karakol: () => import('../KarakolWorldScreen/KarakolWorldScreen').then((m) => (ctx, get) => m.drawKarakolSceneBackground(ctx, get)),
+  camii: () => import('../MosqueWorldScreen/MosqueWorldScreen').then((m) => (ctx, get, extra) => m.drawMosqueSceneBackground(ctx, get, extra)),
+  gazino: () => import('../CasinoWorldScreen/CasinoWorldScreen').then((m) => (ctx, get) => m.drawCasinoSceneBackground(ctx, get)),
+  araba_galerisi: () => import('../CarDealershipWorldScreen/CarDealershipWorldScreen').then((m) => (ctx, get) => m.drawDealershipSceneBackground(ctx, get)),
+  silah_magazasi: () => import('../WeaponShopWorldScreen/WeaponShopWorldScreen').then((m) => (ctx, get) => m.drawWeaponShopSceneBackground(ctx, get)),
+  modifiye_garaji: () => import('../TuningGarageWorldScreen/TuningGarageWorldScreen').then((m) => (ctx, get) => m.drawGarageSceneBackground(ctx, get)),
 };
+const interiorBgCache = new Map(); // locationId -> çizim fonksiyonu (bir kez yüklenir)
+function useInteriorBackground(locationId) {
+  const [fn, setFn] = useState(() => interiorBgCache.get(locationId) || null);
+  useEffect(() => {
+    if (interiorBgCache.has(locationId)) {
+      setFn(() => interiorBgCache.get(locationId));
+      return undefined;
+    }
+    const load = INTERIOR_LOADERS[locationId];
+    if (!load) return undefined;
+    let alive = true;
+    load()
+      .then((f) => {
+        interiorBgCache.set(locationId, f);
+        if (alive) setFn(() => f);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [locationId]);
+  return fn;
+}
 
 // v52 DÜZELTME — fotoğraf kareleri:
 //  1) Çizim, karedeki TÜM avatarlar yüklenene kadar sürer (eskiden sabit 90
@@ -114,8 +133,8 @@ function usePhotoDraw(canvasRef, contentKey, paint) {
 // kalmasına sebep oluyordu — artık burada da aynı sabit kullanılıyor.
 function InteriorPhotoCanvas({ locationId, entities, originX, originY, extra }) {
   const canvasRef = useRef(null);
-  const drawBackground = INTERIOR_BACKGROUNDS[locationId];
-  const contentKey = JSON.stringify([locationId, entities, originX, originY, extra]);
+  const drawBackground = useInteriorBackground(locationId);
+  const contentKey = JSON.stringify([locationId, entities, originX, originY, extra, Boolean(drawBackground)]);
   usePhotoDraw(canvasRef, contentKey, (ctx, canvas, track) => {
     if (!entities?.length || !drawBackground) return;
     const get = track(interiorPhotoImageCache);

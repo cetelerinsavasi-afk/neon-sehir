@@ -1,14 +1,16 @@
-import { useEffect, useRef } from 'react';
-import FactoryScreen from '../FactoryScreen/FactoryScreen';
-import VehicleGalleryScreen from '../VehicleGalleryScreen/VehicleGalleryScreen';
-import GarageScreen from '../GarageScreen/GarageScreen';
-import WeaponShopScreen from '../WeaponShopScreen/WeaponShopScreen';
-import BankScreen from '../BankScreen/BankScreen';
-import MosqueScreen from '../MosqueScreen/MosqueScreen';
-import PoliceStationScreen from '../PoliceStationScreen/PoliceStationScreen';
-import VendorScreen from '../VendorScreen/VendorScreen';
-import RaceTrackScreen from '../RaceTrackScreen/RaceTrackScreen';
-import CasinoScreen from '../CasinoScreen/CasinoScreen';
+import { Suspense, lazy, useEffect, useRef } from 'react';
+import { retryImport } from '../../lib/lazyRetry';
+// v162 HIZ — mekân ekranları açılışta değil, mekâna ilk girildiğinde indirilir
+const FactoryScreen = lazy(retryImport(() => import('../FactoryScreen/FactoryScreen')));
+const VehicleGalleryScreen = lazy(retryImport(() => import('../VehicleGalleryScreen/VehicleGalleryScreen')));
+const GarageScreen = lazy(retryImport(() => import('../GarageScreen/GarageScreen')));
+const WeaponShopScreen = lazy(retryImport(() => import('../WeaponShopScreen/WeaponShopScreen')));
+const BankScreen = lazy(retryImport(() => import('../BankScreen/BankScreen')));
+const MosqueScreen = lazy(retryImport(() => import('../MosqueScreen/MosqueScreen')));
+const PoliceStationScreen = lazy(retryImport(() => import('../PoliceStationScreen/PoliceStationScreen')));
+const VendorScreen = lazy(retryImport(() => import('../VendorScreen/VendorScreen')));
+const RaceTrackScreen = lazy(retryImport(() => import('../RaceTrackScreen/RaceTrackScreen')));
+const CasinoScreen = lazy(retryImport(() => import('../CasinoScreen/CasinoScreen')));
 import './RegionModal.css';
 
 // screen -> soygun hedefi eşlemesi. Soygunlar artık haritadaki her mekanın
@@ -126,13 +128,15 @@ export default function RegionModal({
           )}
         </div>
         <div className="region-modal-content">
-          <ScreenContent
-            region={region}
-            onEnterRace={onEnterRace}
-            onEnterTable={onEnterTable}
-            raceLobbyMode={raceLobbyMode}
-            onRaceModeChange={onRaceModeChange}
-          />
+          <Suspense fallback={<p className="region-modal-body">Yükleniyor…</p>}>
+            <ScreenContent
+              region={region}
+              onEnterRace={onEnterRace}
+              onEnterTable={onEnterTable}
+              raceLobbyMode={raceLobbyMode}
+              onRaceModeChange={onRaceModeChange}
+            />
+          </Suspense>
         </div>
         <button className="region-modal-close" onClick={onClose}>
           Kapat

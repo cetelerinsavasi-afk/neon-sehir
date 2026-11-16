@@ -393,3 +393,8 @@
     border-left: 1px solid #1f2a40;
   }
 }
+
+/* v162 — korna */
+.ms-horn-play {
+  margin-top: 8px;
+}

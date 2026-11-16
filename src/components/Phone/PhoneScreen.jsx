@@ -1,14 +1,4 @@
 import { Suspense, lazy, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import MessagesScreen from '../MessagesScreen/MessagesScreen';
-import MarketplaceScreen from '../MarketplaceScreen/MarketplaceScreen';
-import BankScreen from '../BankScreen/BankScreen';
-import ChatsAppScreen from '../ChatsAppScreen/ChatsAppScreen';
-import NewspaperScreen from '../NewspaperScreen/NewspaperScreen';
-import SixtagramScreen from '../Sixtagram/SixtagramScreen';
-import GuideScreen from '../GuideScreen/GuideScreen';
-import GazeteScreen from '../Gazete/GazeteScreen';
-import IdeasScreen from '../IdeasScreen/IdeasScreen';
-import AchievementsScreen from '../AchievementsScreen/AchievementsScreen';
 import InstallAppButton from '../InstallAppButton/InstallAppButton';
 import { useUnreadSmsCount } from '../../hooks/useMessages';
 import { usePlayer } from '../../hooks/usePlayer';
@@ -30,6 +20,17 @@ import './PhoneScreen.css';
 // açıldığında indiriliyor. Davranış aynı; sadece ilk açılışta çok kısa
 // bir yükleme anı olabilir.
 const GoldStoreScreen = lazy(() => import('../GoldStoreScreen/GoldStoreScreen'));
+// v162 HIZ — telefon uygulamaları artık açılışta değil, ilk açıldıklarında indirilir (ana paket küçüldü)
+const BankScreen = lazy(retryImport(() => import('../BankScreen/BankScreen')));
+const MessagesScreen = lazy(retryImport(() => import('../MessagesScreen/MessagesScreen')));
+const MarketplaceScreen = lazy(retryImport(() => import('../MarketplaceScreen/MarketplaceScreen')));
+const ChatsAppScreen = lazy(retryImport(() => import('../ChatsAppScreen/ChatsAppScreen')));
+const NewspaperScreen = lazy(retryImport(() => import('../NewspaperScreen/NewspaperScreen')));
+const SixtagramScreen = lazy(retryImport(() => import('../Sixtagram/SixtagramScreen')));
+const GuideScreen = lazy(retryImport(() => import('../GuideScreen/GuideScreen')));
+const GazeteScreen = lazy(retryImport(() => import('../Gazete/GazeteScreen')));
+const IdeasScreen = lazy(retryImport(() => import('../IdeasScreen/IdeasScreen')));
+const AchievementsScreen = lazy(retryImport(() => import('../AchievementsScreen/AchievementsScreen')));
 // v161 — Cappstore uygulamaları (ağır ekranlar ayrı parça; sadece açılınca indirilir)
 const FactoryScreen = lazy(retryImport(() => import('../FactoryScreen/FactoryScreen')));
 const FutbolFullScreen = lazy(retryImport(() => import('../FutbolScreen/FutbolFullScreen')));
@@ -465,6 +466,7 @@ export default function PhoneScreen({ onClose, initialApp = null, onAppChange = 
           </span>
         </div>
         <div className={`phone-app-body${openApp === 'rehber' || openApp === 'neon-gazete' || openApp === 'sixtagram' || openApp === 'cappstore' ? ' full' : ''}`}>
+          <Suspense fallback={<div className="phone-app-loading">Yükleniyor…</div>}>
           {openApp === 'sms' && <MessagesScreen />}
           {openApp === 'ikinci-el' && <MarketplaceScreen />}
           {openApp === 'parara' && <BankScreen />}
@@ -491,6 +493,7 @@ export default function PhoneScreen({ onClose, initialApp = null, onAppChange = 
           {openApp === 'neon-gazete' && <GazeteScreen />}
           {openApp === 'fikir' && <IdeasScreen />}
           {openApp === 'basarilar' && <AchievementsScreen />}
+          </Suspense>
         </div>
         {noticeEl}
       </div>
@@ -504,7 +507,13 @@ export default function PhoneScreen({ onClose, initialApp = null, onAppChange = 
         {/* Sol sayfa: v159 — Neon Şehir Gazetesi (sola kaydırınca kendiliğinden açılır; sayfaya ilk
             gelindiğinde yüklenir, sonra açık kalır → tekrar okuma yok) */}
         <section className="phone-page phone-page-gazete" aria-label="Neon Şehir Gazetesi">
-          {gazeteSeen || page === 0 ? <GazeteScreen /> : <div className="phone-tv-idle">📰</div>}
+          {gazeteSeen || page === 0 ? (
+            <Suspense fallback={<div className="phone-tv-idle">📰</div>}>
+              <GazeteScreen />
+            </Suspense>
+          ) : (
+            <div className="phone-tv-idle">📰</div>
+          )}
         </section>
 
         {/* Ana sayfa */}

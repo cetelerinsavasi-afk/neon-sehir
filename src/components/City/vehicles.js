@@ -2181,6 +2181,7 @@ export function buildVehicle(id, mods = null) {
   const v = buildFromConfig(vehicleConfig(n, mods));
   v.catalogId = n;
   v.kind = modProfile(n);
+  v.horn = sanitizeMods(n, mods).horn || 'standart'; // v162: modifiyeli korna
   if (VEHICLE_CATALOG[n]) v.def = { ...v.def, name: VEHICLE_CATALOG[n].name };
   return v;
 }

@@ -1,5 +1,7 @@
 // SADECE ÖNİZLEME — araba motor sesi (WebAudio ile üretilir, dosya yok).
 // Devir hıza ve vitese göre yükselir; gaza basınca sert, bırakınca yumuşar.
+import { playHorn } from '../../lib/hornSound.js';
+
 export class EngineSound {
   constructor() {
     this.ctx = null;
@@ -78,22 +80,10 @@ export class EngineSound {
     this.g1.gain.setTargetAtTime(0.32 + Math.max(0, thr) * 0.35, t, 0.06);
     this.ng.gain.setTargetAtTime(skid * 0.12, t, 0.05);
   }
-  horn() {
+  // v162: korna türü aracın modifiyesinden gelir (bkz. lib/hornSound.js)
+  horn(type = 'standart') {
     if (!this.ctx || this.muted) return;
-    const t = this.ctx.currentTime;
-    const g = this.ctx.createGain();
-    g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.25, t + 0.02);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.45);
-    g.connect(this.ctx.destination);
-    [392, 494].forEach((fr) => {
-      const o = this.ctx.createOscillator();
-      o.type = 'square';
-      o.frequency.value = fr;
-      o.connect(g);
-      o.start(t);
-      o.stop(t + 0.5);
-    });
+    playHorn(this.ctx, this.ctx.destination, type);
   }
   thump(k) {
     if (!this.ctx || this.muted) return;

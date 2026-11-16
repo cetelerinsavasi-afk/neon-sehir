@@ -58,6 +58,8 @@ export const MOD_OPTIONS = {
   polType: [['polis', '🚓 Polis Otosu', 'Lamba bar + POLİS yazısı'], ['sivil', '🚓 Sivil Polis', 'Koyu renk, gizli çakar'], ['pickup', '🚓 Polis Pickup', 'Arazi devriyesi']],
   ambType: [['van', '🚑 Ambulans (Panelvan)', 'Sedyeli'], ['car', '🚑 Acil Müdahale Aracı', 'Küçük ve çevik']],
   variant: [['otobus', '🚌 Şehir Otobüsü', '28 koltuk'], ['minibus', '🚐 Minibüs (Dolmuş)', '12 koltuk'], ['okul', '🚌 Okul Servisi', '20 koltuk'], ['turistik', '🚌 Turistik Açık Otobüs', '30 koltuk']],
+  // v162 — korna (sadece ses; şehirde 📯 düğmesiyle çalar). 'standart' = fabrika kornası
+  horn: [['standart', '📯 Standart', 'Fabrika kornası'], ['tiz', '🔔 Tiz', 'Bip bip'], ['kalin', '🎺 Kalın', 'Lüks sedan'], ['vintage', '🕰️ Klasik', 'Ahuuga'], ['melodi', '🎵 Melodili', 'Kısa nağme'], ['ordek', '🦆 Vak vak', 'Komik'], ['tir', '🚛 Tır düdüğü', 'Havalı'], ['gemi', '🚢 Gemi düdüğü', 'Çok kalın']],
   trailer: [['konteyner', 'Konteyner'], ['tenteli', 'Tenteli'], ['frigo', 'Frigorifik'], ['tanker', 'Tanker'], ['sal', 'Sal (Kereste)'], ['oto', 'Oto Taşıyıcı']],
 };
 export const TAXI_TYPES = {
@@ -90,6 +92,7 @@ const ENUMS = {
   ambType: MOD_OPTIONS.ambType.map((o) => o[0]),
   variant: MOD_OPTIONS.variant.map((o) => o[0]),
   trailer: MOD_OPTIONS.trailer.map((o) => o[0]),
+  horn: MOD_OPTIONS.horn.map((o) => o[0]),
 };
 const HEX_KEYS = ['paint', 'rim', 'tire', 'caliper', 'interior', 'neonColor', 'accent', 'trailerColor', 'helmet', 'helmetVisor', 'jacket'];
 export const MOD_RANGES = { spokes: [3, 16, 1], wheelScale: [0.9, 1.18, 0.02], ride: [-0.1, 0.3, 0.02] };
@@ -104,6 +107,13 @@ const accOff = (id, on = {}) => Object.fromEntries(accKeys(id).map((k) => [k, Bo
 
 // Fabrika hali (sadece modifiye edilebilen alanlar)
 export function modDefaults(id) {
+  const d = modDefaults0(id);
+  // v162: korna — bisiklet ve at hariç her araçta (eski kayıtlarda alan yok → standart)
+  if (hasHorn(id)) d.horn = 'standart';
+  return d;
+}
+export const hasHorn = (id) => ![25, 26].includes(Number(id));
+function modDefaults0(id) {
   const n = Number(id);
   const prof = modProfile(n);
   if (prof === 'taxi') {
@@ -220,6 +230,7 @@ const PCT = {
   ambType: 3,
   trailer: 3,
   trailerColor: 1,
+  horn: { standart: 0.4, tiz: 0.6, kalin: 1, vintage: 1.5, melodi: 2, ordek: 1.5, tir: 2.5, gemi: 3 },
   company: 0.5,
   paint: 1,
   accent: 0.8,
@@ -276,6 +287,7 @@ export const MOD_LABELS = {
   company: 'Firma adı',
   accent: 'Şerit rengi',
   sign: 'Güzergâh tabelası',
+  horn: 'Korna',
   helmet: 'Kask',
   helmetVisor: 'Vizör',
   jacket: 'Mont',

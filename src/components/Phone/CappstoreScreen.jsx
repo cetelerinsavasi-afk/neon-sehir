@@ -143,7 +143,7 @@ export default function CappstoreScreen({ apps, staff, detail, onDetail, onOpenA
                   <br />
                   cebinde.
                 </strong>
-                <span>Üretimi, makineleri ve hisseleri haritaya dönmeden yönet.</span>
+                <span>Üretimi, makineleri ve çalışanlarını haritaya dönmeden yönet.</span>
               </div>
               <div className="cs-hero-bar">
                 <AppIcon id="fabrika" size={44} />

@@ -6,6 +6,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { usePlayer } from './usePlayer';
 import { useDailyActions } from './useDailyActions';
 import { useVehicles } from './useVehicles';
+import { useWeapons } from './useWeapons'; // v162 — "Gücün 0" hatırlatması
+import { useInventory } from './useInventory'; // v162 — eksik yasaklı madde hatırlatması
 import { useMyFactory } from './useMyFactory';
 import { useMyFutbolTeam } from './useMyFutbolTeam';
 import { currentPrayerWindow } from './useMosqueAttendance';
@@ -80,7 +82,7 @@ export function reminderTarget(id) {
   if (k === 'championship') return 'yaris_pisti';
   if (k === 'lineup') return 'stadyum';
   if (k === 'work' || k === 'machines') return 'fabrika';
-  if (k === 'park-safe') return 'park';
+  if (k === 'park-safe') return 'park_shady'; // v162: şüpheli adamın yanına (düğmesi açık)
   if (k === 'belediye' || k === 'chat-belediye') return 'belediye';
   if (k.startsWith('pol-')) return 'belediye'; // v160.3: seçim / imza / darbe → Belediyeye git (seçim sandığı orada)
   if (k.startsWith('gang-') || k === 'chat-gang') return 'gang';
@@ -111,6 +113,8 @@ export function useOnboarding(gangReminders = null, gangChans = null) {
   const belediyeChat = bdGenel || bdKoord;
   const { actions, loading: actionsLoading } = useDailyActions();
   const { vehicles } = useVehicles();
+  const { weapons, loading: weaponsLoading } = useWeapons();
+  const { inventory, loading: invLoading } = useInventory();
   const { factory, machines } = useMyFactory();
   const { team, role: futbolRole } = useMyFutbolTeam();
   const bizReminders = useBizReminders(); // v92: galeri / silahçı / spor salonu
@@ -224,6 +228,19 @@ export function useOnboarding(gangReminders = null, gangChans = null) {
     const safeLeft = Math.max(0, SAFE_DAILY_LIMIT - safeUsed);
     if (safeLeft > 0) {
       list.push({ id: 'park-safe', emoji: '💊', text: `Risksiz şekilde ${safeLeft} adet yasaklı madde sat` });
+      // v162: elindeki yasaklı madde kalan satış hakkından azsa, eksik kadarını almayı hatırlat
+      // ("Git" → Liman & Depo kapısı; kapıda Depolar listesi kendiliğinden açılır)
+      const owned = Math.max(0, Math.floor(Number(inventory?.yasakliMadde || 0)));
+      if (!invLoading && owned < safeLeft) {
+        list.push({ id: 'depo-buy-contraband', emoji: '📦', text: `${safeLeft - owned} adet yasaklı madde al` });
+      }
+    }
+
+    // v162: gücün 0 ise (kullanılabilir silahın yok) silahçıya yönlendir — Soygun ekranındaki
+    // "Gücün" ile aynı kural: satışta olan / ömrü bitmiş silah sayılmaz
+    const myPower = weapons.reduce((max, w) => (!w.listed && (w.lifeDays ?? 20) > 0 ? Math.max(max, Number(w.power) || 0) : max), 0);
+    if (!weaponsLoading && myPower <= 0) {
+      list.push({ id: 'silah-power0', emoji: '🔫', text: 'Gücün 0 — silahçıya git, silah al' });
     }
 
     // v108.1: polis rüşvet payı da her gece 00:00'da maaşla otomatik yatar (hatırlatıcı yok)
@@ -250,7 +267,7 @@ export function useOnboarding(gangReminders = null, gangChans = null) {
     list.push(...bizReminders);
 
     return list;
-  }, [player, actions, vehicles, team, futbolRole, employment, employmentMachine, factory, machines, todayKey, win, gangReminders?.joinWar, gangReminders?.takeMoney, gangReminders?.report, gangReminders?.leak, bizReminders, belediyeChat, gangChat, intelChat, polNeed]);
+  }, [player, actions, vehicles, weapons, weaponsLoading, inventory, invLoading, team, futbolRole, employment, employmentMachine, factory, machines, todayKey, win, gangReminders?.joinWar, gangReminders?.takeMoney, gangReminders?.report, gangReminders?.leak, bizReminders, belediyeChat, gangChat, intelChat, polNeed]);
 
   return {
     loading: playerLoading || actionsLoading,

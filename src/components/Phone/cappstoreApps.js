@@ -29,7 +29,7 @@ export const STORE_APPS = [
     cat: 'İş',
     size: '22 MB',
     desc: 'Fabrikaya gitmeden fabrika panelini açar: fabrikada “Fabrika” butonuna basınca çıkan panelin aynısı.',
-    feats: ['Fabrikadaki panelin aynısı', 'Makineler, maaş ve üretim', 'Hisse alım-satımı'],
+    feats: ['Fabrikadaki panelin aynısı', 'Makineler, maaş ve üretim', 'Günlük gelir-gider raporu'],
   },
   {
     id: 'isletme',

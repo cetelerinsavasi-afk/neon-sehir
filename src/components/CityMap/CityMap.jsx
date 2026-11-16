@@ -1,6 +1,6 @@
 import { memo, useCallback, useRef, useState } from 'react';
 import { regions } from '../../data/regions';
-import mapImage from '../../assets/sehir-haritasi.jpg';
+import mapImage from '../../assets/sehir-haritasi.webp';
 import { useMapPanZoom } from './useMapPanZoom';
 import MapAmbience from './MapAmbience';
 import './CityMap.css';

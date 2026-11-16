@@ -30,7 +30,7 @@ import PhotoStoryEditor from '../HouseScreen/PhotoStoryEditor';
 import { vehicleCatalog, vehicleKindOfId } from '../../data/vehicleCatalog.js';
 import { VehicleKindTabs } from '../VehicleGalleryScreen/VehicleGalleryScreen';
 import '../VehicleGalleryScreen/VehicleGalleryScreen.css';
-import mapImg from '../../assets/sehir-haritasi.jpg';
+import mapImg from '../../assets/sehir-haritasi.webp';
 import { HOUSE_PRODUCTS, HOUSE_PRICE } from '../../../functions/houseCatalogData.js';
 import { BIZ_TYPES } from '../../../functions/businessCatalogData.js';
 import { VENUES } from '../../../functions/venueLayouts.js';

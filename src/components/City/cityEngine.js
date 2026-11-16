@@ -336,7 +336,11 @@ class Fig {
       }
     }
     const hd = Math.hypot(camera.position.x - this.x, camera.position.z - this.z);
-    const el = bbYaw != null ? camera.userData.billboardEl : Math.atan2(camera.position.y - AV_PLANE_H / 2, hd);
+    // v162 DÜZELTME ("şehrin dışında avatarların boyu kısalıyor"): kameranın yüksekliği eskiden
+    // dünyanın 0 seviyesine göre ölçülüyordu. Şehirde zemin ~0 olduğu için doğruydu; dışarıda arazi
+    // yükseldikçe kamera "çok yukarıda" sanılıyor, figür gereğinden fazla geriye yatırılıp kısa
+    // görünüyordu. Artık figürün kendi yüksekliğine göre ölçülür.
+    const el = bbYaw != null ? camera.userData.billboardEl : Math.atan2(camera.position.y - ((this.y || 0) + AV_PLANE_H / 2), hd);
     const back = el > 0.35 ? Math.min(el - 0.35, 1.05) : 0;
     this.pivot.rotation.order = 'YXZ';
     this.pivot.rotation.set(-back, ang, tilt);
@@ -1492,6 +1496,18 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     return { x: p.x, z: p.z, yaw: v.ry, pitch: 0.36, venue: true };
   }
   function spawnPoint(key) {
+    // v162: parktaki şüpheli adamın yanı ("Git" → risksiz satış hatırlatması). Düğmesinin (bölge
+    // yarıçapı 2,4 m) tam ortasında doğulur → "🕶️ Şüpheli adam" düğmesi hemen çıkar; kamera
+    // oyuncunun arkasında, şüpheli adama bakar.
+    if (key === 'park_shady') {
+      const sz = zones.find((z) => z.kind === 'park' && z.act === 'npc');
+      if (sz) {
+        const npc = npcDefs.find((n) => n.id === 'npc_supheli') || null;
+        const yaw = npc ? Math.atan2(sz.x - npc.x, sz.z - npc.z) : Math.PI;
+        return { x: sz.x, z: sz.z, yaw, pitch: 0.36 };
+      }
+      key = 'park';
+    }
     // v157: Kervankent / dış dünya noktası
     if (key && typeof key === 'object' && key.world && Number.isFinite(key.x) && Number.isFinite(key.z)) return { x: key.x, z: key.z, yaw: key.yaw ?? Math.PI };
     // v157.4: oyun açılışı — evin kapısının ÖNÜNDE (dışarıda), yüz yola dönük
@@ -1916,13 +1932,14 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       const far = Math.hypot(c.x - self.x, c.z - self.z) > VIS_DIST + 20;
       c.v.root.visible = !far;
       if (far) return;
-      c.y += (groundY(c.x, c.z, -1, c.y) - c.y) * Math.min(1, dt * 10);
+      // v163: uzak araba da aynı yer çekimiyle zıplar / süzülür (ağdan ek veri gerekmez)
       c.gp = slopeOf(c, c.gp || 0, dt);
+      carVertical(c, groundY(c.x, c.z, -1, c.y), c.spd || 0, dt);
       c.v.root.position.set(c.x, c.y, c.z);
       let dy = c.yaw - (c.lastYaw ?? c.yaw);
       dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       c.lastYaw = c.yaw;
-      c.v.root.rotation.set(-Math.atan(c.gp), c.yaw, 0);
+      c.v.root.rotation.set(-Math.atan(c.gp), c.yaw, Math.atan(c.gr || 0));
       // motor: dönüşe yatar
       if (c.v.moto) {
         const horse = c.v.ride === 'horse';
@@ -2209,28 +2226,91 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const fz = Math.cos(yaw);
     return [[x + fx * k, z + fz * k], [x, z], [x - fx * k, z - fz * k]];
   };
+  // v163: havadayken engel / köprü kontrolü zemine yakın yükseklikle yapılır (yoldan ±4 m'yi aşınca
+  // yol "bulunamayıp" havada duvara çarpmasın)
+  const carCollideY = () => (myCar.air && myCar.airGy != null ? Math.min(myCar.y, myCar.airGy + 1.5) : myCar.y);
   function carFree(x, z, yaw) {
     const r = myCar.v.halfW * 0.82;
     // v157.4: bisiklet / at — yayaların girdiği her yere girer (araç ya da yaya ızgarasında boşsa geçer)
     if (myCar.v.walker) {
-      for (const [px, pz] of carCircles(x, z, yaw)) if (carBlockedAt(px, pz, 0.3, myCar.y) && blockedAt(px, pz, 0.3)) return 'wall';
+      for (const [px, pz] of carCircles(x, z, yaw)) if (carBlockedAt(px, pz, 0.3, carCollideY()) && blockedAt(px, pz, 0.3)) return 'wall';
       return null;
     }
-    for (const [px, pz] of carCircles(x, z, yaw)) if (carBlockedAt(px, pz, r, myCar.y)) return 'wall';
+    for (const [px, pz] of carCircles(x, z, yaw)) if (carBlockedAt(px, pz, r, carCollideY())) return 'wall';
     return null;
   }
   // v157: yokuş eğimi (arabanın önü ile arkası arasındaki yükseklik farkı) — şehirde düz
-  function slopeOf(c, gp, dt) {
+  // v163: şehir / kasaba dışında (otoyol, köy yolu, arazi) gövde zemine oturur: önü-arkası
+  // (eğim, c.gp) VE sağı-solu (yatış, c.gr). Havadayken gövde son açısında kalır, burnu yavaşça düşer.
+  function slopeOf(c, gp, dt, hint = -1) {
+    const k = Math.min(1, dt * 7);
+    if (c.air) {
+      c.gr = (c.gr || 0) * (1 - Math.min(1, dt * 0.6));
+      return gp + (-0.12 - gp) * Math.min(1, dt * 0.7);
+    }
     let want = 0;
-    if (W.modeAt(c.x, c.z) === 'hwy') {
+    let wantR = 0;
+    const m = W.modeAt(c.x, c.z);
+    if (m !== 'city' && m !== 'town') {
       const fx = Math.sin(c.yaw);
       const fz = Math.cos(c.yaw);
       const L = Math.max(1.4, (c.v.len || 4) * 0.45);
-      const a = groundY(c.x + fx * L, c.z + fz * L, -1, c.y);
-      const b = groundY(c.x - fx * L, c.z - fz * L, -1, c.y);
-      want = clamp((a - b) / (2 * L), -0.2, 0.2);
+      const a = groundY(c.x + fx * L, c.z + fz * L, hint, c.y);
+      const b = groundY(c.x - fx * L, c.z - fz * L, hint, c.y);
+      want = clamp((a - b) / (2 * L), -0.55, 0.55);
+      // gövdenin sol tarafı (yerel +x) = (cos yaw, −sin yaw)
+      const Wd = Math.max(0.45, (c.v.halfW || 0.9) * 0.9);
+      const l = groundY(c.x + fz * Wd, c.z - fx * Wd, hint, c.y);
+      const r = groundY(c.x - fz * Wd, c.z + fx * Wd, hint, c.y);
+      // motor / bisiklet / at iki tekerlekte (ayakta) durur — yan eğime çok az uyar
+      wantR = clamp((l - r) / (2 * Wd), -0.45, 0.45) * (c.v.moto ? 0.25 : 1);
     }
-    return gp + (want - gp) * Math.min(1, dt * 6);
+    c.gr = (c.gr || 0) + (wantR - (c.gr || 0)) * k;
+    return gp + (want - gp) * k;
+  }
+  // v163 — YER ÇEKİMİ: yerdeyken araba zemini izler (dikey hızı = ileri hız × eğim); zemin
+  // arabanın düşebileceğinden hızlı alçalırsa (tepe, rampa ucu, basamak) araba havalanır, yer
+  // çekimiyle süzülüp yere iner. Sert inişte dönüş = çarpma hızı (sarsıntı / ses için).
+  const CAR_G = 22;
+  function carVertical(c, gy, vF, dt) {
+    if (!(dt > 0) || !Number.isFinite(c.y) || Math.abs(c.y - gy) > 30) {
+      c.y = gy;
+      c.vy = 0;
+      c.air = false;
+      c.flying = false;
+      return 0;
+    }
+    const vyRoad = clamp(vF * (c.gp || 0), -25, 8); // en çok ~1,5 m sıçrar (bariyer / köprü kontrolleri ±4 m)
+    c.airGy = gy;
+    // engebede çok kısa sekmeler direksiyonu kesmesin: "uçuyor" = yerden 35 cm'den yüksekte
+    c.flying = Boolean(c.air) && c.y - gy > 0.35;
+    if (c.air) {
+      c.vy -= CAR_G * dt;
+      c.y += c.vy * dt;
+      c.airT = (c.airT || 0) + dt;
+      if (c.y > gy) return 0;
+      const hit = -c.vy;
+      c.y = gy;
+      c.air = false;
+      c.flying = false;
+      c.vy = vyRoad;
+      return c.airT > 0.25 ? hit : 0;
+    }
+    const groundRate = (gy - c.y) / dt;
+    const vy = c.vy ?? vyRoad;
+    // araba kendi hızıyla zeminden ≥ 3 m/sn hızlı ayrılıyorsa (tepe aşıldı, rampa bitti, basamak)
+    if (vy - CAR_G * dt - groundRate > 3 && (Math.abs(vF) > 4 || gy < c.y - 0.06)) {
+      // zemin altından kaçtı → havalan
+      c.air = true;
+      c.airT = 0;
+      c.vy = vy - CAR_G * dt;
+      c.y += c.vy * dt;
+      return 0;
+    }
+    // yerde: aşağı iniş birebir; yukarı basamak / yokuş yumuşak ama tekerlek yola gömülmez
+    c.y = gy <= c.y ? gy : Math.max(c.y + (gy - c.y) * Math.min(1, dt * 12), gy - 0.12);
+    c.vy = vyRoad;
+    return 0;
   }
   // sıkıştıysa en yakın boş yere çıkar (asla takılı kalmasın)
   function unstick(c) {
@@ -2436,6 +2516,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     // daha geniş döner (dönüş hızdan bağımsız açısal hız), geri giderken ters
     if (horse) yawRate = (c.steer * P.steer * 3.4) / (1 + Math.abs(vF0) * 0.07) * (vF0 < -0.3 ? -1 : 1);
     if (hand && Math.abs(vF0) > 3) yawRate *= 1.45;
+    if (c.flying) yawRate *= 0.15; // v163: havada tekerlek yere değmez — direksiyon neredeyse etkisiz
     c.yaw += yawRate * dt;
     // v154: yön (-π, π] aralığında kalsın — sınırsız büyüyünce fotoğrafta araba ters dönüyordu
     // (sunucu ±50'yi aşan yönü 0 sayar) ve RTDB kuralı (±1000) aşılınca araba yayını kesiliyordu
@@ -2466,11 +2547,16 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       acc -= Math.sign(vF) * 7;
       braking = true;
     }
+    if (c.flying) {
+      // v163: havada gaz / fren tutmaz, sadece hava direnci
+      acc = -vF * 0.02;
+      braking = false;
+    }
     const before = vF;
     vF += acc * dt;
-    if (!thr && Math.sign(vF) !== Math.sign(before)) vF = 0;
+    if (!thr && !c.flying && Math.sign(vF) !== Math.sign(before)) vF = 0;
     const grip = hand ? 1.4 : Math.max(3.2, P.grip - Math.abs(vF) * 0.09);
-    vL *= Math.exp(-grip * dt);
+    if (!c.flying) vL *= Math.exp(-grip * dt);
     c.vx = fx * vF + sx * vL;
     c.vz = fz * vF + sz * vL;
     // v157: otoyolda en yakın rota noktası (bariyer / köprü / tünel için)
@@ -2480,7 +2566,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       c.s = n ? n.s : c.s;
     } else carHint = -1;
     // yokuş: yokuş yukarı yavaşlar, aşağı hızlanır
-    if (c.gp && (thr || Math.abs(vF) > 0.5)) {
+    if (c.gp && !c.air && (thr || Math.abs(vF) > 0.5)) {
       c.vx -= fx * 9.8 * c.gp * 0.3 * dt;
       c.vz -= fz * 9.8 * c.gp * 0.3 * dt;
     }
@@ -2527,7 +2613,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const rollT = c.v.ride === 'horse' ? clamp(-vF * yawRate * 0.008, -0.08, 0.08) : c.v.moto ? clamp(-vF * yawRate * 0.045, -0.6, 0.6) : clamp(vF * yawRate * 0.007, -0.075, 0.075);
     c.roll += (rollT - c.roll) * Math.min(1, dt * 6);
     const slip = Math.abs(vL);
-    const skidding = slip > 2.2 || (hand && Math.abs(vF) > 5) || (braking && Math.abs(vF) > 10);
+    const skidding = !c.flying && (slip > 2.2 || (hand && Math.abs(vF) > 5) || (braking && Math.abs(vF) > 10));
     updateCarVisual(c, dt, vF, delta, braking || (thr < 0 && vF > 0), skidding, yawRate * dt);
     driveStat = { kmh: Math.round(Math.abs(vF) * 3.6), gear: vF < -0.3 ? 'R' : Math.abs(vF) < 0.3 && !thr ? 'N' : String(1 + Math.min(4, Math.floor((Math.abs(vF) / P.vmax) * 5))), ratio: Math.abs(vF) / P.vmax, name: c.v.def.name };
     if (!c.v.silent) sound.update(Math.min(1, Math.abs(vF) / P.vmax), thr, skidding ? Math.min(1, slip / 6 + 0.3) : 0);
@@ -2606,10 +2692,14 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   const wpos = new V();
   function updateCarVisual(c, dt, vF, delta, braking, skidding, dyaw = 0) {
     const v = c.v;
-    c.y += (groundY(c.x, c.z, carHint, c.y) - c.y) * Math.min(1, dt * 10);
-    c.gp = slopeOf(c, c.gp || 0, dt);
+    c.gp = slopeOf(c, c.gp || 0, dt, carHint);
+    const landHit = carVertical(c, groundY(c.x, c.z, carHint, c.y), vF, dt);
+    if (landHit > 6 && c === myCar && driving) {
+      camShake = Math.min(0.5, landHit * 0.035);
+      sound.thump(landHit * 0.8);
+    }
     v.root.position.set(c.x, c.y, c.z);
-    v.root.rotation.set(-Math.atan(c.gp), c.yaw, 0);
+    v.root.rotation.set(-Math.atan(c.gp), c.yaw, Math.atan(c.gr || 0));
     v.tilt.rotation.set(c.pitch, 0, c.roll);
     v.wheels.forEach((w) => {
       w.spin.rotation.z -= (vF * dt) / w.r;
@@ -3322,8 +3412,13 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         topCur[key] += (top[key] - topCur[key]) * k;
       });
       const kt = first ? 1 : 1 - Math.exp(-dt * 10);
-      camTarget.set(camTarget.x + (self.x - camTarget.x) * kt, 0.6, camTarget.z + (self.z - camTarget.z) * kt);
-      camPos.set(camTarget.x + Math.sin(topCur.az) * Math.cos(topCur.el) * topCur.dist, 0.6 + Math.sin(topCur.el) * topCur.dist, camTarget.z + Math.cos(topCur.az) * Math.cos(topCur.el) * topCur.dist);
+      // v162 DÜZELTME: 2D'de kamera eskiden hep 0 yüksekliğine bakıyordu — zemin yükseldikçe (yokuş,
+      // tünel yolu, Kervankent yolu) oyuncu / araba ekranın ortasından kayıp kadrajdan çıkıyordu.
+      // Artık oyuncunun (araçtaysa aracın) gerçek yüksekliği takip edilir → hep ortada.
+      const gy = (driving && myCar ? myCar.y : me.y) || 0;
+      const ty = (Number.isFinite(gy) ? gy : 0) + 0.6;
+      camTarget.set(camTarget.x + (self.x - camTarget.x) * kt, first ? ty : camTarget.y + (ty - camTarget.y) * kt, camTarget.z + (self.z - camTarget.z) * kt);
+      camPos.set(camTarget.x + Math.sin(topCur.az) * Math.cos(topCur.el) * topCur.dist, camTarget.y + Math.sin(topCur.el) * topCur.dist, camTarget.z + Math.cos(topCur.az) * Math.cos(topCur.el) * topCur.dist);
       camera.position.copy(camPos);
       camera.lookAt(camTarget);
       camera.userData.billboardYaw = topCur.az;
@@ -4936,7 +5031,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     },
     horn() {
       sound.start();
-      sound.horn();
+      sound.horn(driving && myCar ? myCar.v?.horn : 'standart'); // v162: modifiyeli korna
     },
     setMuted(m) {
       sound.setMuted(m);

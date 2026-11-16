@@ -14,3 +14,8 @@
 /.well-known/assetlinks.json
   Access-Control-Allow-Origin: *
   Cache-Control: public, max-age=300
+
+# v162 HIZ — derlenmiş oyun dosyaları (adlarında içerik özeti var, içerik değişince adı da değişir)
+# tarayıcıda 1 yıl saklanır: oyun her açılışta ~40 dosyayı tek tek "değişti mi?" diye sormaz.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

@@ -8509,7 +8509,9 @@ export const expireOldMarketplaceListings = onSchedule({ schedule: 'every 24 hou
 // activeTotal), bu yüzden cancelFactoryShareListing İLE BİREBİR AYNI şekilde
 // doküman silinir, iade edilecek ayrı bir "ürün" yok — %'si ANINDA tekrar
 // "elde" sayılır.
-export const expireOldFactoryShareListings = onSchedule({ schedule: 'every 60 minutes' }, async () => {
+// v162 maliyet: hisse ilanı ekranı v124'te kalktı (yeni ilan açılmıyor) — saatlik tarama
+// günde bire indi; kalan eski ilan olursa yine 48 saat sonra temizlenir.
+export const expireOldFactoryShareListings = onSchedule({ schedule: 'every 24 hours' }, async () => {
   const FORTY_EIGHT_HOURS_MS = 48 * 60 * 60 * 1000;
   const now = Date.now();
   const listedSnap = await db.collectionGroup('shares').where('status', '==', 'listed').get();

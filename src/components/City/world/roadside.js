@@ -1816,34 +1816,49 @@ function buildValley(kit, b, wild, npcs, groundAt) {
     }
     const top = gmax + 14;
     const archPanel = (w, h, r) => {
+      // v163: açıklık deliği alt kenara değiyordu → kemerin dibinde ince taş şerit kalıyordu;
+      // artık dış hat kemer biçimi (sol bacak → üst → sağ bacak → kemer kavsi)
       const sh = new THREE.Shape();
       sh.moveTo(-w / 2, 0);
+      sh.lineTo(-r, 0);
+      sh.lineTo(-r, h - r - 0.6);
+      sh.absarc(0, h - r - 0.6, r, PI, 0, true);
+      sh.lineTo(r, 0);
       sh.lineTo(w / 2, 0);
       sh.lineTo(w / 2, h);
       sh.lineTo(-w / 2, h);
       sh.lineTo(-w / 2, 0);
-      const ho = new THREE.Path();
-      ho.moveTo(-r, 0);
-      ho.lineTo(-r, h - r - 0.6);
-      ho.absarc(0, h - r - 0.6, r, PI, 0, true);
-      ho.lineTo(r, 0);
-      ho.lineTo(-r, 0);
-      sh.holes.push(ho);
       const g = new THREE.ExtrudeGeometry(sh, { depth: 2.4, bevelEnabled: false, curveSegments: 10 });
       g.translate(0, 0, -1.2);
       return g;
     };
     const lowerG = archPanel(bay, 8, 2.5);
     const upperG = archPanel(bay / 2, 4.2, 1.2);
+    const base = top - 13.2;
+    // v163: ayaklar iki kemerin birleştiği yerde (bay sınırı), kemerlerle aynı yönde ve her iki
+    // bacağı da taşıyacak genişlikte. Eskiden 90° yanlış dönmüş + yarım bay kaymıştı: komşu kemerin
+    // bacağı ve yıkık açıklığın yanındaki kemerin ucu havada kalıyordu, ayak da kemerin içine taşıyordu.
+    // Ayak, oturduğu yerin en alçak köşesine kadar iner (yamaçta havada kalmaz).
+    const pier = (t) => {
+      const x = cx + p.tx * t;
+      const z = cz + p.tz * t;
+      let gy = Infinity;
+      for (const a of [-1.1, 1.1]) for (const c of [-1.4, 1.4]) gy = Math.min(gy, groundAt(x + p.tx * a + ox * c, z + p.tz * a + oz * c));
+      kit.box(2.2, base - gy + 0.8, 2.7, stoneD, x, gy - 0.8, z, { ry: ry + PI / 2 });
+      kit.solid(x, z, 1.1, 1.35, ry + PI / 2);
+    };
+    const standing = (k) => k >= 0 && k < n && k !== 6 && k !== 7 && k !== 13; // yıkık açıklıklar
+    // uçtaki ayak (yalnız bir yanında kemer var) kemerin altına kayar, boşluğa taşmaz
+    for (let k = 0; k <= n; k++) {
+      const L = standing(k - 1);
+      const R = standing(k);
+      if (L || R) pier((k - n / 2) * bay + (L && R ? 0 : R ? 0.55 : -0.55));
+    }
     for (let k = 0; k < n; k++) {
-      if (k === 6 || k === 7 || k === 13) continue; // yıkık açıklıklar
+      if (!standing(k)) continue;
       const t = (k - (n - 1) / 2) * bay;
       const x = cx + p.tx * t;
       const z = cz + p.tz * t;
-      const gy = groundAt(x, z);
-      const base = top - 13.2;
-      // ayak: zemine kadar uzanır
-      kit.box(1.8, base - gy + 0.6, 2.6, stoneD, x - p.tx * (bay / 2 - 0.9), gy - 0.6, z - p.tz * (bay / 2 - 0.9), { ry });
       const lo = kit.mesh(lowerG, k % 2 ? stoneC : stoneD, x, base, z, ry + PI / 2);
       lo.castShadow = true;
       if (k % 5 !== 2) {
@@ -1853,19 +1868,26 @@ function buildValley(kit, b, wild, npcs, groundAt) {
         }
         kit.box(bay, 0.8, 2.6, stoneD, x, base + 12.2, z, { ry: ry + PI / 2 }); // su kanalı
       }
-      kit.solid(x - p.tx * (bay / 2 - 0.9), z - p.tz * (bay / 2 - 0.9), 0.9, 1.3, ry);
     }
     // devrilmiş taş blokları + sütun parçaları
     for (let k = 0; k < 9; k++) {
       const t = (6.5 - (n - 1) / 2) * bay + (k - 4) * 1.6;
       const x = cx + p.tx * t + ox * ((k % 3) - 1) * 2.2;
       const z = cz + p.tz * t + oz * ((k % 3) - 1) * 2.2;
-      kit.box(1.4, 0.9, 1.1, k % 2 ? stoneC : stoneD, x, groundAt(x, z) - 0.2, z, { ry: k * 0.7 });
+      // v163: yamaçta bir köşesi havada kalmasın — en alçak köşeye oturur
+      let gy = Infinity;
+      for (const a of [-0.75, 0.75]) for (const c of [-0.75, 0.75]) gy = Math.min(gy, groundAt(x + a, z + c));
+      kit.box(1.4, 0.9 + (groundAt(x, z) - gy), 1.1, k % 2 ? stoneC : stoneD, x, gy - 0.2, z, { ry: k * 0.7 });
     }
     for (let k = 0; k < 3; k++) {
       const x = cx - ox * 8 + p.tx * (k * 4 - 4);
       const z = cz - oz * 8 + p.tz * (k * 4 - 4);
-      kit.cyl(0.55, 0.6, 2.6, stoneC, x, groundAt(x, z) + 0.5, z, 12, { rz: PI / 2, ry: k });
+      // v163: yatık sütun — cyl() yüksekliğin yarısını ekliyordu (dik sütuna göre), yatınca 1,2 m havada
+      // kalıyordu; artık ekseni yerden yarıçap kadar yukarıda, en alçak ucuna göre hafif gömülü
+      const ax = Math.cos(k) * 1.3;
+      const az = -Math.sin(k) * 1.3;
+      const gy = Math.min(groundAt(x, z), groundAt(x + ax, z + az), groundAt(x - ax, z - az));
+      kit.mesh(new THREE.CylinderGeometry(0.55, 0.6, 2.6, 12), stoneC, x, gy + 0.42, z, k, { rz: PI / 2 });
     }
     // bilgi tabelası (yol kenarı)
     const sx = p.x + ox * (BR_HALF + 2);

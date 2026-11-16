@@ -10,6 +10,7 @@ import { bizErrText } from '../../lib/bizErrors';
 import { usePlayer } from '../../hooks/usePlayer';
 import { MOD_OPTIONS, MOD_RANGES, modDefaults, sanitizeMods, modCost, roofOptions, cleanPlate, cleanSideNo, cleanSign, modProfile, accOptions, TRAILER_COLOR } from '../../../functions/vehicleMods.js';
 import { vehicleDisplayName } from '../VehicleCard/VehicleCard';
+import { previewHorn } from '../../lib/hornSound.js'; // v162 korna
 import './ModifiyeStudio.css';
 
 // =============================================================================
@@ -28,6 +29,7 @@ const TABS = [
   ['tavan', '🪟', 'Tavan'],
   ['isik', '✨', 'Işık'],
   ['plaka', '🔢', 'Plaka'],
+  ['korna', '📯', 'Korna'], // v162
 ];
 // v151 — ticari araç / motor sekmeleri (alan listesi; çizim genel)
 const FIN3 = MOD_OPTIONS.finish.filter(([k]) => ['parlak', 'metalik', 'mat'].includes(k));
@@ -45,6 +47,7 @@ const RIMTIRE = [
 ];
 const NEON = { t: 'sw', k: 'neonColor', l: 'Neon rengi', list: MOD_OPTIONS.neonColor, custom: false, when: (c) => c.acc?.neon };
 const PLATE = { t: 'plate' };
+const HORN_TAB = ['korna', '📯', 'Korna', [{ t: 'horn' }]]; // v162
 // v159.4: atın don renkleri (doru, yağız, kır, al, kula, beyaz, alaca kahve)
 const HORSE_COATS = ['#5a3a22', '#2a1a12', '#121010', '#8e8a84', '#c9c4bb', '#8a3b1c', '#c99a5b', '#f1ede4', '#6b4a33'];
 const KIND_TABS = {
@@ -54,17 +57,20 @@ const KIND_TABS = {
     ['govde', '🔧', 'Gövde', [{ t: 'range', k: 'ride', l: 'Süspansiyon', f: (v) => rideLabel(v) }, { t: 'opts', k: 'exhaust', l: 'Egzoz', list: MOD_OPTIONS.exhaust }, { t: 'acc', l: 'Parçalar', only: ['spoiler', 'skirts'] }]],
     ['isik', '✨', 'Işık', [{ t: 'acc', l: 'Işıklar', only: ['fog', 'neon'] }, NEON]],
     ['plaka', '🔢', 'Plaka', [PLATE]],
+    HORN_TAB,
   ],
   police: [
     ['tip', '🚓', 'Tip', [{ t: 'opts', k: 'polType', l: 'Araç tipi', list: MOD_OPTIONS.polType }]],
     ['jant', '🛞', 'Jant', WHEELS],
     ['govde', '🔧', 'Gövde', [{ t: 'range', k: 'ride', l: 'Süspansiyon', f: (v) => rideLabel(v) }, { t: 'acc', l: 'Parçalar' }]],
     ['plaka', '🔢', 'Plaka', [PLATE]],
+    HORN_TAB,
   ],
   ambulance: [
     ['tip', '🚑', 'Tip', [{ t: 'opts', k: 'ambType', l: 'Araç tipi', list: MOD_OPTIONS.ambType }]],
     ['jant', '🛞', 'Jant', RIMTIRE],
     ['plaka', '🔢', 'Plaka', [PLATE]],
+    HORN_TAB,
   ],
   bus: [
     ['tip', '🚌', 'Tip', [{ t: 'opts', k: 'variant', l: 'Otobüs tipi', list: MOD_OPTIONS.variant }]],
@@ -72,6 +78,7 @@ const KIND_TABS = {
     ['tabela', '🪧', 'Tabela', [{ t: 'text', k: 'sign', l: 'Güzergâh tabelası', max: 22, clean: (v) => cleanSign(v, 22) }, PLATE]],
     ['jant', '🛞', 'Jant', RIMTIRE],
     ['aks', '🔧', 'Aksesuar', [{ t: 'acc', l: 'Parçalar' }, NEON]],
+    HORN_TAB,
   ],
   truck: [
     ['dorse', '🚛', 'Dorse', [{ t: 'opts', k: 'trailer', l: 'Dorse tipi', list: MOD_OPTIONS.trailer, also: (v) => ({ trailerColor: TRAILER_COLOR[v] }) }, { t: 'sw', k: 'trailerColor', l: 'Dorse rengi', list: MOD_OPTIONS.paint }, { t: 'text', k: 'company', l: 'Firma adı', max: 16, clean: (v) => cleanSign(v, 16) }]],
@@ -79,11 +86,13 @@ const KIND_TABS = {
     ['jant', '🛞', 'Jant', RIMTIRE],
     ['aks', '🔧', 'Aksesuar', [{ t: 'acc', l: 'Parçalar' }, NEON]],
     ['plaka', '🔢', 'Plaka', [PLATE]],
+    HORN_TAB,
   ],
   moto: [
     ['boya', '🎨', 'Boya', [{ t: 'sw', k: 'paint', l: 'Renk', list: MOD_OPTIONS.paint }, { t: 'opts', k: 'finish', l: 'Yüzey', list: FIN4 }]],
     ['isik', '✨', 'Işık', [{ t: 'acc', l: 'Işık' }, NEON]],
     ['plaka', '🔢', 'Plaka', [PLATE]],
+    HORN_TAB,
   ],
   // v159.4 — bisiklet ve at kendine göre: plaka yok, yüzey (mat / krom…) yok
   bike: [
@@ -392,6 +401,37 @@ function DraftText({ value, max, clean, onChange }) {
 }
 
 // v151 — ticari / motor sekme gövdesi (KIND_TABS listesinden)
+// v162 — korna seçimi: her seçenek ilk dokunuşta çalar, "▶ Dinle" seçili kornayı tekrar çalar
+function HornRow({ cfg, set, priceOf }) {
+  const value = cfg.horn || 'standart';
+  return (
+    <Row label="Korna">
+      <div className="ms-opts">
+        {MOD_OPTIONS.horn.map(([v, l, sub]) => {
+          const pr = value === v ? 0 : priceOf({ horn: v });
+          return (
+            <button
+              key={v}
+              className={value === v ? 'on' : ''}
+              onClick={() => {
+                previewHorn(v);
+                set({ horn: v });
+              }}
+            >
+              {l}
+              {sub && <small>{sub}</small>}
+              {pr > 0 && <i>+{fmt(pr)}</i>}
+            </button>
+          );
+        })}
+      </div>
+      <button className="ms-ghost ms-horn-play" onClick={() => previewHorn(value)}>
+        ▶ Dinle
+      </button>
+      <p className="ms-hint">Korna sadece sestir; şehirde sürerken 📯 düğmesiyle çalar.</p>
+    </Row>
+  );
+}
 function KindBody({ spec, cfg, base, set, priceOf, cid, plateDraft, setPlateDraft }) {
   const diff = (k) => JSON.stringify(cfg[k]) !== JSON.stringify(base[k]);
   return spec.map((c, i) => {
@@ -440,6 +480,7 @@ function KindBody({ spec, cfg, base, set, priceOf, cid, plateDraft, setPlateDraf
         </Row>
       );
     }
+    if (c.t === 'horn') return <HornRow key={i} cfg={cfg} set={set} priceOf={priceOf} />;
     if (c.t === 'plate')
       return (
         <Row key={i} label="Plaka" price={cfg.plate !== base.plate ? priceOf({ plate: cfg.plate }) : 0}>
@@ -676,6 +717,7 @@ export default function ModifiyeStudio({ vehicle, shop, isOwner = false, onClose
               )}
             </>
           )}
+          {prof === 'car' && tab === 'korna' && <HornRow cfg={cfg} set={set} priceOf={priceOf} />}
           {prof === 'car' && tab === 'plaka' && (
             <Row label="Plaka" price={cfg.plate !== base.plate ? priceOf({ plate: cfg.plate }) : 0}>
               <input
