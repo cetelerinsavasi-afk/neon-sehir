@@ -34,6 +34,7 @@ import { createVenue } from './venue.js';
 import { createOffice } from './office.js';
 import { createPresenceSummary } from './presenceSummary.js';
 import { createCron } from './cron.js';
+import { createReadStats } from './readStats.js'; // v165 geçici ölçüm
 import { createGym, gymPriceOf, withBonus, botGymPool } from './gym.js';
 import { createFutbolPro, assignGoalCredits, computeMatchRatings } from './futbolPro.js';
 import { futbolDayKey, prevDayKey, bizDayStartMs, midnightDayKey } from './businessCatalogData.js';
@@ -8551,6 +8552,10 @@ export const expireOldFactoryShareListings = onSchedule({ schedule: 'every 24 ho
 // (src/lib/serverClock.js). Okuma/yazma yok; oturum başına birkaç çağrı.
 // ---------------------------------------------------------------------------
 export const serverTime = onCallRaw({ memory: '128MiB', timeoutSeconds: 10 }, () => ({ now: Date.now() }));
+
+// v165 — GEÇİCİ ÖLÇÜM: istemci okuma kaynakları (bkz. readStats.js). Veritabanına dokunmaz.
+const readStats = createReadStats({ onCall: onCallRaw });
+export const clientReadStats = readStats.clientReadStats;
 
 // ---------------------------------------------------------------------------
 // markMessageRead — SMS gelen kutusundaki bir mesajı okundu olarak işaretler.

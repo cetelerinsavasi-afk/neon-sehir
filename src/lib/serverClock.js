@@ -76,3 +76,14 @@ export function syncServerClock(call, { force = false } = {}) {
   })();
   return running;
 }
+
+// v165 — MALİYET + HIZ: fark artık öncelikle Realtime Database bağlantısının el sıkışmasından
+// (.info/serverTimeOffset) gelir — fonksiyon çağrısı, soğuk başlatma yok (bkz. serverClockSync.js).
+// Aynı apply() kullanılır: 400 ms'den küçük oynamalar saati zıplatmaz.
+export function applyServerOffset(next) {
+  const n = Number(next);
+  if (!Number.isFinite(n) || Math.abs(n) > 30 * 86400_000) return offset;
+  apply(Math.round(n));
+  lastSyncAt = realNow();
+  return offset;
+}

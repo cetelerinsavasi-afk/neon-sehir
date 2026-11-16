@@ -8,7 +8,7 @@ import { useFutbolSeasonState } from '../../hooks/useFutbolSeasonState';
 import { useFutbolCup } from '../../hooks/useFutbolCup';
 import { useMyFutbolCupBets } from '../../hooks/useMyFutbolCupBets';
 import { useMyFutbolBets } from '../../hooks/useMyFutbolBets';
-import { seedFutbolWorld, ensureFutbolBotTreasuryFix } from '../../services/gameActions';
+import { seedFutbolWorld } from '../../services/gameActions';
 import { useNowTick, computeLiveMatchState, pickFutbolDisplayRound, istanbulDateKey } from './futbolLiveMatch';
 import FutbolMatchDetail from './FutbolMatchDetail';
 import FutbolCrest from './FutbolCrest';
@@ -121,9 +121,10 @@ export default function FutbolLigler({ initialTab = 'puan', chatReadOnly = false
   // BİREBİR AYNI desen: idempotent (bir kez uygulanır, sonraki tüm çağrılar
   // anında no-op döner), admin/buton gerekmez, hatası kullanıcıyı hiç
   // etkilemesin diye sessizce yutulur.
-  useEffect(() => {
-    ensureFutbolBotTreasuryFix().catch(() => {});
-  }, []);
+  // v165 maliyet: iki tek seferlik düzeltme de (futbolBotTreasurySet100kV1,
+  // futbolBotPlayerBoostV1) sunucuda tamamlandı (migrations bayrakları var) — her açılışta
+  // boşuna fonksiyon çağrısı yapılmıyor. Sunucudaki fonksiyon eski istemciler için duruyor.
+  // useEffect(() => { ensureFutbolBotTreasuryFix().catch(() => {}); }, []);
 
   const teamNameById = useMemo(() => {
     const map = {};

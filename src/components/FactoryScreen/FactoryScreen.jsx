@@ -21,6 +21,7 @@ import {
   reassignEmployee,
   ensureFactoryMigrationsV38,
 } from '../../services/gameActions';
+import { runOncePerIstanbulDay } from '../../lib/dailyGate';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import FactoryBadge from './FactoryBadge';
@@ -1282,8 +1283,10 @@ export default function FactoryScreen() {
   const { player } = usePlayer();
   const { factory, machines } = useMyFactory();
   // v38: yasaklı madde makinesi göçü (sunucuda idempotent; bir kez çalışır)
+  // v165 maliyet: geçişler bitti; kalan iş (00:00 yedeği) cihaz başına günde 1 kez yeter
+  // (00:00–00:20 arası her açılışta, eskisi gibi) — bkz. lib/dailyGate.js
   useEffect(() => {
-    if (user) ensureFactoryMigrationsV38().catch(() => {});
+    if (user) runOncePerIstanbulDay('neon.factoryFallbackDay', () => ensureFactoryMigrationsV38()).catch(() => {});
   }, [user]);
 
   if (!user) {
