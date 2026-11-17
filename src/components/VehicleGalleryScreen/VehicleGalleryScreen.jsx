@@ -54,7 +54,7 @@ export default function VehicleGalleryScreen({ items = null, onBuy = null, disab
   const [tab, setTab] = useState('araba');
   const feedbackTimeouts = useRef({});
   // v132: oyunun galerisi — en ucuz oyuncu galerisinin fiyatı
-  const best = useShopOffers('vehicle', { enabled: !items && Boolean(user) });
+  const best = useShopOffers('vehicle', { enabled: !items && Boolean(user), excludeMine: true });
 
   useEffect(
     () => () => {

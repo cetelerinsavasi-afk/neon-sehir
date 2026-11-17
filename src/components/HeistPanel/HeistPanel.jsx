@@ -26,7 +26,8 @@ import { holdNotifications } from '../../lib/notifHold'; // v160.7
 import './HeistPanel.css';
 
 // v154 — şehir dışında soygun videosu (şehir motorunu sadece video açılınca yükler)
-const HeistVideo = lazy(() => import('../City/HeistVideo'));
+const loadHeistVideo = () => import('../City/HeistVideo');
+const HeistVideo = lazy(loadHeistVideo);
 
 // emoji: regions.js'teki TEK kaynaktan (regionEmojis) geliyor — yeni istek:
 // "Soygun'daki tüm mekanları emojilerle görsel olarak daha iyi hale
@@ -293,6 +294,13 @@ export default function HeistPanel({ target, onRun = null }) {
   const [result, setResult] = useState(null);
   const [videoJob, setVideoJob] = useState(null);
   const videoDone = useRef(null);
+  // v166 HIZ: soygun paneli açılınca video dosyası (şehir motoru) arka planda önceden hazırlanır →
+  // "Soygun başlat"a basınca video daha çabuk açılır. Şehrin içinden (onRun) gerek yok, motor zaten açık.
+  useEffect(() => {
+    if (onRun || !user) return undefined;
+    const t = setTimeout(() => loadHeistVideo().catch(() => {}), 1200);
+    return () => clearTimeout(t);
+  }, [onRun, user]);
 
   // v154 — soygunu başlatan için video. Şehirde (onRun verilmiş) şehrin kendi motoru oynatır;
   // burada (Mekanlar › Soygun) tam ekran HeistVideo. Dönüş: { data, played }.

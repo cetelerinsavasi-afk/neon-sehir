@@ -245,11 +245,15 @@ class Fig {
     this.motoHat = null;
     this.tex = lazy ? { ready: false, tex: {}, lazy: true } : texUse(null, avatarTextures(avatar));
     this.avKey = JSON.stringify(avatar || null);
+    this.avBaseKey = this.avKey;
     this.setExtras(avatar);
   }
   setAvatar(av) {
     const k = JSON.stringify(av || null);
-    if (k === this.avKey && !this.hatOn) return;
+    // v166: avatar aynıysa hiçbir şey yapılmaz. Eskiden motordaki (kasklı) her oyuncu için, ağdan her
+    // kayıt geldiğinde (saniyede birkaç kez) kask çıkarılıp yeniden takılıyordu → sürekli doku işi.
+    if (k === (this.avBaseKey ?? this.avKey)) return;
+    this.avBaseKey = k;
     this.avBase = av;
     this.hatOn = null;
     this.avKey = k;
@@ -1731,10 +1735,13 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       }
       const v = buildVehicle(st.v, mods);
       v.root.rotation.order = 'YXZ'; // v157: yokuşta gövde eğimi
-      const head = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 7.5), headMat('#ffe9b8', 0.45));
-      head.rotation.x = -Math.PI / 2;
-      head.position.set(0, 0.04, v.len / 2 + 3.9);
-      v.root.add(head);
+      if (!v.silent) {
+        // v166: bisiklet / atta far ışığı yok (diğer oyuncuların atında da)
+        const head = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 7.5), headMat('#ffe9b8', 0.45));
+        head.rotation.x = -Math.PI / 2;
+        head.position.set(0, 0.04, v.len / 2 + 3.9);
+        v.root.add(head);
+      }
       scene.add(v.root);
       c = { v, id: st.v, mk, x: st.x, z: st.z, y: groundY(st.x, st.z), yaw: st.y, tx: st.x, tz: st.z, tyaw: st.y, spd: 0, steer: 0, t: 0, yr: 0, ex: 0, ez: 0, eyaw: 0 };
       rcars.set(uid, c);
@@ -4420,10 +4427,12 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         }
         const v = buildVehicle(c.v, mods);
         setPax({ v }, Math.max(0, (Number(c.j) || 0) - 1), Number(c.j) > 0);
-        const head = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 7.5), headMat('#ffe9b8', 0.45));
-        head.rotation.x = -Math.PI / 2;
-        head.position.set(0, 0.04, v.len / 2 + 3.9);
-        v.root.add(head);
+        if (!v.silent) {
+          const head = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 7.5), headMat('#ffe9b8', 0.45));
+          head.rotation.x = -Math.PI / 2;
+          head.position.set(0, 0.04, v.len / 2 + 3.9);
+          v.root.add(head);
+        }
         v.root.visible = false;
         scene.add(v.root);
         tmpCars.set(c.o, { v, x: c.x, z: c.z, y: c.y || 0, yaw: c.r || 0, steer: c.st || 0, mk: typeof c.m === 'string' ? c.m : null });

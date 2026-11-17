@@ -28,7 +28,7 @@ export default function WeaponShopScreen({ items = null, onBuy = null, disabledT
     []
   );
   // v132: oyunun mağazası — en ucuz oyuncu silahçısının fiyatı
-  const best = useShopOffers('weapon', { enabled: !items && Boolean(user) });
+  const best = useShopOffers('weapon', { enabled: !items && Boolean(user), excludeMine: true });
 
   if (!user) {
     return <SignInPrompt message="Silah satın almak için giriş yapmalısın." />;

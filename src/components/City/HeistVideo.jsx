@@ -138,10 +138,11 @@ export default function HeistVideo({ job, onClose }) {
           <p>{isVendorHeist(job.target) ? 'Haraç kesiliyor…' : 'Soygun başlıyor…'}</p>
         </div>
       )}
-      {/* v156: soygunda yüklenirken sağ altta düğme yok (videonun kendi "Geç"i var); haraçta sağ üstte */}
-      {isVendorHeist(job.target) && (
-        <button className="hv-skip" onClick={() => closeRef.current?.()}>
-          Geç
+      {/* v166: soygunda da video başlamadan (yüklenirken) "Geç" — beklemeden sonuca geçilir.
+          Video başlayınca videonun kendi "Geç"i görünür. Haraçta her zaman. */}
+      {(isVendorHeist(job.target) || phase === 'load') && (
+        <button type="button" className="hv-skip" onPointerUp={() => closeRef.current?.()} onClick={() => closeRef.current?.()}>
+          Geç ⏭
         </button>
       )}
     </div>,

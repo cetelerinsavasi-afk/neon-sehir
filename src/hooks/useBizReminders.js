@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { collection, doc, limit, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
+import { setMyShopIds } from '../lib/myShops';
 import { useFootballer, useMyGymMembership } from './useGym';
 import { CASINO_MACHINES, CASINO_LOW_GOLD } from '../../functions/casino.js';
 import { SLOT_MIN_STOCK } from '../../functions/casinoRules.js';
@@ -32,12 +33,14 @@ export function useBizReminders() {
     }
     return onSnapshot(
       query(collection(db, 'houses'), where('ownerUid', '==', uid), limit(20)),
-      (s) =>
+      (s) => {
+        setMyShopIds(uid, s.docs.map((d) => d.id)); // v166: oyunun mağazası kendi dükkânımı göstermesin
         setShops(
           s.docs
             .map((d) => ({ id: d.id, type: d.data().biz?.type || null, name: d.data().name || '' }))
             .filter((h) => h.type === 'galeri' || h.type === 'silahci' || h.type === 'depo' || h.type === 'gazino')
-        ),
+        );
+      },
       () => setShops([])
     );
   }, [uid]);

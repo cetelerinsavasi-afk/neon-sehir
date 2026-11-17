@@ -20,6 +20,8 @@ import {
   advertiseListing,
 } from '../../services/gameActions';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
+import { itemListingBand } from '../../../functions/itemRules.js'; // v166: 2. el fiyat aralığı sunucuyla birebir
+import { canRepairVehicle } from '../../../functions/vehicleKinds.js';
 import { weaponCatalog } from '../../data/weaponCatalog';
 import { MAX_REPAIRS, vehicleDisplayName, lifeCapOf, repairBonusOf } from '../VehicleCard/VehicleCard';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
@@ -121,12 +123,14 @@ function valueRatio(item, kind = 'vehicle') {
   return valueRatioFromLife(item?.lifeDays, item?.repairsUsed, kind);
 }
 
+// v166 — AT / BİSİKLET / MOTOR / TİCARİ 2. ELDE SATILAMIYORDU: bu araçlar tamir edilemez, sunucu
+// değerlerini sadece kalan ömürden hesaplıyor (functions/itemRules.js itemListingBand). Ekran ise
+// tamir hakkını da sayıyordu → ömrü biraz azalmış atın ekrandaki EN DÜŞÜK fiyatı bile sunucunun en
+// yüksek fiyatını aşıyor, "Fiyat … arasında olmalı" hatasıyla ilan hiç verilemiyordu.
+// Artık aralık doğrudan sunucunun formülüyle hesaplanır (tek kaynak).
 function vehiclePriceRange(vehicle) {
-  const base = vehicleCatalog.find((v) => v.id === vehicle.catalogId)?.price || 0;
-  // v86: sunucuyla aynı — araç seviyesi (raceLevel; eski vites/depo geliştirmeleri seviyeye sayılır)
-  const mult = vehicleLevelOf(vehicle.raceLevel, vehicle.gearUpgraded, vehicle.tankUpgraded);
-  const max = Math.round(base * mult * valueRatio(vehicle));
-  return { min: Math.floor(max / 2), max };
+  const { min, max } = itemListingBand('vehicle', vehicle);
+  return { min, max };
 }
 
 function weaponPriceRange(weapon) {
@@ -154,10 +158,12 @@ function materialUnitPriceRange(materialType) {
 function estimateValue({ kind, catalogId, repairsUsed, lifeDays, level }) {
   const catalog = kind === 'vehicle' ? vehicleCatalog : weaponCatalog;
   const base = catalog.find((x) => x.id === catalogId)?.price || 0;
-  const lvl = Math.max(1, Math.min(3, Number(level) || 1));
+  // v166: tamir edilemeyen araç (motor / bisiklet / at / ticari) — sunucuyla aynı: seviye yok, tamir hakkı sayılmaz
+  const noRepair = kind === 'vehicle' && catalogId != null && !canRepairVehicle(catalogId);
+  const lvl = noRepair ? 1 : Math.max(1, Math.min(3, Number(level) || 1));
   const max = base * lvl;
   const cap = lifeCapOf(kind);
-  const bonus = repairBonusOf(kind);
+  const bonus = noRepair ? 0 : repairBonusOf(kind);
   const total = cap + MAX_REPAIRS * bonus;
   const life = Math.max(0, Math.min(cap, lifeDays ?? cap));
   const left = life + Math.max(0, MAX_REPAIRS - (repairsUsed || 0)) * bonus;
@@ -215,14 +221,15 @@ function cannotAfford(listing, gold) {
 
 function listingCeilingPrice(listing) {
   if (listing.itemType === 'vehicle') {
-    const base = vehicleCatalog.find((v) => v.id === listing.vehicleCatalogId)?.price || 0;
-    const mult =
-      listing.vehicleGearUpgraded && listing.vehicleTankUpgraded
-        ? 3
-        : listing.vehicleGearUpgraded || listing.vehicleTankUpgraded
-          ? 2
-          : 1;
-    return Math.round(base * mult * valueRatioFromLife(listing.vehicleLifeDays, listing.vehicleRepairsUsed));
+    // v166: sunucunun ilan tavanıyla aynı formül (tamir edilemeyen at / motor / ticari dahil)
+    return itemListingBand('vehicle', {
+      catalogId: listing.vehicleCatalogId,
+      lifeDays: listing.vehicleLifeDays,
+      repairsUsed: listing.vehicleRepairsUsed,
+      raceLevel: listing.vehicleRaceLevel,
+      gearUpgraded: listing.vehicleGearUpgraded,
+      tankUpgraded: listing.vehicleTankUpgraded,
+    }).max;
   }
   if (listing.itemType === 'weapon') {
     const base = weaponCatalog.find((w) => w.id === listing.weaponCatalogId)?.price || 0;

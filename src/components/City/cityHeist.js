@@ -922,9 +922,9 @@ function k6(t) {
       (u.title.innerHTML = `<small>NEON \u015EEH\u0130R</small><b>${A.title}</b><i>${pn ? "Tek ba\u015F\u0131na" : `${Ge} ki\u015Filik ekip`}</i>`),
       u.title.classList.add("on"),
       g.sting(),
-      await te(1.4),
+      await te(0.9), // v166: açılış kartı kısaldı (1,4 sn → 0,9 sn)
       u.title.classList.remove("on"),
-      await oe(!1, 0.35),
+      await oe(!1, 0.25),
       pn ? await lt(qe) : await Ln());
     async function Ln() {
       (g.vroom(),

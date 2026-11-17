@@ -156,6 +156,19 @@ function HoldBtn({ className, onHold, children }) {
     </button>
   );
 }
+// v166: hız göstergesi kendi kendini günceller (motorun son durumu hudRef'te). Eskiden km/s her
+// değiştiğinde tüm şehir ekranı (CityScreen) saniyede ~10 kez yeniden çiziliyordu → telefonda kasma.
+function LiveSpeedo({ hudRef }) {
+  const [d, setD] = useState(() => hudRef.current?.drive || null);
+  useEffect(() => {
+    const id = setInterval(() => {
+      const n = hudRef.current?.drive || null;
+      setD((o) => (o && n && o.gear === n.gear && Math.round(o.kmh) === Math.round(n.kmh) && Math.abs((o.ratio || 0) - (n.ratio || 0)) < 0.04 ? o : n ? { kmh: n.kmh, gear: n.gear, ratio: n.ratio } : null));
+    }, 120);
+    return () => clearInterval(id);
+  }, [hudRef]);
+  return <Speedo kmh={Math.round(d?.kmh || 0)} gear={d?.gear || 'N'} ratio={d?.ratio || 0} />;
+}
 function Speedo({ kmh, gear, ratio }) {
   const R = 54;
   const start = Math.PI * 0.75;
@@ -279,6 +292,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const [panel, setPanel] = useState(null);
   const [haracHide, setHaracHide] = useState(false); // v153: animasyon oynarken haraç penceresi gizli
   const [heistOn, setHeistOn] = useState(false); // v154: soygun videosu oynarken şehir arayüzü gizli
+  const [heistWait, setHeistWait] = useState(false); // v166: video başlamadan önceki bekleme (Geç düğmesi)
+  const heistSkipRef = useRef(false);
   const [toast, setToast] = useState(null);
   const [msgs, setMsgs] = useState([]);
   const [run, setRun] = useState(true); // v160.3: şehirde hızlı koşma varsayılan açık
@@ -609,11 +624,11 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           const atPump = Boolean(s.driving && s.car && Math.hypot(s.car.x - PUMPS.x, s.car.z - PUMPS.z) < PUMPS.r);
           setAtPump((v) => (v === atPump ? v : atPump));
           drawMiniRef.current?.();
+          // v166: sadece sürüş durumu + araç adı (hız göstergesi LiveSpeedo'da ayrı güncellenir)
           setHud((h) => {
-            const d = s.drive;
-            const hd = h.drive;
-            const same = h.driving === Boolean(s.driving) && h.riding === Boolean(s.riding) && (!d ? !hd : hd && hd.name === d.name && hd.gear === d.gear && Math.round(hd.kmh) === Math.round(d.kmh) && Math.abs((hd.ratio || 0) - (d.ratio || 0)) < 0.04);
-            return same ? h : { driving: Boolean(s.driving), riding: Boolean(s.riding), drive: d ? { ...d } : null };
+            const nm = s.drive?.name || null;
+            const same = h.driving === Boolean(s.driving) && h.riding === Boolean(s.riding) && (h.drive?.name || null) === nm;
+            return same ? h : { driving: Boolean(s.driving), riding: Boolean(s.riding), drive: s.drive ? { name: nm } : null };
           });
         },
         onReady: () => setReady(true),
@@ -1248,14 +1263,18 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const cardInfo = card ? namesRef.current.get(card) : null;
   // v154: mekân soygunu — soygunu başlatan videoyu şehrin kendi motorunda izler (Firestore yok).
   // v157.4: şehrin Soygun panelinden (Mekanlar › Soygun) başlatılan soygun da aynı yolu kullanır
+  // v166: sunucu cevabı beklenirken (video henüz başlamadı) de "Geç" — basınca video oynatılmaz,
+  // sonuç doğrudan gösterilir (sunucu işlemi aynen sürer, sonuç kaybolmaz)
   const runCityHeist = async (fn, ctx) => {
     const eng = engineRef.current;
+    heistSkipRef.current = false;
+    setHeistWait(true);
     setHeistOn(true);
     try {
-      const res = await fn();
+      const res = await Promise.resolve().then(fn).finally(() => setHeistWait(false));
       const oc = heistOutcomeOf(res?.data);
       const scene = heistSceneOf(ctx?.target);
-      if (!oc || !scene || !eng?.heist) return { data: res?.data, played: false };
+      if (heistSkipRef.current || !oc || !scene || !eng?.heist) return { data: res?.data, played: false };
       const car = heistCarOf(uid);
       const played = await new Promise((resolve) => {
         const ok = eng.heist.start({ target: scene, crew: ctx.crew, outcome: oc.outcome, reward: oc.amount, ...car, onDone: () => resolve(true) });
@@ -1270,6 +1289,27 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   return (
     <div className={`hs-root cs-root${driving ? ' driving' : ''}${heistOn ? ' cs-heist-on' : ''}${rotated ? ' cs-rotated' : ''}${landscape ? ' cs-land' : ''}${vui && (vui.biz || vui.region || vui.inCity || vui.heist) ? ' cs-vbtn' : ''}`} style={covered ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}>
       <div className="hs-stage" ref={stageRef} />
+      {heistOn && heistWait && (
+        <div className="cs-heist-wait">
+          <p>{heistWait === 'skip' ? 'Sonuç bekleniyor…' : 'Soygun başlıyor…'}</p>
+          {heistWait !== 'skip' && (
+            <button
+              type="button"
+              className="hv-skip"
+              onPointerUp={() => {
+                heistSkipRef.current = true;
+                setHeistWait('skip');
+              }}
+              onClick={() => {
+                heistSkipRef.current = true;
+                setHeistWait('skip');
+              }}
+            >
+              Geç ⏭
+            </button>
+          )}
+        </div>
+      )}
       {!ready && !fatal && (
         <div className="hs-loading cs-loading">
           <div className="hs-spinner" />
@@ -1656,7 +1696,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                 <HoldBtn className="cs-round" onHold={(on) => setDrive({ steer: on ? 1 : 0 })}>▶</HoldBtn>
               </div>
               {/* v153: iç kamerada kokpitin kendi göstergeleri var */}
-              {carCam !== 'in' && <Speedo kmh={drive?.kmh || 0} gear={drive?.gear || 'N'} ratio={drive?.ratio || 0} />}
+              {carCam !== 'in' && <LiveSpeedo hudRef={hudRef} />}
               <div className="cs-pedals">
                 <button className="cs-round sm" onPointerDown={() => engineRef.current.horn()}>📯</button>
                 <HoldBtn className="cs-round sm hb" onHold={(on) => setDrive({ hand: on })}>🅿️</HoldBtn>

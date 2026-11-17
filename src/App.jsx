@@ -80,14 +80,35 @@ const TuningGarageWorldScreen = lazyScreen(() => import('./components/TuningGara
 const GuestVenue = lazyScreen(() => import('./components/Guest/GuestVenue'));
 const CityScreen = lazyScreen(() => import('./components/City/CityScreen')); // v147 — gezilebilir şehir
 
+// v166 HIZ: ekran dosyaları sadece İNDİRİLİR (modulepreload — çalıştırılmaz). Eskiden hepsi
+// import() ile çalıştırılıyordu: açılıştan sonra telefonda saniyelerce kasma + kalıcı bellek.
+// Liste derlemede çıkarılır (vite.config.js › prefetchList). Liste yoksa (geliştirme) hiçbir şey yapılmaz.
 function prefetchScreens() {
-  let i = 0;
-  const next = () => {
-    if (i >= LAZY_LOADERS.length) return;
-    LAZY_LOADERS[i++]().catch(() => {});
-    (window.requestIdleCallback || ((f) => setTimeout(f, 300)))(next);
-  };
-  next();
+  void LAZY_LOADERS; // (eski yol: hepsini çalıştırmak — kullanılmıyor)
+  const idle = (f) => (window.requestIdleCallback ? window.requestIdleCallback(f, { timeout: 4000 }) : setTimeout(f, 400));
+  fetch('/prefetch-list.json', { cache: 'no-cache' })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((list) => {
+      if (!Array.isArray(list)) return;
+      const have = new Set([...document.querySelectorAll('link[rel="modulepreload"], link[rel="prefetch"], script[src]')].map((l) => l.getAttribute('href') || l.getAttribute('src')));
+      const urls = list.filter((u) => typeof u === 'string' && u.startsWith('/assets/') && !have.has(u));
+      let i = 0;
+      const next = () => {
+        // aynı anda en fazla 3 dosya (oyunun kendi istekleri sıkışmasın)
+        for (let k = 0; k < 3 && i < urls.length; k++) {
+          const u = urls[i++];
+          const l = document.createElement('link');
+          l.rel = u.endsWith('.js') ? 'modulepreload' : 'prefetch';
+          if (u.endsWith('.css')) l.as = 'style';
+          l.crossOrigin = '';
+          l.href = u;
+          document.head.appendChild(l);
+        }
+        if (i < urls.length) idle(next);
+      };
+      idle(next);
+    })
+    .catch(() => {});
 }
 
 const RACE_TRACK_REGION = regions.find((r) => r.screen === 'yaris-pisti');
