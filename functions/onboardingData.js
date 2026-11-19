@@ -20,24 +20,33 @@
 // Sunucu oyuncunun adımını ilk ilerlemede yeni sırayla yazar (onboardingV: 2).
 // =============================================================================
 
-export const ONBOARDING_V = 2;
+// v167: ONBOARDING_V 2 → 3 — "Fabrikada çalış" (id 1) 1. ile 2. görevin arasına geri eklendi.
+// v2 kaydı olan oyuncunun 2. ve sonraki sıraları +1 kayar (yeni görevi YAPMAK ZORUNDA kalmaz, geri
+// gitmez); 1. sıradakiler (ışınlanma görevi) ve yeni oyuncular yeni görevi sırası gelince yapar.
+export const ONBOARDING_V = 3;
 export const ONBOARDING_REMOVED_IDS = [8, 15, 18];
 // v160.3: 1. görev (fabrikada çalış, id 1) → "mini haritadan ışınlan" (id 21).
-// SIRA aynı kaldığı için V artırılmadı: 1. sıradaki herkes yeni görevi görür,
-// ilerisindekiler etkilenmez.
-export const ONBOARDING_ORDER = [21, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 16, 17, 19, 20];
-export const ONBOARDING_TASK_COUNT = ONBOARDING_ORDER.length; // 17
+// v167: fabrikada çalış (id 1) 2. sıraya geri geldi — maaş alınınca (sunucu: fabrika üretimi) geçer.
+export const ONBOARDING_ORDER = [21, 1, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 16, 17, 19, 20];
+export const ONBOARDING_TASK_COUNT = ONBOARDING_ORDER.length; // 18
+const V2_INSERT_AT = 2; // v167: v2 listesinde bu sıra ve sonrası +1 kayar
 
-// Eski (v1) adım numarası → yeni sıra
+// Eski (v1) adım numarası → v2 sırası (v124 geçişi; v2 listesine göre: 17 görev)
 export function migrateOnboardingStep(oldStep) {
   const s = Math.max(1, Math.floor(Number(oldStep) || 1));
   return s - ONBOARDING_REMOVED_IDS.filter((r) => r < s).length;
+}
+// v2 sırası → v3 sırası
+export function migrateV2Step(pos2) {
+  const p = Math.max(1, Math.floor(Number(pos2) || 1));
+  return p >= V2_INSERT_AT ? p + 1 : p;
 }
 
 // Oyuncunun yeni sıradaki adımı (1 … COUNT+1)
 export function onboardingPosOf(user) {
   const raw = Math.max(1, Math.floor(Number(user?.onboardingStep) || 1));
-  const pos = user?.onboardingV === ONBOARDING_V ? raw : migrateOnboardingStep(raw);
+  const v = user?.onboardingV;
+  const pos = v === ONBOARDING_V ? raw : v === 2 ? migrateV2Step(raw) : migrateV2Step(migrateOnboardingStep(raw));
   return Math.min(ONBOARDING_TASK_COUNT + 1, Math.max(1, pos));
 }
 

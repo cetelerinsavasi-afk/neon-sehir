@@ -968,30 +968,76 @@ export function finishCityWorld(W, scene) {
     ...rsGeo().gaps.filter((g) => g.side === side).map((g) => [g.s0, g.s1]),
   ];
   const RAIL_EX = { 1: railEx(1), [-1]: railEx(-1) };
+  // v167 — AKÇAY KÖPRÜSÜ ALTI: eskiden köprünün iki yanında ~25 m genişliğinde görünmez bir duvar vardı
+  // (tabliyenin altı "şev" sayılıyordu) → vadide arabalar köprünün altından geçemiyordu. Artık tabliyenin
+  // altı açık (yeterli boşluk varsa); sadece köprü ayakları ve pilonlar (görünen beton) engel.
+  const BR_S0 = TAGS.kopruA - 2;
+  const BR_S1 = TAGS.kopruB + 2;
+  const BR_PIERS = [];
+  for (let sv = BR_S0 + 22; sv < BR_S1 - 18; sv += 34) BR_PIERS.push(sv); // world.js buildBridge ile aynı
+  const BR_MID = (BR_S0 + BR_S1) / 2;
+  const onBridgeSpan = (sv) => sv > BR_S0 && sv < BR_S1;
+  const pierHit = (n, r) => {
+    for (const ps of BR_PIERS) if (Math.abs(n.s - ps) < 1.6 + r && Math.abs(n.d) < 3 + r) return true;
+    return Math.abs(n.s - BR_MID) < 1.3 + r && Math.abs(Math.abs(n.d) - 8.4) < 1.1 + r;
+  };
+  const BR_CLEAR = 5.2; // tabliyenin altında araç / at / yaya için gereken yükseklik farkı (yol üstü − zemin)
+  const brA = frameAt(BR_S0);
+  const brB = frameAt(BR_S1);
+  const BR_BOX = { x0: Math.min(brA.x, brB.x) - 30, x1: Math.max(brA.x, brB.x) + 30, z0: Math.min(brA.z, brB.z) - 30, z1: Math.max(brA.z, brB.z) + 30 };
+  const nearBridge = (x, z) => x > BR_BOX.x0 && x < BR_BOX.x1 && z > BR_BOX.z0 && z < BR_BOX.z1;
+
+
   const NO_CROSS = [[TAGS.tunelA - 2, TAGS.tunelB + 2], [TAGS.kopruA - 1, TAGS.kopruB + 1]]; // tünel + köprü: yandan girilmez
   const railAt = (sv, side) => {
     if (sv < S_EXIT + 4 || sv > LEN - 6) return false;
     if (NO_CROSS.some(([a, c]) => sv >= a && sv <= c)) return true;
     return !RAIL_EX[side].some(([a, c]) => sv >= a && sv <= c);
   };
+  // v167 — YAYA / AT / BİSİKLET İÇİN BARİYER VE KÖPRÜ DUVARI. Yürüme ızgarası otoyolun bariyerini hiç
+  // tanımıyordu: köprünün üstünden yanlara yürüyen yaya / at duvarın üstünden aşağı (zemine) atlıyordu.
+  //   • köprü ve tünel duvarları (NO_CROSS): herkese engel (yaya dahil)
+  //   • diğer otoyol bariyerleri: binek (at / bisiklet) için engel; yaya bariyerin üstünden geçebilir
+  // Sadece aynı seviyedeyken (köprünün altından / şevden geçen etkilenmez); cep / sapak / gişe ağızları açık.
+  W.railWalkBlocked = (x, z, r, curY, rider, hint = -1) => {
+    const m = W.modeAt(x, z);
+    if (m === 'city' || m === 'town') return false;
+    if (!nearBridge(x, z) && (padAt(x, z) || atJunc(x, z))) return false;
+    const n = nearest(x, z, hint);
+    if (!n || n.dist >= 40 || n.s < S_EXIT - 30) return false;
+    const hasY = curY !== null && curY !== undefined;
+    // köprünün altındaki yaya / binek: ayaklar ve pilonlar engel
+    if (hasY && onBridgeSpan(n.s) && n.y - curY > BR_CLEAR && Math.abs(n.d) < 12) return pierHit(n, r);
+    if (hasY && Math.abs(n.y - curY) >= 4) return false;
+    const ad = Math.abs(n.d);
+    if (ad < RAIL - 0.45 - r || ad > RAIL + 1.2 + r) return false;
+    if (rider) return railAt(n.s, n.d >= 0 ? 1 : -1);
+    return NO_CROSS.some(([a, c]) => n.s >= a && n.s <= c);
+  };
   function offroadFree(px, pz, r, n, curY) {
-    if (px < TERRAIN.x0 + 40 || px > TERRAIN.x1 - 40 || pz < TERRAIN.z0 + 40 || pz > TERRAIN.z1 + 400) return false;
-    if (inTownRect(px, pz, 6)) return false; // Kervankent duvarları (kasabaya sadece caddeden girilir)
+    if (px < TERRAIN.x0 + 40 || px > TERRAIN.x1 - 40 || pz < TERRAIN.z0 + 40 || pz > TERRAIN.z1 + 400) return ((W.dbgWhy = 'sinir'), false);
+    if (inTownRect(px, pz, 6)) return ((W.dbgWhy = 'kasaba'), false); // Kervankent duvarları (kasabaya sadece caddeden girilir)
     if (n && n.dist < 40 && n.s > S_EXIT - 30) {
       const ad = Math.abs(n.d);
       const level = curY === null || Math.abs(n.y - curY) < 4;
-      if (ad < RAIL + 1.2 + r && level && railAt(n.s, n.d >= 0 ? 1 : -1)) return false; // bariyer
-      if (ad < ROAD_HALF + 4 && !level && n.y > (curY ?? -99)) return false; // köprü / dolgu yolun altı değil, şev
+      if (ad < RAIL + 1.2 + r && level && railAt(n.s, n.d >= 0 ? 1 : -1)) return ((W.dbgWhy = 'bariyer'), false); // bariyer
+      if (ad < ROAD_HALF + 4 && !level && n.y > (curY ?? -99)) {
+        // v167: köprünün altı açık (yükseklik yeterliyse) — sadece ayaklar / pilonlar engel
+        if (!(onBridgeSpan(n.s) && curY !== null && n.y - curY > BR_CLEAR)) return ((W.dbgWhy = 'sev'), false); // dolgu yolun altı değil, şev
+        if (pierHit(n, r)) return ((W.dbgWhy = 'ayak'), false);
+      } else if (!level && curY !== null && onBridgeSpan(n.s) && n.y - curY > BR_CLEAR && Math.abs(n.d) < 12 && pierHit(n, r)) return ((W.dbgWhy = 'ayak'), false); // pilonlar (yolun dışında)
     }
     if (inPark(px, pz)) {
       if (W.parkGrid.cell(px, pz)) return false; // park eşyaları + gölet
     }
-    if (treeHit(px, pz, Math.max(0.35, r * 0.55))) return false;
+    if (treeHit(px, pz, Math.max(0.35, r * 0.55))) return ((W.dbgWhy = 'agac'), false);
     const gy = W.terrainY(px, pz);
-    if (W.waterLevel?.(px, pz, gy, 'hwy') != null) return false; // göl / nehir / deniz
+    // v167: göl / nehir / deniz artık engel değil — araç suya girer, motor tarafında çok yavaşlar (cityEngine › suda)
     const k = 1.6;
     const sl = Math.max(Math.abs(W.terrainY(px + k, pz) - gy), Math.abs(W.terrainY(px, pz + k) - gy)) / k;
-    if (sl > 0.8) return false; // ~39°'den dik yamaç
+    // v167: dağlar / vadi yamaçları artık engel değil (araçlar arazide serbest) — sadece uçurum gibi
+    // neredeyse dik yüzeyler (tünel ağzının üstü, kıyı duvarı) engel kalır (eskiden 0,8 ≈ 39°)
+    if (sl > 2.0) return ((W.dbgWhy = 'yamac'), false); // ~63°'den dik
     return true;
   }
   W.hwyFree = hwyFree;
@@ -1008,7 +1054,10 @@ export function finishCityWorld(W, scene) {
     const b = branchAt(x, z);
     if (b && b.d < BR_HALF + 3 && n && n.dist < 60 && Math.abs(n.d) < RAIL + 0.3 && curY !== null && Math.abs(b.y - curY) < Math.abs(n.y - curY)) return { y: b.y + 0.07, br: b };
     if (b && (!n || Math.abs(n.d) > ROAD_HALF + 0.5 || n.dist > 40) && b.d < BR_HALF + 3) return { y: b.y + 0.07, br: b };
-    if (n && n.dist < 60 && Math.abs(n.d) < RAIL + 0.3 && n.s > S_EXIT - 30) return { y: n.y + 0.06, n };
+    // v167: köprünün ALTINDAN geçen (yaya / at / bisiklet / araba) tabliyenin üstüne ışınlanmasın — zemin
+    // tabliyenin epey altındaysa (curY) yol yüksekliği değil arazi kullanılır
+    const under = n && curY !== null && onBridgeSpan(n.s) && curY < n.y - 3;
+    if (n && !under && n.dist < 60 && Math.abs(n.d) < RAIL + 0.3 && n.s > S_EXIT - 30) return { y: n.y + 0.06, n };
     return { y: W.terrainY(x, z), terrain: true };
   }
   W.offY = offY;

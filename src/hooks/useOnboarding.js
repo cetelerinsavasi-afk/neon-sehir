@@ -24,7 +24,7 @@ import { ONBOARDING_ORDER, ONBOARDING_TASK_COUNT, onboardingPosOf, onboardingTas
 // değiştirilmedi, ama artık altın ödülü YOK, sadece "tamamlandı"
 // bayrağı) users/{uid} dokümanında tutuluyor; bu hook sadece OKUR —
 // ilerleme SUNUCUDA (advanceOnboardingStep) yapılıyor.
-// v124: liste functions/onboardingData.js'te (sunucuyla ortak). 17 görev; eski
+// v124: liste functions/onboardingData.js'te (sunucuyla ortak). v167: 18 görev; eski
 // kayıtlı adımlar orada yeni sıraya çevrilir (onboardingPosOf).
 export { ONBOARDING_TASK_COUNT };
 
@@ -44,7 +44,7 @@ function istanbulDateKey() {
 // silah geliştirme malzemesi (18).
 const TASK_DEFS = {
   21: { emoji: '🗺️', title: 'Mini haritaya dokun ve bir yere ışınlan', info: 'Şehirde sağ üstteki mini haritaya dokun, büyük haritada bir yer seç ve oraya ışınlan.' },
-  1: { emoji: '🏭', title: 'Fabrikada çalış', info: 'Maaşı yüksek olan bi fabrikada çalışarak her gün para kazanabilirsin.' },
+  1: { emoji: '🏭', title: 'Bir fabrikada çalış ve maaşını al', info: 'Haritadan Fabrika’ya git, istediğin fabrikaya işçi olarak gir ve çalış. Maaşını aldığında görev tamamlanır. Maaşı yüksek olan bi fabrikada çalışarak her gün para kazanabilirsin.' },
   2: { emoji: '📦', title: "Liman & Depo'ya git ve 1 adet yasaklı madde satın al", info: 'Yasaklı madde ticareti depolarda döner. Haritadan Liman & Depo’ya git, bir depoya gir ve “Yasaklı madde satın al”a bas.' },
   3: { emoji: '🌳', title: 'Parktaki şüpheli adama 5000 altın karşılığında 1 adet yasaklı madde sat', info: 'Bu görev için RİSKLİ satış yapmalısın (5.000 altın). Şüphen yüksekse yakalanma ihtimalin artar.' },
   4: { emoji: '🕌', title: "Camii'ye gidip ibadet et", info: 'Günde 5 vakit ibadet ederek şüphe miktarını düşük tut ve saygınlık kazan, şüphen yüksekken polise yakalanırsın.' },

@@ -579,3 +579,7 @@ body.ns-city-open .ta-root { z-index: 96; }
   font-size: 14.5px;
   border-radius: 14px;
 }
+
+/* v167 — açılış sırası: sonradan gelen düğmeler (altın / şüphe, görevler, telefon…) yumuşakça belirir */
+@keyframes csBootIn { from { opacity: 0; } to { opacity: 1; } }
+.cs-root .cs-right > *, .cs-root .cs-lmenu > .v3-badge { animation: csBootIn 0.45s ease-out; }

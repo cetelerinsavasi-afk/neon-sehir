@@ -57,9 +57,49 @@ function prefetchList() {
   }
 }
 
+// v167 HIZ — şehir parçaları (three.js + şehir motoru ≈ 2 MB) index.html'de <link rel="modulepreload"> ile
+// istenir: tarayıcı ana paketle AYNI ANDA indirmeye başlar. Eskiden zincirleme iniyordu (ana paket →
+// çalıştır → oturum → şehir ekranı → şehrin parçaları). İlk kez giren oyuncu için en uzun bekleme buydu.
+function cityPreload() {
+  return {
+    name: 'neon-city-preload',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'post',
+      handler(html, ctx) {
+        const bundle = ctx?.bundle;
+        if (!bundle) return html;
+        const chunks = Object.values(bundle).filter((c) => c.type === 'chunk');
+        const city = chunks.find((c) => c.facadeModuleId && c.facadeModuleId.replace(/\\/g, '/').endsWith('/src/components/City/CityScreen.jsx'));
+        if (!city) return html;
+        const eager = new Set();
+        const walkEager = (f) => {
+          if (!f || eager.has(f)) return;
+          eager.add(f);
+          bundle[f]?.imports?.forEach(walkEager);
+        };
+        chunks.filter((c) => c.isEntry).forEach((c) => walkEager(c.fileName));
+        const out = [];
+        const seen = new Set();
+        const add = (f) => {
+          if (!f || seen.has(f) || eager.has(f)) return;
+          seen.add(f);
+          bundle[f]?.imports?.forEach(add);
+          out.push(f);
+        };
+        add(city.fileName);
+        return {
+          html,
+          tags: out.map((f) => ({ tag: 'link', attrs: { rel: 'modulepreload', crossorigin: true, href: '/' + f }, injectTo: 'head' })),
+        };
+      },
+    },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
-  plugins: [react(), prefetchList()],
+  plugins: [react(), prefetchList(), cityPreload()],
   resolve: {
     alias: [
       // v165 GEÇİCİ ÖLÇÜM — okuma kaynağı sayacı (bkz. src/lib/fsMeter). Kaldırmak için bu satırı sil.

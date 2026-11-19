@@ -32,6 +32,7 @@ import ConfirmModal from './components/ConfirmModal/ConfirmModal';
 import LiveStreamsButton from './components/Stream/LiveStreamsButton';
 import UpdateAppBanner from './components/UpdateAppBanner/UpdateAppBanner';
 import { retryImport, ChunkBoundary } from './lib/lazyRetry';
+import { useBootStage, whenBootStage } from './lib/bootStage'; // v167 — açılış sırası
 import './styles/theme.css';
 import './styles/cues.css';
 import './App.css';
@@ -78,7 +79,12 @@ const WeaponShopWorldScreen = lazyScreen(() => import('./components/WeaponShopWo
 const TuningGarageWorldScreen = lazyScreen(() => import('./components/TuningGarageWorldScreen/TuningGarageWorldScreen'));
 // v134 — misafir (giriş yapmamış) oyuncu oyunun mekânlarını yeni 3D hâliyle gezer
 const GuestVenue = lazyScreen(() => import('./components/Guest/GuestVenue'));
-const CityScreen = lazyScreen(() => import('./components/City/CityScreen')); // v147 — gezilebilir şehir
+// v167 HIZ — şehir (three.js + şehir motoru, oyunun en büyük parçası) oyun kodu açılır açılmaz
+// indirilmeye başlar. Eskiden ancak React ilk kez çizip şehri açınca isteniyordu: önce ana paket,
+// sonra oturum, sonra şehir → sıralı bekleme. Artık ikisi aynı anda iner (ilk girişte saniyeler kazanılır).
+const loadCityScreen = () => import('./components/City/CityScreen');
+loadCityScreen().catch(() => {}); // hata olursa ekran açılırken yeniden denenir (lazyRetry)
+const CityScreen = lazyScreen(loadCityScreen); // v147 — gezilebilir şehir
 
 // v166 HIZ: ekran dosyaları sadece İNDİRİLİR (modulepreload — çalıştırılmaz). Eskiden hepsi
 // import() ile çalıştırılıyordu: açılıştan sonra telefonda saniyelerce kasma + kalıcı bellek.
@@ -168,14 +174,15 @@ function GameShell() {
     // v155: WebView'da sadece köprüsünde faturalandırma olan sürümde (v15+); v14'te hiçbir şey yapmaz.
     // Kapatma anahtarı (NATIVE_PLAY_BILLING_ON) kapalıyken de ÇALIŞIR (bekleyen ödeme iade olmasın).
     if (!playRestoreSupported() || !user) return undefined;
-    const t = setTimeout(() => quietRestorePlayPurchases(), 4000);
+    // v167: açılış bittikten sonra (aşama 3) — ilk saniyelerde ağı / işlemciyi meşgul etmesin
+    const offBoot = whenBootStage(3, () => quietRestorePlayPurchases());
     const onVis = () => document.visibilityState === 'visible' && quietRestorePlayPurchases();
     // native taraf: arka planda tamamlanan (yavaş kart) ya da akış dışı gelen satın almalar
     const onNative = () => quietRestorePlayPurchases();
     document.addEventListener('visibilitychange', onVis);
     window.addEventListener('ns-play-purchases-updated', onNative);
     return () => {
-      clearTimeout(t);
+      offBoot();
       document.removeEventListener('visibilitychange', onVis);
       window.removeEventListener('ns-play-purchases-updated', onNative);
     };
@@ -255,11 +262,15 @@ function GameShell() {
   const [tuningGarageOpen, setTuningGarageOpen] = useState(false);
   const [belediyeOpen, setBelediyeOpen] = useState(false); // v108 — başkanlık makam odası
   const [vendorRegion, setVendorRegion] = useState(null); // v145 — seyyar satıcı 3D mekânı (regions.js kaydı)
-  const [city, setCity] = useState(null); // v147 — gezilebilir şehir: { spawn, k }
+  // v147 — gezilebilir şehir: { spawn, k }
+  // v167: oyun doğrudan şehirle açılır (eskiden ilk karede 2D harita + büyük harita resmi kurulup
+  // hemen ardından kaldırılıyordu — boşa iş)
+  const [city, setCity] = useState(() => ({ spawn: { region: 'ev', out: true }, k: Date.now() }));
   const [cityCovered, setCityCovered] = useState(false); // v157.9: karargah düzenlenirken şehir arkada bekler
   const [cityReturn, setCityReturn] = useState(null); // v147.1 — şehirden açılan liste/mekân kapanınca şehre (o kapıya) dön
   // v77 performans: kök bileşen sadece HUD alanları değişince yeniden çizilir
   const hudKey = usePlayerSelect(selectHud);
+  const bootDetails = useBootStage(2); // v167 — açılış sırası (bkz. lib/bootStage.js)
   const [hudSusp, hudRep, hudGold] = hudKey.split('|').map(Number);
 
   // v68 — Android geri tuşu: açık ekran/mekân varsa onu kapatır (mekândan →
@@ -312,13 +323,14 @@ function GameShell() {
   // Ekranlar da 3 sn sonra arka planda önceden indiriliyor.
   useEffect(() => {
     if (!user) return undefined;
-    const pre = setTimeout(prefetchScreens, 3000);
+    // v167: ekranların önceden indirilmesi açılış bittikten sonra (aşama 3)
+    const offPre = whenBootStage(3, prefetchScreens);
     // v79 maliyet: tek seferlik göç çağrıları istemciden kaldırıldı — hepsi
     // sunucuda bayraklı ve her gece dailyReset içinde zaten çalışıyor. Eskiden
     // her cihaz günde bir kez 6 bulut fonksiyonu çağırıyordu (biri bayraksızdı
     // ve tüm kullanıcıları okuyordu).
     return () => {
-      clearTimeout(pre);
+      offPre();
     };
   }, [user]);
 
@@ -606,14 +618,24 @@ function GameShell() {
     if (city || somethingOpen) return;
     openCityRef.current(cityReturn || { region: 'ev', out: true });
   }, [cityReturn, city, somethingOpen]);
+  // v167 — şehir açıkken ana sayfa arayüzü (HUD, alt çubuk, telefon / ChatsApp / Görevler / Canlı / Seçim
+  // düğmeleri) şehrin ALTINDA görünmeden çalışıyordu: şehrin kendi kopyalarıyla birlikte aynı dinleyiciler
+  // iki kez açılıyordu (ör. Görevler ~12 dinleyici). Artık ancak şehir ilk kez kapanınca / örtülünce
+  // kurulur; sonra eskisi gibi kurulu kalır (gidip gelirken dinleyiciler kapanıp açılmasın — okuma maliyeti).
+  const [homeUiOn, setHomeUiOn] = useState(false);
+  useEffect(() => {
+    if (!city || cityCovered) setHomeUiOn(true);
+  }, [city, cityCovered]);
+  const homeUi = homeUiOn || !city || cityCovered;
   const mapCovered = Boolean(
     watchStreamId || hqView || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || teskilatOpen || Boolean(vendorRegion) || Boolean(city) || heistTarget !== undefined || (effectiveRaceRoomId && raceExpanded)
   );
 
   return (
     <div className="app-shell">
-      <GangAlertsBridge uid={user?.uid} onChange={setGangAlerts} />
-      <UnreadBridge onChange={setUnread} />
+      {/* v167: ~25 canlı dinleyici (çete, SMS, ChatsApp, Sixtagram…) açılışın 2. aşamasında başlar */}
+      {bootDetails && <GangAlertsBridge uid={user?.uid} onChange={setGangAlerts} />}
+      {bootDetails && <UnreadBridge onChange={setUnread} />}
       {exitHint && !exitAsk && <div className="exit-hint">Çıkmak için bir kez daha geri</div>}
       {exitAsk && (
         <ConfirmModal
@@ -628,6 +650,7 @@ function GameShell() {
           onConfirm={() => exitApp()}
         />
       )}
+      {homeUi && (
       <Hud
         suspicion={hudSusp}
         reputation={hudRep}
@@ -639,12 +662,13 @@ function GameShell() {
           setPhoneOpen(true);
         }}
       />
+      )}
 
       {/* v91: eski Android sürümü → "Güncelle" uyarısı */}
       <UpdateAppBanner />
 
       {/* v77: internet kafe ödenmiş süre halkası — mekân dışında da görünür */}
-      {user && <NetCreditRing className="vn-fixed" />}
+      {user && bootDetails && <NetCreditRing className="vn-fixed" />}
 
       <main className="map-stage">
         {/* v157.4: oyun şehirde açılır — eski 2D harita şehir açıkken hiç kurulmaz (bellek) */}
@@ -653,18 +677,21 @@ function GameShell() {
 
       <ReferralPrompt />
 
+      {homeUi && (
       <BottomBar
         onHeistClick={() => openHeistScreen(null)}
         onGangsClick={() => setGangsOpen(true)}
         gangsBadge={gangAlerts.any}
         onProfileClick={() => setProfileOpen(true)}
       />
+      )}
 
       {/* v147 — Şehre gir: telefonun üstünde; evin önünde doğulur */}
       {/* v149: misafir de şehre girer (gezinti modu) */}
-      <CityPegman onTap={() => openCity('ev')} onDrop={(pt) => openCity(pt)} />
+      {homeUi && <CityPegman onTap={() => openCity('ev')} onDrop={(pt) => openCity(pt)} />}
 
       {/* Telefon kısayolu — ChatsApp butonunun TAM üstünde, aynı boyutta. */}
+      {homeUi && (
       <button
         className="map-phone-btn"
         onClick={() => setPhoneOpen(true)}
@@ -679,6 +706,7 @@ function GameShell() {
           <span className="bottom-bar-badge">{unread.totalBadge > 9 ? '9+' : unread.totalBadge}</span>
         )}
       </button>
+      )}
 
       {comingSoon && (
         <div className="coming-soon-toast" role="status">
@@ -690,6 +718,7 @@ function GameShell() {
           kısa yolu bulunsun" — alttaki 4 sekmeden biri DEĞİL, çubuğun
           hafif üstünde/sağında, mekanlardaki kamera/telefon butonlarıyla
           aynı boyutta (52px) bağımsız bir kısayol. */}
+      {homeUi && (
       <button
         className="map-chatsapp-btn"
         onClick={() => {
@@ -706,11 +735,13 @@ function GameShell() {
           unread.chatsAppHasNew && <span className="map-chatsapp-dot" />
         )}
       </button>
+      )}
 
       {/* Yeni görev/hatırlatıcı paneli — ChatsApp butonunun tam simetriği,
           sol altta aynı boyut/konumda (bkz. OnboardingPanel.css). */}
       {/* v136: sol alt sütun alttan yukarı Görevler → CANLI → 🗳️ Seçim; görünmeyenin
           yeri boş kalmaz (üsttekiler alta kayar). */}
+      {homeUi && (
       <OnboardingPanel
         gangReminders={gangAlerts?.reminders}
         gangChans={gangAlerts?.chans}
@@ -726,11 +757,12 @@ function GameShell() {
           openCityRef.current(t);
         }}
       />
+      )}
 
       {/* v80 Yayıncılık — canlı yayın varken Görevler'in tam üstünde (telefonun
           karşısında) 🔴 CANLI; yoksa görünmez. */}
-      <LiveStreamsButton className="map-live-btn" onWatch={setWatchStreamId} slotBottom={leftSlotBottom(obVisible ? 1 : 0)} onVisibleChange={setLiveVisible} />
-      <PoliticsHomeButton slot={(obVisible ? 1 : 0) + (liveVisible ? 1 : 0)} />
+      {homeUi && <LiveStreamsButton className="map-live-btn" onWatch={setWatchStreamId} slotBottom={leftSlotBottom(obVisible ? 1 : 0)} onVisibleChange={setLiveVisible} />}
+      {homeUi && <PoliticsHomeButton slot={(obVisible ? 1 : 0) + (liveVisible ? 1 : 0)} />}
       {watchStreamId && <StreamViewer streamId={watchStreamId} onClose={() => setWatchStreamId(null)} />}
 
       {phoneOpen && (
@@ -743,12 +775,14 @@ function GameShell() {
           onEnterTable={openTable}
         />
       )}
+      {bootDetails && (
       <TopNotificationBanner
         onOpenPhone={(type) => {
           setPhoneInitialApp(type === 'sms' ? 'sms' : 'chatsapp');
           setPhoneOpen(true);
         }}
       />
+      )}
       {profileOpen && <ProfileFullScreen onClose={() => setProfileOpen(false)} />}
       {houseView && (
         <GangAlertsContext.Provider value={gangAlerts}>

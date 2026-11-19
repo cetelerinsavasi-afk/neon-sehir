@@ -18,6 +18,7 @@ import { useInventory } from '../../hooks/useInventory';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useBlocks } from '../../contexts/BlocksContext';
 import { useBackClose } from '../../lib/backStack';
+import { markCityReady, useBootStage, whenBootStage } from '../../lib/bootStage'; // v167 — açılış sırası
 import { blockProfanity } from '../../lib/profanityGuard';
 import { buyFromVendor, buyFromBufe, sellContrabandAtPark, cityAction, createSixtagramPost, shopAction, houseAction, checkOnboardingProgress } from '../../services/gameActions';
 import { currentOnboardingTaskId } from '../../../functions/onboardingData.js';
@@ -287,6 +288,12 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const blockedRef = useRef(isBlocked);
   blockedRef.current = isBlocked;
   const [ready, setReady] = useState(false);
+  // v167 — açılış sırası: 1 = diğer oyuncular + altın / şüphe + görevler, 2 = telefon, yayın, seçim, yakındakiler
+  const bootWorld = useBootStage(1);
+  const bootDetails = useBootStage(2);
+  useEffect(() => {
+    if (ready) markCityReady();
+  }, [ready]);
   const [view, setView] = useState('3d');
   const [zone, setZone] = useState(null);
   const [panel, setPanel] = useState(null);
@@ -654,10 +661,19 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       hqAreaRef.current = eng.hqArea?.() || null;
       if (import.meta.env?.DEV) window.__cityEng = eng;
       if (isGuest) return; // misafir: ağ yok (Realtime Database girişli okunur)
+      // v167: diğer oyuncular (ağ) şehir çizilip oturduktan sonra gelir (açılış 1. aşama) — şehir kurulurken
+      // aynı anda 15-20 oyuncunun avatarı / arabası yağıp ilk saniyeleri kastırmasın
+      offNet = whenBootStage(1, () => {
+        if (dead || engineRef.current !== eng) return;
+        startNet();
+      });
+    };
+    const startNet = () => {
+      const cur = startRef.current; // v167: ağ biraz sonra başladığı için o anki (güncel) ad / görünüm
       net = createCityNet({
         uid,
-        name: st.pubName || null,
-        avatar: st.pubName != null ? st.avatar : null,
+        name: cur.pubName || null,
+        avatar: cur.pubName != null ? cur.avatar : null,
         onPlayer: (id, rec) => {
           if (blockedRef.current(id)) return eng.removePlayer(id);
           namesRef.current.set(id, { n: rec.n, a: rec.a });
@@ -683,11 +699,13 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         net.tick(eng.getNetState(), eng.getNetCar());
       }, 100);
     };
+    let offNet = () => {};
     setReady(false);
     setLoadPct(0);
     t = setTimeout(start, 60);
     return () => {
       dead = true;
+      offNet();
       clearTimeout(t);
       clearInterval(tickT);
       net?.stop();
@@ -1460,9 +1478,9 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           {/* v157 — sağ sütun: ChatsApp · telefon · kamera · yakındaki oyuncular */}
           <div className={`hs-side cs-right${driving ? ' cs-drive-side' : ''}`}>
             {/* v157.4: yayın / seçim (varsa) Görevler'in üstünde; ChatsApp'ın yerinde Görevler + hatırlatmalar */}
-            {!guest && !driving && <LiveStreamsButton className="cs-live-inline" onWatch={setWatchId} />}
-            {!guest && !driving && <PoliticsHomeButton inline />}
-            {!guest && !driving && (
+            {!guest && !driving && bootDetails && <LiveStreamsButton className="cs-live-inline" onWatch={setWatchId} />}
+            {!guest && !driving && bootDetails && <PoliticsHomeButton inline />}
+            {!guest && !driving && bootWorld && (
               <OnboardingPanel
                 inline
                 inStadium={inStadium}
@@ -1476,7 +1494,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                 }}
               />
             )}
-            {!guest && (
+            {!guest && bootDetails && (
               <button className="hs-side-btn" onClick={() => setPanel({ kind: 'phone', app: null })} title="Telefon">
                 📱
                 {/* v158: yeni SMS / mesaj / bildirim sayısı (hatırlatmalardaki rozet gibi) */}
@@ -1484,7 +1502,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
               </button>
             )}
             <button className="hs-side-btn" onClick={() => (guest ? setAskSignIn(true) : openCamera())} title="Fotoğraf çek">📷</button>
-            {!guest && !driving && (
+            {!guest && !driving && bootDetails && (
               <NearbyPlayersButton
                 buttonClassName="hs-side-btn"
                 collectionName="city"
@@ -1513,8 +1531,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
               liste düğmeleri açılıp kapanır, liste açıkken sağ üstünde "al / aç" düğmesi */}
           {!driving && (!guest || vui || hqVenue) && (
             <div className="v3-menu cs-lmenu" ref={lmenuRef}>
-              {!guest && <div className={`v3-badge v3-sus ${susCls}`}>🕵️ Şüphe <b>%{sus}</b></div>}
-              {!guest && <div className="v3-badge cs-gold"><span className="gold-coin-icon" style={{ width: 13, height: 13 }} /> <b>{fmt(gold)}</b></div>}
+              {!guest && bootWorld && <div className={`v3-badge v3-sus ${susCls}`}>🕵️ Şüphe <b>%{sus}</b></div>}
+              {!guest && bootWorld && <div className="v3-badge cs-gold"><span className="gold-coin-icon" style={{ width: 13, height: 13 }} /> <b>{fmt(gold)}</b></div>}
               {/* v157.9 — karargahların içinde: kendi çetende Çetem + Düzenle, başka çetede o çetenin profili */}
               {hqVenue && (
                 <div className="cs-venue-bar">

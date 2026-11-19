@@ -79,6 +79,59 @@ const OUTER_VIEW = [700, 520, 380, 260];
 const avCache = new Map();
 // v157: NPC'ler (mekân çalışanları, köylüler, satıcılar) sadece ayakta / oturur pozla çizilir —
 // her NPC için 6 poz × 320×580 doku telefon belleğini dolduruyordu
+// v167 — AVATAR DOKU KUYRUĞU: bir oyuncunun 4 pozu = 4 büyük SVG'nin resme çevrilip ekran kartına
+// yüklenmesi. Şehre girildiğinde çevredeki 15-20 oyuncu aynı anda geldiği için ~80 resim tek karede
+// işleniyor → açılışta ve kalabalık yere girince takılma. Artık iş kuyrukta: her karede ~5 ms'lik
+// bütçe (en az bir iş), sıra kendi avatarımızdan başlar (ilk oluşturulan). Oyuncular yarım saniye
+// içinde tek tek belirir, kare hızı düşmez.
+const texQ = [];
+let texPumping = false;
+function pumpTex() {
+  texPumping = false;
+  const t0 = performance.now();
+  let n = 0;
+  while (texQ.length && (n === 0 || performance.now() - t0 < 5)) {
+    const job = texQ.shift();
+    n += 1;
+    try {
+      job();
+    } catch (err) {
+      console.warn('avatar dokusu:', err);
+    }
+  }
+  if (texQ.length) schedTex();
+}
+function schedTex() {
+  if (texPumping) return;
+  texPumping = true;
+  // arka planda (sekme gizli) requestAnimationFrame durur — fotoğraf çizimi yine de bitsin
+  if (typeof document !== 'undefined' && document.hidden) setTimeout(pumpTex, 16);
+  else requestAnimationFrame(pumpTex);
+}
+function queueTex(job) {
+  texQ.push(job);
+  schedTex();
+}
+// SVG → (kuyrukta) resim → (kuyrukta) tuval dokusu
+function rasterTex(markup, w, h, aniso, done, isDead) {
+  queueTex(() => {
+    if (isDead()) return;
+    const img = new Image();
+    img.onload = () =>
+      queueTex(() => {
+        if (isDead()) return;
+        const c = document.createElement('canvas');
+        c.width = w;
+        c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        const t = new THREE.CanvasTexture(c);
+        t.colorSpace = THREE.SRGBColorSpace;
+        t.anisotropy = aniso;
+        done(t);
+      });
+    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(markup());
+  });
+}
 function avatarTextures(avatar, light = false) {
   const av = avatar || DEFAULT_AVATAR;
   const key = (light ? 'L:' : '') + JSON.stringify(av);
@@ -91,25 +144,23 @@ function avatarTextures(avatar, light = false) {
   // görüldüğü ilk anda (ensureBackTex). Çoğu oyuncu için avatar başına 6 yerine 4 doku.
   const poses = light ? ['idle', 'sit'] : ['idle', 'walk1', 'walk2', 'sit'];
   let left = poses.length;
+  // v157.4: telefonda avatar dokuları küçük (6 poz × her oyuncu — ekran kartı belleği ~2,5 kat az)
+  const AW = IS_MOBILE ? 208 : 320;
+  const AH = IS_MOBILE ? 377 : 580;
+  const entry = e;
   poses.forEach((pose) => {
-    const markup = buildFullAvatarSvgMarkup(full, { pose, animFire: full?.acc?.aura === 'fire' }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, '');
-    const img = new Image();
-    img.onload = () => {
-      // v157.4: telefonda avatar dokuları küçük (6 poz × her oyuncu — ekran kartı belleği ~2,5 kat az)
-      const AW = IS_MOBILE ? 208 : 320;
-      const AH = IS_MOBILE ? 377 : 580;
-      const c = document.createElement('canvas');
-      c.width = AW;
-      c.height = AH;
-      c.getContext('2d').drawImage(img, 0, 0, AW, AH);
-      const t = new THREE.CanvasTexture(c);
-      t.colorSpace = THREE.SRGBColorSpace;
-      t.anisotropy = IS_MOBILE ? 1 : 4;
-      e.tex[pose] = t;
-      left -= 1;
-      if (left === 0) e.ready = true;
-    };
-    img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(markup);
+    rasterTex(
+      () => buildFullAvatarSvgMarkup(full, { pose, animFire: full?.acc?.aura === 'fire' }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, ''),
+      AW,
+      AH,
+      IS_MOBILE ? 1 : 4,
+      (t) => {
+        entry.tex[pose] = t;
+        left -= 1;
+        if (left === 0) entry.ready = true;
+      },
+      () => entry.disposed
+    );
   });
   return e;
 }
@@ -136,21 +187,17 @@ const BACK_BASE = { back: 'sit', backIdle: 'idle' };
 function ensureBackTex(e, pose) {
   if (!e || !BACK_BASE[pose] || e.tex[pose] || e.pending?.[pose] || e.lazy) return;
   (e.pending ||= {})[pose] = true;
-  const img = new Image();
-  img.onload = () => {
-    if (e.disposed) return;
-    const AW = IS_MOBILE ? 208 : 320;
-    const AH = IS_MOBILE ? 377 : 580;
-    const c = document.createElement('canvas');
-    c.width = AW;
-    c.height = AH;
-    c.getContext('2d').drawImage(img, 0, 0, AW, AH);
-    const t = new THREE.CanvasTexture(c);
-    t.colorSpace = THREE.SRGBColorSpace;
-    t.anisotropy = IS_MOBILE ? 1 : 4;
-    e.tex[pose] = t;
-  };
-  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(buildFullAvatarBackSvgMarkup(e.full, { pose: BACK_BASE[pose], animFire: e.full?.acc?.aura === 'fire' }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, ''));
+  // v167: kuyrukta (bkz. rasterTex)
+  rasterTex(
+    () => buildFullAvatarBackSvgMarkup(e.full, { pose: BACK_BASE[pose], animFire: e.full?.acc?.aura === 'fire' }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, ''),
+    IS_MOBILE ? 208 : 320,
+    IS_MOBILE ? 377 : 580,
+    IS_MOBILE ? 1 : 4,
+    (t) => {
+      e.tex[pose] = t;
+    },
+    () => e.disposed
+  );
 }
 let blobTex = null;
 function blobShadow() {
@@ -1198,6 +1245,31 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       if (i >= 0 && j >= 0 && i < CW && j < CH) coarse[j * CW + i] = 0;
     }
   });
+  // v167 — masa arkasındaki koltuklar (belediye başkanı koltuğu vb.): yürüme ızgarası masa ile duvar
+  // arasındaki dar boşluğa sığmadığından koltuğun 1,25 m yakınına hiç varılamıyordu → "Otur" çıkmıyordu.
+  // Böyle koltuklarda erişim mesafesi, koltuğa en yakın yürünebilir noktaya göre genişletilir (en çok 3,2 m).
+  // Sadece GERÇEKTEN yürünebilen noktalar sayılır (kaba yol ızgarasında açık hücre — eşyalar arasındaki
+  // kapalı cepler sayılmaz).
+  const walkable = (x, z) => {
+    if (blockedAt(x, z)) return false;
+    const i = Math.floor(x - GX0);
+    const j = Math.floor(z - GZ0);
+    return i >= 0 && j >= 0 && i < CW && j < CH && !coarse[j * CW + i];
+  };
+  seats.forEach((st) => {
+    if (st.tier || st.reach) return;
+    for (let rr = 0.35; rr <= 1.2; rr += 0.2) {
+      for (let a = 0; a < 12; a++) if (walkable(st.x + Math.cos((a / 12) * Math.PI * 2) * rr, st.z + Math.sin((a / 12) * Math.PI * 2) * rr)) return;
+    }
+    for (let rr = 1.3; rr <= 3.0; rr += 0.15) {
+      for (let a = 0; a < 24; a++) {
+        if (walkable(st.x + Math.cos((a / 24) * Math.PI * 2) * rr, st.z + Math.sin((a / 24) * Math.PI * 2) * rr)) {
+          st.reach = Math.min(3.2, Math.max(2.6, rr + 0.6)); // yürüme sırasında kayma payı
+          return;
+        }
+      }
+    }
+  });
   // v149 — STADYUM SAHASI KİLİDİ: maç saatinde (18:00–19:00) sahaya girilmez.
   // Saha hücreleri yürüme + yol bulma ızgarasında açılıp kapatılır (sunucu yok, cihazda).
   const pitchCells = [];
@@ -1292,13 +1364,27 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         }
       });
     }
+    // v167 — MEKÂN İÇİ YOL: başlangıç ve hedef aynı mekânın odasındaysa arama odanın içinde kalır.
+    // Eskiden hedef (ör. belediye başkanı koltuğu, masanın arkası) ızgarada kapalıysa A* tüm şehri
+    // tarayıp hedefe "kuş uçuşu" en yakın hücreyi seçiyordu → o hücre binanın ARKA DUVARININ
+    // DIŞIYDI: avatar kapıdan çıkıp binanın arkasına yürüyordu. Artık en yakın oda içi noktada durulur.
+    let room = null;
+    const vs = W.inVenueRoom?.(sx, sz, -0.4);
+    if (vs && W.inVenueRoom(tx, tz, -0.4) === vs) {
+      const hw = VROOM.W / 2 + 0.4;
+      const hd = VROOM.D / 2 + 0.4;
+      room = (i, j) => {
+        const p = toRoom(vs, GX0 + i + 0.5, GZ0 + j + 0.5);
+        return Math.abs(p.x) < hw && Math.abs(p.z) < hd;
+      };
+    }
     try {
-      return astar(sx, sz, tx, tz, si, sj, ti, tj);
+      return astar(sx, sz, tx, tz, si, sj, ti, tj, room);
     } finally {
       for (const m of tmp) coarse[m] = 0;
     }
   }
-  function astar(sx, sz, tx, tz, si, sj, ti, tj) {
+  function astar(sx, sz, tx, tz, si, sj, ti, tj, room = null) {
     // hedef hücre kaba ızgarada doluysa en yakın boş hücreye yönel
     if (coarse[tj * CW + ti]) {
       let best = null;
@@ -1306,7 +1392,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         for (let dj = -rr; dj <= rr; dj++) for (let di = -rr; di <= rr; di++) {
           const ni = ti + di;
           const nj = tj + dj;
-          if (ni < 0 || nj < 0 || ni >= CW || nj >= CH || coarse[nj * CW + ni]) continue;
+          if (ni < 0 || nj < 0 || ni >= CW || nj >= CH || coarse[nj * CW + ni] || (room && !room(ni, nj))) continue;
           const d = di * di + dj * dj;
           if (!best || d < best[2]) best = [ni, nj, d];
         }
@@ -1397,6 +1483,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         if (ni < 0 || nj < 0 || ni >= CW || nj >= CH) continue;
         const m = nj * CW + ni;
         if (coarse[m] || closed[m]) continue;
+        if (room && !room(ni, nj)) continue;
         if (di && dj && (coarse[j * CW + ni] || coarse[nj * CW + i])) continue;
         const ng = g[n] + (di && dj ? 1.414 : 1);
         if (ng < g[m]) {
@@ -1480,6 +1567,16 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     if (m === 'city') return W.groundCity(x, z);
     if (m === 'town') return W.groundTown(x, z);
     return W.offY(x, z, hint, curY).y;
+  }
+  // v167 — SUDA ARAÇ: göl / nehir / denize araba, at, bisiklet girer (eskiden görünmez duvar gibi çarpıyordu).
+  // Gövde suyun içinde kalır (dipte yürümez, su yüzeyinin biraz altında "yüzer") ve çok yavaşlar (stepDrive).
+  const WADE = 0.75;
+  function carGroundY(c, hint) {
+    const gy = groundY(c.x, c.z, hint, c.y);
+    const lv = W.waterLevel(c.x, c.z, gy, W.modeAt(c.x, c.z));
+    const d = lv == null ? 0 : Math.max(0, lv - gy);
+    c.wet = d;
+    return d > WADE ? gy + d - WADE : gy;
   }
   // ayakta duran / yüzen kişinin yüksekliği (derin suda yüzer)
   function standY(x, z, hint = -1, curY = null) {
@@ -1951,7 +2048,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       if (far) return;
       // v163: uzak araba da aynı yer çekimiyle zıplar / süzülür (ağdan ek veri gerekmez)
       c.gp = slopeOf(c, c.gp || 0, dt);
-      carVertical(c, groundY(c.x, c.z, -1, c.y), c.spd || 0, dt);
+      carVertical(c, carGroundY(c, -1), c.spd || 0, dt); // v167: suda yüzeye yakın
       c.v.root.position.set(c.x, c.y, c.z);
       let dy = c.yaw - (c.lastYaw ?? c.yaw);
       dy = Math.atan2(Math.sin(dy), Math.cos(dy));
@@ -2250,7 +2347,10 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const r = myCar.v.halfW * 0.82;
     // v157.4: bisiklet / at — yayaların girdiği her yere girer (araç ya da yaya ızgarasında boşsa geçer)
     if (myCar.v.walker) {
-      for (const [px, pz] of carCircles(x, z, yaw)) if (carBlockedAt(px, pz, 0.3, carCollideY()) && blockedAt(px, pz, 0.3)) return 'wall';
+      const cy = carCollideY();
+      // v167: bariyer / köprü duvarı binekleri de durdurur (zaten bariyerin üstündeyse — eski kayıt / ışınlanma — çıkabilsin)
+      const rail = !W.railWalkBlocked(myCar.x, myCar.z, 0.3, cy, true, carHint);
+      for (const [px, pz] of carCircles(x, z, yaw)) if ((carBlockedAt(px, pz, 0.3, cy) && blockedAt(px, pz, 0.3)) || (rail && W.railWalkBlocked(px, pz, 0.3, cy, true, carHint))) return 'wall';
       return null;
     }
     for (const [px, pz] of carCircles(x, z, yaw)) if (carBlockedAt(px, pz, r, carCollideY())) return 'wall';
@@ -2482,7 +2582,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     for (const [dx, dz, d] of tries) {
       const px = c.x + dx * d;
       const pz = c.z + dz * d;
-      if (!blockedAt(px, pz) && !hitsParked(px, pz)) {
+      // v167: köprüde arabadan inerken duvarın dışına (boşluğa) konulmasın
+      if (!blockedAt(px, pz) && !hitsParked(px, pz) && !W.railWalkBlocked(px, pz, PLAYER_R, c.y, false)) {
         self.x = px;
         self.z = pz;
         placed = true;
@@ -2498,6 +2599,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     }
     c.vx = 0;
     c.vz = 0;
+    me.y = groundY(self.x, self.z, -1, c.y); // v167: arabanın seviyesinde (köprü üstü / altı)
     me.sitting = false;
     me.inCar = false;
     me.group.visible = true;
@@ -2572,6 +2674,13 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const before = vF;
     vF += acc * dt;
     if (!thr && !c.flying && Math.sign(vF) !== Math.sign(before)) vF = 0;
+    // v167: suda çok yavaş — derinleştikçe daha da yavaş (sığda ~%30, derinde ~2 m/sn); hızla girince
+    // birden durmaz, birkaç saniyede yavaşlar (su sıçratarak)
+    if ((c.wet || 0) > 0.15 && !c.flying) {
+      const k = Math.min(1, c.wet / 1.4);
+      const maxV = Math.max(2, P.vmax * (0.3 - 0.2 * k));
+      if (Math.abs(vF) > maxV) vF += (Math.sign(vF) * maxV - vF) * Math.min(1, dt * 2.5);
+    }
     const grip = hand ? 1.4 : Math.max(3.2, P.grip - Math.abs(vF) * 0.09);
     if (!c.flying) vL *= Math.exp(-grip * dt);
     c.vx = fx * vF + sx * vL;
@@ -2710,7 +2819,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   function updateCarVisual(c, dt, vF, delta, braking, skidding, dyaw = 0) {
     const v = c.v;
     c.gp = slopeOf(c, c.gp || 0, dt, carHint);
-    const landHit = carVertical(c, groundY(c.x, c.z, carHint, c.y), vF, dt);
+    const landHit = carVertical(c, carGroundY(c, carHint), vF, dt); // v167: suda yüzeye yakın
     if (landHit > 6 && c === myCar && driving) {
       camShake = Math.min(0.5, landHit * 0.035);
       sound.thump(landHit * 0.8);
@@ -3200,7 +3309,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   const camRay = new THREE.Raycaster();
 
   // v147.5 — akıllı yürüme: önce düz, sonra duvar boyunca kay, olmazsa engelin etrafından dön
-  const canStand = (x, z) => !blockedAt(x, z) && !hitsParked(x, z);
+  // v167: köprü / tünel duvarı yayaya da engel (zemine atlanmaz) — bkz. outerWorld › railWalkBlocked
+  const canStand = (x, z) => !blockedAt(x, z) && !hitsParked(x, z) && !W.railWalkBlocked(x, z, PLAYER_R, me.y, false, walkHint);
   function moveSmart(vx, vz, dt) {
     const ox = self.x;
     const oz = self.z;
@@ -4885,6 +4995,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       if (!f) return;
       self.x = f.x;
       self.z = f.z;
+      me.y = groundY(f.x, f.z); // v167: ışınlanınca zemin baştan bulunur (köprü üstü/altı ayrımı eski yükseklikle yapılmasın)
       self.target = null;
       self.path = null;
       ring.visible = false;
@@ -4995,7 +5106,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     },
     world: () => W,
     // v157: geliştirme testleri (çarpışma / zemin simülasyonu) — canlıda yok
-    ...(import.meta.env?.DEV ? { __dbg: { THREE, scene, renderer, camera, me: () => ({ x: self.x, z: self.z, t: self.target, p: self.path, stuck: self.stuckT, seat: Boolean(self.seat) }), findPath: (a, b, c, d) => findPath(a, b, c, d), carBlockedAt, blockedAt, groundY: (x, z, h, c) => groundY(x, z, h, c), modeAt: (x, z) => W.modeAt(x, z), car: () => myCar, pvOf: (k) => myCar && passengerView(myCar, k), seatW: (k) => myCar && seatWorld(myCar, k), paxView: (k) => { dbgPv = k; if (myCar) { myCar.v.rig && showRig(myCar, false); } } } } : {}),
+    ...(import.meta.env?.DEV ? { __dbg: { THREE, scene, renderer, camera, me: () => ({ x: self.x, z: self.z, y: me.y, t: self.target, p: self.path, stuck: self.stuckT, seat: Boolean(self.seat) }), findPath: (a, b, c, d) => findPath(a, b, c, d), carBlockedAt, blockedAt, groundY: (x, z, h, c) => groundY(x, z, h, c), modeAt: (x, z) => W.modeAt(x, z), car: () => myCar, pvOf: (k) => myCar && passengerView(myCar, k), seatW: (k) => myCar && seatWorld(myCar, k), paxView: (k) => { dbgPv = k; if (myCar) { myCar.v.rig && showRig(myCar, false); } } } } : {}),
     // v157 — yeni harita (mini + büyük): ilk açılışta bir kez çizilir
     map() {
       if (!gmap) {
@@ -5057,7 +5168,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     },
     isDriving: () => driving,
     getDrive: () => driveStat,
-    debugCar: () => myCar && { x: +myCar.x.toFixed(2), z: +myCar.z.toFixed(2), yaw: +myCar.yaw.toFixed(3), steer: +myCar.steer.toFixed(2), vx: +myCar.vx.toFixed(2), vz: +myCar.vz.toFixed(2) },
+    debugCar: () => myCar && { x: +myCar.x.toFixed(2), z: +myCar.z.toFixed(2), y: +(myCar.y ?? 0).toFixed(2), yaw: +myCar.yaw.toFixed(3), steer: +myCar.steer.toFixed(2), vx: +myCar.vx.toFixed(2), vz: +myCar.vz.toFixed(2) },
     hasCar: () => Boolean(myCar),
     setCam(yaw, pitch, dist) {
       if (yaw != null) self.camYaw = yaw;
@@ -5223,6 +5334,24 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       first = true;
       return true;
     },
+    // v167 — tanı (sadece geliştirme): mekân içi koordinat → dünya, yürüme / yol testi
+    dbgVenue: (type) => {
+      if (!import.meta.env?.DEV) return null;
+      const v = W.venues.find((x) => x.type === type || x.key === type);
+      return v ? { from: (x, z) => fromRoom(v, x, z), seats: seats.filter((st) => { const r = toRoom(v, st.x, st.z); return Math.abs(r.x) < 12 && Math.abs(r.z) < 10; }).map((st) => ({ ...toRoom(v, st.x, st.z), x0: st.x, z0: st.z, reach: st.reach })) } : null;
+    },
+    dbgReachCount: () => (import.meta.env?.DEV ? [seats.length, seats.filter((s) => s.reach).length] : null),
+    dbgW: () => (import.meta.env?.DEV ? W : null),
+    dbgCarBlocked: (x, z, r = 1.1, curY = null) => {
+      if (!import.meta.env?.DEV) return null;
+      W.dbgWhy = '';
+      const m = W.modeAt(x, z);
+      const b = m === 'city' ? null : W.outerCarBlocked(x, z, r, m, -1, curY);
+      return { m, b, why: W.dbgWhy };
+    },
+    dbgWalkTo: (x, z) => (import.meta.env?.DEV ? walkTo(x, z) : false),
+    dbgPath: (x, z) => (import.meta.env?.DEV ? findPath(self.x, self.z, x, z) : null),
+    dbgBlocked: (x, z, r) => (import.meta.env?.DEV ? blockedAt(x, z, r) : null),
     dbgCars: () => (import.meta.env?.DEV ? [...rcars].map(([u, c]) => ({ u, x: c.x, z: c.z })) : []),
     // v154 — tanı: bellek / derlenmiş shader sayısı (donma ve çökme takibi)
     memInfo: () => ({ geo: renderer.info.memory.geometries, tex: renderer.info.memory.textures, prog: renderer.info.programs?.length || 0 }),

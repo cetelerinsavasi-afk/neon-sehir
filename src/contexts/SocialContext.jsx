@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 import { useAuth } from './AuthContext';
+import { useBootStage } from '../lib/bootStage';
 
 // v60 — SocialContext: arkadaşlar, arkadaşlık istekleri ve özel sohbetler.
 // Tüm uygulama tek sağlayıcıdan okur (4 hafif dinleyici). Yazmalar yalnızca
@@ -30,9 +31,11 @@ export function SocialProvider({ children }) {
   const [chatsRaw, setChats] = useState([]);
   const [ready, setReady] = useState(false);
   const [tick, setTick] = useState(0);
+  // v167: arkadaş / istek / sohbet dinleyicileri açılışın 2. aşamasında başlar (bkz. lib/bootStage.js)
+  const live = useBootStage(2);
 
   useEffect(() => {
-    if (!user) {
+    if (!user || !live) {
       setFriendMap({});
       setIncoming([]);
       setOutgoing([]);
@@ -59,7 +62,7 @@ export function SocialProvider({ children }) {
       onSnapshot(query(collection(db, 'dmChats'), where('members', 'array-contains', user.uid)), (s) => setChats(docs(s)), log('dmChats')),
     ];
     return () => unsubs.forEach((u) => u());
-  }, [user]);
+  }, [user, live]);
 
   // İstek süreleri (48 sa) ve 7 günlük sohbet penceresi zamanla dolsun diye dakikada bir tazele
   useEffect(() => {
