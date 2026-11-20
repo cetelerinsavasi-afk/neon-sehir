@@ -24,6 +24,7 @@ import { INITIAL_LIFE_DAYS } from '../VehicleCard/VehicleCard';
 import { heistCarOf, heistSceneOf, isVendorHeist } from './heistVideo';
 import { holdNotifications } from '../../lib/notifHold'; // v160.7
 import './HeistPanel.css';
+import { useTaskPass, vendorDayState } from '../../hooks/useTaskPass'; // v168.1
 
 // v154 — şehir dışında soygun videosu (şehir motorunu sadece video açılınca yükler)
 const loadHeistVideo = () => import('../City/HeistVideo');
@@ -286,6 +287,7 @@ export default function HeistPanel({ target, onRun = null }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const { actions } = useDailyActions();
+  const taskPass = useTaskPass(); // v168.1
   const { plans, loading: plansLoading } = useOpenHeistPlans(target);
   const { weapons } = useWeapons();
   const myActivePlans = useMyActiveHeistPlans();
@@ -340,7 +342,7 @@ export default function HeistPanel({ target, onRun = null }) {
   const meta = HEIST_LABELS[target];
   if (!meta) return <p className="hp-note">Bu mekân artık soyulamıyor.</p>;
   const vendor = isVendorTarget(target);
-  const done = Boolean(actions.heist?.[target]) || Boolean(actions.vendorPurchases?.[target]);
+  const done = vendor ? vendorDayState(actions, target, taskPass).haracDone : Boolean(actions.heist?.[target]) || Boolean(actions.vendorPurchases?.[target]); // v168.1
   const donated = Boolean(actions.vendorPurchases?.[target]) && !actions.heist?.[target];
   // ömrü bitmiş / satışa çıkmış silah sayılmaz (sunucu getMaxWeaponPower ile aynı)
   const myPower = weapons.reduce((max, w) => (!w.listed && (w.lifeDays ?? INITIAL_LIFE_DAYS) > 0 ? Math.max(max, w.power || 0) : max), 0);

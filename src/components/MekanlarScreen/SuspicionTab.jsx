@@ -10,6 +10,7 @@ import GuestOverlay from '../GuestOverlay/GuestOverlay';
 import './SuspicionTab.css';
 // v154: satıcı listesi tek kaynaktan (6 satıcı)
 import { VENDOR_IDS } from '../../../functions/vendorData.js';
+import { useTaskPass } from '../../hooks/useTaskPass'; // v168.1
 
 const BRIBE_COST = 3000;
 const VENDOR_COST = 1000;
@@ -32,6 +33,7 @@ function reputationGainFor(rep) {
 // (kalan süresi en az) olandan başlayarak sıralı.
 export default function SuspicionTab() {
   const { player } = usePlayer();
+  const taskPass = useTaskPass(); // v168.1
   const { actions } = useDailyActions();
   const [tick, setTick] = useState(0);
   const [busyKey, setBusyKey] = useState(null);
@@ -70,7 +72,7 @@ export default function SuspicionTab() {
       costLabel: 'Ücretsiz',
       suspicionDelta: 5,
       reputationDelta: reputationGainFor(player?.reputation || 0),
-      available: !actions.prayedWindows?.[win],
+      available: !actions.prayedWindows?.[win] || taskPass.pray,
       unavailableNote: `Sıradaki vakit ${nextWindowHour ? `(${nextWindowHour})` : ''}`,
       msRemaining: msUntilNextPrayerWindow(win),
       onAction: () => runAction('camii', prayAtMosque),
@@ -89,7 +91,7 @@ export default function SuspicionTab() {
       onAction: () => runAction('karakol', bribePolice),
     },
     ...VENDOR_IDS.map((vendorId) => {
-      const alreadyBought = Boolean(actions.vendorPurchases?.[vendorId]);
+      const alreadyBought = Boolean(actions.vendorPurchases?.[vendorId]) && !taskPass.bagis; // v168.1
       const blockedByHeist = !alreadyBought && Boolean(actions.heist?.[vendorId]);
       return {
         key: vendorId,

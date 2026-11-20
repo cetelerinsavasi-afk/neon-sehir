@@ -1765,6 +1765,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   // Sinematik sırasında gerçek oyuncular ve arabaları SADECE bu ekranda gizlenir (ağa dokunulmaz).
   const isStoryId = (id) => typeof id === 'string' && id.startsWith('npc_');
   let storyHideReal = false;
+  let storyLock = false; // v168.1: sinematikte yürüme kapalı, kamerayla etrafa bakmak serbest
   const rcars = new Map(); // uid → { v, id, x, z, y, yaw, tx, tz, tyaw, spd, steer, name }
   function upsertPlayer(uid, st) {
     let r = remotes.get(uid);
@@ -2917,6 +2918,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   }
   function handleTap(e) {
     if (driving) return;
+    if (storyLock) return; // v168.1: senaryo sahnesi — dokunuş yürütmez (sürükleyince kamera döner)
     if (heist?.active) return; // v154: soygun dizisi oynarken dokunma yok
     if (self.ride) return;
     setNdc(e);
@@ -3392,10 +3394,12 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     }
     let f = 0;
     let s = 0;
-    if (keys.KeyW || keys.ArrowUp) f += 1;
-    if (keys.KeyS || keys.ArrowDown) f -= 1;
-    if (keys.KeyD || keys.ArrowRight) s += 1;
-    if (keys.KeyA || keys.ArrowLeft) s -= 1;
+    if (!storyLock) {
+      if (keys.KeyW || keys.ArrowUp) f += 1;
+      if (keys.KeyS || keys.ArrowDown) f -= 1;
+      if (keys.KeyD || keys.ArrowRight) s += 1;
+      if (keys.KeyA || keys.ArrowLeft) s -= 1;
+    }
     const manual = f || s;
     if (self.seat) {
       if (manual) standUp();
@@ -5213,6 +5217,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       },
       hideRemotes(on) {
         storyHideReal = Boolean(on);
+      },
+      lockMove(on) {
+        storyLock = Boolean(on);
       },
       // mekânın kapısının ÖNÜ (dışarıda) — oyunun açılışındaki gibi; Amca'nın hedefleri buradan
       doorOut(region) {

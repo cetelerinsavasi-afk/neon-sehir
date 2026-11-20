@@ -1,5 +1,6 @@
 import SimpleActionScreen from '../SimpleActionScreen/SimpleActionScreen';
 import { buyFromVendor } from '../../services/gameActions';
+import { useTaskPass, vendorDayState } from '../../hooks/useTaskPass'; // v168.1
 
 const VENDOR_COST = 1000;
 
@@ -8,6 +9,7 @@ const VENDOR_COST = 1000;
 // etkilemez. Bu yüzden günlük durum vendorId'ye göre (nested) tutuluyor.
 // Bölüm 2: her satıcı "haraç kesme (soygun) VEYA alışveriş" sunuyor.
 export default function VendorScreen({ vendorId, vendorName }) {
+  const taskPass = useTaskPass(); // v168.1
   return (
     <div>
       <SimpleActionScreen
@@ -15,7 +17,7 @@ export default function VendorScreen({ vendorId, vendorName }) {
         description={`${vendorName}'ya günde bir kez ${VENDOR_COST.toLocaleString('tr-TR')} altın bağış yaparak şüpheni 5 azalt, saygınlık kazan.`}
         buttonLabel={`Bağış Yap (${VENDOR_COST.toLocaleString('tr-TR')} altın)`}
         doneLabel="Bugün zaten bağış yaptın"
-        isDone={(actions) => Boolean(actions.vendorPurchases?.[vendorId])}
+        isDone={(actions) => vendorDayState(actions, vendorId, taskPass).bagisDone}
         goldCost={VENDOR_COST}
         actionFn={() => buyFromVendor(vendorId)}
       />

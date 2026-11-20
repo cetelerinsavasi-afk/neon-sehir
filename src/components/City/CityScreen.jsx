@@ -75,6 +75,7 @@ import '../../styles/worldScreenChrome.css';
 import '../Workshop/Workshop.css';
 import '../../styles/bizui.css';
 import './City.css';
+import { useTaskPass, vendorDayState } from '../../hooks/useTaskPass'; // v168.1
 
 const fmt = (n) => Number(n || 0).toLocaleString('tr-TR');
 // v149 — stadyumun içindeyken sağ üstteki "Futbol" düğmesiyle açılan panel
@@ -1021,7 +1022,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
 
   // --- seyyar satıcı (oyunun sunucu fonksiyonları) -----------------------------------------
   const vendorOf = (z) => (z?.kind === 'vendor' ? VENDOR_BY_VENUE[z.vendor] : null);
-  const vendorDone = (v) => Boolean(daily?.vendorPurchases?.[v.id]) || Boolean(daily?.heist?.[v.id]);
+  const taskPass = useTaskPass(); // v168.1: görevdeyken tek seferlik hak
+  const vendorState = (v) => vendorDayState(daily, v.id, taskPass);
   const vendorBuy = async (z) => {
     const v = vendorOf(z);
     if (busy) return;
@@ -1207,10 +1209,9 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     }
     if (zone.kind === 'vendor') {
       const v = vendorOf(zone);
-      if (!vendorDone(v)) {
-        list.push({ label: '🤲 Bağış yap', cls: 'take', on: () => vendorBuy(zone) });
-        list.push({ label: '💰 Haraç kes', cls: 'heist', on: () => setPanel({ kind: 'heist', zone }) });
-      }
+      const vs = vendorState(v);
+      if (!vs.bagisDone) list.push({ label: '🤲 Bağış yap', cls: 'take', on: () => vendorBuy(zone) });
+      if (!vs.haracDone) list.push({ label: '💰 Haraç kes', cls: 'heist', on: () => setPanel({ kind: 'heist', zone }) });
       list.push({ label: '🧾 Menü', on: () => setPanel({ kind: 'menu', zone }) });
     }
     if (zone.kind === 'park' && zone.act === 'bufe') list.push({ label: '🌭 Büfe', on: () => setPanel({ kind: 'bufe' }) });
@@ -1514,8 +1515,10 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
             {!guest && !driving && bootDetails && <PoliticsHomeButton inline />}
             {/* v168 — ⏪ 3 yıl önce (isteğe bağlı; Amca ölene kadar) */}
             {!guest && !driving && bootWorld && storyFlashBtn && (
-              <button type="button" className="hs-side-btn amca-flash-btn" onClick={() => storyRef.current?.playFlashback()} title="3 yıl önce">
+              <button type="button" className={`hs-side-btn amca-flash-btn${storyFlashBtn === 'pre' ? ' pre' : ''}`} onClick={() => storyRef.current?.playFlashback()} title="3 yıl önce">
                 ⏪<small>3 yıl önce</small>
+                {/* v168.1: yeni oyuncu — hikâye bu düğmeyle başlar (görevler / hatırlatmalar ondan sonra) */}
+                {storyFlashBtn === 'pre' && <span className="amca-flash-hint">Hikâyen burada başlıyor</span>}
               </button>
             )}
             {!guest && !driving && bootWorld && (

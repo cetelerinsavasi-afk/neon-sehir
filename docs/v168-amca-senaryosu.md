@@ -49,3 +49,26 @@ konsolda `__step()` sunucunun görevi ilerletmesini taklit eder)
    - sonra "Bi çeteye gir" görevine geçiliyor mu?
 7. Görevleri bitmiş eski hesap: 3 yıl önce → Amca → Nevzat araması → hurdalık → mezar. Sonra buton kayboluyor mu?
 8. Misafir: senaryo ve buton yok. Üye olunca karakolda doğuyor mu?
+
+## v168.1
+
+- **Yeni oyuncu:** herkes gibi evin önünde doğar. Görev listesi ve hatırlatmalar görünmez, sadece parlayan
+  **⏪ 3 yıl önce** düğmesi ("Hikâyen burada başlıyor") görünür. Düğmeye basınca sırayla:
+  köprü sahnesi → karakolun önü → Rıza Amca → görevler.
+  Sunucu da hikâye başlamadan görev ilerletmez (`storyStarted`, `checkOnboardingProgress › event 'start'`).
+  1. görevden ilerideki oyuncu başlamış sayılır.
+- **Tek seferlik görev hakkı** (`functions/onboardingData.js › hasFreePass`, `users.obFree`):
+  - İbadet görevi geldiğinde bu vakitte zaten ibadet ettiyse bir kez daha ibadet edebilir.
+    Cemaate ikinci kez eklenmez.
+  - Haraç görevinde, o satıcıda bugün haraç ya da bağış yapılmışsa bir kez daha haraç kesilebilir.
+  - Bağış görevinde, o satıcıya bugün bağış yapılmışsa bir kez daha bağış yapılabilir.
+    Haraç kesilen satıcıya aynı gün bağış kuralı aynen kalır.
+  - Hak sadece o görev aktifken var, oyuncu başına bir kez. Kullanılınca görev geçer.
+- **Sahnelerde kamera:** sahnelerde parmakla / fareyle etrafa bakılır.
+  - Köprü sahnesinde, karakoldaki karşılaşmada ve çatışmada yürünmez.
+  - Hurdalıkta çatışma dışında yürünür.
+- **Amca daha hızlı sürer.** Sadece gerçek virajda yavaşlar.
+- **Görev şeridi ve Amca'nın sözleri** alttaki düğmelerin (Arabaya bin, Bağış yap…) üstüne çıkar.
+  PC'de çakışma yok.
+- **Yönetici:** Profil'de "🔄 Görevleri sıfırla (senaryo baştan)" düğmesi var. Sadece kurucu hesapta görünür,
+  sunucu da kontrol eder. Bu cihazdaki senaryo kayıtları silinir ve sayfa yenilenir.

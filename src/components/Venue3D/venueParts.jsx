@@ -32,6 +32,7 @@ import HeldIcon from '../HouseScreen/HeldIcon';
 import { camiiDynamicNpcs, VENDORS, VENDOR_COST } from '../../../functions/venueLayouts.js';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import '../../styles/bizui.css';
+import { useTaskPass, vendorDayState } from '../../hooks/useTaskPass'; // v168.1
 
 // =============================================================================
 // v92 Faz 8 — mekânlara özel parçalar: üst menü butonları + paneller.
@@ -96,10 +97,11 @@ export function CamiiPart({ panel, setPanel, setDynNpcs, walk }) {
   const { members, window: win } = useMosqueAttendance();
   const { beggars } = useBeggars();
   const { actions } = useDailyActions();
+  const pass = useTaskPass(); // v168.1
   const [booklet, setBooklet] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
-  const prayed = Boolean(actions?.prayedWindows?.[win]);
+  const prayed = Boolean(actions?.prayedWindows?.[win]) && !pass.pray;
 
   // imam (varsa) mihrapta — bugün nasihat verdiyse minberin önünde; dilenciler köşede minderlerde
   useEffect(() => {
@@ -150,7 +152,7 @@ export function CamiiPart({ panel, setPanel, setDynNpcs, walk }) {
             description={`Günde 5 vakit (${WINDOW_HOURS[win]} şu an ${win}. vakit) ibadet ederek her seferinde şüpheni 5 azaltıp saygınlık kazanabilirsin. Ücretsiz.`}
             buttonLabel="İbadet Et (Şüphe -5, Saygınlık +)"
             doneLabel="Bu vakitte zaten ibadet ettin"
-            isDone={(a) => Boolean(a.prayedWindows?.[win])}
+            isDone={(a) => Boolean(a.prayedWindows?.[win]) && !pass.pray}
             actionFn={prayAtMosque}
           />
           <ImamPanel />
@@ -620,6 +622,7 @@ function VendorChoice({ cfg, busy, err, onBuy, onHarac, onMenu, onClose }) {
   return (
     <Sheet title={`${cfg.icon} ${cfg.title}`} onClose={onClose}>
       <div className="v3-vendor-acts">
+        {onBuy && (
         <button className="v3-vendor-act buy" disabled={busy} onClick={onBuy}>
           <span className="v3-vendor-ico">🤲</span>
           <b>{busy ? 'Bağışlanıyor…' : 'Bağış yap'}</b>
@@ -627,11 +630,14 @@ function VendorChoice({ cfg, busy, err, onBuy, onHarac, onMenu, onClose }) {
             <span className="gold-coin-icon" style={{ width: 12, height: 12 }} /> {fmt(VENDOR_COST)} · 🕵️ −5
           </em>
         </button>
+        )}
+        {onHarac && (
         <button className="v3-vendor-act harac" disabled={busy} onClick={onHarac}>
           <span className="v3-vendor-ico">💰</span>
           <b>Haraç kes</b>
           <em>soygun</em>
         </button>
+        )}
       </div>
       {onMenu && (
         <button className="v3-btn v3-vendor-menu" onClick={onMenu}>
@@ -648,19 +654,21 @@ export function VendorPart({ venue, panel, setPanel, flash, walk, engineRef, onO
   const vendorId = venue.vendor;
   const v = VENDORS[vendorId];
   const cfg = { icon: venue.icon, title: venue.name, product: v?.product };
-  const done = Boolean(actions?.vendorPurchases?.[vendorId]) || Boolean(actions?.heist?.[vendorId]);
+  const pass = useTaskPass(); // v168.1
+  const { bagisDone, haracDone } = vendorDayState(actions, vendorId, pass);
+  const done = bagisDone && haracDone;
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState(null);
   const stationId = Object.keys(venue.stations || {})[0] || null;
 
   // bugün alışveriş / haraç yapıldıysa arabadaki butonlardan sadece Menü kalır
-  const doneRef = useRef(done);
+  const doneRef = useRef({ b: bagisDone, h: haracDone });
   useEffect(() => {
-    doneRef.current = done;
-  }, [done]);
+    doneRef.current = { b: bagisDone, h: haracDone };
+  }, [bagisDone, haracDone]);
   useEffect(() => {
     if (!hideActRef) return undefined;
-    hideActRef.current = (act) => doneRef.current && (act === 'buy' || act === 'harac');
+    hideActRef.current = (act) => (act === 'buy' && doneRef.current.b) || (act === 'harac' && doneRef.current.h);
     return () => {
       hideActRef.current = null;
     };
@@ -712,17 +720,17 @@ export function VendorPart({ venue, panel, setPanel, flash, walk, engineRef, onO
   useEffect(() => {
     if (panel === 'vendor') setPanel(done ? 'menu' : 'choose3');
     else if (panel === 'buy') {
-      if (done) setPanel('menu');
+      if (bagisDone) setPanel('menu');
       else {
         setPanel(null);
         buyDaily();
       }
     } else if (panel === 'harac') {
-      if (done) setPanel('menu');
+      if (haracDone) setPanel('menu');
       else harac();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [panel, done]);
+  }, [panel, done, bagisDone, haracDone]);
 
   if (!v) return null;
   const menu = Object.entries(v.menu || {});
@@ -746,7 +754,7 @@ export function VendorPart({ venue, panel, setPanel, flash, walk, engineRef, onO
         </div>
       )}
       {(panel === 'choose' || panel === 'choose3') && (
-        <VendorChoice cfg={cfg} busy={busy === 'daily'} err={err} onBuy={buyDaily} onHarac={harac} onMenu={panel === 'choose3' ? () => setPanel('menu') : null} onClose={() => setPanel(null)} />
+        <VendorChoice cfg={cfg} busy={busy === 'daily'} err={err} onBuy={bagisDone ? null : buyDaily} onHarac={haracDone ? null : harac} onMenu={panel === 'choose3' ? () => setPanel('menu') : null} onClose={() => setPanel(null)} />
       )}
       {panel === 'menu' && (
         <Sheet title={`🧾 ${venue.name} · Menü`} onClose={() => setPanel(null)} closeLabel="Kapat">

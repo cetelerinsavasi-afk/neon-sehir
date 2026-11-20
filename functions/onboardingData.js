@@ -77,3 +77,27 @@ export function onboardingTaskIdAt(pos) {
 export function currentOnboardingTaskId(user) {
   return onboardingTaskIdAt(onboardingPosOf(user));
 }
+
+// =============================================================================
+// v168.1 — TEK SEFERLİK GÖREV HAKKI (sunucu + istemci ortak kural)
+// Oyuncu ibadet / haraç / bağış görevine geldiğinde bugün (bu vakitte) zaten yapmışsa, görevi
+// öğrenebilsin diye günlük sınır BİR KEZ görmezden gelinir. Hak sadece o görev aktifken vardır;
+// kullanılınca users.obFree.{anahtar} = true yazılır (aynı işlemde) ve bir daha hiç doğmaz.
+//   4 ibadet  → vakit sınırı (cemaate ikinci kez eklenmez)
+//   6 haraç   → o satıcıda bugün haraç / bağış yapılmış olması
+//   7 bağış   → o satıcıya bugün bağış yapılmış olması (haraç kestiğin satıcıya bağış kuralı kalır)
+// =============================================================================
+export const FREE_PASS_KEYS = { 4: 'pray', 6: 'harac', 7: 'bagis' };
+export function hasFreePass(user, taskId) {
+  const key = FREE_PASS_KEYS[taskId];
+  if (!key || !user) return false;
+  return currentOnboardingTaskId(user) === taskId && !user.obFree?.[key];
+}
+// "Hikâye başladı mı?" — v168.1: yeni oyuncu görevlere ancak "3 yıl önce"yi izleyince başlar
+// (sunucu ilerletmez, istemci görev listesini göstermez). 1. görevden ilerisindeki ya da Amca'nın
+// öldüğü / görevleri bitmiş oyuncu başlamış sayılır.
+export function storyStarted(user) {
+  if (!user) return false;
+  if (user.storyStarted || user.amcaDead) return true;
+  return onboardingPosOf(user) > 1;
+}

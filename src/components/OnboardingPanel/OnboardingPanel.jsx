@@ -23,6 +23,7 @@ export default function OnboardingPanel({ gangReminders = null, gangChans = null
     currentTaskId,
     onboardingRewardClaimed,
     checklistDone,
+    storyPre,
     reminders,
     shouldHideButton,
   } = useOnboarding(gangReminders, gangChans, { inStadium }); // v163
@@ -73,13 +74,13 @@ export default function OnboardingPanel({ gangReminders = null, gangChans = null
   }, [onboardingStep]);
 
   // v136: sol alt sütun (Görevler → CANLI → Seçim) boşlukları alta kaydırır
-  const visible = Boolean(user) && !loading && !shouldHideButton;
+  const visible = Boolean(user) && !loading && !shouldHideButton && !storyPre;
   useEffect(() => {
     onVisibleChange?.(visible);
   }, [visible, onVisibleChange]);
 
   if (!user || loading) return null;
-  if (shouldHideButton) return null;
+  if (shouldHideButton || storyPre) return null; // v168.1
 
   const remainingTasks = Math.max(0, ONBOARDING_TASK_COUNT - onboardingStep + 1);
   const rewardReady = checklistDone && !onboardingRewardClaimed;

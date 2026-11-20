@@ -16,7 +16,7 @@ import { useBizReminders } from './useBizReminders';
 import { useMatchLive } from './useMatchLive'; // v163 — "Maç başladı" hatırlatması
 import { useBelediyeChatUnread } from './useBelediyeChatUnread'; // v146
 import { SAFE_DAILY_LIMIT } from '../components/ShadyDeal/shadyDeal';
-import { ONBOARDING_ORDER, ONBOARDING_TASK_COUNT, onboardingPosOf, onboardingTaskIdAt } from '../../functions/onboardingData.js';
+import { ONBOARDING_ORDER, ONBOARDING_TASK_COUNT, onboardingPosOf, onboardingTaskIdAt, storyStarted } from '../../functions/onboardingData.js';
 
 // Görev listesi/hatırlatıcı paneli — bkz. functions/index.js ONBOARDING
 // bölümü. Sayaç (onboardingStep, 1-20) ve tamamlanma bayrağı
@@ -154,6 +154,8 @@ export function useOnboarding(gangReminders = null, gangChans = null, { inStadiu
   const currentTaskId = onboardingTaskIdAt(onboardingStep);
   const onboardingRewardClaimed = Boolean(player?.onboardingRewardClaimed);
   const checklistDone = onboardingStep > ONBOARDING_TASK_COUNT;
+  // v168.1: yeni oyuncu "3 yıl önce"yi izleyene kadar görev / hatırlatma yok (sadece o düğme)
+  const storyPre = Boolean(player) && !onboardingRewardClaimed && !storyStarted(player);
 
   // Hatırlatıcı listesi — SADECE ödül alındıktan sonra anlamlı, ama
   // hesaplaması ucuz olduğu için her zaman üretiliyor.
@@ -290,6 +292,7 @@ export function useOnboarding(gangReminders = null, gangChans = null, { inStadiu
     currentTaskId, // v124: aktif görevin sabit kimliği (durum görevleri için)
     onboardingRewardClaimed,
     checklistDone,
+    storyPre,
     reminders,
     // Butonun tamamen gizlenmesi gereken durum: ödül alınmış VE aktif
     // hiçbir hatırlatıcı yok.

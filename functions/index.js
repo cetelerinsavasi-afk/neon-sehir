@@ -67,7 +67,7 @@ import { createDepo, combineBizHooks } from './depo.js';
 import { createCasino, isPlayerCasinoId, CASINO_TEXT } from './casino.js';
 import { canUseMaterial, readHoldings, buyoutValue, usableMaterials } from './materials.js';
 import { createV124Migrations } from './v124Migrations.js';
-import { ONBOARDING_V, ONBOARDING_ORDER, ONBOARDING_TASK_COUNT, AMCA_FINALE_TASK_ID, onboardingPosOf, onboardingTaskIdAt, currentOnboardingTaskId } from './onboardingData.js';
+import { ONBOARDING_V, ONBOARDING_ORDER, ONBOARDING_TASK_COUNT, AMCA_FINALE_TASK_ID, onboardingPosOf, onboardingTaskIdAt, currentOnboardingTaskId, hasFreePass, FREE_PASS_KEYS, storyStarted } from './onboardingData.js';
 import { profanityCheck, PROFANITY_WARNING } from './profanity.js';
 import { cleanEquipped } from './cosmeticsData.js';
 import { HOUSE_PRODUCTS } from './houseCatalogData.js';
@@ -538,6 +538,7 @@ async function advanceOnboardingStep(uid, taskNumber) {
       // v124: taskNumber = görev KİMLİĞİ; oyuncunun sırası (eski kayıt da olsa) yeni listeye çevrilir
       const pos = onboardingPosOf(user);
       if (onboardingTaskIdAt(pos) !== taskNumber) return;
+      if (!storyStarted(user)) return; // v168.1: yeni oyuncu görevlere "3 yıl önce"yi izleyince başlar
       tx.update(userRef, { onboardingStep: pos + 1, onboardingV: ONBOARDING_V });
     });
   } catch (err) {
@@ -579,6 +580,19 @@ export const checkOnboardingProgress = onCall(async (request) => {
     const currentStep = onboardingTaskIdAt(pos);
     const pass = () => tx.update(userRef, { onboardingStep: pos + 1, onboardingV: ONBOARDING_V });
     const ev = request.data?.event;
+    // v168.1 — YÖNETİCİ: kendi görevlerini ve senaryoyu sıfırla (baştan deneyimlemek için; sadece kendi hesabı)
+    if (ev === 'adminReset') {
+      if (!ADMIN_UIDS.includes(uid)) throw new HttpsError('permission-denied', 'Bu aksiyon sadece yöneticiye açık.');
+      const del = admin.firestore.FieldValue.delete();
+      tx.update(userRef, { onboardingStep: 1, onboardingV: ONBOARDING_V, onboardingRewardClaimed: false, amcaDead: del, storyStarted: del, obFree: del });
+      return;
+    }
+    // v168.1 — "3 yıl önce" ilk kez izlendi: hikâye (ve görevler) başlar
+    if (ev === 'start') {
+      if (!storyStarted(user)) tx.update(userRef, { storyStarted: true });
+      return;
+    }
+    if (!storyStarted(user)) return; // hikâye başlamadan görev ilerlemez
     // v168 — "3 yıl önce" (görevleri bitmiş eski oyuncu): Rıza Amca'nın son sahnesi bitti → mezar artık görünür.
     // Görevlere dokunmaz; sadece bir kez yazılır (amcaDead zaten varsa hiçbir şey yazılmaz).
     if (ev === 'replay') {
@@ -5592,8 +5606,12 @@ export const prayAtMosque = onCall(async (request) => {
   await db.runTransaction(async (tx) => {
     const [userSnap, dailySnap] = await Promise.all([tx.get(userRef), tx.get(dailyRef)]);
     const user = userSnap.data();
+    // v168.1: ibadet görevi geldiğinde bu vakitte zaten ibadet ettiyse TEK SEFERLİK yeniden hak
+    // (görevi öğrensin diye). Cemaate ikinci kez eklenmez, vakit kaydı zaten var.
+    let freePass = false;
     if (dailySnap.exists && dailySnap.data().prayedWindows?.[win]) {
-      throw new HttpsError('failed-precondition', 'Bu vakitte zaten ibadet ettin.');
+      if (!hasFreePass(user, 4)) throw new HttpsError('failed-precondition', 'Bu vakitte zaten ibadet ettin.');
+      freePass = true;
     }
     const currentSuspicion = user?.suspicion || 0;
     // Kullanıcı revizesi: ibadet artık şüphe kaç olursa olsun HEM şüpheyi -5
@@ -5602,6 +5620,10 @@ export const prayAtMosque = onCall(async (request) => {
       suspicion: clampSuspicion(currentSuspicion - 5),
       reputation: nextReputationAfterGain(user?.reputation),
     };
+    if (freePass) {
+      tx.update(userRef, { ...updates, [`obFree.${FREE_PASS_KEYS[4]}`]: true });
+      return;
+    }
     tx.update(userRef, updates);
     tx.set(dailyRef, { prayedWindows: { [win]: true } }, { merge: true });
     // "X. Vakitteki Cemaat" listesi için — Camii ekranında avatar+isimle
@@ -6089,10 +6111,12 @@ export const buyFromVendor = onCall(async (request) => {
   await db.runTransaction(async (tx) => {
     const [userSnap, dailySnap, presSnap] = await Promise.all([tx.get(userRef), isMenu ? Promise.resolve(null) : tx.get(dailyRef), tx.get(presRef)]);
     const user = userSnap.data();
+    let freePass = false; // v168.1: bağış görevi — bugün bu satıcıya bağış yaptıysa tek seferlik yeniden hak
     if (!isMenu) {
       const daily = dailySnap?.data();
       if (daily?.vendorPurchases?.[vendorId]) {
-        throw new HttpsError('failed-precondition', 'Bu satıcıya bugün zaten bağış yaptın.');
+        if (!hasFreePass(user, 7)) throw new HttpsError('failed-precondition', 'Bu satıcıya bugün zaten bağış yaptın.');
+        freePass = true;
       }
       if (daily?.heist?.[vendorId]) {
         throw new HttpsError(
@@ -6111,6 +6135,7 @@ export const buyFromVendor = onCall(async (request) => {
         gold: admin.firestore.FieldValue.increment(-price), goldTag: goldTag('seyyar'),
         suspicion: clampSuspicion((user.suspicion || 0) - 5),
         reputation: nextReputationAfterGain(user.reputation),
+        ...(freePass ? { [`obFree.${FREE_PASS_KEYS[7]}`]: true } : {}),
       });
       tx.set(dailyRef, { vendorPurchases: { [vendorId]: true } }, { merge: true });
     }
@@ -6270,14 +6295,19 @@ export const attemptHeist = onCall(async (request) => {
   const userRef = db.collection('users').doc(uid);
 
   const dailySnap = await dailyRef.get();
+  // v168.1: haraç görevi — bu satıcıda bugün haraç / bağış yapıldıysa TEK SEFERLİK yeniden hak
+  const pre = (await userRef.get()).data() || {};
+  const vendorTarget = target.startsWith('seyyar_satici');
+  const dayBlocked = dailySnap.exists && (dailySnap.data().heist?.[target] || dailySnap.data().vendorPurchases?.[target]);
+  const freePass = Boolean(dayBlocked) && vendorTarget && hasFreePass(pre, 6);
   // KULLANICI REVİZESİ (polis suç sistemi): polisler artık tek başına da
   // soygun yapabilir (eskiden engelliydi) — yakalanırlarsa ceza 2 katı (bkz.
   // crimePenaltyMultiplier). İmam da suç işleyebilir (statü, meslek değil —
   // bkz. applyForImam), burada imam kontrolü yok.
-  if (dailySnap.exists && dailySnap.data().heist?.[target]) {
+  if (!freePass && dailySnap.exists && dailySnap.data().heist?.[target]) {
     throw new HttpsError('failed-precondition', 'Bu hedefi bugün zaten denedin.');
   }
-  if (dailySnap.exists && dailySnap.data().vendorPurchases?.[target]) {
+  if (!freePass && dailySnap.exists && dailySnap.data().vendorPurchases?.[target]) {
     throw new HttpsError(
       'failed-precondition',
       'Bu satıcıya bugün bağış yaptın, aynı gün haraç kesemezsin.'
@@ -6286,7 +6316,6 @@ export const attemptHeist = onCall(async (request) => {
 
   // v123: şüphe 50+ iken tek başına soygun / haraç yok
   {
-    const pre = (await userRef.get()).data() || {};
     if (pre.belediyeSeat) throw new HttpsError('failed-precondition', BELEDIYE_CRIME_TEXT); // v130
     if (crimeLockedBySuspicion(pre.suspicion)) throw new HttpsError('failed-precondition', CRIME_LOCK_TEXT);
   }
@@ -6314,6 +6343,8 @@ export const attemptHeist = onCall(async (request) => {
     const suspicion = user.suspicion || 0;
     if (user.belediyeSeat) throw new HttpsError('failed-precondition', BELEDIYE_CRIME_TEXT); // v130 (yarış)
     if (crimeLockedBySuspicion(suspicion)) throw new HttpsError('failed-precondition', CRIME_LOCK_TEXT); // v123 (yarış)
+    // v168.1: tek seferlik hak aynı anda iki kez kullanılamaz (işlem içinde yeniden kontrol)
+    if (freePass && !hasFreePass(user, 6)) throw new HttpsError('failed-precondition', 'Bu hedefi bugün zaten denedin.');
     const caught = Math.random() < captureRiskPercent(suspicion) / 100;
     const reward = config.reward;
     // Yakalanırsa ödenecek ceza — polisse 2 KATI (bkz. crimePenaltyMultiplier).
@@ -6326,6 +6357,7 @@ export const attemptHeist = onCall(async (request) => {
     // Yakalanmazsak şüphe yine artar ama saygınlığa dokunulmaz.
     const updates = {
       suspicion: clampSuspicion(suspicion + config.suspicionCost),
+      ...(freePass ? { [`obFree.${FREE_PASS_KEYS[6]}`]: true } : {}),
     };
 
     let newTotalDebt = user.debtToState || 0;

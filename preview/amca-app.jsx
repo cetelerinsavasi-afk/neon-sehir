@@ -1,6 +1,7 @@
 // SADECE önizleme (v168): Rıza Amca senaryosu — gerçek şehir + gerçek senaryo katmanı, sahte sunucu.
 //   ?step=1..20   görev sırası (onboardingV 4)      ?old=1  görevleri bitmiş eski oyuncu
 //   ?dead=1       Amca ölmüş (mezar)                  ?fresh=1  bu cihazdaki senaryo kayıtlarını sil
+//   ?started=1    hikâye başlamış (1. görevde bile Amca yanında; yoksa sadece ⏪ 3 yıl önce)
 // Konsoldan: __step(n) sunucunun görevi ilerletmesini taklit eder; __user() oyuncu belgesi.
 import { createRoot } from 'react-dom/client';
 import { AuthProvider } from '../src/contexts/AuthContext';
@@ -26,6 +27,7 @@ doc.set(
     onboardingV: 4,
     onboardingRewardClaimed: old,
     amcaDead: Boolean(q.get('dead')),
+    storyStarted: Boolean(q.get('started')),
     ...(q.get('credit') ? { credit: { principal: 1000, totalOwed: 1200, paid: 0 } } : {}),
   },
   { merge: true }
@@ -44,6 +46,11 @@ window.__fnHook = {
     const u = await user();
     const pos = onboardingPosOf(u);
     const cur = currentOnboardingTaskId(u);
+    if (data?.event === 'start') {
+      await doc.update({ storyStarted: true });
+      return { ok: true };
+    }
+    if (!(u.storyStarted || u.amcaDead || pos > 1)) return { ok: true };
     if (data?.event === 'replay') {
       if (!u.amcaDead && pos > ONBOARDING_TASK_COUNT) await doc.update({ amcaDead: true });
     } else if (data?.event === 'finale') {

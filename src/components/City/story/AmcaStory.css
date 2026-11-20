@@ -762,3 +762,53 @@ body.amca-cine .hs-bubble {
 body.amca-cine .amca-line {
   bottom: calc(13vh + 12px);
 }
+/* v168.1: yeni oyuncu — tek düğme, ilgi çekici (parlayan halka + yanında kısa çağrı) */
+.amca-flash-btn.pre {
+  width: 58px !important;
+  height: 58px !important;
+  border-width: 2px !important;
+  animation: amcaPulsePre 1.6s ease-in-out infinite;
+}
+.amca-flash-hint {
+  position: absolute;
+  right: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  background: #140e08e6;
+  color: #ffd9a0;
+  border: 1px solid #c9a24a;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 900;
+  pointer-events: none;
+  animation: amcaHint 1.6s ease-in-out infinite;
+}
+.amca-flash-hint::after {
+  content: '';
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 6px solid transparent;
+  border-left-color: #c9a24a;
+}
+@keyframes amcaPulsePre {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 #ffb347aa, 0 0 18px 2px #ffb34766;
+  }
+  50% {
+    box-shadow: 0 0 0 10px #ffb34700, 0 0 26px 6px #ffb34799;
+  }
+}
+@keyframes amcaHint {
+  0%,
+  100% {
+    transform: translate(0, -50%);
+  }
+  50% {
+    transform: translate(-5px, -50%);
+  }
+}

@@ -14,7 +14,7 @@ import AvatarSvg from '../../AvatarSvg/AvatarSvg';
 import { buildFullAvatarSvgMarkup } from '../../../lib/avatarShapes';
 import { navRoute } from '../cityJobs.js';
 import { checkOnboardingProgress } from '../../../services/gameActions';
-import { ONBOARDING_TASK_COUNT, onboardingPosOf } from '../../../../functions/onboardingData.js';
+import { ONBOARDING_TASK_COUNT, onboardingPosOf, storyStarted } from '../../../../functions/onboardingData.js';
 import { ONBOARDING_TASKS } from '../../../hooks/useOnboarding';
 import { createActor } from './storyActor.js';
 import { createStoryProps } from './storyProps.js';
@@ -64,17 +64,20 @@ const TITLE_BY_ID = Object.fromEntries(ONBOARDING_TASKS.map((t) => [t.id, t]));
 const STATUS_TASK_IDS = [5, 9, 11, 12, 13, 14, 16, 19, 20]; // sunucu "zaten sağlanıyorsa" otomatik geçirir
 
 // player → senaryo durumu
-function storyModeOf(player) {
+// pre: yeni oyuncu, hikâye başlamadı (sadece ⏪ 3 yıl önce düğmesi) · new: görevlerde, Amca yanında
+// after: Amca öldü, son görev (çete) · old: görevleri bitmiş eski oyuncu · finished: hepsi bitti
+function storyModeOf(player, startedLocal = false) {
   if (!player) return 'none';
   const pos = onboardingPosOf(player);
   const done = pos > ONBOARDING_TASK_COUNT;
   const dead = Boolean(player.amcaDead);
-  if (!done) return dead ? 'after' : 'new';
+  if (!done) return dead ? 'after' : storyStarted(player) || startedLocal ? 'new' : 'pre';
   return dead ? 'finished' : 'old';
 }
 
 const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false, jobActive = false, onAway, onFlashButton }, ref) {
-  const mode = storyModeOf(player);
+  const [startedLocal, setStartedLocal] = useState(false); // "3 yıl önce" izlendi (sunucu onayı gelmeden)
+  const mode = storyModeOf(player, startedLocal);
   const pos = player ? onboardingPosOf(player) : 0;
   const idx = mode === 'new' || mode === 'after' ? pos - 1 : -1;
   const task = idx >= 0 ? STORY_TASKS[idx] : null;
@@ -215,6 +218,7 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
     R.props = null;
     const k = R.eng?.story;
     k?.hideRemotes(false);
+    k?.lockMove(false);
     k?.hideNpc('Bekçi', false);
     k?.crouch(false);
     k?.pose('self', null);
@@ -306,9 +310,11 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
     const e = R.eng;
     R.z = 'script';
     setMeeting(true);
+    e.story.lockMove(true);
     try {
       return await meetInner(e, alive, lines);
     } finally {
+      e.story.lockMove(false);
       setMeeting(false);
     }
   }, [R, ensureAmca, sayAll]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -508,6 +514,8 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
           }
         },
       };
+      k.lockMove(true); // çatışmada yürünmez (siper), kamerayla bakılır
+      R.cleanups.push(() => k.lockMove(false));
       setFight({ crouched: false, hp: 100, left: left.length, hint: true });
       down();
       sayS('amca', 'Kafanı kaldırma! Kalkınca ateş et!');
@@ -569,6 +577,7 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
         });
       }
       S.on = false;
+      k.lockMove(false);
       await Promise.all([foeLoop, amcaLoop]);
       check();
       setFight(null);
@@ -692,6 +701,7 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
     if (!e || R.scriptOn || R.busy) return;
     unlockAudio();
     const isOld = R.mode === 'old';
+    const isStart = R.mode === 'pre'; // yeni oyuncu: hikâye burada başlar
     const back = { ...e.getSelf() };
     R.session += 1;
     const sess = R.session;
@@ -718,6 +728,7 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
     if (e.isDriving()) e.exitCar();
     if (e.isRiding()) e.rideEnd();
     e.story.hideRemotes(true);
+    e.story.lockMove(true); // yürünmez, kamerayla etrafa bakılır
     R.props = createStoryProps(e.story);
     ctx.props = R.props;
     let ok = false;
@@ -731,8 +742,35 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
     clearScene();
     silenceAll();
     setSkip(false);
+    e.story.lockMove(false);
     if (ok) lsSet(LS(R.uid, 'fb'), '1');
     if (!R.eng) return;
+    // yeni oyuncu: hikâye başlar → karakolun önünde Amca karşılar, görevler başlar
+    if (isStart) {
+      R.session += 1;
+      R.starting = true;
+      setStartedLocal(true);
+      sendEvent('start');
+      e.spawnAt({ region: 'karakol', out: true });
+      e.setCam(null, 0.36, 9);
+      await sleep(700);
+      setTitle(null);
+      setCine(null);
+      setAway(false);
+      R.scriptOn = false;
+      setScript(false);
+      try {
+        const met = await runMeet(MEET_NEW);
+        if (!met) return;
+        lsSet(LS(R.uid, 'meet'), '1');
+        const p = R.posNow || 1;
+        R.prevPos = p;
+        await startTask(STORY_TASKS[p - 1], { chapterFrom: null });
+      } finally {
+        R.starting = false;
+      }
+      return;
+    }
     // dönüş: eski oyuncu (Amca henüz gelmediyse) karakolun önünde Amca'yla karşılaşır; yeni oyuncu kaldığı yere
     R.session += 1;
     const isMeet = isOld && !lsGet(LS(R.uid, 'old'));
@@ -767,7 +805,7 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
     setScript(false);
     R.z = zWas === 'script' ? 'wait' : zWas;
     if (R.amca && (R.z === 'wait' || R.z === 'none')) parkAmca();
-  }, [R, sayS, hush, clearRoute, setAway, clearScene, runMeet, runCall, parkAmca]);
+  }, [R, sayS, hush, clearRoute, setAway, clearScene, runMeet, runCall, parkAmca, sendEvent, startTask]);
   const skipFlashback = () => {
     R.session += 1;
     R.skipLine?.();
@@ -775,8 +813,26 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
 
   useImperativeHandle(ref, () => ({ playFlashback }), [playFlashback]);
   useEffect(() => {
-    onFlashButton?.(Boolean(uid) && (mode === 'new' || mode === 'old') && !script && !meeting);
+    const on = Boolean(uid) && (mode === 'pre' || mode === 'new' || mode === 'old') && !script && !meeting;
+    onFlashButton?.(on ? (mode === 'pre' ? 'pre' : 'on') : false);
   }, [uid, mode, script, meeting, onFlashButton]);
+
+  // v168.1: şehrin alttaki düğmeleri (Arabaya bin, Bağış yap…) açıkken görev şeridi ve replik onların ÜSTÜNE çıkar
+  const [lift, setLift] = useState(0);
+  useEffect(() => {
+    const iv = setInterval(() => {
+      let h = 0;
+      if (!document.body.classList.contains('amca-cine')) {
+        const el = document.querySelector('.cs-root .hs-actions');
+        if (el) {
+          const r = el.getBoundingClientRect();
+          if (r.height > 0) h = Math.max(0, Math.round(window.innerHeight - r.top + 10));
+        }
+      }
+      setLift((p) => (Math.abs(p - h) > 4 ? h : p));
+    }, 300);
+    return () => clearInterval(iv);
+  }, []);
 
   // ilk dokunuşta sesi aç (tarayıcı kuralı)
   useEffect(() => {
@@ -817,27 +873,19 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
       const pending = lsGet(LS(uid, 'pending'));
       if (pending) {
         await sendEvent(pending);
-        return;
+        if (pending !== 'start') return; // son sahne olayı: sahne tekrar oynamaz
       }
       if (R.mode === 'new') {
+        // "3 yıl önce"den gelen başlangıç akışı Amca'yı zaten kuruyor
+        if (R.starting || (R.amca?.alive && R.prevPos != null)) return;
         R.prevPos = null; // kurulum bitene kadar görev değişimleri burada toplanır
-        const first = R.posNow === 1 && !lsGet(LS(uid, 'meet'));
-        if (first) {
-          setMeeting(true);
-          while (R.busy && alive()) await sleep(400);
-          if (!alive()) return;
-          const ok = await runMeet(MEET_NEW);
-          if (!ok || !alive()) return;
-          lsSet(LS(uid, 'meet'), '1');
-        } else {
-          parkAmca(STORY_TASKS[R.posNow - 1]);
-          // telefon sahnesi kaçtıysa (görev başka ekranda bittiyse) şimdi oynar
-          if (R.posNow - 1 > IDX_CALL && !lsGet(LS(uid, 'call'))) await runCall();
-        }
+        parkAmca(STORY_TASKS[R.posNow - 1]);
+        // telefon sahnesi kaçtıysa (görev başka ekranda bittiyse) şimdi oynar
+        if (R.posNow - 1 > IDX_CALL && !lsGet(LS(uid, 'call'))) await runCall();
         if (!alive() || R.mode !== 'new') return;
         const p = R.posNow;
         R.prevPos = p;
-        await startTask(STORY_TASKS[p - 1], { chapterFrom: first ? null : STORY_TASKS[p - 1]?.chapter });
+        await startTask(STORY_TASKS[p - 1], { chapterFrom: STORY_TASKS[p - 1]?.chapter });
       } else if (R.mode === 'old') {
         const st = lsGet(LS(uid, 'old'));
         if (st) {
@@ -1059,7 +1107,6 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
   if (mode === 'none' && !line && !cine) return null;
   return createPortal(
     <div className={`amca-root${cine ? ' cine-on' : ''}`}>
-      {(cine || fight) && <div className="amca-block" />}
       {fight && (
         <div className="amca-fight">
           {!fight.finalShot && (
@@ -1088,7 +1135,7 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
         </div>
       )}
       {showChip && (
-        <div className="amca-chip" onClick={() => window.dispatchEvent(new CustomEvent('neon-onboarding-open'))}>
+        <div className="amca-chip" style={lift ? { bottom: Math.max(118, lift) } : undefined} onClick={() => window.dispatchEvent(new CustomEvent('neon-onboarding-open'))}>
           <i>{chipEmoji}</i>
           <div>
             <small>{curTask?.sub || (mode === 'after' ? "Rıza Amca'nın son sözü" : 'Rıza Amca')}</small>
@@ -1097,7 +1144,7 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
         </div>
       )}
       {showLine && (
-        <div className={`amca-line who-${line.who}`} onClick={() => R.skipLine?.()}>
+        <div className={`amca-line who-${line.who}`} style={lift && !cine ? { bottom: Math.max(112, lift) } : undefined} onClick={() => R.skipLine?.()}>
           {line.who !== 'me' && avOf(line.who) && (
             <div className="amca-face">
               <AvatarSvg avatar={avOf(line.who)} size={44} rounded />

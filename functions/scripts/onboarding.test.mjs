@@ -55,7 +55,8 @@ test('index.js: kaldırılan görevler okuma yapmaz; ilerleme yeni sırayla yaz�
   assert.ok(adv.indexOf('ONBOARDING_ORDER.includes(taskNumber)') < adv.indexOf('runTransaction'));
   assert.ok(adv.includes('onboardingStep: pos + 1, onboardingV: ONBOARDING_V'));
   const chk = src.slice(src.indexOf('export const checkOnboardingProgress'), src.indexOf('export const completeOnboardingChecklist'));
-  assert.ok(!/onboardingStep: \d+/.test(chk), 'sabit adım numarası yazılmaz');
+  // (v168.1: tek istisna yöneticinin kendi hesabını 1. göreve döndürmesi)
+  assert.ok(!/onboardingStep: \d+/.test(chk.replace(/if \(ev === 'adminReset'\)[\s\S]*?return;\n    \}/, '')), 'sabit adım numarası yazılmaz');
   const safe = src.slice(src.indexOf('async function sellContrabandSafe'), src.indexOf('export const sellContrabandAtPark'));
   assert.ok(!safe.includes('advanceOnboardingStep(uid, 3)'));
   const risky = src.slice(src.indexOf('export const sellContrabandAtPark')).slice(0, 6000);
@@ -76,4 +77,41 @@ test('v168: hurdalık görevi sadece finale olayıyla geçer (mezar aynı yazmad
 test('v167: fabrikada maaş alınca görev 1 ilerler', () => {
   const src = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
   assert.ok(src.includes('await advanceOnboardingStep(uid, 1);'));
+});
+
+test('v168.1: tek seferlik görev hakkı — sadece o görevdeyken ve bir kez', async () => {
+  const { hasFreePass, storyStarted, ONBOARDING_ORDER: O } = await import('../onboardingData.js');
+  const at = (id, extra = {}) => ({ onboardingStep: O.indexOf(id) + 1, onboardingV: 4, storyStarted: true, ...extra });
+  assert.equal(hasFreePass(at(4), 4), true);
+  assert.equal(hasFreePass(at(4, { obFree: { pray: true } }), 4), false, 'kullanıldıysa bir daha yok');
+  assert.equal(hasFreePass(at(5), 4), false, 'görev geçtiyse yok');
+  assert.equal(hasFreePass(at(6), 6), true);
+  assert.equal(hasFreePass(at(7), 7), true);
+  assert.equal(hasFreePass(at(7, { obFree: { bagis: true } }), 7), false);
+  assert.equal(hasFreePass(at(3), 3), false, 'başka görevlerde hak yok');
+  assert.equal(hasFreePass(null, 4), false);
+  // hikâye başladı mı?
+  assert.equal(storyStarted({}), false, 'yeni oyuncu: 3 yıl önce izlenmeden başlamaz');
+  assert.equal(storyStarted({ onboardingStep: 3 }), false, 'eski kayıt bitmemiş → sıfırlanır, başlamamış');
+  assert.equal(storyStarted({ storyStarted: true }), true);
+  assert.equal(storyStarted({ onboardingStep: 2, onboardingV: 4 }), true, 'v4’te ilerlemiş oyuncu başlamış sayılır');
+  assert.equal(storyStarted({ onboardingRewardClaimed: true }), true);
+  assert.equal(storyStarted({ amcaDead: true }), true);
+});
+
+test('v168.1: sunucu — hikâye başlamadan görev ilerlemez; hak işlem içinde kullanılır; yönetici sıfırlaması korumalı', () => {
+  const src = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
+  const adv = src.slice(src.indexOf('async function advanceOnboardingStep'), src.indexOf('export const checkOnboardingProgress'));
+  assert.ok(adv.indexOf('if (!storyStarted(user)) return;') > -1 && adv.indexOf('if (!storyStarted(user)) return;') < adv.indexOf('tx.update(userRef'));
+  const chk = src.slice(src.indexOf('export const checkOnboardingProgress'), src.indexOf('export const completeOnboardingChecklist'));
+  assert.ok(/ev === 'adminReset'\) \{\s*if \(!ADMIN_UIDS\.includes\(uid\)\) throw/.test(chk));
+  assert.ok(chk.indexOf("if (!storyStarted(user)) return;") > chk.indexOf("ev === 'start'"));
+  const pray = src.slice(src.indexOf('export const prayAtMosque'), src.indexOf('export const prayAtMosque') + 3000);
+  assert.ok(pray.includes("if (!hasFreePass(user, 4)) throw"));
+  assert.ok(/if \(freePass\) \{\s*tx\.update\(userRef, \{ \.\.\.updates, \[`obFree\.\$\{FREE_PASS_KEYS\[4\]\}`\]: true \}\);\s*return;/.test(pray), 'serbest ibadette cemaate yazılmaz');
+  const vend = src.slice(src.indexOf('export const buyFromVendor'), src.indexOf('export const buyFromVendor') + 3500);
+  assert.ok(vend.includes('if (!hasFreePass(user, 7)) throw'));
+  assert.ok(vend.includes("'Bu satıcıdan bugün haraç kestin, aynı gün bağış yapamazsın.'"), 'haraç kesilen satıcıya bağış kuralı kalır');
+  const heist = src.slice(src.indexOf('export const attemptHeist'), src.indexOf('export const attemptHeist') + 6000);
+  assert.ok(heist.includes('hasFreePass(pre, 6)') && heist.includes('if (freePass && !hasFreePass(user, 6)) throw'));
 });

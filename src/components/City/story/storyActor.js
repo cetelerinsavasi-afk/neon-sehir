@@ -7,10 +7,11 @@
 import { navRoute } from '../cityJobs.js';
 
 const OFFSET = 2; // sağ şerit
-export const CRUISE = 10.5;
-const SLOW = 5.2;
-const ACC = 4.5;
-const BRAKE = 6.5;
+// v168.1: Amca daha hızlı ve akıcı sürer (eskiden virajdan çok önce yavaşlıyordu)
+export const CRUISE = 14.5;
+const SLOW = 8;
+const ACC = 6.5;
+const BRAKE = 8;
 let seq = 0;
 const stamp = () => (seq = Math.max(seq + 1, Date.now()));
 const angDiff = (a, b) => {
@@ -322,7 +323,7 @@ export function createActor(eng, { id, name, avatar, carId = null }, gy = () => 
             a.follow.replanT = 1.2;
             a.path = roadPath({ x: a.car.x, z: a.car.z }, tg);
             a.s = 0;
-            a.cruise = Math.min(16, CRUISE + d * 0.12);
+            a.cruise = Math.min(19, CRUISE + d * 0.12);
             a.slowEnd = true;
           }
         }
@@ -331,10 +332,11 @@ export function createActor(eng, { id, name, avatar, carId = null }, gy = () => 
         const P = a.path;
         const left = P.acc[P.acc.length - 1] - a.s;
         const here = at(P, a.s);
-        const ahead = at(P, a.s + 12);
+        const ahead = at(P, a.s + 8);
         const turn = Math.abs(angDiff(ahead.yaw, here.yaw));
         const cr = a.cruise || CRUISE;
-        let want = turn > 0.5 ? SLOW : turn > 0.25 ? (SLOW + cr) / 2 : cr;
+        // sadece gerçek virajda (kavşak dönüşü) yavaşlar; şerit kaymalarında hız kesmez
+        let want = turn > 0.7 ? SLOW : turn > 0.4 ? (SLOW + cr) / 2 : cr;
         if (a.slowEnd) want = Math.min(want, Math.sqrt(2 * BRAKE * 0.8 * Math.max(0, left - 1.2)));
         const c = a.car;
         c.spd += Math.max(-6.5 * dt, Math.min(ACC * dt, want - c.spd));

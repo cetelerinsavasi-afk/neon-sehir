@@ -25,6 +25,7 @@ import './MosqueWorldScreen.css';
 import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
 import WorldEmoteButton from '../WorldEmotes/WorldEmoteButton';
 import { createEmoteTracker, freezeEmote, wirePhotoFrame } from '../../lib/worldEmotes';
+import { useTaskPass } from '../../hooks/useTaskPass'; // v168.1
 
 // --- Camii içi (madde 5 revizyonu + madde 17 canlı/çok oyunculu) ----------
 // Kullanıcının başka bir Claude oturumuna hazırlattığı referans örneğe göre
@@ -477,7 +478,8 @@ export default function MosqueWorldScreen({ onExit }) {
 
   // hasPrayedThisWindow — yeni istek: imam makamının üstünde yüzen "İbadet
   // Et" butonu, bu vakitte zaten ibadet ettiysek kaybolsun.
-  const hasPrayedThisWindow = Boolean(actions.prayedWindows?.[win]);
+  const taskPass = useTaskPass(); // v168.1: ibadet görevinde tek seferlik hak
+  const hasPrayedThisWindow = Boolean(actions.prayedWindows?.[win]) && !taskPass.pray;
 
   const [ready, setReady] = useState(false);
   const [panel, setPanel] = useState(null); // 'imam' | 'beggars' | 'congregation' | null
@@ -1078,7 +1080,7 @@ export default function MosqueWorldScreen({ onExit }) {
                   description={`Günde 5 vakit (${WINDOW_HOURS[win]} şu an ${win}. vakit) ibadet ederek her seferinde şüpheni 5 azaltıp saygınlık kazanabilirsin. Ücretsiz.`}
                   buttonLabel="İbadet Et (Şüphe -5, Saygınlık +)"
                   doneLabel="Bu vakitte zaten ibadet ettin"
-                  isDone={(actions) => Boolean(actions.prayedWindows?.[win])}
+                  isDone={(actions) => Boolean(actions.prayedWindows?.[win]) && !taskPass.pray}
                   actionFn={prayAtMosque}
                 />
                 <ImamPanel />

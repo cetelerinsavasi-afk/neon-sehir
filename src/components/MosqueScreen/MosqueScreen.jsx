@@ -19,6 +19,7 @@ import {
   giveNasihat,
 } from '../../services/gameActions';
 import './MosqueScreen.css';
+import { useTaskPass } from '../../hooks/useTaskPass'; // v168.1
 
 // WINDOW_HOURS/ImamPanel/BeggarsSection export edildi — MosqueWorldScreen
 // (girilebilir camii, bkz. madde 6) içeride imam ve dilenci NPC'leri için
@@ -370,6 +371,7 @@ export function BeggarsSection() {
 
 export default function MosqueScreen() {
   const { members, window: win } = useMosqueAttendance();
+  const taskPass = useTaskPass(); // v168.1
   const [congregationOpen, setCongregationOpen] = useState(false);
 
   return (
@@ -379,7 +381,7 @@ export default function MosqueScreen() {
         description={`Günde 5 vakit (${WINDOW_HOURS[win]} şu an ${win}. vakit) ibadet ederek her seferinde şüpheni 5 azaltıp saygınlık kazanabilirsin. Ücretsiz.`}
         buttonLabel="İbadet Et (Şüphe -5, Saygınlık +)"
         doneLabel="Bu vakitte zaten ibadet ettin"
-        isDone={(actions) => Boolean(actions.prayedWindows?.[win])}
+        isDone={(actions) => Boolean(actions.prayedWindows?.[win]) && !taskPass.pray}
         actionFn={prayAtMosque}
       />
 

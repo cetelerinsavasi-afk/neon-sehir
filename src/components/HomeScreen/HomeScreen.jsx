@@ -15,6 +15,7 @@ import DailyReport from '../DailyReport/DailyReport';
 import DeleteAccountRequest from '../DeleteAccountRequest/DeleteAccountRequest';
 import BlockedPlayersList from '../BlockedPlayersList/BlockedPlayersList';
 import AdminPanelEntry from '../AdminPanel/AdminPanelEntry';
+import AdminStoryReset from '../AdminPanel/AdminStoryReset'; // v168.1
 import LegalLinks from '../LegalLinks/LegalLinks';
 import { retryImport } from '../../lib/lazyRetry';
 import './HomeScreen.css';
@@ -225,6 +226,7 @@ export default function HomeScreen() {
 
       {/* UGC D3: yalnızca yetkililere görünür */}
       <AdminPanelEntry uid={user.uid} player={player} />
+      <AdminStoryReset uid={user.uid} />
 
       <div className="home-referral-box">
         <span className="home-referral-emoji">🎁</span>
