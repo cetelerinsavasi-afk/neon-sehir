@@ -1,6 +1,7 @@
 import SimpleActionScreen from '../SimpleActionScreen/SimpleActionScreen';
 import PoliceApplicationSection from '../PoliceApplicationSection/PoliceApplicationSection';
 import { bribePolice } from '../../services/gameActions';
+import { useTaskPass } from '../../hooks/useTaskPass'; // v168.1
 
 // mode — KarakolWorldScreen (girilebilir karakol) artık girişteki polis
 // memuru NPC'si için SADECE rüşvet bölümünü, içerideki komiser NPC'si için
@@ -12,6 +13,7 @@ import { bribePolice } from '../../services/gameActions';
 export default function PoliceStationScreen({ mode = 'full' }) {
   const showBribe = mode === 'full' || mode === 'bribe';
   const showApplication = mode === 'full' || mode === 'application';
+  const taskPass = useTaskPass(); // v168.1: rüşvet görevinde tek seferlik hak
   return (
     <div>
       {showBribe && (
@@ -20,7 +22,7 @@ export default function PoliceStationScreen({ mode = 'full' }) {
           description="Günde bir kez, 3000 altın karşılığında şüphe puanını azaltabilirsin. Verdiğin rüşvet, o günün polis maaş havuzuna eklenir."
           buttonLabel="Rüşvet Ver (3000 altın, Şüphe -20)"
           doneLabel="Bugün zaten rüşvet verdin"
-          dailyFlagKey="bribed"
+          isDone={(a) => Boolean(a.bribed) && !taskPass.rusvet}
           goldCost={3000}
           actionFn={bribePolice}
         />

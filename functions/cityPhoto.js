@@ -32,6 +32,7 @@ const NEAR_C = 25;
 const wrapYaw = (a) => Math.round(Math.atan2(Math.sin(a), Math.cos(a)) * 1000) / 1000;
 const EMOTE_KEYS = ['dans', 'selam', 'alkis', 'zipla', 'kalp'];
 const UID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+import { PHOTO_NPCS, PHOTO_NPC_NEAR, isPhotoNpc } from './storyNpcs.js'; // v168.1
 
 const num = (v, min, max) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(min, Math.min(max, v)) : null);
 const r2 = (v) => Math.round(v * 100) / 100;
@@ -197,6 +198,16 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
     const carSlackOf = new Map();
     (Array.isArray(p?.cars) ? p.cars.slice(0, 20) : []).forEach((c) => {
       if (!c || typeof c.o !== 'string' || !UID_RE.test(c.o) || carOwners.has(c.o) || cars.length >= MAX_CARS) return;
+      // v168.1: Rıza Amca'nın arabası (sadece oyuncunun cihazında; RTDB'de yok) — çekene yakınsa ve doğru modelse
+      if (isPhotoNpc(c.o)) {
+        const x = num(c.x, -3200, 3200);
+        const z = num(c.z, -3200, 3200);
+        if (x === null || z === null || Number(c.v) !== PHOTO_NPCS[c.o].carId || Math.hypot(x - mx, z - mz) > PHOTO_NPC_NEAR) return;
+        carOwners.add(c.o);
+        carSlackOf.set(c.o, 0);
+        cars.push({ o: c.o, v: PHOTO_NPCS[c.o].carId, x: r2(x), z: r2(z), y: r2(num(c.y, -6, 300) ?? 0), r: r3(wrapYaw(num(c.r, -1e4, 1e4) ?? 0)), st: r2(num(c.st, -1, 1) ?? 0) });
+        return;
+      }
       const x = num(c.x, -3200, 3200);
       const z = num(c.z, -3200, 3200);
       const v = Number(c.v);
@@ -220,6 +231,16 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
     for (const q of reqPeople) {
       if (picked.length >= MAX_PEOPLE) break;
       if (!q || typeof q.uid !== 'string' || !UID_RE.test(q.uid) || seen.has(q.uid)) continue;
+      // v168.1: Rıza Amca — ad ve görünüş sunucunun listesinden (istemciden alınmaz), konuşma balonu yok
+      if (isPhotoNpc(q.uid)) {
+        const x = num(q.x, -3200, 3200);
+        const z = num(q.z, -3200, 3200);
+        if (x === null || z === null || Math.hypot(x - mx, z - mz) > PHOTO_NPC_NEAR) continue;
+        seen.add(q.uid);
+        const car = typeof q.c === 'string' && carOwners.has(q.c) ? { c: q.c, k: Math.round(num(q.k, 0, 40) ?? 0) } : {};
+        picked.push({ uid: q.uid, x: r2(x), z: r2(z), y: r2(num(q.y, -6, 300) ?? 0), l: q.l ? 1 : 0, m: q.m ? 1 : 0, wp: q.wp ? 1 : 0, ...(num(q.sy, -6, 300) !== null && !car.c ? { sy: r2(q.sy) } : {}), ...car, npc: true, said: [] });
+        continue;
+      }
       const rec = rt.p.get(q.uid);
       const x = num(q.x, -3200, 3200);
       const z = num(q.z, -3200, 3200);
@@ -266,12 +287,19 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
       if (msg && typeof msg.x === 'string' && t - Number(msg.t || 0) <= FRESH_M_MS && said.includes(msg.x.trim().slice(0, 200))) q.says = [msg.x.trim().slice(0, 200)];
     }
 
-    // ad + avatar sunucudan (istemciden alınmaz)
-    const snaps = await db.getAll(...picked.map((q) => db.collection('users').doc(q.uid)));
+    // ad + avatar sunucudan (istemciden alınmaz) — v168.1: senaryo karakteri okuma yapmaz
+    const real = picked.filter((q) => !q.npc);
+    const snaps = real.length ? await db.getAll(...real.map((q) => db.collection('users').doc(q.uid))) : [];
     snaps.forEach((s, i) => {
       const u = s.exists ? s.data() : {};
-      picked[i].n = String(u.displayName || 'Oyuncu').slice(0, 40);
-      picked[i].a = u.avatar || null;
+      real[i].n = String(u.displayName || 'Oyuncu').slice(0, 40);
+      real[i].a = u.avatar || null;
+    });
+    picked.forEach((q) => {
+      if (!q.npc) return;
+      q.n = PHOTO_NPCS[q.uid].name;
+      q.a = PHOTO_NPCS[q.uid].avatar;
+      delete q.npc;
     });
 
     // v147.4: çekildiği saatin gökyüzü (gündüz / gün batımı / gece / gün doğumu)

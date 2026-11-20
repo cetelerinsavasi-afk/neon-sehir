@@ -85,7 +85,7 @@ export default function SuspicionTab() {
       costLabel: `${BRIBE_COST.toLocaleString('tr-TR')} altın`,
       cost: BRIBE_COST,
       suspicionDelta: 20,
-      available: !actions.bribed,
+      available: !actions.bribed || taskPass.rusvet,
       unavailableNote: 'Bugün zaten rüşvet verdin',
       msRemaining: msUntilIstanbulMidnight(),
       onAction: () => runAction('karakol', bribePolice),

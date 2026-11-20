@@ -5993,8 +5993,11 @@ export const bribePolice = onCall(async (request) => {
   await db.runTransaction(async (tx) => {
     const [userSnap, dailySnap] = await Promise.all([tx.get(userRef), tx.get(dailyRef)]);
     const user = userSnap.data();
+    // v168.1: rüşvet görevi — bugün zaten rüşvet verdiyse TEK SEFERLİK yeniden hak (görevi öğrensin)
+    let freePass = false;
     if (dailySnap.exists && dailySnap.data().bribed) {
-      throw new HttpsError('failed-precondition', 'Bugün zaten rüşvet verdin.');
+      if (!hasFreePass(user, 10)) throw new HttpsError('failed-precondition', 'Bugün zaten rüşvet verdin.');
+      freePass = true;
     }
     if (!user || (user.gold || 0) < BRIBE_COST) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
@@ -6002,6 +6005,7 @@ export const bribePolice = onCall(async (request) => {
     tx.update(userRef, {
       gold: admin.firestore.FieldValue.increment(-BRIBE_COST), goldTag: goldTag('rusvet'),
       suspicion: clampSuspicion((user.suspicion || 0) - 20),
+      ...(freePass ? { [`obFree.${FREE_PASS_KEYS[10]}`]: true } : {}),
     });
     tx.set(dailyRef, { bribed: true }, { merge: true });
     tx.set(bribePoolRef, { dateKey, bribeCount: admin.firestore.FieldValue.increment(1) }, { merge: true });

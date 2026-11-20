@@ -86,8 +86,9 @@ export function currentOnboardingTaskId(user) {
 //   4 ibadet  → vakit sınırı (cemaate ikinci kez eklenmez)
 //   6 haraç   → o satıcıda bugün haraç / bağış yapılmış olması
 //   7 bağış   → o satıcıya bugün bağış yapılmış olması (haraç kestiğin satıcıya bağış kuralı kalır)
+//  10 rüşvet  → bugün zaten rüşvet verilmiş olması (v168.1)
 // =============================================================================
-export const FREE_PASS_KEYS = { 4: 'pray', 6: 'harac', 7: 'bagis' };
+export const FREE_PASS_KEYS = { 4: 'pray', 6: 'harac', 7: 'bagis', 10: 'rusvet' };
 export function hasFreePass(user, taskId) {
   const key = FREE_PASS_KEYS[taskId];
   if (!key || !user) return false;

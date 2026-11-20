@@ -35,6 +35,7 @@ doc.set(
 if (q.get('car')) fakeDb.doc(`vehicles/${uid}_1`).set({ ownerId: uid, catalogId: 1, lifeDays: 30, mods: null });
 const user = async () => (await doc.get()).data();
 window.__user = user;
+window.__set = (o) => doc.update(o); // ör. __set({ suspicion: 25 })
 window.__step = async (n) => {
   const u = await user();
   await doc.update({ onboardingStep: n ?? onboardingPosOf(u) + 1, onboardingV: 4 });
@@ -57,7 +58,7 @@ window.__fnHook = {
       if (cur === 22) await doc.update({ onboardingStep: pos + 1, onboardingV: 4, amcaDead: true });
     } else if (data?.event === 'teleport') {
       if (cur === 21) await doc.update({ onboardingStep: pos + 1, onboardingV: 4 });
-    } else if (cur === 14 && u.credit) await doc.update({ onboardingStep: pos + 1, onboardingV: 4 });
+    } else if ((cur === 14 && u.credit) || (cur === 9 && (u.suspicion || 0) >= 20) || (cur === 16 && u.avatar)) await doc.update({ onboardingStep: pos + 1, onboardingV: 4 });
     return { ok: true };
   },
 };

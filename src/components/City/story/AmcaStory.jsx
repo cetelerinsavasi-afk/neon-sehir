@@ -21,9 +21,9 @@ import { createStoryProps } from './storyProps.js';
 import { runFlashback, CANCELLED } from './storyFlashback.js';
 import {
   PLACES, GRAVE, AMCA_ARRIVE_FROM, AMCA, AMCA_MID, AMCA_DARK, NEVZAT, AKREPLER, WHO, STORY_TASKS, IDX_CALL, OLD_HESAP,
-  MEET_NEW, MEET_OLD, CHAPTERS, CALL, CALL_OLD, AFTER_CALL, AFTER_CALL_OLD, FINALE, LIGHTER, LIGHTER_SVG, lineMs,
+  MEET_NEW, MEET_OLD, MEET_OLD_END, personalLines, TEA_OLD, OLD_TEA, CHAPTERS, CALL, CALL_OLD, AFTER_CALL, AFTER_CALL_OLD, FINALE, lineMs,
 } from './storyData.js';
-import { unlockAudio, music, stopMusic, silenceAll, sGun, sRicochet, sMetal, sHurt, sHeart, sDone, sChapter, sLighter, sRing, sHangup } from './storyAudio.js';
+import { unlockAudio, music, stopMusic, silenceAll, sGun, sRicochet, sMetal, sHurt, sHeart, sDone, sChapter, sRing, sHangup } from './storyAudio.js';
 import './AmcaStory.css';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -75,7 +75,7 @@ function storyModeOf(player, startedLocal = false) {
   return dead ? 'finished' : 'old';
 }
 
-const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false, jobActive = false, onAway, onFlashButton }, ref) {
+const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, gang = null, busy = false, jobActive = false, onAway, onFlashButton }, ref) {
   const [startedLocal, setStartedLocal] = useState(false); // "3 yıl önce" izlendi (sunucu onayı gelmeden)
   const mode = storyModeOf(player, startedLocal);
   const pos = player ? onboardingPosOf(player) : 0;
@@ -89,7 +89,6 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
   const [call, setCall] = useState(null);
   const [fight, setFight] = useState(null);
   const [hurtAt, setHurtAt] = useState(0);
-  const [lighter, setLighter] = useState(false);
   const [over, setOver] = useState(false);
   const [skip, setSkip] = useState(false);
   const [oldTask, setOldTask] = useState(null); // eski oyuncu: OLD_HESAP (Amca geldiyse)
@@ -104,6 +103,8 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
   R.mode = mode;
   R.idx = idx;
   R.posNow = pos;
+  R.player = player;
+  R.gang = gang;
   R.task = mode === 'old' ? oldTask : task;
   if (import.meta.env?.DEV) window.__amca = R; // önizleme testleri
   if (!R.init) {
@@ -222,7 +223,7 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
     k?.hideNpc('Bekçi', false);
     k?.crouch(false);
     k?.pose('self', null);
-    R.eng?.setRun(false);
+    k?.run(false);
     R.eng?.setHolding(null);
   }, [R]);
 
@@ -310,11 +311,9 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
     const e = R.eng;
     R.z = 'script';
     setMeeting(true);
-    e.story.lockMove(true);
     try {
       return await meetInner(e, alive, lines);
     } finally {
-      e.story.lockMove(false);
       setMeeting(false);
     }
   }, [R, ensureAmca, sayAll]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -331,12 +330,16 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
     await drive;
     if (!alive()) return false;
     a.getOut();
-    const me = e.getSelf();
-    const dx = a.pos.x - me.x;
-    const dz = a.pos.z - me.z;
-    const d = Math.hypot(dx, dz) || 1;
-    await a.walkTo(me.x + (dx / d) * 0.9, me.z + (dz / d) * 0.9, 2.3);
-    if (!alive()) return false;
+    // v168.2: oyuncu bu arada yürüdüyse Amca onu bulana kadar yürür (en fazla birkaç adım)
+    for (let k = 0; k < 4; k++) {
+      const me = e.getSelf();
+      const dx = a.pos.x - me.x;
+      const dz = a.pos.z - me.z;
+      const d = Math.hypot(dx, dz) || 1;
+      if (d < 1.6) break;
+      await a.walkTo(me.x + (dx / d) * 0.9, me.z + (dz / d) * 0.9, d > 12 ? 3.4 : 2.3, d > 12);
+      if (!alive()) return false;
+    }
     a.emote('selam'); // el sallar
     e.emote('selam');
     await sayAll(lines);
@@ -376,11 +379,67 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
         }
       });
     }
-    if (STATUS_TASK_IDS.includes(t.taskId) && !R.statusAsked.has(t.taskId)) {
-      R.statusAsked.add(t.taskId);
-      setTimeout(() => checkOnboardingProgress().catch(() => R.statusAsked.delete(t.taskId)), 1200);
-    }
+    // (durum görevlerinin sunucu kontrolü aşağıdaki etkide: şart sağlanınca / şehre dönünce)
   }, [R, clearRoute, sayAll]);
+
+  // --- v168.2 ESKİ OYUNCU: parkta, bankta yan yana çay — Amca anlatır, son sözde telefon çalar ----------
+  const runTea = useCallback(async () => {
+    const e = R.eng;
+    const a = R.amca;
+    const b = R.bench;
+    if (!e || !a || !b || R.z === 'script' || R.scriptOn) return;
+    const sess = R.session;
+    const alive = () => sess === R.session && R.eng === e;
+    R.z = 'script';
+    setScript(true); // görev şeridi sahne boyunca gizli
+    hush();
+    clearRoute();
+    try {
+      if (e.isDriving()) e.exitCar();
+      if (e.isRiding()) e.rideEnd();
+      // Amca uzaktaysa (oyuncu ışınlandıysa) park girişine gelir, banka yürür
+      if (dist(a.pos, b.other) > 30) {
+        a.placeCar(PLACES.park.park.x, PLACES.park.park.z, Math.PI / 2);
+        a.getOut();
+      } else if (a.inCar) a.getOut();
+      if (!e.story.sitSeat(b.i)) e.story.crouch(true); // oturak bu arada dolduysa olduğu yere çöker
+      music('warm', { vol: 0.45 });
+      await a.walkTo(b.other.x, b.other.z, 2.2);
+      if (!alive()) return;
+      a.sitAt(b.other.x, b.other.z, b.other.y);
+      R.props = createStoryProps(e.story);
+      R.props?.teaFor((b.me.x + b.other.x) / 2, b.me.y + 0.02, (b.me.z + b.other.z) / 2);
+      await sleep(1500);
+      for (const l of TEA_OLD) {
+        if (!alive()) return;
+        await say('amca', l);
+        await sleep(900); // sözler arasında sessizlik
+      }
+      if (!alive()) return;
+      // tam o sırada telefon
+      stopMusic(0.8);
+      await runCall(CALL_OLD, AFTER_CALL_OLD);
+      if (!alive()) return;
+      R.oldCalled = true;
+      lsSet(LS(R.uid, 'old'), 'called');
+      R.props?.dispose();
+      R.props = null;
+      a.stand();
+      e.story.crouch(false); // banktan kalk
+      R.task = OLD_HESAP;
+      R.beats = {};
+      setOldTask(OLD_HESAP);
+      R.z = 'wait';
+      const c = a.carPos;
+      if (c) {
+        await a.walkTo(c.x + Math.cos(c.yaw) * 2.1, c.z - Math.sin(c.yaw) * 2.1, 2);
+        if (alive() && !e.isRiding() && R.z === 'wait') a.getIn();
+      }
+    } finally {
+      if (R.z === 'script') R.z = 'wait';
+      setScript(false);
+    }
+  }, [R, hush, clearRoute, say, runCall]);
 
   // --- SON SAHNE: hurdalık -----------------------------------------------------------------
   const runFinale = useCallback(async () => {
@@ -433,7 +492,7 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
       for (const l of FINALE.talk) {
         if (l.text === 'Siper al!') {
           sayS(l.who, l.text);
-          e.setRun(true);
+          k.run(true);
           e.walkTo(277.5, 29.3);
           a.walkTo(277.5, 31.6, 5.6, true);
           e.setHolding('tabanca');
@@ -514,8 +573,14 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
           }
         },
       };
-      k.lockMove(true); // çatışmada yürünmez (siper), kamerayla bakılır
-      R.cleanups.push(() => k.lockMove(false));
+      // v168.1: çatışmada da yürünür ve etrafa bakılır; kalkıp yürüyen oyuncu siperde sayılmaz
+      const syncCrouch = () => {
+        const c = k.isCrouched();
+        if (c !== S.crouched) {
+          S.crouched = c;
+          ui();
+        }
+      };
       setFight({ crouched: false, hp: 100, left: left.length, hint: true });
       down();
       sayS('amca', 'Kafanı kaldırma! Kalkınca ateş et!');
@@ -529,6 +594,7 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
           await sleep(650);
           for (let i = 0; i < 2 && left.includes(m) && alive(); i++) {
             sGun(0.75);
+            syncCrouch();
             if (S.crouched) {
               P?.shot({ ...m.pos }, coverHit());
               setTimeout(Math.random() < 0.5 ? sMetal : sRicochet, 50);
@@ -571,13 +637,13 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
       const deadline = Date.now() + 45_000; // en geç 45 sn'de biter (takılma yok)
       while (left.length) {
         await wait(250);
+        syncCrouch();
         if (Date.now() > deadline) left.slice().forEach((m) => {
           wound(m);
           wound(m);
         });
       }
       S.on = false;
-      k.lockMove(false);
       await Promise.all([foeLoop, amcaLoop]);
       check();
       setFight(null);
@@ -631,7 +697,7 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
       }
       kill(nev);
       e.setHolding(null);
-      e.setRun(false);
+      k.run(false);
       await wait(1300);
       // --- tüm düşmanlar öldü: Amca'nın yanına çök, son sözleri ------------------------------
       e.walkTo(ap.x - 0.9, ap.z);
@@ -662,9 +728,11 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
       stopMusic(2.5);
       setCine('quiet');
       await wait(3800);
-      sLighter();
-      setLighter(true);
-      music('sad', { vol: 0.45 });
+      // v168.1: çakmak kartı kaldırıldı — sessizlikten sonra doğrudan oyun başlar
+      setCine(null);
+      e.setCam(null, 0.36, 9);
+      R.z = 'none';
+      setOver(true);
       setAway(false);
       // ilerleme sunucuda: yeni oyuncu → görev geçer; eski oyuncu → sadece mezar (görevlere dokunmaz)
       sendEvent(isOld ? 'replay' : 'finale');
@@ -685,15 +753,6 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
     }
   }, [R, hush, clearRoute, setAway, sayS, clearScene, sendEvent]);
 
-  const closeLighter = () => {
-    sLighter();
-    stopMusic(4);
-    setLighter(false);
-    setCine(null);
-    R.eng?.setCam(null, 0.36, 9);
-    R.z = 'none';
-    setOver(true);
-  };
 
   // --- 3 yıl önce (her oyuncu isteğe bağlı; bir kez izleyen tekrar izlerken geçebilir) ----------
   const playFlashback = useCallback(async () => {
@@ -728,7 +787,6 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
     if (e.isDriving()) e.exitCar();
     if (e.isRiding()) e.rideEnd();
     e.story.hideRemotes(true);
-    e.story.lockMove(true); // yürünmez, kamerayla etrafa bakılır
     R.props = createStoryProps(e.story);
     ctx.props = R.props;
     let ok = false;
@@ -739,10 +797,12 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
       if (err?.message !== CANCELLED) console.error('3 yıl önce', err);
     }
     hush();
+    // v168.2 DÜZELTME: "Geç" ile atlanınca oyuncu sahnedeki arabada (Emre'nin / polisin) yolcu olarak
+    // kalıyordu → karakolun önünde yürüyemiyordu. Sahne hangi anda biterse bitsin arabadan inilir.
+    if (e.isRiding()) e.rideEnd();
     clearScene();
     silenceAll();
     setSkip(false);
-    e.story.lockMove(false);
     if (ok) lsSet(LS(R.uid, 'fb'), '1');
     if (!R.eng) return;
     // yeni oyuncu: hikâye başlar → karakolun önünde Amca karşılar, görevler başlar
@@ -784,15 +844,14 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
       setAway(false);
       R.scriptOn = false;
       setScript(false);
-      const met = await runMeet(MEET_OLD);
+      const met = await runMeet([...MEET_OLD, ...personalLines(R.player, R.gang), ...MEET_OLD_END]);
       if (!met) return;
       lsSet(LS(R.uid, 'old'), 'met');
-      setOldTask(OLD_HESAP);
       R.oldCalled = false;
-      await runCall(CALL_OLD, AFTER_CALL_OLD);
-      R.oldCalled = true;
-      lsSet(LS(R.uid, 'old'), 'called');
+      R.bench = null;
       R.beats = {};
+      R.task = OLD_TEA;
+      setOldTask(OLD_TEA);
       return;
     }
     e.teleportWorld(back.x, back.z); // şehir dışında (otoyol, Kervankent) da çalışır
@@ -805,7 +864,7 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
     setScript(false);
     R.z = zWas === 'script' ? 'wait' : zWas;
     if (R.amca && (R.z === 'wait' || R.z === 'none')) parkAmca();
-  }, [R, sayS, hush, clearRoute, setAway, clearScene, runMeet, runCall, parkAmca, sendEvent, startTask]);
+  }, [R, sayS, hush, clearRoute, setAway, clearScene, runMeet, parkAmca, sendEvent, startTask]);
   const skipFlashback = () => {
     R.session += 1;
     R.skipLine?.();
@@ -841,9 +900,9 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
     return () => window.removeEventListener('pointerdown', on);
   }, []);
   useEffect(() => {
-    document.body.classList.toggle('amca-cine', Boolean(cine) || Boolean(fight) || Boolean(call) || lighter);
+    document.body.classList.toggle('amca-cine', Boolean(cine) || Boolean(fight) || Boolean(call));
     return () => document.body.classList.remove('amca-cine');
-  }, [cine, fight, call, lighter]);
+  }, [cine, fight, call]);
   useEffect(() => {
     if (!chapter) return undefined;
     const t = setTimeout(() => setChapter(null), 2600);
@@ -889,15 +948,14 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
       } else if (R.mode === 'old') {
         const st = lsGet(LS(uid, 'old'));
         if (st) {
-          setOldTask(OLD_HESAP);
-          R.task = OLD_HESAP;
+          // 'met' → parkta çay (telefon orada çalar) · 'called' → hurdalık
+          const t0 = st === 'called' ? OLD_HESAP : OLD_TEA;
+          setOldTask(t0);
+          R.task = t0;
           R.oldCalled = st === 'called';
-          parkAmca(OLD_HESAP);
-          if (st !== 'called') {
-            await runCall(CALL_OLD, AFTER_CALL_OLD);
-            R.oldCalled = true;
-            lsSet(LS(uid, 'old'), 'called');
-          } else await sayAll(OLD_HESAP.go);
+          R.bench = null;
+          parkAmca(t0);
+          await sayAll(st === 'called' ? ['Hurdalığa evlat. Bu gece hesap kapanacak.'] : ['Hadi, parkta bir çay içelim.']);
         }
       }
     })().finally(() => {
@@ -934,6 +992,25 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
       await startTask(now, { chapterFrom: was?.chapter });
     })();
   }, [eng, mode, pos]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // v168.1 DÜZELTME ("şüphem 20 oldu, görev geçmedi"): durum görevleri sadece görev başlarken bir kez
+  // soruluyordu; şart SONRADAN sağlanınca kimse sormuyordu. Artık şart sağlandığında (şüphe ≥ 20, avatar,
+  // aktif kredi) ya da başka bir ekrandan (yarış, galeri, karargah…) şehre dönülünce yeniden sorulur.
+  // Görev başına en sık 6 sn'de bir (sunucu zaten şart sağlanmıyorsa hiçbir şey yazmaz).
+  const curTaskId = mode === 'new' ? STORY_TASKS[pos - 1]?.taskId : null;
+  const statusReady =
+    curTaskId === 9 ? Number(player?.suspicion || 0) >= 20 : curTaskId === 16 ? Boolean(player?.avatar) : curTaskId === 14 ? Boolean(player?.credit) : null;
+  useEffect(() => {
+    if (!curTaskId || !STATUS_TASK_IDS.includes(curTaskId) || busy) return;
+    if (statusReady === false) return; // şart henüz yok — sormaya gerek yok
+    const now = Date.now();
+    const last = R.statusAt?.[curTaskId] || 0;
+    if (now - last < (statusReady === null ? 20000 : 6000)) return;
+    (R.statusAt ||= {})[curTaskId] = now;
+    checkOnboardingProgress().catch(() => {
+      R.statusAt[curTaskId] = 0;
+    });
+  }, [curTaskId, statusReady, busy, R]);
 
   // Amca öldükten sonra (yeni oyuncu): sahne bittiyse Amca yok
   useEffect(() => {
@@ -1009,7 +1086,18 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
             a.getOut();
             R.z = 'wait';
           });
-        } else if (zz !== 'drive') a.getIn();
+        } else if (zz !== 'drive') {
+          // v168.1 TAKILMA DÜZELTMESİ: hedefin yanındayken ya da hedefi olmayan görevde arabaya binilirse
+          // Amca bir yere gitmiyordu, oyuncu arabada kalıyordu → kısa beklemeden sonra kibarca indirir
+          a.getIn();
+          R.idleRide = (R.idleRide || 0) + 0.25;
+          if (R.idleRide > 1.5) {
+            R.idleRide = 0;
+            e.rideEnd();
+            say('amca', pl ? 'Geldik evlat, in bakalım.' : 'Bu işi kendin halledeceksin evlat.');
+          }
+        }
+        if (zz === 'drive' || a.driving) R.idleRide = 0;
         if (t.ride && !R.beats.ride && a.driving && car && car.spd > 2) {
           R.beats.ride = true;
           sleep(900).then(() => R.task === t && sayAll(t.ride));
@@ -1020,7 +1108,8 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
       }
       // kendi arabanla gidiyorsan Amca arkandan gelir (konvoy)
       if (!riding && driving && probe) {
-        if (R.z !== 'convoy' && d < 70) {
+        // v168.1: uzakta beklerken de (70 m'den uzak) arkandan gelir; çok uzaksa (140+) arkana geçer
+        if (R.z !== 'convoy') {
           a.getIn();
           a.follow(() => {
             const p = e.jobProbe();
@@ -1054,6 +1143,31 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
         sayAll(t.meet);
       }
       if (R.busy) return; // panel / yarış / soygun / iş: söz ve yön oku bekler
+      // v168.2 eski oyuncu: çay — hedef parktaki bank; banka gelince sahne başlar
+      if (t.tea) {
+        if (!R.bench) R.bench = e.story.benchNear(PLACES.park.at.x, PLACES.park.at.z, 45);
+        const bp = R.bench ? R.bench.me : pl?.at;
+        if (bp && near(me, bp, 7) && !riding && !driving) {
+          runTea();
+          return;
+        }
+        if (bp && !R.jobActive) {
+          const key = `tea_${Math.round(me.x / 6)}_${Math.round(me.z / 6)}`;
+          if (key !== R.routeKey) {
+            R.routeKey = key;
+            let pts = null;
+            try {
+              pts = navRoute(me, bp);
+            } catch {
+              pts = null;
+            }
+            e.jobRoute(pts && pts.length > 1 ? pts : [me, bp], '#ffb347');
+            e.jobTarget({ x: bp.x, z: bp.z, color: '#ffb347', r: 2 });
+            R.routeOwned = true;
+          }
+        }
+        return;
+      }
       if (pl && !R.beats.there && near(me, pl.at, 22) && !riding) {
         R.beats.there = true;
         if (t.finale) {
@@ -1085,7 +1199,7 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
       } else if (R.routeOwned) clearRoute();
     }, 250);
     return () => clearInterval(iv);
-  }, [eng, R, setAway, say, sayAll, runFinale, clearRoute]);
+  }, [eng, R, setAway, say, sayAll, runFinale, runTea, clearRoute]);
 
   // --- söküm: şehir kapanınca her şey silinir (bellek / ses / ağ) ------------------------------
   useEffect(() => () => {
@@ -1099,7 +1213,7 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
   const meta = curTask ? TITLE_BY_ID[curTask.taskId] : null;
   const chipTitle = curTask?.title || meta?.title;
   const chipEmoji = curTask?.emoji || meta?.emoji;
-  const showChip = Boolean(chipTitle) && !meeting && !line && !chapter && !cine && !call && !fight && !lighter && !script && !busy && (mode === 'new' || mode === 'after' || (mode === 'old' && oldTask));
+  const showChip = Boolean(chipTitle) && !meeting && !line && !chapter && !cine && !call && !fight && !script && !busy && (mode === 'new' || mode === 'after' || (mode === 'old' && oldTask));
   const nameOf = (w) => (w === 'me' ? 'Sen' : WHO[w]?.name || '');
   const avOf = (w) => (w === 'amca' ? R.amca?.st.avatar || AMCA_DARK : WHO[w]?.avatar);
   const showLine = line && (!busy || script);
@@ -1186,17 +1300,6 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, busy = false
         <button type="button" className="amca-skip" onClick={skipFlashback}>
           Geç ⏭
         </button>
-      )}
-      {lighter && (
-        <div className="amca-lighter">
-          <div className="card">
-            <div className="art" dangerouslySetInnerHTML={{ __html: LIGHTER_SVG }} />
-            <small>HATIRA</small>
-            <b>🔥 {LIGHTER.title}</b>
-            <p>{LIGHTER.sub}</p>
-            <button type="button" onClick={closeLighter}>Cebine koy</button>
-          </div>
-        </div>
       )}
       {over && (
         <div className="amca-over" onAnimationEnd={() => setOver(false)}>

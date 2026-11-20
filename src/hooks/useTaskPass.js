@@ -5,7 +5,7 @@ import { hasFreePass } from '../../functions/onboardingData.js';
 // ibadet / haraç / bağış görevine gelen oyuncu bugün zaten yapmışsa düğme bir kez daha açılır.
 export function useTaskPass() {
   const { player } = usePlayer();
-  return { pray: hasFreePass(player, 4), harac: hasFreePass(player, 6), bagis: hasFreePass(player, 7) };
+  return { pray: hasFreePass(player, 4), harac: hasFreePass(player, 6), bagis: hasFreePass(player, 7), rusvet: hasFreePass(player, 10) };
 }
 // satıcı için düğme durumu (ikisinin de kuralı sunucuyla aynı)
 export function vendorDayState(actions, vendorId, pass) {

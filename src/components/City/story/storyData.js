@@ -4,6 +4,7 @@
 // (ilerleme her zaman sunucuda; burası sadece hikâyenin sözleri ve yerleri).
 // =============================================================================
 import { ONBOARDING_ORDER } from '../../../../functions/onboardingData.js';
+import { AMCA_ID, AMCA_CAR_ID, AMCA_AVATAR } from '../../../../functions/storyNpcs.js';
 
 // Şehirdeki yerler: at = kapının önü (oyuncu buraya gelince "there" sözü), park = Amca'nın arabası
 export const PLACES = {
@@ -30,10 +31,10 @@ const AV = (o) => ({
   ...o,
 });
 export const AMCA = {
-  id: 'npc_riza_amca',
+  id: AMCA_ID,
   name: 'Rıza Amca',
-  carId: 1, // oyunun en ucuz arabası
-  avatar: AV({ gender: 'erkek', build: 'iri', skin: '#b97f58', eyeColor: '#3b2a1a', faceShape: 'square', hairStyle: 'slick', hairColor: '#9b968e', eyebrowShape: 'thick', eyeShape: 'hooded', noseShape: 'aquiline', mouthShape: 'smile', facialHair: 'mustache', clothing: 'leather', clothColor: '#4a3326', pantsColor: '#2b2a28', shoeColor: '#1a1410', shoeStyle: 'klasik', background: '#2a1c14' }),
+  carId: AMCA_CAR_ID, // oyunun en ucuz arabası
+  avatar: AMCA_AVATAR, // fotoğraftaki görünüşle aynı (functions/storyNpcs.js)
 };
 export const AMCA_MID = { ...AMCA.avatar, mouthShape: 'neutral' }; // telefonda yüzü düşer
 export const AMCA_DARK = { ...AMCA.avatar, mouthShape: 'thin', eyebrowShape: 'angled', eyeShape: 'narrow' }; // Nevzat aradıktan sonra
@@ -92,8 +93,38 @@ export const FLASHBACK = {
 
 // --- karakolun önü: ilk karşılaşma ------------------------------------------------------------
 export const MEET_NEW = ['Hoş geldin evlat.', 'Senin yapmadığını biliyorum.', 'Gel, sana bu şehri öğreteyim.'];
-// görevlerini çoktan bitirmiş oyuncu (3 yıl önce'yi izledikten sonra)
-export const MEET_OLD = ['Hoş geldin evlat.', 'Senin yapmadığını biliyorum.', 'Üç yıl… Bu şehirde kendine bir yer etmişsin.'];
+// --- görevlerini çoktan bitirmiş oyuncu (3 yıl önce'yi izledikten sonra) -------------------
+// v168.2: karakolun önü → (oyuncunun gerçek hayatından 1–2 söz) → parkta çay → çay sırasında Nevzat arar
+export const MEET_OLD = ['Hoş geldin evlat.', 'Üç yıl… Her ay o kapıya geldim. Görüş vermediler.', 'Senin yapmadığını biliyorum.'];
+export const MEET_OLD_END = ['Gel, parkta bir çay içelim. Anlatacaklarım var.'];
+// Amca oyuncuyu uzaktan izlemiş: oyuncunun kaydındaki gerçek bilgilerden en fazla iki söz (sırayla ilk uyanlar)
+export function personalLines(player, gang) {
+  const p = player || {};
+  const out = [];
+  const add = (cond, line) => {
+    if (cond && out.length < 2) out.push(line);
+  };
+  add(p.belediyeSeat, 'Belediyede koltuğun varmış. Bu şehre söz geçiriyorsun demek.');
+  add(p.profession === 'polis', 'Polis olmuşsun… Seni o kapıdan alan üniformayı giymişsin. Hayat garip.');
+  add(gang?.gangId && gang?.gangRank === 'baba', "Duydum, kendi çeteni kurmuşsun. 'Baba' diyorlarmış sana.");
+  add(gang?.gangId && gang?.gangRank !== 'baba', "Bir çeteye girmişsin. Emre de hep 'bir gün bu şehir bizim olacak' derdi.");
+  add(Number(p.heistSuccessCount || 0) >= 10, 'Adın soygunlarla anılıyor. Dikkat et, bu şehir unutmaz.');
+  add(Number(p.gold || 0) >= 1_000_000, 'Cebin dolmuş maşallah. Ama para, yalnızlığı doldurmuyor.');
+  add(p.employment, 'Fabrikada alın teri döküyormuşsun. Bak, ona sevindim.');
+  add(Number(p.reputation || 0) >= 70, 'Mahallede adın temiz anılıyor. Babanın oğlusun.');
+  add(Number(p.suspicion || 0) >= 50, 'Polis tepende dolaşıyormuş, biliyorum. Biraz yavaşla.');
+  if (!out.length) out.push('Bu şehirde tek başına ayakta kalmışsın. Kolay değil.');
+  return out;
+}
+// parkta, bankta yan yana: Amca anlatır (her sözden sonra kısa sessizlik), son sözün ardından telefon çalar
+export const TEA_OLD = [
+  'Emre küçükken bu bankta otururduk. Simidinin yarısını hep güvercinlere atardı.',
+  'Babanla ikiniz aynı inattınız. Söz dinlemezdiniz, ama sözünüzden de dönmezdiniz.',
+  "O gece şahitlik edecektim. 'Hain' dediler, kapıma adam yolladılar… sustum.",
+  'Üç yıl o sessizliği taşıdım evlat. Her gece.',
+  'Ama bak, sen ayakta kalmışsın. Gurur duyuyorum.',
+];
+export const OLD_TEA = { taskId: 'tea', index: -1, to: 'park', tea: true, title: 'Rıza Amca ile parkta çay iç', emoji: '🍵', go: [] };
 export const CHAPTERS = { 1: 'Tahliye', 2: 'Sokağın Kuralları', 3: 'Kendi Tekerin', 4: 'Hesap' };
 
 // --- görev sahneleri (taskId = sunucudaki görev kimliği) ---------------------------------------
@@ -108,7 +139,7 @@ const SCENES = {
   5: { chapter: 2, to: 'silah', go: ['Silahsız adamı bu şehirde kimse dinlemez. Silahçıya.'], ride: ['Nevzat çıktığını duymuştur.'], there: ['Bir silah al. Silah gücündür.'], done: ['Belinde dursun.'] },
   6: { chapter: 2, to: 'kofteci', go: ['Köfteciye.'], there: ['Haraç kes. Gücün arttıkça kazancın artar.'], done: ['Kibar ama net. Aferin.'] },
   7: { chapter: 2, to: 'kokorec', go: ['Haraç aldığın yerle alışveriş olmaz.', 'Kokoreççiye bağış yap, şüphen düşer.'], done: ['Adın iyi anılsın.'] },
-  9: { chapter: 2, go: ['Polisle nasıl anlaşılır göstereceğim.', 'Parkta 4 mal sat, şüphen 20 olur.'], done: ['Tamam. Şimdi karakola.'] },
+  9: { chapter: 2, to: 'park', go: ['Polisle nasıl anlaşılır göstereceğim.', 'Parkta 4 mal sat, şüphen 20 olur.'], there: ['Riskli sat, her satış şüpheni 5 artırır.'], done: ['Tamam. Şimdi karakola.'] },
   10: { chapter: 2, to: 'karakol', go: ['Bu şehirde her kapının bir anahtarı var.'], ride: ['Çıktığın kapıya zarfla gidiyoruz.'], there: ['Rüşvet şüpheni 20 düşürür. Zarfı ver.'], done: ['Şehir böyle işte.'] },
   11: { chapter: 3, to: 'galeri', go: ['Kendi tekerin olmadan kendi yolun olmaz. Galeriye.'], there: ['Seç bakalım.'], done: ['Hayırlı olsun!', 'Arabanı çağır. Önden sen, ben arkandayım.'] },
   12: { chapter: 3, to: 'pist', go: ['Piste!'], there: ['Arabanı tanı. Antrenmanda ustalaşan şampiyonada kazanır.'], done: ['Babanın oğlusun!'] },
@@ -125,7 +156,16 @@ export const IDX_CAR = ONBOARDING_ORDER.indexOf(11);
 export const IDX_CALL = ONBOARDING_ORDER.indexOf(13);
 export const IDX_FINALE = ONBOARDING_ORDER.indexOf(22);
 // eski oyuncu (görevleri bitmiş) için tek sahne: hurdalığa git
-export const OLD_HESAP = { ...SCENES[22], taskId: 22, index: -1, title: 'Rıza Amca ile hurdalığa git', emoji: '🔥' };
+export const OLD_HESAP = {
+  ...SCENES[22],
+  taskId: 22,
+  index: -1,
+  title: 'Rıza Amca ile hurdalığa git',
+  emoji: '🔥',
+  go: [],
+  // eski oyuncu bankta zaten anlattı; yolda başka sözler (son sözlerine zemin)
+  ride: ['Nevzat yıllardır bu geceyi bekliyor.', 'Bir şey olursa… kendine bir yer edin evlat. Söz ver.', 'Bu gece hesap kapanacak.'],
+};
 
 // Nevzat'ın telefonu (şampiyonadan sonra / eski oyuncuda karşılaşmadan sonra)
 export const CALL = [
@@ -135,15 +175,16 @@ export const CALL = [
   { who: 'amca', text: 'Ona dokunma.', face: 'dark' },
   { who: 'nevzat', text: 'Hurdalıkta bekliyorum. Gelmezsen ben gelirim.' },
 ];
+// eski oyuncu: çay sırasında — Nevzat onları izliyor
 export const CALL_OLD = [
   { who: 'amca', text: 'Alo?', face: 'smile' },
-  { who: 'nevzat', text: 'Rıza. Yeğenin çıkmış.', face: 'mid' },
-  { who: 'nevzat', text: 'Üç yıl hapis yatırdım, hâlâ yaşıyor. Şanslı çocuk.' },
+  { who: 'nevzat', text: 'Rıza. Çayınız güzel mi?', face: 'mid' },
+  { who: 'nevzat', text: 'Yeğenini üç yıl içeride tuttum. Yetmedi galiba.' },
   { who: 'amca', text: 'Ona dokunma.', face: 'dark' },
   { who: 'nevzat', text: 'Hurdalıkta bekliyorum. Gelmezsen ben gelirim.' },
 ];
 export const AFTER_CALL = ['Yok bir şey. Hadi.'];
-export const AFTER_CALL_OLD = ['Nevzat. Bu gece hesap kapanacak.', 'Hurdalığa.'];
+export const AFTER_CALL_OLD = ['Çayın soğudu evlat.', 'Nevzat… Bizi izliyormuş.', 'Kalk. Hurdalığa gidiyoruz.'];
 
 // Hurdalık: çatışma öncesi + Amca'nın son sözleri (tüm düşmanlar öldükten sonra)
 export const FINALE = {
@@ -158,12 +199,9 @@ export const FINALE = {
     "Emre'nin hesabı kapandı. Seninki yeni başlıyor.",
     'Bu şehirde yalnız adam ezilir. Bir çeteye gir.',
     'Adam topla, güç topla. Bir gün o koltuğa sen otur.',
-    'Çakmak cebimde… artık senin.',
     'Bu şehri… al.',
   ],
 };
-export const LIGHTER = { title: "Rıza'nın Çakmağı", sub: 'Babandan kalma. Artık senin.' };
-export const LIGHTER_SVG = '<svg viewBox="0 0 120 160" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="lg" x1="0" x2="1"><stop offset="0" stop-color="#8d8f94"/><stop offset=".45" stop-color="#e6e7ea"/><stop offset="1" stop-color="#76787d"/></linearGradient></defs><rect x="22" y="58" width="76" height="92" rx="9" fill="url(#lg)" stroke="#45474b" stroke-width="2"/><rect x="22" y="40" width="76" height="24" rx="6" fill="url(#lg)" stroke="#45474b" stroke-width="2"/><line x1="22" y1="64" x2="98" y2="64" stroke="#45474b" stroke-width="2"/><circle cx="74" cy="34" r="9" fill="#5c5e62"/><path d="M54 30 q-8 -14 4 -26 q-2 12 8 16 q4 -8 2 -14 q14 14 0 26 z" fill="#ffb347"/><path d="M58 30 q-3 -8 3 -14 q0 8 5 9 q-1 5 -8 5z" fill="#fff1b8"/><text x="60" y="112" font-family="Georgia,serif" font-size="22" text-anchor="middle" fill="#55575c" font-style="italic">R.A.</text></svg>';
 
 // Bir repliğin ekranda kalma süresi (ms)
 export const lineMs = (t) => 1400 + String(t || '').length * 52;

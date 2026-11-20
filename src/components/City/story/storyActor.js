@@ -267,6 +267,15 @@ export function createActor(eng, { id, name, avatar, carId = null }, gy = () => 
       a.sy = (Number(gy(a.x, a.z)) || 0) + 0.2;
       pushMe();
     },
+    // v168.2: bir oturağa otur (parkta çay)
+    sitAt(x, z, y) {
+      finishWalk(false);
+      a.x = x;
+      a.z = z;
+      a.p = 's';
+      a.sy = y;
+      pushMe();
+    },
     stand() {
       a.p = 'w';
       pushMe();

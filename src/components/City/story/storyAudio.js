@@ -135,10 +135,6 @@ export const sChapter = safe(() => {
   noise(1.6, { type: 'lowpass', freq: 500, vol: 0.25, shape: 2, rev: 0.6 });
   tone(880, 1.4, { vol: 0.03, when: 0.1, rev: 1 });
 });
-export const sLighter = safe(() => {
-  noise(0.03, { type: 'highpass', freq: 4000, vol: 0.6, shape: 1 });
-  noise(0.6, { type: 'bandpass', freq: 900, q: 0.8, vol: 0.16, shape: 0.6, when: 0.06 });
-});
 export const sRing = safe(() => {
   for (let i = 0; i < 2; i++) {
     tone(880, 0.5, { vol: 0.14, when: i * 0.9 });

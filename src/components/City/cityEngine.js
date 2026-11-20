@@ -27,6 +27,7 @@ import { createMap } from './world/map.js';
 import { geo as rsGeo, fromPad } from './world/roadsideGeo.js';
 import { LOT_TYPES } from './cityPlan.js';
 import { VENUES as GAME_VENUES } from '../../../functions/venueLayouts.js';
+import { isPhotoNpc } from '../../../functions/storyNpcs.js'; // v168.1
 
 const IS_ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
 const IS_MOBILE = IS_ANDROID || (typeof navigator !== 'undefined' && /iPhone|iPad|Mobile/i.test(navigator.userAgent || ''));
@@ -4435,10 +4436,12 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       cam.ik = driving && myCar ? 0 : self.ride.k || 1;
       cam.is = r2(interiorCar.steer || 0);
     }
-    // v168: senaryo karakterleri (bu cihazda) fotoğrafa girmez — sunucu onların profilini aramasın
-    const people = [figShot(myUid, me, driving && myCar ? { c: myUid, k: 0 } : self.ride && !isStoryId(self.ride.owner) ? { c: self.ride.owner, k: self.ride.k || 1 } : {})];
+    // v168: senaryo karakterleri (bu cihazda) fotoğrafa girmez — v168.1: Rıza Amca hariç (sunucu adını
+    // ve görünüşünü kendi listesinden yazar, functions/storyNpcs.js)
+    const shotOk = (id) => !isStoryId(id) || isPhotoNpc(id);
+    const people = [figShot(myUid, me, driving && myCar ? { c: myUid, k: 0 } : self.ride && shotOk(self.ride.owner) ? { c: self.ride.owner, k: self.ride.k || 1 } : {})];
     [...remotes.values()]
-      .filter((r) => !isStoryId(r.uid) && (r.d ?? 999) < VIS_DIST)
+      .filter((r) => shotOk(r.uid) && (r.d ?? 999) < VIS_DIST)
       .sort((a, b) => a.d - b.d)
       .slice(0, 11)
       .forEach((r) => {
@@ -4449,9 +4452,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const cars = [];
     if (myCar) cars.push({ o: myUid, v: myCar.id, x: r2(myCar.x), z: r2(myCar.z), y: r2(myCar.y), r: wy(myCar.yaw), st: r2(myCar.steer || 0) });
     // v157.4: bindiğim araç (otobüste yolcuyken iç kamerada gövde gizli) fotoğrafa her zaman girer
-    const rideOwner = self.ride && !isStoryId(self.ride.owner) ? self.ride.owner : null;
+    const rideOwner = self.ride && shotOk(self.ride.owner) ? self.ride.owner : null;
     rcars.forEach((c, uid) => {
-      if (isStoryId(uid)) return; // v168
+      if (!shotOk(uid)) return; // v168
       if (uid !== rideOwner && (!c.v.root.visible || Math.hypot(c.x - self.x, c.z - self.z) > VIS_DIST)) return;
       cars.push({ o: uid, v: c.id, x: r2(c.x), z: r2(c.z), y: r2(c.y), r: wy(c.yaw), st: r2(c.steer || 0) });
     });
@@ -5220,6 +5223,39 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       },
       lockMove(on) {
         storyLock = Boolean(on);
+      },
+      isCrouched: () => Boolean(self.seat),
+      // v168.2 — parkta çay: noktaya en yakın, yan yana iki boş oturak (aynı bank)
+      benchNear(x, z, r = 45) {
+        let best = null;
+        for (let i = 0; i < seats.length; i++) {
+          const a = seats[i];
+          if (a.taken || a.tier) continue;
+          const da = Math.hypot(a.x - x, a.z - z);
+          if (da > r || (best && da >= best.d)) continue;
+          for (let j = 0; j < seats.length; j++) {
+            if (j === i) continue;
+            const b = seats[j];
+            if (b.taken || b.tier || Math.abs(b.y - a.y) > 0.08) continue;
+            const ab = Math.hypot(a.x - b.x, a.z - b.z);
+            if (ab < 0.45 || ab > 1.3) continue;
+            best = { d: da, i, me: { x: a.x, y: a.y, z: a.z }, other: { x: b.x, y: b.y, z: b.z } };
+            break;
+          }
+        }
+        return best;
+      },
+      sitSeat(i) {
+        const st = seats[i];
+        if (!st || st.taken || driving || self.ride) return false;
+        if (self.seat) standUp();
+        sitAt(st);
+        return true;
+      },
+      // v168.1 DÜZELTME ("hızlı koş açık ama yavaş yürüyor"): sahnedeki koşu oyuncunun koşma düğmesini
+      // DEĞİŞTİRMEZ — sahne bitince düğmenin hâline döner (eskiden setRun(false) düğmeyi kapatıyordu)
+      run(on) {
+        self.run = Boolean(on) || runToggle;
       },
       // mekânın kapısının ÖNÜ (dışarıda) — oyunun açılışındaki gibi; Amca'nın hedefleri buradan
       doorOut(region) {

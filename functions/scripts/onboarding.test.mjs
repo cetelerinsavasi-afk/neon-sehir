@@ -115,3 +115,12 @@ test('v168.1: sunucu — hikâye başlamadan görev ilerlemez; hak işlem içind
   const heist = src.slice(src.indexOf('export const attemptHeist'), src.indexOf('export const attemptHeist') + 6000);
   assert.ok(heist.includes('hasFreePass(pre, 6)') && heist.includes('if (freePass && !hasFreePass(user, 6)) throw'));
 });
+
+test('v168.1: rüşvet görevinde tek seferlik hak (sunucu)', async () => {
+  const { hasFreePass, ONBOARDING_ORDER: O } = await import('../onboardingData.js');
+  assert.equal(hasFreePass({ onboardingStep: O.indexOf(10) + 1, onboardingV: 4, storyStarted: true }, 10), true);
+  assert.equal(hasFreePass({ onboardingStep: O.indexOf(10) + 1, onboardingV: 4, storyStarted: true, obFree: { rusvet: true } }, 10), false);
+  const src = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
+  const b = src.slice(src.indexOf('export const bribePolice'), src.indexOf('export const bribePolice') + 2000);
+  assert.ok(b.includes("if (!hasFreePass(user, 10)) throw") && b.includes('obFree.${FREE_PASS_KEYS[10]}'));
+});

@@ -103,6 +103,15 @@ export function createStoryProps(kit) {
         mesh(new THREE.CylinderGeometry(0.42, 0.42, 1.15, 14), drum, 0, 0.58, 0, { parent: g });
       });
     },
+    // v168.2: bankın üstüne iki çay bardağı
+    teaFor(x, y, z) {
+      const g = new THREE.Group();
+      g.position.set(x, y, z);
+      root.add(g);
+      tea(g, -0.12, 0, 0);
+      tea(g, 0.12, 0, 0.03);
+      return g;
+    },
     shot(from, to, { hit = true } = {}) {
       const y0 = gy(from.x, from.z) + (from.h ?? 1.15);
       const y1 = gy(to.x, to.z) + (to.h ?? 1.1);

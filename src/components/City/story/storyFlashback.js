@@ -115,10 +115,10 @@ export async function runFlashback(ctx) {
   const body = props?.corpse(corpseSvg(EMRE.avatar), v.x, v.z);
   ctx.onCleanup(() => body?.remove());
   await sleep(700);
-  eng.setRun(true);
+  kit?.run(true);
   eng.walkTo(v.x - 0.9, v.z - 0.6);
   await sleep(1500);
-  eng.setRun(false);
+  kit?.run(false);
   stopMusic(0.6);
   sHeart(5);
   eng.setCam(me0.yaw + Math.PI * 0.5, 0.55, 5);

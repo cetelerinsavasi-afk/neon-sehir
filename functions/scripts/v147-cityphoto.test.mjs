@@ -151,3 +151,32 @@ test('v154 şehir fotoğrafı: maç anı (futbolcular + top) temizlenip ekte ta�
   const r2 = await cp.photoShot('me', { cam, people: [{ uid: 'me', x: 10, z: 10 }], fb: { p: [] } });
   assert.equal(r2.att.fb, undefined);
 });
+
+test('v168.1 şehir fotoğrafı: Rıza Amca (cihazdaki karakter) yakındaysa girer; ad/görünüş sunucudan, okuma yok, uzaksa girmez', async () => {
+  const t = 1_000_000;
+  const cell = cityCellOf(10, 10);
+  const { cp } = setup({ t, rtdbData: { city: { p: { [cell]: { me: { x: 10, z: 10, t: t - 1000 } } } } }, users: { me: { displayName: 'Ben' } } });
+  const r = await cp.photoShot('me', {
+    cam,
+    people: [
+      { uid: 'me', x: 10, z: 10, c: 'npc_riza_amca', k: 1 },
+      { uid: 'npc_riza_amca', x: 11, z: 10, c: 'npc_riza_amca', k: 0, n: 'Sahte', a: { skin: '#fff' }, says: ['sahte'] },
+    ],
+    cars: [{ o: 'npc_riza_amca', v: 1, x: 11, z: 10, y: 0, r: 0 }],
+  });
+  const amca = r.att.people.find((p) => p.uid === 'npc_riza_amca');
+  assert.ok(amca, 'Amca fotoğrafta');
+  assert.equal(amca.n, 'Rıza Amca');
+  assert.equal(amca.a.hairStyle, 'slick', 'görünüş sunucunun listesinden');
+  assert.equal(amca.says, undefined, 'konuşma balonu istemciden alınmaz');
+  assert.equal(r.att.cars.length, 1);
+  assert.equal(r.att.people.find((p) => p.uid === 'me').c, 'npc_riza_amca', 'Amca’nın arabasında yolcu');
+  // uzaktaki / yanlış modelli Amca girmez
+  const r2 = await cp.photoShot('me', {
+    cam,
+    people: [{ uid: 'me', x: 10, z: 10 }, { uid: 'npc_riza_amca', x: 90, z: 10 }],
+    cars: [{ o: 'npc_riza_amca', v: 7, x: 11, z: 10 }],
+  });
+  assert.equal(r2.att.people.length, 1);
+  assert.equal(r2.att.cars.length, 0);
+});

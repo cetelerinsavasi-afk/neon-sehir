@@ -72,3 +72,36 @@ konsolda `__step()` sunucunun görevi ilerletmesini taklit eder)
   PC'de çakışma yok.
 - **Yönetici:** Profil'de "🔄 Görevleri sıfırla (senaryo baştan)" düğmesi var. Sadece kurucu hesapta görünür,
   sunucu da kontrol eder. Bu cihazdaki senaryo kayıtları silinir ve sayfa yenilenir.
+
+## v168.2
+
+- **Durum görevlerinin kontrolü:** görev başlarken bir kez sorulmakla kalmıyor.
+  - Şart sonradan sağlanınca (şüphe ≥ 20, avatar, aktif kredi) ya da şehre başka bir ekrandan dönülünce de soruluyor.
+  - Sınır: şartlı görevlerde 6 sn'de bir, diğerlerinde 20 sn'de bir.
+- **Şüphe görevinde Amca parka götürür.**
+- **Amca'nın arabasında takılma düzeltildi:**
+  - Hedefin yanında ya da hedefi olmayan görevde arabaya binilirse Amca 1,5 sn sonra kibarca indirir.
+  - Kendi arabanla giderken Amca, uzakta beklese de arkandan gelir.
+- **Fotoğrafta Rıza Amca** ve arabası görünür. Ad ve görünüş sunucunun listesinden gelir
+  (`functions/storyNpcs.js`); sadece çekenin 45 m yakınındaysa girer, Firestore okuması yok.
+- **Rüşvet görevinde** de tek seferlik hak var.
+- **Sahnelerde** hem yürünür hem etrafa bakılır.
+  - Çatışmada kalkıp yürüyen oyuncu siperde sayılmaz.
+  - Nevzat'ın telefonu üstte küçük kart; konuşma sürerken yürünür.
+- **Hızlı koşma:** sahneler artık koşma düğmesini kapatmıyor (varsayılan yine açık).
+- **Çakmak kaldırıldı;** son sahneden sonra doğrudan oyun başlar.
+- **Çatışma düğmeleri:** Ateş et sağda, Eğil / Kalk solda.
+
+## v168.3
+
+- **Telefon görüşmesi** yine ekranı kaplıyor.
+- **"Geç" ile atlanan sahne düzeltmesi:** oyuncu sahnedeki arabada yolcu olarak kalıyordu ve karakolun
+  önünde yürüyemiyordu. Artık sahne nasıl biterse bitsin arabadan iniliyor.
+- **Karşılaşmada** Amca, oyuncu yürüdüyse onu bulana kadar yanına geliyor.
+- **Eski oyuncu (görevleri bitmiş) akışı:**
+  1. Karakolun önü: "Üç yıl… her ay o kapıya geldim". Oyuncunun kaydından 1–2 kişisel söz:
+     belediye koltuğu, polislik, çete / babalık, soygun sayısı, altın, fabrika işi, saygınlık, şüphe.
+  2. "Rıza Amca ile parkta çay iç" görevi. Parktaki bir bankta yan yana oturuluyor, bankın üstünde iki çay
+     bardağı var. Amca 5 söz anlatıyor (Emre, baba, sustuğu üç yıl, gurur).
+  3. Son sözün ardından Nevzat arıyor ("Çayınız güzel mi?").
+  4. Hurdalık. Yolda Amca'nın sözleri son sözlerine zemin hazırlıyor ("kendine bir yer edin evlat").

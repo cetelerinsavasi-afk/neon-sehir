@@ -1333,6 +1333,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
             eng={engineRef.current}
             uid={user.uid}
             player={player}
+            gang={gangAlerts?.gangId ? { gangId: gangAlerts.gangId, gangRank: gangAlerts.gangRank } : null}
             busy={Boolean(panel) || Boolean(orgPanel) || Boolean(card) || Boolean(watchId) || raceFull || heistOn || covered || haracHide}
             jobActive={Boolean(jobUi?.active)}
             onAway={onStoryAway}

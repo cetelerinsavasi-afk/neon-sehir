@@ -812,3 +812,8 @@ body.amca-cine .amca-line {
     transform: translate(-5px, -50%);
   }
 }
+/* v168.1: son sahnede Ateş et sağda, Eğil / Kalk solda */
+.amca-fight button.crouch {
+  right: auto;
+  left: 22px;
+}
