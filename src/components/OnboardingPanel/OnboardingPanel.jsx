@@ -13,9 +13,9 @@ import './OnboardingPanel.css';
 // basıldığında panel kalıcı olarak "hatırlatıcı" moduna geçer ve sadece
 // o an geçerli olan hatırlatmalar varsa görünür kalır.
 // Oyuncu bu göreve geldiğinde şart zaten sağlanıyorsa sunucu otomatik geçirir
-const STATUS_TASK_IDS = [5, 9, 11, 12, 13, 16, 19, 20];
+const STATUS_TASK_IDS = [5, 9, 11, 12, 13, 14, 16, 19, 20]; // v168: 14 — aktif kredisi varsa
 
-export default function OnboardingPanel({ gangReminders = null, gangChans = null, slotBottom = null, onVisibleChange = null, inline = false, onGo = null, inStadium = false }) {
+export default function OnboardingPanel({ gangReminders = null, gangChans = null, slotBottom = null, onVisibleChange = null, inline = false, onGo = null, inStadium = false, listenOpen = false }) {
   const { user } = useAuth();
   const {
     loading,
@@ -28,6 +28,13 @@ export default function OnboardingPanel({ gangReminders = null, gangChans = null
   } = useOnboarding(gangReminders, gangChans, { inStadium }); // v163
 
   const [open, setOpen] = useState(false);
+  // v168: şehirde üstteki senaryo şeridine (Rıza Amca) dokununca liste açılır
+  useEffect(() => {
+    if (!listenOpen) return undefined;
+    const on = () => setOpen(true);
+    window.addEventListener('neon-onboarding-open', on);
+    return () => window.removeEventListener('neon-onboarding-open', on);
+  }, [listenOpen]);
   const [claiming, setClaiming] = useState(false);
   const [claimError, setClaimError] = useState('');
   const [justCompletedStep, setJustCompletedStep] = useState(null);
@@ -165,15 +172,17 @@ export default function OnboardingPanel({ gangReminders = null, gangChans = null
                         : task.step === onboardingStep
                           ? 'current'
                           : 'locked';
+                    // v168: hikâyenin son sahnesi sırası gelene kadar gizli
+                    const hidden = task.secret && state === 'locked';
                     return (
                       <div key={task.step} className={`onboarding-task onboarding-task-${state}`}>
                         <div className="onboarding-task-marker">
                           {state === 'done' ? '✓' : state === 'locked' ? '🔒' : task.step}
                         </div>
                         <div className="onboarding-task-content">
-                          <span className="onboarding-task-emoji">{task.emoji}</span>
-                          <span className="onboarding-task-title">{task.title}</span>
-                          <InfoIcon text={task.info} />
+                          <span className="onboarding-task-emoji">{hidden ? '❔' : task.emoji}</span>
+                          <span className="onboarding-task-title">{hidden ? '???' : task.title}</span>
+                          {!hidden && <InfoIcon text={task.info} />}
                         </div>
                         {justCompletedStep === task.step && (
                           <span className="onboarding-task-flash">✅ Tamamlandı!</span>

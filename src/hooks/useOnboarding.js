@@ -60,6 +60,8 @@ const TASK_DEFS = {
   16: { emoji: '👤', title: 'Profile gir ve avatarını düzenle', info: "Alttaki Profil sekmesinden avatarını düzenleyebilir, adını değiştirebilirsin." },
   17: { emoji: '💬', title: 'Telefon > ChatsApp uygulamasına gir ve bi mesaj gönder', info: 'Diğer oyuncularla konuş.' },
   19: { emoji: '🔧', title: 'Silahçıda silahını geliştir', info: 'Silah Mağazası ya da bir oyuncunun silahçı dükkânında 🛠️ Atölye\'den silahını geliştirerek daha büyük soygunlar yapabilirsin.' },
+  // v168: Rıza Amca senaryosunun son sahnesi (sadece hurdalığa gidip sahne bitince geçer)
+  22: { emoji: '🔥', title: 'Rıza Amca ile hurdalığa git', info: 'Hesap bu gece kapanacak.', secret: true },
   20: { emoji: '🏴', title: 'Bi çeteye gir', info: 'Tüm mafya babaları bu yollardan geçti.' },
 };
 export const ONBOARDING_TASKS = ONBOARDING_ORDER.map((id, i) => ({ step: i + 1, id, ...TASK_DEFS[id] }));

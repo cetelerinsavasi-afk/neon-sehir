@@ -6,51 +6,46 @@ import {
   ONBOARDING_ORDER,
   ONBOARDING_TASK_COUNT,
   ONBOARDING_REMOVED_IDS,
-  migrateOnboardingStep,
+  AMCA_FINALE_TASK_ID,
+  legacyV3Pos,
   onboardingPosOf,
   onboardingTaskIdAt,
   currentOnboardingTaskId,
 } from '../onboardingData.js';
 
-test('18 görev; slot (8), 2. el alışveriş (15), silah malzemesi (18) yok', () => {
-  assert.equal(ONBOARDING_TASK_COUNT, 18);
+test('v168: 19 görev; kaldırılanlar yok; fabrika → ışınlan → yasaklı madde; hurdalık (22) çeteden önce', () => {
+  assert.equal(ONBOARDING_TASK_COUNT, 19);
   for (const r of ONBOARDING_REMOVED_IDS) assert.ok(!ONBOARDING_ORDER.includes(r));
-  assert.deepEqual(ONBOARDING_ORDER.slice(0, 3), [21, 1, 2]); // v167: ışınlan → fabrikada çalış → yasaklı madde
+  assert.deepEqual(ONBOARDING_ORDER.slice(0, 3), [1, 21, 2]);
+  assert.deepEqual(ONBOARDING_ORDER.slice(-2), [AMCA_FINALE_TASK_ID, 20]);
+  assert.equal(new Set(ONBOARDING_ORDER).size, ONBOARDING_ORDER.length);
 });
 
-test('geçiş: kaldırılan görevdeyse sonrakine geçer, gerisindeyse onları yapmaz, ilerisindeyse başa dönmez', () => {
-  // eski adım → yeni sıradaki görev kimliği
-  const taskAfter = (oldStep) => currentOnboardingTaskId({ onboardingStep: oldStep }); // eski (v1) kayıt
-  assert.equal(taskAfter(1), 21, 'eski 1 → yeni 1. görev (ışınlan)');
-  for (let s = 2; s <= 7; s++) assert.equal(taskAfter(s), s, `eski ${s} aynı görevde`);
-  assert.equal(taskAfter(8), 9, 'slot görevindeyken → şüphe görevine geçer');
-  assert.equal(taskAfter(9), 9);
-  assert.equal(taskAfter(14), 14);
-  assert.equal(taskAfter(15), 16, '2. el görevindeyken → avatar görevine geçer');
-  assert.equal(taskAfter(17), 17);
-  assert.equal(taskAfter(18), 19, 'silah malzemesi görevindeyken → silah geliştirme görevine geçer');
-  assert.equal(taskAfter(20), 20);
-  assert.equal(migrateOnboardingStep(21), 18, 'hepsini bitirmiş → bitti (v2)');
-  assert.equal(onboardingPosOf({ onboardingStep: 21 }), 19, 'hepsini bitirmiş → bitti (v3)');
-  assert.equal(onboardingTaskIdAt(19), null);
-  // her eski kalan görev kendi kimliğine eşlenir (kimse geri gitmez / görev atlamaz)
-  for (const id of ONBOARDING_ORDER) if (id !== 21 && id !== 1) assert.equal(taskAfter(id), id);
+test('v168 sıfırlama: eski kayıtta bitirmemiş → 1. görev; bitirmiş (Tamam’a bassın basmasın) → bitti', () => {
+  const DONE = ONBOARDING_TASK_COUNT + 1;
+  // bitirmemiş (v1 / v2 / v3 her sırada) → baştan
+  for (let s = 1; s <= 20; s++) assert.equal(onboardingPosOf({ onboardingStep: s }), 1, `v1 ${s}`);
+  for (let s = 1; s <= 17; s++) assert.equal(onboardingPosOf({ onboardingStep: s, onboardingV: 2 }), 1, `v2 ${s}`);
+  for (let s = 1; s <= 18; s++) assert.equal(onboardingPosOf({ onboardingStep: s, onboardingV: 3 }), 1, `v3 ${s}`);
+  // eski listede hepsi bitmiş ama "Tamam"a basmamış → bitti (sıfırlanmaz)
+  assert.equal(onboardingPosOf({ onboardingStep: 21 }), DONE);
+  assert.equal(onboardingPosOf({ onboardingStep: 18, onboardingV: 2 }), DONE);
+  assert.equal(onboardingPosOf({ onboardingStep: 19, onboardingV: 3 }), DONE);
+  // Tamam'a basmış (onboardingRewardClaimed) → hangi kayıt olursa olsun bitti
+  assert.equal(onboardingPosOf({ onboardingStep: 3, onboardingV: 3, onboardingRewardClaimed: true }), DONE);
+  assert.equal(onboardingPosOf({ onboardingRewardClaimed: true }), DONE);
+  assert.equal(currentOnboardingTaskId({ onboardingStep: 9, onboardingV: 3, onboardingRewardClaimed: true }), null);
+  assert.equal(legacyV3Pos({ onboardingStep: 8, onboardingV: 2 }), 9);
 });
 
-test('onboardingV: 3 olan oyuncunun adımı çevrilmez; v2 / eski kayıt aynı görevde kalır; eksik/bozuk adım 1 sayılır', () => {
-  assert.equal(onboardingPosOf({ onboardingStep: 9, onboardingV: 3 }), 9);
-  assert.equal(currentOnboardingTaskId({ onboardingStep: 9, onboardingV: 3 }), 9);
-  assert.equal(onboardingPosOf({ onboardingStep: 8, onboardingV: 2 }), 9, 'v2 8 → v3 9 (görev 9)');
-  assert.equal(currentOnboardingTaskId({ onboardingStep: 8, onboardingV: 2 }), 9);
-  assert.equal(onboardingPosOf({ onboardingStep: 8 }), 9, 'eski kayıt: 8 → 9 (görev 9)');
-  assert.equal(currentOnboardingTaskId({ onboardingStep: 16 }), 16, 'hâlâ avatar görevinde');
+test('v168: onboardingV 4 kaydı çevrilmez; eksik/bozuk adım 1; taşan adım bitti', () => {
+  ONBOARDING_ORDER.forEach((id, i) => assert.equal(currentOnboardingTaskId({ onboardingStep: i + 1, onboardingV: 4 }), id));
   assert.equal(onboardingPosOf({}), 1);
   assert.equal(onboardingPosOf(null), 1);
-  assert.equal(onboardingPosOf({ onboardingStep: 99, onboardingV: 3 }), 19);
-  assert.equal(onboardingPosOf({ onboardingStep: 18, onboardingV: 2 }), 19, 'v2 hepsini bitirmiş → v3 bitti');
-  // v2'de her sıradaki oyuncu AYNI görevde kalır (yeni görev araya girdi diye geri gitmez)
-  const V2 = [21, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 16, 17, 19, 20];
-  V2.forEach((id, i) => assert.equal(currentOnboardingTaskId({ onboardingStep: i + 1, onboardingV: 2 }), id));
+  assert.equal(currentOnboardingTaskId({}), 1, 'yeni oyuncu fabrikayla başlar');
+  assert.equal(onboardingPosOf({ onboardingStep: 'x', onboardingV: 4 }), 1);
+  assert.equal(onboardingPosOf({ onboardingStep: 99, onboardingV: 4 }), ONBOARDING_TASK_COUNT + 1);
+  assert.equal(onboardingTaskIdAt(ONBOARDING_TASK_COUNT + 1), null);
 });
 
 test('index.js: kaldırılan görevler okuma yapmaz; ilerleme yeni sırayla yazılır; güvenli park satışı görevi ilerletmez', () => {
@@ -67,12 +62,15 @@ test('index.js: kaldırılan görevler okuma yapmaz; ilerleme yeni sırayla yaz�
   assert.ok(risky.includes('advanceOnboardingStep(uid, 3)'));
 });
 
-test('v160.3 / v167: yeni oyuncu önce ışınlanır, sonra fabrikada çalışır; ilerisindekiler sıfırlanmaz', () => {
-  assert.equal(currentOnboardingTaskId({}), 21);
-  assert.equal(currentOnboardingTaskId({ onboardingStep: 1, onboardingV: 2 }), 21);
-  assert.equal(currentOnboardingTaskId({ onboardingStep: 2, onboardingV: 3 }), 1, 'v3: 2. görev = fabrikada çalış');
-  assert.equal(currentOnboardingTaskId({ onboardingStep: 2, onboardingV: 2 }), 2, 'v2 kaydı fabrika görevini atlar');
-  assert.equal(currentOnboardingTaskId({ onboardingStep: 2 }), 2);
+test('v168: hurdalık görevi sadece finale olayıyla geçer (mezar aynı yazmada); kredi aktifse otomatik; replay görevlere dokunmaz', () => {
+  const src = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
+  assert.ok(!src.includes('advanceOnboardingStep(uid, 22)'));
+  const chk = src.slice(src.indexOf('export const checkOnboardingProgress'), src.indexOf('export const completeOnboardingChecklist'));
+  assert.ok(/currentStep === AMCA_FINALE_TASK_ID\) \{[\s\S]{0,400}ev === 'finale'\) tx\.update\(userRef, \{ onboardingStep: pos \+ 1, onboardingV: ONBOARDING_V, amcaDead: true \}/.test(chk));
+  assert.ok(/currentStep === 14\) \{[\s\S]{0,200}if \(user\.credit\) pass\(\)/.test(chk));
+  const rep = chk.slice(chk.indexOf("if (ev === 'replay')"), chk.indexOf('if (currentStep === 21)'));
+  assert.ok(rep.includes('!user.amcaDead && pos > ONBOARDING_TASK_COUNT'));
+  assert.ok(!rep.includes('onboardingStep'), 'replay görev sırasını yazmaz');
 });
 
 test('v167: fabrikada maaş alınca görev 1 ilerler', () => {

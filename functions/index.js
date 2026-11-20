@@ -67,7 +67,7 @@ import { createDepo, combineBizHooks } from './depo.js';
 import { createCasino, isPlayerCasinoId, CASINO_TEXT } from './casino.js';
 import { canUseMaterial, readHoldings, buyoutValue, usableMaterials } from './materials.js';
 import { createV124Migrations } from './v124Migrations.js';
-import { ONBOARDING_V, ONBOARDING_ORDER, ONBOARDING_TASK_COUNT, onboardingPosOf, onboardingTaskIdAt, currentOnboardingTaskId } from './onboardingData.js';
+import { ONBOARDING_V, ONBOARDING_ORDER, ONBOARDING_TASK_COUNT, AMCA_FINALE_TASK_ID, onboardingPosOf, onboardingTaskIdAt, currentOnboardingTaskId } from './onboardingData.js';
 import { profanityCheck, PROFANITY_WARNING } from './profanity.js';
 import { cleanEquipped } from './cosmeticsData.js';
 import { HOUSE_PRODUCTS } from './houseCatalogData.js';
@@ -578,9 +578,23 @@ export const checkOnboardingProgress = onCall(async (request) => {
     const pos = onboardingPosOf(user);
     const currentStep = onboardingTaskIdAt(pos);
     const pass = () => tx.update(userRef, { onboardingStep: pos + 1, onboardingV: ONBOARDING_V });
+    const ev = request.data?.event;
+    // v168 — "3 yıl önce" (görevleri bitmiş eski oyuncu): Rıza Amca'nın son sahnesi bitti → mezar artık görünür.
+    // Görevlere dokunmaz; sadece bir kez yazılır (amcaDead zaten varsa hiçbir şey yazılmaz).
+    if (ev === 'replay') {
+      if (!user.amcaDead && pos > ONBOARDING_TASK_COUNT) tx.update(userRef, { amcaDead: true });
+      return;
+    }
     if (currentStep === 21) {
-      // v160.3 — Görev 1: mini haritadan bir yere ışınlan (istemci ışınlanınca event:'teleport' gönderir)
-      if (request.data?.event === 'teleport') pass();
+      // v160.3 — Görev: mini haritadan bir yere ışınlan (istemci ışınlanınca event:'teleport' gönderir)
+      if (ev === 'teleport') pass();
+    } else if (currentStep === AMCA_FINALE_TASK_ID) {
+      // v168 — "Rıza Amca ile hurdalığa git": son sahne (çatışma + Amca'nın son sözleri) bitince istemci
+      // event:'finale' gönderir → görev geçer ve mezar o andan sonra görünür (aynı yazmada).
+      if (ev === 'finale') tx.update(userRef, { onboardingStep: pos + 1, onboardingV: ONBOARDING_V, amcaDead: true });
+    } else if (currentStep === 14) {
+      // v168 — "Bankadan kredi çek": aktif kredisi olan yeni kredi çekemez → otomatik geç
+      if (user.credit) pass();
     } else if (currentStep === 5) {
       const weaponsSnap = await tx.get(db.collection('weapons').where('ownerId', '==', uid).limit(1));
       if (!weaponsSnap.empty) {

@@ -38,6 +38,8 @@ export function httpsCallable(functions, name) {
     // önizleme: ?uid=… ile ikinci oyuncu (ör. tasarım yetkilisi) olarak çağrı
     const request = { auth: { uid: new URLSearchParams(location.search).get('uid') || PREVIEW_UID }, data };
     try {
+      // v168 önizleme: test düzeneği bir çağrıyı kendisi karşılayabilir (preview/amca-app.jsx)
+      if (window.__fnHook?.[name]) return { data: await window.__fnHook[name](request.auth.uid, data) };
       if (name === 'gangAction') return { data: await system.handleAction(request) };
       // v154 önizleme: soygun sonucu ?res=ok|caught|busted (video testleri)
       if (name === 'attemptHeist' || name === 'executeHeistPlan') {

@@ -1761,6 +1761,10 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   const MAX_VIS = IS_MOBILE ? 16 : 24;
   const VIS_DIST = 85;
   const remotes = new Map(); // uid → { fig, st, lastEt, seen }
+  // v168 — Rıza Amca senaryosu: 'npc_' kimlikli uzak "oyuncular" bu cihazdaki senaryo karakterleri.
+  // Sinematik sırasında gerçek oyuncular ve arabaları SADECE bu ekranda gizlenir (ağa dokunulmaz).
+  const isStoryId = (id) => typeof id === 'string' && id.startsWith('npc_');
+  let storyHideReal = false;
   const rcars = new Map(); // uid → { v, id, x, z, y, yaw, tx, tz, tyaw, spd, steer, name }
   function upsertPlayer(uid, st) {
     let r = remotes.get(uid);
@@ -1965,13 +1969,18 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     remotes.forEach((r) => {
       const d = Math.hypot(r.fig.tx - self.x, r.fig.tz - self.z);
       r.d = d;
+      r.story = isStoryId(r.uid);
       list.push(r);
     });
-    list.sort((a, b) => a.d - b.d);
-    list.forEach((r, i) => {
+    // v168: senaryo karakterleri sıralamada önce (kalabalıkta en yakın 16 kişinin dışında kalmasınlar)
+    list.sort((a, b) => (a.story === b.story ? a.d - b.d : a.story ? -1 : 1));
+    let rank = 0;
+    list.forEach((r) => {
       const f = r.fig;
       const st = r.st;
-      const vis = i < MAX_VIS && r.d < VIS_DIST;
+      const hid = storyHideReal && !r.story;
+      const vis = !hid && rank < MAX_VIS && r.d < VIS_DIST;
+      if (!hid) rank += 1;
       f.inCar = false;
       f.sitting = false;
       let show = vis;
@@ -2032,7 +2041,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     });
   }
   function updateRemoteCars(dt) {
-    rcars.forEach((c) => {
+    rcars.forEach((c, uid) => {
       // v149: fark daha yumuşak kapanır (küçük farklar görünmez, büyükler hızlı)
       const big = Math.hypot(c.ex, c.ez) > 2.5;
       const decay = Math.exp(-dt * (big ? 6 : 3.2));
@@ -2043,7 +2052,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       c.x = p.x + c.ex;
       c.z = p.z + c.ez;
       c.yaw = p.yaw + c.eyaw;
-      const far = Math.hypot(c.x - self.x, c.z - self.z) > VIS_DIST + 20;
+      const far = Math.hypot(c.x - self.x, c.z - self.z) > VIS_DIST + 20 || (storyHideReal && !isStoryId(uid)); // v168
       c.v.root.visible = !far;
       if (far) return;
       // v163: uzak araba da aynı yer çekimiyle zıplar / süzülür (ağdan ek veri gerekmez)
@@ -3920,7 +3929,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     W.water?.tick?.(t);
     npcs.forEach((n) => {
       // uzaktaki NPC çizilmez; mekân NPC'sinin etiketi sadece o mekânın içindeyken
-      const near = (n.x - camera.position.x) ** 2 + (n.z - camera.position.z) ** 2 < 55 * 55 && (!isoV || n.venue === isoV);
+      const near = !n.storyHidden && (n.x - camera.position.x) ** 2 + (n.z - camera.position.z) ** 2 < 55 * 55 && (!isoV || n.venue === isoV); // v168: storyHidden
       n.group.visible = near;
       n.hideLabel = Boolean(n.venue) && n.venue !== curVenue;
       if (!near) return;
@@ -4422,9 +4431,10 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       cam.ik = driving && myCar ? 0 : self.ride.k || 1;
       cam.is = r2(interiorCar.steer || 0);
     }
-    const people = [figShot(myUid, me, driving && myCar ? { c: myUid, k: 0 } : self.ride ? { c: self.ride.owner, k: self.ride.k || 1 } : {})];
+    // v168: senaryo karakterleri (bu cihazda) fotoğrafa girmez — sunucu onların profilini aramasın
+    const people = [figShot(myUid, me, driving && myCar ? { c: myUid, k: 0 } : self.ride && !isStoryId(self.ride.owner) ? { c: self.ride.owner, k: self.ride.k || 1 } : {})];
     [...remotes.values()]
-      .filter((r) => (r.d ?? 999) < VIS_DIST)
+      .filter((r) => !isStoryId(r.uid) && (r.d ?? 999) < VIS_DIST)
       .sort((a, b) => a.d - b.d)
       .slice(0, 11)
       .forEach((r) => {
@@ -4435,8 +4445,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const cars = [];
     if (myCar) cars.push({ o: myUid, v: myCar.id, x: r2(myCar.x), z: r2(myCar.z), y: r2(myCar.y), r: wy(myCar.yaw), st: r2(myCar.steer || 0) });
     // v157.4: bindiğim araç (otobüste yolcuyken iç kamerada gövde gizli) fotoğrafa her zaman girer
-    const rideOwner = self.ride ? self.ride.owner : null;
+    const rideOwner = self.ride && !isStoryId(self.ride.owner) ? self.ride.owner : null;
     rcars.forEach((c, uid) => {
+      if (isStoryId(uid)) return; // v168
       if (uid !== rideOwner && (!c.v.root.visible || Math.hypot(c.x - self.x, c.z - self.z) > VIS_DIST)) return;
       cars.push({ o: uid, v: c.id, x: r2(c.x), z: r2(c.z), y: r2(c.y), r: wy(c.yaw), st: r2(c.steer || 0) });
     });
@@ -5181,6 +5192,51 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       first = true;
     },
     getSelf: () => ({ x: self.x, z: self.z }),
+    // v168 — Rıza Amca senaryosu (story/): canlı sürümde de açık küçük kapı (eskiden sadece
+    // geliştirme modundaki __dbg vardı). Sahneye efekt grubu eklemek, zemin yüksekliği, poz, gizleme.
+    story: {
+      THREE,
+      scene,
+      groundY: (x, z) => groundY(x, z),
+      selfY: () => me.y,
+      // poz: 'handsup' | null — id 'self' = oyuncunun kendisi, diğerleri senaryo karakteri
+      pose(id, pose) {
+        const f = id === 'self' ? me : remotes.get(id)?.fig;
+        f?.setForcePose(pose || null);
+      },
+      hideNpc(name, on) {
+        npcs.forEach((n) => {
+          if (n.nameEl?.textContent !== name) return;
+          n.storyHidden = Boolean(on);
+          if (on) n.group.visible = false;
+        });
+      },
+      hideRemotes(on) {
+        storyHideReal = Boolean(on);
+      },
+      // mekânın kapısının ÖNÜ (dışarıda) — oyunun açılışındaki gibi; Amca'nın hedefleri buradan
+      doorOut(region) {
+        try {
+          const p = spawnPoint({ region, out: true });
+          return p && Number.isFinite(p.x) ? { x: p.x, z: p.z, yaw: p.yaw } : null;
+        } catch {
+          return null;
+        }
+      },
+      // senaryo karakterinin arabasında yolcu muyum? (o sırada ağda görünmeyiz — araba sadece bu cihazda)
+      riding: () => Boolean(self.ride && isStoryId(self.ride.owner)),
+      // oyuncu siperde / yerde çöker (senaryo karakterinin çökmesiyle aynı yükseklik: zemin + 0,2)
+      crouch(on) {
+        if (on) {
+          if (driving || self.ride) return false;
+          if (self.seat) standUp();
+          sitAt({ x: self.x, z: self.z, y: me.y + 0.2, yaw: null });
+          return true;
+        }
+        if (self.seat) standUp();
+        return true;
+      },
+    },
     // --- çevrimiçi ---------------------------------------------------------
     upsertPlayer,
     removePlayer,
@@ -5192,12 +5248,13 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       if (yaw != null) self.camYaw = yaw;
       if (pitch != null) self.camPitch = pitch;
     },
-    remoteCount: () => [...remotes.values()].filter((r) => (r.d ?? 999) < VIS_DIST).length,
+    remoteCount: () => [...remotes.values()].filter((r) => !isStoryId(r.uid) && (r.d ?? 999) < VIS_DIST).length, // v168: senaryo karakterleri sayılmaz
     // v163 — haritadaki oyuncu noktaları: zaten indirilmiş konumlar (ek ağ trafiği yok).
     // near: sadece "X kişi yakında" sayılanlar (mini harita); değilse dinlenen 3×3 hücredeki herkes.
     remoteMapPts: (near = false) => {
       const out = [];
       remotes.forEach((r) => {
+        if (isStoryId(r.uid)) return; // v168
         if (near && (r.d ?? 999) >= VIS_DIST) return;
         const f = r.fig;
         const st = r.st || {};
@@ -5210,7 +5267,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       return out;
     },
     // v150 — 👥 Yakındakiler listesi (yakından uzağa)
-    nearbyPlayers: () => [...remotes.values()].filter((r) => (r.d ?? 999) < VIS_DIST).sort((a, b) => a.d - b.d).slice(0, 40).map((r) => r.uid),
+    nearbyPlayers: () => [...remotes.values()].filter((r) => !isStoryId(r.uid) && (r.d ?? 999) < VIS_DIST).sort((a, b) => a.d - b.d).slice(0, 40).map((r) => r.uid),
     playerSay(uid, text) {
       remotes.get(uid)?.fig.say(text);
     },

@@ -1,0 +1,764 @@
+/* v168 — Rıza Amca senaryosu (prototipten) */
+.amca-root {
+  pointer-events: none;
+  z-index: 2000;
+  font-family: inherit;
+  position: fixed;
+  inset: 0;
+}
+.amca-root > * {
+  pointer-events: auto;
+}
+.amca-intro {
+  background: #000;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  transition: opacity 0.9s;
+  display: flex;
+  position: absolute;
+  inset: 0;
+}
+.amca-intro.fade {
+  opacity: 0;
+}
+.amca-intro p {
+  color: #e9e2d6;
+  letter-spacing: 0.04em;
+  opacity: 0;
+  margin: 0;
+  font-size: 22px;
+  transition:
+    opacity 0.8s,
+    transform 0.8s;
+  transform: translateY(6px);
+}
+.amca-intro p:first-child {
+  letter-spacing: 0.12em;
+  font-size: 34px;
+  font-weight: 800;
+}
+.amca-intro p.on {
+  opacity: 1;
+  transform: none;
+}
+.amca-chapter {
+  text-align: center;
+  animation: 2.6s forwards amcaCh;
+  position: absolute;
+  top: 28%;
+  left: 50%;
+  transform: translate(-50%);
+  pointer-events: none !important;
+}
+.amca-chapter span {
+  letter-spacing: 0.35em;
+  color: #ffb347;
+  font-size: 12px;
+  font-weight: 700;
+  display: block;
+}
+.amca-chapter b {
+  color: #fff;
+  text-shadow: 0 3px 18px #000000bf;
+  letter-spacing: 0.04em;
+  font-size: 38px;
+  font-weight: 900;
+  display: block;
+}
+.amca-chip {
+  background: #140e08d1;
+  border: 1px solid #ffb3478c;
+  border-radius: 14px;
+  align-items: center;
+  gap: 10px;
+  max-width: 78vw;
+  padding: 7px 14px 7px 8px;
+  animation: 0.35s amcaIn;
+  display: flex;
+  position: absolute;
+  top: 66px;
+  left: 50%;
+  transform: translate(-50%);
+  box-shadow: 0 6px 20px #00000059;
+  pointer-events: none !important;
+}
+.amca-chip i {
+  background: #ffb3472e;
+  border-radius: 10px;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  font-size: 20px;
+  font-style: normal;
+  display: grid;
+}
+.amca-chip small {
+  color: #ffb347;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-size: 10px;
+  font-weight: 700;
+  display: block;
+}
+.amca-chip b {
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  display: block;
+}
+.amca-chip.riding {
+  border-color: #ffffff40;
+}
+.amca-line {
+  cursor: pointer;
+  background: #0a0806db;
+  border-radius: 16px;
+  align-items: center;
+  gap: 10px;
+  max-width: min(560px, 88vw);
+  padding: 8px 16px 8px 8px;
+  animation: 0.25s amcaUp;
+  display: flex;
+  position: absolute;
+  bottom: 78px;
+  left: 50%;
+  transform: translate(-50%);
+}
+.amca-line small {
+  color: #ffb347;
+  font-size: 11px;
+  font-weight: 800;
+  display: block;
+}
+.amca-line.who-nevzat small {
+  color: #ff5a5a;
+}
+.amca-line p {
+  color: #fff;
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.3;
+}
+.amca-line.who-phone {
+  padding: 10px 16px;
+}
+.amca-face {
+  flex-shrink: 0;
+  position: relative;
+}
+.amca-face em {
+  font-size: 14px;
+  font-style: normal;
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+}
+.amca-bars {
+  position: absolute;
+  inset: 0;
+  pointer-events: none !important;
+}
+.amca-bars:before,
+.amca-bars:after {
+  content: "";
+  background: #000;
+  height: 13vh;
+  animation: 0.6s amcaBar;
+  position: absolute;
+  left: 0;
+  right: 0;
+}
+.amca-bars:before {
+  top: 0;
+}
+.amca-bars:after {
+  bottom: 0;
+}
+.amca-bars.flash {
+  background: #fff4d6bf;
+}
+.amca-bars.black {
+  background: #000;
+  pointer-events: auto !important;
+}
+.amca-last {
+  background: radial-gradient(at 50% 70%, #3a2414 0%, #120a06 55%, #000 100%);
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  animation: 1.4s amcaFade;
+  display: flex;
+  position: absolute;
+  inset: 0;
+}
+.amca-last-scene {
+  width: min(600px, 92vw);
+}
+.amca-last-scene svg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+.amca-last p {
+  color: #f1e8da;
+  text-align: center;
+  min-height: 30px;
+  margin: 26px 0 0;
+  padding: 0 20px;
+  font-size: 21px;
+  font-style: italic;
+  animation: 0.9s amcaWord;
+}
+.amca-last p.gone {
+  opacity: 0;
+  transition: opacity 1.6s;
+}
+.amca-grave {
+  background: linear-gradient(#0c1018, #1b2230 60%, #23271f 60%, #161812);
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 22px;
+  animation: 2s amcaFade;
+  display: flex;
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+.amca-grave .rain {
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    100deg,
+    #0000 0 22px,
+    #b4c8e62e 22px 23px
+  );
+  animation: 0.5s linear infinite amcaRain;
+  position: absolute;
+  inset: -50% 0 0;
+}
+.amca-grave .stone {
+  color: #2a2926;
+  background: linear-gradient(#8d8c86, #5f5e59);
+  border-radius: 95px 95px 6px 6px;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  width: 190px;
+  height: 230px;
+  display: flex;
+  position: relative;
+  box-shadow:
+    inset 0 -12px 30px #00000059,
+    0 18px 30px #0009;
+}
+.amca-grave .stone span {
+  opacity: 0.7;
+  font-size: 28px;
+}
+.amca-grave .stone b {
+  letter-spacing: 0.12em;
+  font-size: 19px;
+}
+.amca-grave .stone small {
+  letter-spacing: 0.08em;
+  font-size: 14px;
+}
+.amca-grave button {
+  color: #fff;
+  background: #ffffff14;
+  border: 1px solid #ffffff4d;
+  border-radius: 12px;
+  padding: 10px 26px;
+  font-size: 15px;
+  font-weight: 700;
+  position: relative;
+}
+.amca-over {
+  animation: 4.5s forwards amcaCh;
+  position: absolute;
+  top: 34%;
+  left: 50%;
+  transform: translate(-50%);
+  pointer-events: none !important;
+}
+.amca-over b {
+  color: #fff;
+  text-shadow: 0 4px 20px #000000b3;
+  white-space: nowrap;
+  font-size: 42px;
+  font-weight: 900;
+}
+.amca-toast {
+  color: #fff;
+  text-align: center;
+  background: #101820eb;
+  border: 1px solid #19e8ff66;
+  border-radius: 12px;
+  max-width: 86vw;
+  padding: 9px 14px;
+  font-size: 13px;
+  position: absolute;
+  top: 120px;
+  left: 50%;
+  transform: translate(-50%);
+}
+body.amca-cine .cs-root > :not(.hs-stage) {
+  visibility: hidden !important;
+}
+body.amca-cine .hs-bubble {
+  font-size: 15px;
+}
+.amca-chip {
+  cursor: pointer;
+  pointer-events: auto !important;
+}
+.amca-call {
+  background: radial-gradient(at 50% 40%, #281c14f7, #000000fc);
+  justify-content: center;
+  align-items: center;
+  gap: 26px;
+  transition: opacity 1s;
+  animation: 0.6s amcaFade;
+  display: flex;
+  position: absolute;
+  inset: 0;
+}
+.amca-call.ended {
+  opacity: 0.85;
+}
+.amca-call .side {
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  transition:
+    transform 0.3s,
+    filter 0.4s,
+    opacity 0.6s;
+  display: flex;
+}
+.amca-call .side b {
+  color: #fff;
+  font-size: 15px;
+}
+.amca-call .side.nevzat {
+  opacity: 0.25;
+  filter: brightness(0.35) saturate(0.4);
+}
+.amca-call .side.nevzat.on {
+  opacity: 1;
+  filter: brightness(0.7) saturate(0.6) hue-rotate(-10deg);
+}
+.amca-call .side.nevzat b {
+  color: #ff6a6a;
+}
+.amca-call .side.talk {
+  transform: scale(1.06);
+}
+.amca-call .mid {
+  text-align: center;
+  width: min(320px, 40vw);
+}
+.amca-call .mid span {
+  color: #ffb347;
+  letter-spacing: 0.1em;
+  margin-bottom: 10px;
+  font-size: 13px;
+  animation: 1s infinite amcaPulse;
+  display: block;
+}
+.amca-call.ended .mid span {
+  color: #888;
+  animation: none;
+}
+.amca-call .mid p {
+  color: #fff;
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.35;
+  animation: 0.4s amcaWord;
+}
+.amca-quiet {
+  background: radial-gradient(at 50% 55%, #0000 35%, #000000a6 100%);
+  animation: 1.5s amcaFade;
+  position: absolute;
+  inset: 0;
+  pointer-events: none !important;
+}
+.amca-lighter {
+  background: #00000059;
+  place-items: center;
+  animation: 0.8s amcaFade;
+  display: grid;
+  position: absolute;
+  inset: 0;
+}
+.amca-lighter .card {
+  text-align: center;
+  background: linear-gradient(#1f1812, #120d09);
+  border: 1px solid #ffb34773;
+  border-radius: 20px;
+  width: min(300px, 86vw);
+  padding: 22px 20px 18px;
+  box-shadow: 0 20px 50px #0009;
+}
+.amca-lighter .art {
+  filter: drop-shadow(0 6px 14px #ffa03c59);
+  width: 110px;
+  margin: 0 auto 8px;
+  animation: 2.4s infinite amcaFlick;
+}
+.amca-lighter small {
+  letter-spacing: 0.25em;
+  color: #3ddc84;
+  font-size: 10px;
+  font-weight: 800;
+  display: block;
+}
+.amca-lighter b {
+  color: #fff;
+  margin: 6px 0 4px;
+  font-size: 19px;
+  display: block;
+}
+.amca-lighter p {
+  color: #c9b79a;
+  margin: 0 0 14px;
+  font-size: 14px;
+  font-style: italic;
+}
+.amca-lighter button {
+  color: #2a1700;
+  background: #ffb347;
+  border: 0;
+  border-radius: 12px;
+  padding: 10px 22px;
+  font-size: 15px;
+  font-weight: 900;
+}
+.amca-title {
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+  display: flex;
+  position: absolute;
+  inset: 0;
+  pointer-events: none !important;
+}
+.amca-title p {
+  color: #efe7da;
+  letter-spacing: 0.12em;
+  text-align: center;
+  margin: 0;
+  font-size: 34px;
+  font-weight: 800;
+  animation: 1s amcaWord;
+}
+.amca-title p.sub {
+  letter-spacing: 0.35em;
+  color: #ffb347;
+  text-transform: uppercase;
+  font-size: 16px;
+  font-weight: 600;
+}
+.amca-bars.siren {
+  animation: 0.5s step-end infinite amcaSiren;
+}
+.amca-line {
+  z-index: 6;
+}
+.amca-root.cine-on .amca-line {
+  bottom: calc(13vh + 12px);
+}
+.amca-bars {
+  z-index: 1;
+}
+.amca-title {
+  z-index: 7;
+}
+.amca-start {
+  z-index: 20;
+  background: #000;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+  display: flex;
+  position: absolute;
+  inset: 0;
+}
+.amca-start button {
+  color: #fff;
+  letter-spacing: 0.06em;
+  background: #ffb3471f;
+  border: 1px solid #ffb34799;
+  border-radius: 16px;
+  padding: 16px 40px;
+  font-size: 22px;
+  font-weight: 900;
+}
+.amca-start small {
+  color: #8a8378;
+  font-size: 13px;
+}
+.amca-fight {
+  z-index: 8;
+  position: absolute;
+  inset: 0;
+  pointer-events: none !important;
+}
+.amca-fight > * {
+  pointer-events: auto;
+}
+.amca-fight .hp {
+  background: #0009;
+  border: 1px solid #ffffff40;
+  border-radius: 8px;
+  align-items: center;
+  width: 180px;
+  height: 16px;
+  display: flex;
+  position: absolute;
+  top: calc(13vh + 12px);
+  left: 16px;
+  overflow: hidden;
+}
+.amca-fight .hp span {
+  z-index: 1;
+  font-size: 18px;
+  position: absolute;
+  top: -4px;
+  left: -2px;
+}
+.amca-fight .hp i {
+  background: linear-gradient(90deg, #ff4d4d, #ff9a4d);
+  height: 100%;
+  margin-left: 0;
+  transition: width 0.25s;
+  display: block;
+}
+.amca-fight .left {
+  color: #fff;
+  background: #0000008c;
+  border-radius: 10px;
+  padding: 4px 10px;
+  font-size: 14px;
+  font-weight: 800;
+  position: absolute;
+  top: calc(13vh + 10px);
+  right: 16px;
+}
+.amca-fight .hint {
+  color: #fff;
+  white-space: nowrap;
+  background: #0009;
+  border-radius: 10px;
+  padding: 6px 12px;
+  font-size: 14px;
+  position: absolute;
+  top: calc(13vh + 44px);
+  left: 50%;
+  transform: translate(-50%);
+}
+.amca-fight button {
+  color: #fff;
+  border: 3px solid #ffffffb3;
+  border-radius: 50%;
+  width: 86px;
+  height: 86px;
+  font-size: 15px;
+  font-weight: 900;
+  position: absolute;
+  bottom: calc(13vh + 18px);
+  box-shadow: 0 6px 18px #00000080;
+}
+.amca-fight button.fire {
+  background: radial-gradient(circle at 40% 35%, #ff6a4d, #b3200f);
+  right: 22px;
+}
+.amca-fight button.fire.final {
+  width: 110px;
+  height: 110px;
+  font-size: 17px;
+  animation: 0.8s infinite amcaPulse;
+}
+.amca-fight button.crouch {
+  background: radial-gradient(circle at 40% 35%, #5c7cff, #22348f);
+  right: 122px;
+}
+.amca-fight button.crouch.on {
+  background: radial-gradient(circle at 40% 35%, #3ddc84, #137a43);
+}
+.amca-fight button:active {
+  transform: scale(0.94);
+}
+.amca-hurt {
+  z-index: 9;
+  animation: 0.5s forwards amcaHurt;
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 160px 40px #ff0000a6;
+  pointer-events: none !important;
+}
+@keyframes amcaCh {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 10px);
+  }
+  15%,
+  80% {
+    opacity: 1;
+    transform: translate(-50%);
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes amcaIn {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%);
+  }
+}
+@keyframes amcaUp {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%);
+  }
+}
+@keyframes amcaBar {
+  0% {
+    height: 0;
+  }
+}
+@keyframes amcaWord {
+  0% {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes amcaFade {
+  0% {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes amcaRain {
+  to {
+    transform: translate(-12px, 46px);
+  }
+}
+@keyframes amcaSlide {
+  0% {
+    opacity: 0;
+    transform: translate(30px);
+  }
+}
+@keyframes amcaPulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+@keyframes amcaFlick {
+  0%,
+  to {
+    transform: rotate(-3deg);
+  }
+  50% {
+    transform: rotate(3deg);
+  }
+}
+@keyframes amcaSiren {
+  0% {
+    box-shadow:
+      inset 90px 0 120px -60px #ff2828bf,
+      inset -90px 0 120px -60px #285aff59;
+  }
+  50% {
+    box-shadow:
+      inset 90px 0 120px -60px #285affbf,
+      inset -90px 0 120px -60px #ff282859;
+  }
+}
+@keyframes amcaHurt {
+  to {
+    opacity: 0;
+  }
+}
+/* v168 — sinematikte dokunuş şehre geçmez (oyuncu sahneden yürüyüp çıkamaz) */
+.amca-block {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: transparent;
+}
+.amca-fight {
+  z-index: 8;
+}
+.amca-skip {
+  position: absolute;
+  right: 14px;
+  top: calc(13vh + 14px);
+  z-index: 21;
+  background: #000000a6;
+  color: #f1e8da;
+  border: 1px solid #ffffff40;
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 800;
+}
+/* şehirdeki sağ sütunda Görevler'in üstünde: ⏪ 3 yıl önce */
+.amca-flash-btn {
+  position: relative;
+  font-size: 12px !important;
+  line-height: 1.05;
+  font-weight: 900;
+  color: #ffd9a0 !important;
+  border-color: #c9a24a !important;
+  background: radial-gradient(circle at 50% 35%, #3a2414, #120a06) !important;
+  animation: amcaPulse 2.4s ease-in-out infinite;
+}
+.amca-flash-btn small {
+  display: block;
+  font-size: 9px;
+  opacity: 0.85;
+}
+@keyframes amcaPulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 #ffb34766;
+  }
+  50% {
+    box-shadow: 0 0 0 6px #ffb34700;
+  }
+}
+
+/* v168: görev şeridi altta (üstteki şüphe / altın / mini harita ile çakışmasın); replik gelince gizlenir */
+.amca-chip {
+  top: auto;
+  bottom: 118px;
+  max-width: min(420px, 84vw);
+}
+.amca-line {
+  bottom: 112px;
+}
+body.amca-cine .amca-line {
+  bottom: calc(13vh + 12px);
+}

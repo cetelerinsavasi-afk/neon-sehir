@@ -22,6 +22,8 @@ import { markCityReady, useBootStage, whenBootStage } from '../../lib/bootStage'
 import { blockProfanity } from '../../lib/profanityGuard';
 import { buyFromVendor, buyFromBufe, sellContrabandAtPark, cityAction, createSixtagramPost, shopAction, houseAction, checkOnboardingProgress } from '../../services/gameActions';
 import { currentOnboardingTaskId } from '../../../functions/onboardingData.js';
+import { AMCA, isStoryNpcId } from './story/storyData.js'; // v168
+const AMCA_ID = AMCA.id;
 import { FUEL_PRICE, GAS_MARKET_MENU } from '../../../functions/gasStation.js';
 import { GAS_STATION, FAR_DEPOT, LIMAN_BAY, OTOGARS } from '../../../functions/cityJobsData.js';
 import { createJobRunner, navRoute } from './cityJobs.js';
@@ -86,6 +88,7 @@ const StreamViewer = lazy(() => import('../Stream/StreamViewer'));
 // v154 — fabrika ve yarış pisti sayfaları şehrin İÇİNDE açılır (şehir kapanmaz)
 const FactoryScreen = lazy(() => import('../FactoryScreen/FactoryScreen'));
 const RaceTrackScreen = lazy(() => import('../RaceTrackScreen/RaceTrackScreen'));
+const AmcaStory = lazy(() => import('./story/AmcaStory')); // v168 — Rıza Amca senaryosu (yeni oyuncu görevleri)
 // kapıdan girilince şehir içinde panel olarak açılan mekânlar
 const IN_CITY_REGIONS = { fabrika: '🏭 Fabrika', yaris_pisti: '🏁 Yarış Pisti' };
 // v157 — haritadaki mekânın içindeyken çıkan düğmeler. Şehirdeki bina görünüştür: listeden
@@ -314,6 +317,13 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const chatOn = !guest;
   const coveredRef = useRef(covered); // v160: örtülüyken şehirde görünmeyiz (cityNet.setAway)
   coveredRef.current = covered;
+  // v168: senaryo sinematiğinde / Rıza Amca'nın arabasındayken de ağda görünmeyiz (Amca sadece bu cihazda)
+  const storyAwayRef = useRef(false);
+  const storyRef = useRef(null);
+  const [storyFlashBtn, setStoryFlashBtn] = useState(false);
+  const onStoryAway = useCallback((on) => {
+    storyAwayRef.current = Boolean(on);
+  }, []);
   const [mekTab, setMekTab] = useState('soygun');
   const [watchId, setWatchId] = useState(null);
   // v157.4 — ÇETE KARARGAHLARI haritada: hangar sahipleri (gangs.hqSlot) + karargah tasarımları
@@ -694,8 +704,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       tickT = setInterval(() => {
         if (document.hidden) return;
         // v160: karargah / ev / işletme şehrin üstündeyken kapının önünde görünmeyiz
-        net.setAway(coveredRef.current);
-        if (coveredRef.current) return;
+        net.setAway(coveredRef.current || storyAwayRef.current);
+        if (coveredRef.current || storyAwayRef.current) return;
         net.tick(eng.getNetState(), eng.getNetCar());
       }, 100);
     };
@@ -987,13 +997,19 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     }
   };
   const rideIn = async (z) => {
+    // v168: Rıza Amca'nın arabası sadece bu cihazda — ağdan koltuk istenmez (yazma yok)
+    if (isStoryNpcId(z.owner)) {
+      if (z.owner === AMCA_ID) engineRef.current.rideStart(z.owner, 1);
+      return;
+    }
     const k = await netRef.current?.claimSeat(z.owner, z.seats);
     if (!k) return flash('Boş koltuk yok');
     engineRef.current.rideStart(z.owner, k);
   };
   const rideOut = () => {
+    const npcRide = engineRef.current.story?.riding();
     engineRef.current.rideEnd();
-    netRef.current?.releaseSeat();
+    if (!npcRide) netRef.current?.releaseSeat();
   };
 
   // --- eldeki ürün (2 dk) ------------------------------------------------------------------------
@@ -1227,7 +1243,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       list.push({ label: '🔁 Başka araba', on: () => setPanel({ kind: 'garage' }) });
       list.push({ label: '🅿️ Kaldır', on: () => engineRef.current.removeMyCar() });
     }
-    if (zone.kind === 'ride') list.push({ label: '🚗 Yolcu ol', cls: 'take', on: () => rideIn(zone) });
+    // v168: senaryo karakterlerinden sadece Rıza Amca'nın arabasına binilir
+    if (zone.kind === 'ride' && (!isStoryNpcId(zone.owner) || zone.owner === AMCA_ID)) list.push({ label: zone.owner === AMCA_ID ? '🚗 Amca\'nın arabasına bin' : '🚗 Yolcu ol', cls: 'take', on: () => rideIn(zone) });
     if (zone.kind === 'seat') list.push({ label: '🪑 Otur', cls: 'take', free: true, on: () => engineRef.current.sit(zone.seat) });
     if (zone.seatNear) list.push({ label: '🪑 Otur', cls: '', free: true, on: () => engineRef.current.sit(zone.seatNear) });
     if (zone.kind === 'seated') list.push({ label: '🧍 Kalk', free: true, on: () => engineRef.current.stand() });
@@ -1307,6 +1324,21 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   return (
     <div className={`hs-root cs-root${driving ? ' driving' : ''}${heistOn ? ' cs-heist-on' : ''}${rotated ? ' cs-rotated' : ''}${landscape ? ' cs-land' : ''}${vui && (vui.biz || vui.region || vui.inCity || vui.heist) ? ' cs-vbtn' : ''}`} style={covered ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}>
       <div className="hs-stage" ref={stageRef} />
+      {/* v168 — Rıza Amca senaryosu: sadece üye oyuncuda (misafirde yok) */}
+      {!guest && user && ready && bootWorld && (
+        <Suspense fallback={null}>
+          <AmcaStory
+            ref={storyRef}
+            eng={engineRef.current}
+            uid={user.uid}
+            player={player}
+            busy={Boolean(panel) || Boolean(orgPanel) || Boolean(card) || Boolean(watchId) || raceFull || heistOn || covered || haracHide}
+            jobActive={Boolean(jobUi?.active)}
+            onAway={onStoryAway}
+            onFlashButton={setStoryFlashBtn}
+          />
+        </Suspense>
+      )}
       {heistOn && heistWait && (
         <div className="cs-heist-wait">
           <p>{heistWait === 'skip' ? 'Sonuç bekleniyor…' : 'Soygun başlıyor…'}</p>
@@ -1480,8 +1512,15 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
             {/* v157.4: yayın / seçim (varsa) Görevler'in üstünde; ChatsApp'ın yerinde Görevler + hatırlatmalar */}
             {!guest && !driving && bootDetails && <LiveStreamsButton className="cs-live-inline" onWatch={setWatchId} />}
             {!guest && !driving && bootDetails && <PoliticsHomeButton inline />}
+            {/* v168 — ⏪ 3 yıl önce (isteğe bağlı; Amca ölene kadar) */}
+            {!guest && !driving && bootWorld && storyFlashBtn && (
+              <button type="button" className="hs-side-btn amca-flash-btn" onClick={() => storyRef.current?.playFlashback()} title="3 yıl önce">
+                ⏪<small>3 yıl önce</small>
+              </button>
+            )}
             {!guest && !driving && bootWorld && (
               <OnboardingPanel
+                listenOpen
                 inline
                 inStadium={inStadium}
                 gangReminders={gangAlerts?.reminders}
