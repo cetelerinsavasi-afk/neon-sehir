@@ -1483,6 +1483,7 @@ export const getFactoryValue = onCall(async (request) => {
 export const buyFactoryMachine = onCall(async (request) => {
   const uid = requireAuth(request);
   const { machineType } = request.data || {};
+  const expect = request.data?.expect == null ? NaN : Number(request.data.expect); // v169 (eski istemci göndermez)
   if (machineType === 'yasakliMadde') {
     throw new HttpsError('failed-precondition', 'Yasaklı madde makineleri kaldırıldı — yasaklı madde ticareti artık çeteler üzerinden.');
   }
@@ -1521,6 +1522,11 @@ export const buyFactoryMachine = onCall(async (request) => {
     }
     // v126: makine fiyatı + vergi (vergi devlete) · v127: oran makine türüne göre (Sanayi Bakanlığı)
     const tax = machineTax(price, machineType);
+    // v169 — ekranda yazan toplam (expect) gönderildiyse ve sunucunun fiyatı farklıysa ALMAZ:
+    // oyuncu yazandan farklı para ödemesin (kripto saatlik değişir / sayı farkı)
+    if (Number.isFinite(expect) && Math.round(expect) !== price + tax) {
+      throw new HttpsError('aborted', `Fiyat güncellendi: bu makine şu an ${(price + tax).toLocaleString('tr-TR')} altın. Kontrol edip tekrar dene.`);
+    }
     const user = userSnap.data();
     if (!user || (user.gold || 0) < price + tax) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');

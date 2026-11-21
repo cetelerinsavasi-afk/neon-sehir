@@ -190,15 +190,20 @@ function BuyMachineModal({ onClose, ownedCounts = {} }) {
   const [error, setError] = useState(null);
   // v58: pencere her alımdan sonra kapanmıyor — art arda istenen kadar alınabilir
   const [bought, setBought] = useState({});
+  // v169 — FİYAT FARKI: alınan makine hem canlı listeye (ownedCounts) hem `bought`a ekleniyordu →
+  // ikinci alımdan itibaren yazan fiyat bir makine ilerisinin fiyatıydı, çekilen para farklıydı.
+  // Sayı = max(canlı sayı, açılıştaki sayı + bu pencerede alınan) — liste geç gelse de doğru.
+  const [baseCounts] = useState(() => ({ ...ownedCounts }));
+  const countOf = (type) => Math.max(ownedCounts[type] || 0, (baseCounts[type] || 0) + (bought[type] || 0));
 
   const types = ['mining', 'tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme'];
   const boughtTotal = Object.values(bought).reduce((a, b) => a + b, 0);
 
-  const handleBuy = async (type) => {
+  const handleBuy = async (type, expect) => {
     setBusy(type);
     setError(null);
     try {
-      await buyFactoryMachine(type);
+      await buyFactoryMachine(type, expect);
       setBought((prev) => ({ ...prev, [type]: (prev[type] || 0) + 1 }));
     } catch (err) {
       setError(err.message || 'Makine alınamadı.');
@@ -223,7 +228,8 @@ function BuyMachineModal({ onClose, ownedCounts = {} }) {
         <div className="factory-machine-list">
           {types.map((type) => {
             // v154: bu pencerede yeni alınanlar da sayılır (fiyat her alımda +1.000)
-            const price = machinePrice(type, prices.cryptoPrice, (ownedCounts[type] || 0) + (bought[type] || 0));
+            const price = machinePrice(type, prices.cryptoPrice, countOf(type));
+            const total = withMachineTax(price, type, rates);
             return (
               <div key={type} className="factory-machine-buy-card">
                 <span className="factory-machine-emoji">{MACHINE_EMOJI[type]}</span>
@@ -242,9 +248,9 @@ function BuyMachineModal({ onClose, ownedCounts = {} }) {
                 <button
                   className="factory-btn primary small"
                   disabled={busy !== null}
-                  onClick={() => handleBuy(type)}
+                  onClick={() => handleBuy(type, total)}
                 >
-                  {busy === type ? '…' : `${withMachineTax(price, type, rates).toLocaleString('tr-TR')} altın`}
+                  {busy === type ? '…' : `${total.toLocaleString('tr-TR')} altın`}
                 </button>
               </div>
             );

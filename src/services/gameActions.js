@@ -16,8 +16,9 @@ export const cancelPendingPoliceChange = () =>
 
 export const createFactory = (expect) => httpsCallable(functions, 'createFactory')({ expect });
 
-export const buyFactoryMachine = (machineType) =>
-  httpsCallable(functions, 'buyFactoryMachine')({ machineType });
+// v169: expect = ekranda yazan toplam (fiyat + vergi); sunucu farklıysa almaz, yeni fiyatı söyler
+export const buyFactoryMachine = (machineType, expect) =>
+  httpsCallable(functions, 'buyFactoryMachine')({ machineType, ...(Number.isFinite(expect) ? { expect } : {}) });
 
 export const setFactorySalary = (salary) =>
   httpsCallable(functions, 'setFactorySalary')({ salary });

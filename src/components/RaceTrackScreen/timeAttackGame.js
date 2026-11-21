@@ -81,6 +81,28 @@ function miniBg() {
   return mmBg;
 }
 
+// v169 — KASMA: lamba / nitro pedi ışıkları her karede yeni radial gradient ile çiziliyordu
+// (~30 gradient/kare). Bir kez hazırlanan ışık lekeleri (sprite) ölçekli çizilir — görüntü aynı.
+const glowCache = {};
+function glowSprite(key, stops) {
+  if (glowCache[key]) return glowCache[key];
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 128;
+  const b = c.getContext('2d');
+  const q = b.createRadialGradient(64, 64, 0, 64, 64, 64);
+  stops.forEach(([o, col]) => q.addColorStop(o, col));
+  b.fillStyle = q;
+  b.fillRect(0, 0, 128, 128);
+  glowCache[key] = c;
+  return c;
+}
+const GLOW_POOL = [[0, 'rgba(255,214,150,.35)'], [1, 'rgba(255,214,150,0)']];
+const GLOW_LAMP = [[0, 'rgba(255,243,208,.9)'], [0.2, 'rgba(255,214,150,.35)'], [1, 'rgba(255,214,150,0)']];
+const GLOW_PAD = [[0, 'rgba(0,240,255,.45)'], [1, 'rgba(0,240,255,0)']];
+// dokunmatik cihaz (telefon / tablet): çözünürlük tavanı biraz düşük başlar
+const COARSE = typeof window !== 'undefined' && Boolean(window.matchMedia?.('(pointer: coarse)').matches);
+
 // Rakip örneklerinden (kare, x, y, açı, nitro) belirli karedeki konum
 // Bir noktayı pist boyunca `dist` kadar ilerlet (yanal konumu koruyarak)
 function trackAdvance(x, y, dist, hint) {
@@ -191,6 +213,13 @@ export function createTimeAttackGame({ canvas, mini, hud, car, opp = null, onSta
   let osc = null;
   let gn = null;
   const hs = {};
+  // v169 — uyarlanır kalite: kare süresi uzun kalırsa (zayıf telefon) çözünürlük ve ağır
+  // efektler (nitro yansıması, zemin ışık havuzları) düşer. Sadece aşağı iner, geri çıkmaz
+  // (gidip gelme takılması olmasın). Fizik / süre etkilenmez — sadece çizim.
+  let lowQ = false;
+  let qAcc = 0;
+  let qN = 0;
+  let qT0 = performance.now();
   const setT = (el, key, v) => {
     if (el && hs[key] !== v) {
       hs[key] = v;
@@ -199,7 +228,7 @@ export function createTimeAttackGame({ canvas, mini, hud, car, opp = null, onSta
   };
 
   function resize() {
-    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    DPR = Math.min(window.devicePixelRatio || 1, lowQ ? 1 : COARSE ? 1.5 : 2);
     const r = canvas.getBoundingClientRect();
     W = Math.max(1, r.width);
     H = Math.max(1, r.height);
@@ -464,18 +493,30 @@ export function createTimeAttackGame({ canvas, mini, hud, car, opp = null, onSta
       [pr, pr2, '255,43,214'],
     ]) {
       poly(E, T2, '#1b1f33');
+      // v169 — KASMA: her parça ayrı ayrı çiziliyordu (~500 çizim/kare). Aynı kalınlıktaki
+      // parçalar tek yolda toplanıp tek seferde çizilir.
       for (let pass = 0; pass < 2; pass++) {
         ctx.save();
         if (!pass) ctx.globalCompositeOperation = 'lighter';
+        ctx.strokeStyle = pass ? `rgb(${col})` : `rgba(${col},.2)`;
+        const bk = new Map();
         for (let i = a; i < i1; i++) {
           const A = T2[i];
           const B = T2[i + 1];
           if (!A || !B) continue;
+          const w = Math.max(1.5, (pass ? 5 : 22) * A[2]);
+          const key = pass ? Math.round(w * 2) / 2 : Math.round(w);
+          let arr = bk.get(key);
+          if (!arr) bk.set(key, (arr = []));
+          arr.push(A[0], A[1], B[0], B[1]);
+        }
+        for (const [w, arr] of bk) {
           ctx.beginPath();
-          ctx.moveTo(A[0], A[1]);
-          ctx.lineTo(B[0], B[1]);
-          ctx.strokeStyle = pass ? `rgb(${col})` : `rgba(${col},.2)`;
-          ctx.lineWidth = Math.max(1.5, (pass ? 5 : 22) * A[2]);
+          for (let j = 0; j < arr.length; j += 4) {
+            ctx.moveTo(arr[j], arr[j + 1]);
+            ctx.lineTo(arr[j + 2], arr[j + 3]);
+          }
+          ctx.lineWidth = w;
           ctx.stroke();
         }
         ctx.restore();
@@ -594,25 +635,12 @@ export function createTimeAttackGame({ canvas, mini, hud, car, opp = null, onSta
       ctx.moveTo(B[0], B[1]);
       ctx.lineTo(T[0], T[1]);
       ctx.stroke();
-      ctx.save();
-      ctx.translate(G[0], G[1]);
-      ctx.scale(1, 0.3);
-      let q = ctx.createRadialGradient(0, 0, 0, 0, 0, 240 * G[2]);
-      q.addColorStop(0, 'rgba(255,214,150,.35)');
-      q.addColorStop(1, 'rgba(255,214,150,0)');
-      ctx.fillStyle = q;
-      ctx.beginPath();
-      ctx.arc(0, 0, 240 * G[2], 0, 7);
-      ctx.fill();
-      ctx.restore();
-      q = ctx.createRadialGradient(T[0], T[1], 0, T[0], T[1], 70 * T[2]);
-      q.addColorStop(0, 'rgba(255,243,208,.9)');
-      q.addColorStop(0.2, 'rgba(255,214,150,.35)');
-      q.addColorStop(1, 'rgba(255,214,150,0)');
-      ctx.fillStyle = q;
-      ctx.beginPath();
-      ctx.arc(T[0], T[1], 70 * T[2], 0, 7);
-      ctx.fill();
+      if (!lowQ) {
+        const R = 240 * G[2];
+        ctx.drawImage(glowSprite('pool', GLOW_POOL), G[0] - R, G[1] - R * 0.3, R * 2, R * 0.6);
+      }
+      const R2 = 70 * T[2];
+      ctx.drawImage(glowSprite('lamp', GLOW_LAMP), T[0] - R2, T[1] - R2, R2 * 2, R2 * 2);
     }
     const pu = 0.6 + 0.4 * Math.sin(performance.now() / 180);
     PADS.forEach((pi, k) => {
@@ -637,17 +665,8 @@ export function createTimeAttackGame({ canvas, mini, hud, car, opp = null, onSta
         ctx.lineTo(B[0], B[1]);
         ctx.stroke();
       }
-      ctx.save();
-      ctx.translate(C[0], C[1]);
-      ctx.scale(1, 0.35);
-      const q = ctx.createRadialGradient(0, 0, 0, 0, 0, 110 * C[2]);
-      q.addColorStop(0, 'rgba(0,240,255,.45)');
-      q.addColorStop(1, 'rgba(0,240,255,0)');
-      ctx.fillStyle = q;
-      ctx.beginPath();
-      ctx.arc(0, 0, 110 * C[2], 0, 7);
-      ctx.fill();
-      ctx.restore();
+      const R = 110 * C[2];
+      ctx.drawImage(glowSprite('pad', GLOW_PAD), C[0] - R, C[1] - R * 0.35, R * 2, R * 0.7);
     });
     ctx.restore();
     g = ctx.createLinearGradient(0, HY - 30, 0, HY + 80);
@@ -772,7 +791,8 @@ export function createTimeAttackGame({ canvas, mini, hud, car, opp = null, onSta
     }
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
-    if (nosA > 0.05) {
+    // v169: tuvalin kendini kopyalaması (nitro yansıması) zayıf cihazda en pahalı adım — düşük kalitede yok
+    if (nosA > 0.05 && !lowQ) {
       ctx.globalAlpha = 0.32 * nosA;
       ctx.drawImage(canvas, 0, 0, canvas.width, canvas.height, -W * 0.03, -H * 0.03, W * 1.06, H * 1.06);
       ctx.globalAlpha = 1;
@@ -849,6 +869,20 @@ export function createTimeAttackGame({ canvas, mini, hud, car, opp = null, onSta
     const dt = Math.min(0.05, (now - last) / 1000);
     const realDt = (now - last) / 1000;
     last = now;
+    // v169 — uyarlanır kalite: ilk 1,5 sn (yükleme) sayılmaz; sonra 90 karenin ortalaması
+    // 24 ms'yi (~42 fps) aşarsa düşük kaliteye geçilir (bir kez).
+    if (!lowQ && !spectate && now - qT0 > 1500 && realDt < 0.5) {
+      qAcc += realDt;
+      qN += 1;
+      if (qN >= 90) {
+        if (qAcc / qN > 0.024) {
+          lowQ = true;
+          resize();
+        }
+        qAcc = 0;
+        qN = 0;
+      }
+    }
     if (spectate) spectateTick(now);
     else simulate(realDt, now);
     step(dt);

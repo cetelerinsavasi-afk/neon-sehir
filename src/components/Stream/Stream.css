@@ -1502,4 +1502,7 @@ body.ns-streaming .onnumara-fullscreen {
   position: fixed;
 }
 /* v157.4 — şehirde sağ sütunda (Görevler'in üstünde) */
-.st-live-btn.cs-live-inline { position: relative; left: auto; right: auto; bottom: auto; top: auto; height: 34px; padding: 0 9px; align-self: flex-end; }
+/* v169 — diğer yan düğmeler gibi yuvarlak (50px): genişleyip sütunu sola itmesin */
+.st-live-btn.cs-live-inline { position: relative; left: auto; right: auto; bottom: auto; top: auto; width: 50px; height: 50px; min-width: 50px; flex: 0 0 auto; padding: 0; border-radius: 50%; flex-direction: column; justify-content: center; gap: 3px; font-size: 9px; letter-spacing: 0.3px; align-self: flex-end; box-sizing: border-box; }
+.st-live-btn.cs-live-inline b { position: absolute; top: -4px; right: -4px; border: 2px solid #14060a; }
+.cs-root.cs-land .st-live-btn.cs-live-inline { width: 44px; height: 44px; min-width: 44px; }

@@ -1158,7 +1158,9 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       if (!hs.exists) fail('not-found', 'Ev bulunamadı.');
       const h = hs.data();
       if (h.venue) fail('permission-denied', 'Bu mekân düzenlenemez.');
-      if (h.ownerUid !== uid && !isEditorOf(h, uid)) fail('permission-denied', 'Bu ev senin değil.');
+      // v169 — karargahta Baba / yetkili de düzenler (ek okuma yalnız karargahta)
+      const hqMgr = h.ownerUid !== uid && !isEditorOf(h, uid) && isHqHouse(h) && hq.isManager(await hq.hqRole(h, uid, tx));
+      if (h.ownerUid !== uid && !isEditorOf(h, uid) && !hqMgr) fail('permission-denied', isHqHouse(h) ? 'Bu karargahta yetkin yok.' : 'Bu ev senin değil.');
       const items = h.items || [];
       const it = items.find((x) => x.i === i && x.k === BOT_ITEM_KEY);
       if (!it) fail('failed-precondition', 'bot-unsaved');
@@ -1191,7 +1193,9 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       if (!hs.exists) fail('not-found', 'Ev bulunamadı.');
       const h = hs.data();
       if (h.venue) fail('permission-denied', 'Bu mekân düzenlenemez.');
-      if (h.ownerUid !== uid && !isEditorOf(h, uid)) fail('permission-denied', 'Bu ev senin değil.');
+      // v169 — karargahta Baba / yetkili de düzenler (ek okuma yalnız karargahta)
+      const hqMgr = h.ownerUid !== uid && !isEditorOf(h, uid) && isHqHouse(h) && hq.isManager(await hq.hqRole(h, uid, tx));
+      if (h.ownerUid !== uid && !isEditorOf(h, uid) && !hqMgr) fail('permission-denied', isHqHouse(h) ? 'Bu karargahta yetkin yok.' : 'Bu ev senin değil.');
       const items = h.items || [];
       const it = items.find((x) => x.i === i && isAnimalKey(x.k));
       if (!it) fail('failed-precondition', 'pet-unsaved');

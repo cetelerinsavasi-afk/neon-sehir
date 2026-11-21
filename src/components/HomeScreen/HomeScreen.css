@@ -329,3 +329,37 @@
 @keyframes home-stat-tip { 0% { opacity: 0; transform: translate(-50%, 4px); } 8% { opacity: 1; transform: translate(-50%, 0); } 85% { opacity: 1; } 100% { opacity: 0; } }
 .home-stats b { font-weight: 900; }
 .home-stats i { display: inline-block; }
+
+/* v169 — Araçlar / Silahlar açılır-kapanır panel */
+.home-fold { gap: 10px; }
+.home-fold-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: #e8edf7;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.home-fold-icon { font-size: 18px; line-height: 1; }
+.home-fold-title { flex: 1; font-size: 14px; font-weight: 800; letter-spacing: 0.02em; }
+.home-fold-count {
+  min-width: 24px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+}
+.home-fold-chev { color: var(--text-dim); font-size: 14px; transition: transform 0.18s ease; transform: rotate(-90deg); }
+.home-fold-head.open .home-fold-chev { transform: rotate(0deg); }
+.home-veh-tabs .vg-tabs { margin-bottom: 0; }

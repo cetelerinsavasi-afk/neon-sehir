@@ -6,6 +6,8 @@ import { useWeapons } from '../../hooks/useWeapons';
 import { useInventory } from '../../hooks/useInventory';
 import { setDisplayName } from '../../services/gameActions';
 import { weaponCatalog } from '../../data/weaponCatalog';
+import { vehicleCatalog } from '../../data/vehicleCatalog';
+import { VehicleKindTabs, kindOfCar } from '../VehicleGalleryScreen/VehicleGalleryScreen'; // v169: galerideki 3 sekme
 import VehicleCard, { LifeBar, UpgradeCells } from '../VehicleCard/VehicleCard';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
@@ -154,6 +156,40 @@ function ProfileHeader({ player, onEditAvatar, onCostumes, onAccessories, onRepo
   );
 }
 
+// v169 — profilde Araçlar / Silahlar açılır-kapanır panel (açık/kapalı durumu cihazda hatırlanır)
+function useFold(key) {
+  const [open, setOpen] = useState(() => {
+    try {
+      return localStorage.getItem(`ns_fold_${key}`) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggle = () => {
+    setOpen((o) => {
+      try {
+        localStorage.setItem(`ns_fold_${key}`, o ? '0' : '1');
+      } catch {
+        /* yoksay */
+      }
+      return !o;
+    });
+  };
+  return [open, toggle];
+}
+function FoldHead({ icon, title, count, open, onToggle }) {
+  return (
+    <button type="button" className={`home-fold-head${open ? ' open' : ''}`} onClick={onToggle} aria-expanded={open}>
+      <span className="home-fold-icon">{icon}</span>
+      <span className="home-fold-title">{title}</span>
+      <span className="home-fold-count">{count}</span>
+      <span className="home-fold-chev">▾</span>
+    </button>
+  );
+}
+const KIND_BY_ID = new Map(vehicleCatalog.map((c) => [c.id, kindOfCar(c)]));
+const vehicleKind = (v) => KIND_BY_ID.get(Number(v.catalogId)) || 'araba';
+
 // v77: profilde sadece ömür + "geliştirilebilir mi" (Sv.2 / Sv.3 hücreleri).
 // Tamir ve geliştirme Silahçı Atölyesi'nde.
 function WeaponCard({ weapon, locked = false }) {
@@ -187,6 +223,9 @@ export default function HomeScreen() {
   const [cosShop, setCosShop] = useState(false); // v160
   const [report, setReport] = useState(false);
   const [furn, setFurn] = useState(false); // v146
+  const [vehOpen, toggleVeh] = useFold('veh'); // v169
+  const [wepOpen, toggleWep] = useFold('wep');
+  const [vehTab, setVehTab] = useState('araba');
 
   if (!user) {
     return <SignInPrompt message="Evine girmek için giriş yapmalısın." />;
@@ -244,20 +283,37 @@ export default function HomeScreen() {
         </span>
       </div>
 
-      <div className="home-section">
-        <p className="home-section-title">Araçların</p>
-        {myVehicles.length === 0 && <p className="home-hint">Henüz bir aracın yok.</p>}
-        {myVehicles.map((v) => (
-          <VehicleCard key={v.id} vehicle={v} locked={Boolean(v.shopHouseId)} />
-        ))}
+      {/* v169: Araçlar ve Silahlar açılır / kapanır; araçlar galerideki gibi Araba · Ticari · Motor */}
+      <div className={`home-section home-fold${vehOpen ? ' open' : ''}`}>
+        <FoldHead icon="🚗" title="Araçların" count={myVehicles.length} open={vehOpen} onToggle={toggleVeh} />
+        {vehOpen && (
+          <>
+            <div className="home-veh-tabs">
+              <VehicleKindTabs value={vehTab} onChange={setVehTab} />
+            </div>
+            {myVehicles.length === 0 ? (
+              <p className="home-hint">Henüz bir aracın yok.</p>
+            ) : (
+              (() => {
+                const list = myVehicles.filter((v) => vehicleKind(v) === vehTab);
+                if (!list.length) return <p className="home-hint">Bu sekmede aracın yok.</p>;
+                return list.map((v) => <VehicleCard key={v.id} vehicle={v} locked={Boolean(v.shopHouseId)} />);
+              })()
+            )}
+          </>
+        )}
       </div>
 
-      <div className="home-section">
-        <p className="home-section-title">Silahların</p>
-        {myWeapons.length === 0 && <p className="home-hint">Henüz bir silahın yok.</p>}
-        {myWeapons.map((w) => (
-          <WeaponCard key={w.id} weapon={w} locked={Boolean(w.shopHouseId)} />
-        ))}
+      <div className={`home-section home-fold${wepOpen ? ' open' : ''}`}>
+        <FoldHead icon="🔫" title="Silahların" count={myWeapons.length} open={wepOpen} onToggle={toggleWep} />
+        {wepOpen && (
+          <>
+            {myWeapons.length === 0 && <p className="home-hint">Henüz bir silahın yok.</p>}
+            {myWeapons.map((w) => (
+              <WeaponCard key={w.id} weapon={w} locked={Boolean(w.shopHouseId)} />
+            ))}
+          </>
+        )}
       </div>
 
       <BlockedPlayersList />

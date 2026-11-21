@@ -5,7 +5,7 @@
 // Her cep kendi grubunda, yerel eksende kurulur (+x yoldan dışarı). Oyunun Kit'i ve eşyaları.
 // =============================================================================
 import * as THREE from 'three';
-import { Kit, M, glowMat, floorMat, floorRep } from '../kit.js';
+import { Kit, M, glowMat, floorMat, floorRep, canvasTex } from '../kit.js';
 import { buildVehicle } from '../vehicles.js';
 import { ROAD_HALF, frameAt } from './route.js';
 import { geo, fromPad, BR_HALF } from './roadsideGeo.js';
@@ -1112,7 +1112,7 @@ B.maden = (kit, p, ctx) => {
     kit.box(3, 2.4, 6.5, yel, x, Y + 1.2, z);
     kit.box(3, 2.2, 2.4, M('#d0a020', 0.5), x, Y + 1.2, z + 4.4);
     kit.box(2.4, 0.9, 0.1, M('#1a2a3a', 0.2, 0.5), x, Y + 2.7, z + 5.62);
-    for (const [wx, wz] of [[-1.5, -2], [1.5, -2], [-1.5, 2], [1.5, 2], [-1.5, 4.6], [1.5, 4.6]]) kit.cyl(0.75, 0.75, 0.5, blk, x + wx, Y + 0.75, z + wz, 14, { rz: PI / 2 });
+    for (const [wx, wz] of [[-1.5, -2], [1.5, -2], [-1.5, 2], [1.5, 2], [-1.5, 4.6], [1.5, 4.6]]) kit.cyl(0.75, 0.75, 0.5, blk, x + wx, Y + 0.75 - 0.25, z + wz, 14, { rz: PI / 2 }); // v169: yatık teker yere bassın
     kit.solid(x, z + 1.2, 1.6, 4.6);
   }
   {
@@ -1413,7 +1413,9 @@ function koyCamlica(kit, p, ctx) {
   kit.cyl(0.6, 0.6, 0.08, M('#c9ccd2', 0.3, 0.9), hz.x, Y + 1.2, hz.z, 20, { rx: PI / 2 });
   kit.solid(hz.x, hz.z, 5, 3);
   const logM = M('#8a6a45', 0.85);
-  for (let r = 0; r < 3; r++) for (let k = 0; k < 5 - r; k++) kit.cyl(0.32, 0.32, 6, logM, hz.x - 2 + k * 0.66 + r * 0.33, Y + 0.32 + r * 0.56, hz.z + 7, 10, { rz: PI / 2, ry: PI / 2 });
+  // v169: kit.cyl() yüksekliğin yarısını (6 m tomrukta 3 m) ekliyordu — yatık tomruklar havada duruyordu.
+  // Eksen artık yerden yarıçap kadar yukarıda; üst sıralar alttakilerin arasına oturur.
+  for (let r = 0; r < 3; r++) for (let k = 0; k < 5 - r; k++) kit.mesh(new THREE.CylinderGeometry(0.32, 0.32, 6, 10), logM, hz.x - 2 + k * 0.66 + r * 0.33, Y + 0.32 + r * 0.56, hz.z + 7, PI / 2, { rz: PI / 2 });
   kit.solid(hz.x, hz.z + 7, 2, 3.1);
   kit.sign(`${p.key}_hizar`, 'HIZAR', 0.45, hz.x, Y + 4.2, hz.z + 3.55, 0, { color: '#ffffff', bg: '#6b4a2e', font: '900 100px Arial, sans-serif', light: false });
   // ARI KOVANLARI
@@ -1463,6 +1465,7 @@ function koyCamlica(kit, p, ctx) {
   fenceRun(kit, 46, -14, 46, 4, Y);
   fenceRun(kit, 26, -14, 26, -6, Y);
   ctx.animals.push({ kind: 'kopek', x: 0, z: 22, v: 2, area: yard, homeR: 26 });
+  camlicaMezarlik(kit, Y);
   // köylüler
   ctx.npc.push({ x: cb.x + 4.6, z: cb.z + 1.5, name: 'Çaycı Selim', av: { clothing: 'vest', clothColor: '#3a2a1a', hat: 'cap', hatColor: '#1a1a1a', facialHair: 'mustache', pantsColor: '#2a2420' }, lines: ['Demlik yeni demlendi, buyur!', 'Yaylanın havası başka.'] });
   ctx.npc.push({ x: cb.x - 5, z: cb.z + 6, name: 'Muhtar Kâzım', av: { clothing: 'jacket', clothColor: '#2a3a4a', hat: 'cap', hatColor: '#2a2420', facialHair: 'full', hairColor: '#e8e2d8', pantsColor: '#2a2420' }, lines: [`${p.name}'ne hoş geldin!`, 'Kervankent\'e tırlar bizim yoldan geçer.'] });
@@ -1475,6 +1478,153 @@ function koyCamlica(kit, p, ctx) {
     { x: 36, z: 26, r: 4, acts: [{ id: 'bal', label: '🍯 Çam balı · ₺250' }], foot: true },
     { x: -10, z: 5.4, r: 2, acts: [{ id: 'su', label: '💧 Çeşmeden su iç' }], foot: true },
   ];
+}
+
+// --- v169 ÇAMLICA MEZARLIĞI: köyün arka köşesinde (yerel +x, −z), yola değil; köy yolundan ~27 m
+// patikayla gidilir. 8 mezar, biri sadece "EMRE" (2001 – 2023). Hikâyede hiçbir yerde anılmaz —
+// oyuncu isimleri okuyup kendisi bağ kursun. Taş yazıları tek doku (atlas, tek malzeme).
+const MEZAR_TASLARI = [
+  // [ad satırı 1, ad satırı 2, yıllar, yeni (siyah granit + taze çiçek)]
+  ['MEHMET', 'YILMAZ', '1934 – 2011'],
+  ['HATİCE', 'DEMİR', '1940 – 2018'],
+  ['İSMAİL', 'KOÇ', '1952 – 2020'],
+  ['HALİL', 'ARSLAN', '1929 – 2004'],
+  ['ZEYNEP', 'ŞAHİN', '1948 – 2015'],
+  ['OSMAN', 'KAYA', '1938 – 2009'],
+  ['EMRE', '', '2001 – 2023', true],
+  ['AYŞE', 'ÇELİK', '1957 – 2022'],
+];
+function mezarAtlas() {
+  return canvasTex('camlica_mezar_v2', 1024, 1024, (g) => {
+    MEZAR_TASLARI.forEach(([a, b, yil, yeni], i) => {
+      const cx = (i % 4) * 256 + 128;
+      const top = Math.floor(i / 4) * 512;
+      g.textAlign = 'center';
+      g.fillStyle = yeni ? '#f1ece0' : '#2b2a27';
+      g.font = '52px Georgia, serif';
+      g.fillText('☾', cx, top + 78);
+      g.font = '900 60px Georgia, serif';
+      g.fillText(a, cx, top + (b ? 182 : 214), 238);
+      if (b) g.fillText(b, cx, top + 250, 238);
+      g.font = '700 38px Georgia, serif';
+      g.fillText(yil, cx, top + 326, 238);
+      g.font = 'italic 30px Georgia, serif';
+      g.fillText('Ruhuna', cx, top + 408);
+      g.fillText('Fatiha', cx, top + 444);
+    });
+  }, { repeat: false });
+}
+function camlicaMezarlik(kit, Y) {
+  const X0 = 37;
+  const X1 = 51;
+  const Z0 = -44;
+  const Z1 = -29.5;
+  const GZ = -36.6; // kapı (batı duvarı)
+  // patika: köy yolunun kenarından, iki evin arasından kıvrılarak kapıya
+  const pathM = M('#a89272', 0.97);
+  const way = [[11, -29.6], [17, -31.2], [23, -33.6], [28.5, -34.6], [33, -36.1], [X0 + 0.4, GZ]];
+  for (let i = 0; i < way.length - 1; i++) {
+    const [ax, az] = way[i];
+    const [bx, bz] = way[i + 1];
+    const L = Math.hypot(bx - ax, bz - az);
+    kit.box(1.5, 0.035, L + 0.7, pathM, (ax + bx) / 2, 0, (az + bz) / 2, { cast: false, ry: Math.atan2(bx - ax, bz - az) });
+  }
+  // içerideki yürüme yolu (sıraların arası)
+  kit.box(X1 - X0 - 1, 0.035, 2.2, pathM, (X0 + X1) / 2, 0, GZ, { cast: false });
+  // alçak taş duvar (kapı açıklığı batıda)
+  const wallM = M('#9d978b', 0.95);
+  const capM = M('#b9b3a6', 0.9);
+  const wall = (x0, z0, x1, z1) => {
+    const L = Math.hypot(x1 - x0, z1 - z0);
+    const ry = Math.atan2(x1 - x0, z1 - z0);
+    const cx = (x0 + x1) / 2;
+    const cz = (z0 + z1) / 2;
+    kit.box(0.4, 0.7, L, wallM, cx, Y, cz, { ry });
+    kit.box(0.5, 0.08, L + 0.1, capM, cx, Y + 0.7, cz, { ry, cast: false });
+    const along = Math.abs(x1 - x0) > Math.abs(z1 - z0);
+    kit.solid(cx, cz, along ? L / 2 : 0.25, along ? 0.25 : L / 2);
+  };
+  wall(X0, Z1, X1, Z1);
+  wall(X0, Z0, X1, Z0);
+  wall(X1, Z0, X1, Z1);
+  wall(X0, Z0, X0, GZ - 0.9);
+  wall(X0, GZ + 0.9, X0, Z1);
+  // kapı: iki taş direk + demir kemer ve küçük tabela
+  for (const dz of [-1.05, 1.05]) {
+    kit.box(0.55, 1.3, 0.55, capM, X0, Y, GZ + dz);
+    kit.solid(X0, GZ + dz, 0.3, 0.3);
+  }
+  const iron = M('#2c2e31', 0.5, 0.6);
+  for (const dz of [-0.95, 0.95]) kit.box(0.08, 1.2, 0.08, iron, X0, Y + 1.3, GZ + dz, { cast: false });
+  kit.box(0.08, 0.08, 2.0, iron, X0, Y + 2.45, GZ, { cast: false });
+  kit.sign('camlica_mezarlik', 'MEZARLIK', 0.32, X0 - 0.06, Y + 2.15, GZ, -PI / 2, { color: '#f2efe6', bg: '#2c2e31', font: '900 100px Georgia, serif', light: false });
+  // selviler (köşelerde)
+  const trunkM = M('#4a3626', 0.9);
+  const selviM = M('#1f3d26', 0.9);
+  for (const [x, z] of [[X0 + 1.2, Z1 - 1.2], [X1 - 1.2, Z1 - 1.2], [X1 - 1.2, Z0 + 1.2], [X0 + 1.2, Z0 + 1.2], [X1 - 1.2, GZ]]) {
+    kit.cyl(0.13, 0.17, 1.1, trunkM, x, Y, z, 8);
+    kit.mesh(new THREE.ConeGeometry(0.85, 6.2, 9), selviM, x, Y + 0.9 + 3.1, z, 0);
+    kit.solid(x, z, 0.35, 0.35);
+  }
+  // mezarlar: iki sıra × 4; taşlar ortadaki yola bakar
+  const tex = mezarAtlas();
+  const textM = new THREE.MeshStandardMaterial({ map: tex, transparent: true, roughness: 0.9, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 });
+  const marble = M('#e4dfd3', 0.55);
+  const marbleOld = M('#cfc8b8', 0.85);
+  const granite = M('#2a2b2e', 0.35, 0.2);
+  const frameM = M('#d8d2c4', 0.7);
+  const soil = M('#5a4130', 1);
+  const stem = M('#3c6a2a', 0.8);
+  MEZAR_TASLARI.forEach(([, , yil, yeni], i) => {
+    const row = Math.floor(i / 4);
+    const x = X0 + 2.8 + (i % 4) * 3.0;
+    const zc = row === 0 ? -33.0 : -40.2; // mezarın ortası
+    const face = row === 0 ? -1 : 1; // taşın yüzü (−z / +z) — yola doğru
+    const old = !yeni && Number(String(yil).slice(-4)) < 2012;
+    // çerçeve + toprak
+    kit.box(1.1, 0.16, 2.1, yeni ? granite : frameM, x, Y, zc, { cast: false });
+    kit.box(0.82, 0.22, 1.8, soil, x, Y, zc, { cast: false });
+    kit.solid(x, zc, 0.55, 1.05);
+    // baş taşı (yola uzak uçta, yüzü yola)
+    const g = new THREE.Group();
+    g.position.set(x, Y, zc - face * 1.12);
+    g.rotation.y = face > 0 ? 0 : PI;
+    // eski taşlar hafif eğik
+    if (old) g.rotation.z = (i % 2 ? 1 : -1) * 0.05;
+    kit.group.add(g);
+    const sm = yeni ? granite : old ? marbleOld : marble;
+    const add = (geo, m, px, py, pz, rx = 0) => {
+      const o = new THREE.Mesh(geo, m);
+      o.position.set(px, py, pz);
+      o.rotation.x = rx;
+      o.castShadow = true;
+      o.receiveShadow = true;
+      g.add(o);
+      return o;
+    };
+    add(new THREE.BoxGeometry(0.8, 1.05, 0.14), sm, 0, 0.16 + 0.525, 0);
+    add(new THREE.CylinderGeometry(0.4, 0.4, 0.14, 20, 1, false, PI / 2, PI), sm, 0, 0.16 + 1.05, 0, PI / 2);
+    const pg = new THREE.PlaneGeometry(0.66, 1.3);
+    const u0 = (i % 4) / 4;
+    const u1 = u0 + 0.25;
+    const v1 = 1 - row * 0.5;
+    const v0 = v1 - 0.5;
+    pg.setAttribute('uv', new THREE.Float32BufferAttribute([u0, v1, u1, v1, u0, v0, u1, v0], 2));
+    const tp = new THREE.Mesh(pg, textM);
+    tp.position.set(0, 0.16 + 0.68, 0.072);
+    g.add(tp);
+    // ayak taşı (küçük)
+    kit.box(0.4, 0.38, 0.1, sm, x, Y + 0.1, zc + face * 1.0, { cast: false });
+    // taze çiçekler (sadece yeni mezarda) — eskilerde kuru ot
+    if (yeni) {
+      [[-0.22, -0.3, '#d43a3a'], [0.18, -0.1, '#f2f2f2'], [-0.05, 0.25, '#d43a3a'], [0.24, 0.45, '#f2c94c'], [-0.26, 0.55, '#f2f2f2']].forEach(([fx, fz, c]) => {
+        kit.cyl(0.012, 0.012, 0.3, stem, x + fx, Y + 0.22, zc + fz * face, 4, { cast: false });
+        kit.mesh(new THREE.SphereGeometry(0.07, 8, 6), M(c, 0.6), x + fx, Y + 0.56, zc + fz * face, 0, { cast: false });
+      });
+    } else if (i % 3 === 0) {
+      kit.mesh(new THREE.SphereGeometry(0.22, 7, 5), M('#7d7a3c', 1), x + 0.15, Y + 0.3, zc, 0, { cast: false });
+    }
+  });
 }
 
 // --- köy yolu (şerit) ---------------------------------------------------------------------
