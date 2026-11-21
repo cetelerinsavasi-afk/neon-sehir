@@ -4379,14 +4379,41 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   // ilk kare (doku/gölgelendirici derlemesi) sonra hazır
   frame(0.016);
   cull(true); // v157.1: ilk karede sadece yakındakiler çizilsin (eskiden tüm dünya GPU'ya yükleniyordu)
-  render();
-  first = false;
+  let engineGone = false; // v172: hazırlık sürerken şehir kapatıldıysa döngü başlamasın
   if (snapshot) {
+    render();
+    first = false;
     me.group.visible = false;
     me.label.style.display = 'none';
   } else {
-    requestAnimationFrame(() => onReady?.());
-    loop();
+    // v172 AÇILIŞ DONMASI: ilk karede görünen bütün malzemelerin gölgelendiricileri ekran kartında
+    // TEK TEK ve oyunu durdurarak derleniyordu (telefonda açılışın en uzun donmalarından biri).
+    // Artık hepsi önce birlikte, arka planda derlenir (destekleyen telefonlarda paralel); bu sırada
+    // yükleme ekranı açık kalır, sayfa donmaz. Bitince ilk kare çizilir ve oyun başlar. Desteklemeyen
+    // cihazda eskisi gibi olur. Takılırsa en geç 4 sn sonra yine başlar. Görüntü aynı. Bonus: o an
+    // etrafta görünen ama kameranın henüz bakmadığı malzemeler de derlenmiş olur → dönünce donmaz.
+    let started = false;
+    const begin = () => {
+      if (started || engineGone) return;
+      started = true;
+      render();
+      first = false;
+      requestAnimationFrame(() => onReady?.());
+      loop();
+    };
+    let pre = null;
+    try {
+      // sadece paralel derleme destekleniyorsa (KHR_parallel_shader_compile) — desteklemeyen cihazda
+      // önceden derlemek açılışı ~1 sn uzatıyordu (ölçüldü), orada eskisi gibi ilk karede derlenir
+      const parallel = Boolean(renderer.extensions?.has?.('KHR_parallel_shader_compile'));
+      pre = parallel && typeof renderer.compileAsync === 'function' && !renderer.__lost ? renderer.compileAsync(scene, camera) : null;
+    } catch {
+      pre = null;
+    }
+    if (pre && typeof pre.then === 'function') {
+      pre.then(begin, begin);
+      setTimeout(begin, 4000);
+    } else begin();
   }
 
   // --- v147 FOTOĞRAF ----------------------------------------------------------------
@@ -5490,6 +5517,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     },
     haracActive: () => Boolean(harac),
     dispose() {
+      engineGone = true;
       haracFinish();
       try {
         heist?.stop(); // v154
