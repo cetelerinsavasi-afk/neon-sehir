@@ -18,7 +18,7 @@ import { useInventory } from '../../hooks/useInventory';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useBlocks } from '../../contexts/BlocksContext';
 import { useBackClose } from '../../lib/backStack';
-import { markCityReady, useBootStage, whenBootStage } from '../../lib/bootStage'; // v167 — açılış sırası
+import { markCityReady, useBootStage, useBootStageAfter, whenBootStage } from '../../lib/bootStage'; // v167 — açılış sırası
 import { blockProfanity } from '../../lib/profanityGuard';
 import { buyFromVendor, buyFromBufe, sellContrabandAtPark, cityAction, createSixtagramPost, shopAction, houseAction, checkOnboardingProgress } from '../../services/gameActions';
 import { currentOnboardingTaskId } from '../../../functions/onboardingData.js';
@@ -295,7 +295,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const [ready, setReady] = useState(false);
   // v167 — açılış sırası: 1 = diğer oyuncular + altın / şüphe + görevler, 2 = telefon, yayın, seçim, yakındakiler
   const bootWorld = useBootStage(1);
-  const bootDetails = useBootStage(2);
+  const bootLive = useBootStageAfter(2, 1600); // v171: yayın / seçim düğmeleri en son (dinleyicileri var)
   useEffect(() => {
     if (ready) markCityReady();
   }, [ready]);
@@ -1547,8 +1547,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           {/* v157 — sağ sütun: ChatsApp · telefon · kamera · yakındaki oyuncular */}
           <div className={`hs-side cs-right${driving ? ' cs-drive-side' : ''}`}>
             {/* v157.4: yayın / seçim (varsa) Görevler'in üstünde; ChatsApp'ın yerinde Görevler + hatırlatmalar */}
-            {!guest && !driving && bootDetails && <LiveStreamsButton className="cs-live-inline" onWatch={setWatchId} />}
-            {!guest && !driving && bootDetails && <PoliticsHomeButton inline />}
+            {!guest && !driving && bootLive && <LiveStreamsButton className="cs-live-inline" onWatch={setWatchId} />}
+            {!guest && !driving && bootLive && <PoliticsHomeButton inline />}
             {/* v168 — ⏪ 3 yıl önce (isteğe bağlı; Amca ölene kadar) */}
             {!guest && !driving && bootWorld && storyFlashBtn && (
               <button type="button" className={`hs-side-btn amca-flash-btn${storyFlashBtn === 'pre' ? ' pre' : ''}`} onClick={() => storyRef.current?.playFlashback()} title="3 yıl önce">
@@ -1572,7 +1572,9 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                 }}
               />
             )}
-            {!guest && bootDetails && (
+            {/* v171: telefon düğmesi baştan yerinde (sonradan çıkıp düğmeleri kaydırmasın — "parlama");
+                kendisi dinleyici açmaz, rozeti bildirimler gelince dolar */}
+            {!guest && (
               <button className="hs-side-btn" onClick={() => setPanel({ kind: 'phone', app: null })} title="Telefon">
                 📱
                 {/* v158: yeni SMS / mesaj / bildirim sayısı (hatırlatmalardaki rozet gibi) */}
@@ -1580,7 +1582,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
               </button>
             )}
             <button className="hs-side-btn" onClick={() => (guest ? setAskSignIn(true) : openCamera())} title="Fotoğraf çek">📷</button>
-            {!guest && !driving && bootDetails && (
+            {!guest && !driving && bootWorld && (
               <NearbyPlayersButton
                 buttonClassName="hs-side-btn"
                 collectionName="city"

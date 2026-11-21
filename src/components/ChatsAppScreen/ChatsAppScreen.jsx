@@ -20,7 +20,10 @@ import './ChatsAppScreen.css';
 export default function ChatsAppScreen() {
   const { user } = useAuth();
   const { chats, friends, requestCount } = useSocial();
-  const { messages } = useGlobalChat();
+  // v171 MALİYET: liste sadece SON mesajı gösterir → rozetin zaten açık olan 1 mesajlık dinleyicisi
+  // (ek okuma yok). Eskiden ChatsApp'ı açmak bile 100 mesaj okutuyordu; 100 mesaj artık sadece
+  // "Neon Şehir" grubu açılınca okunur.
+  const { messages } = useGlobalChat({ max: 1 });
   const { chatsAppHasNew } = useUnreadNotifications();
   const { isBlocked } = useBlocks();
   const [view, setView] = useState(() => {

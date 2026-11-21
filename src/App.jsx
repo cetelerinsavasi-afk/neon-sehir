@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, memo, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { BlocksProvider } from './contexts/BlocksContext';
 import Hud from './components/Hud/Hud';
@@ -32,7 +32,7 @@ import ConfirmModal from './components/ConfirmModal/ConfirmModal';
 import LiveStreamsButton from './components/Stream/LiveStreamsButton';
 import UpdateAppBanner from './components/UpdateAppBanner/UpdateAppBanner';
 import { retryImport, ChunkBoundary } from './lib/lazyRetry';
-import { useBootStage, whenBootStage } from './lib/bootStage'; // v167 — açılış sırası
+import { useBootStageAfter, whenBootStage } from './lib/bootStage'; // v167 — açılış sırası
 import './styles/theme.css';
 import './styles/cues.css';
 import './App.css';
@@ -85,6 +85,24 @@ const GuestVenue = lazyScreen(() => import('./components/Guest/GuestVenue'));
 const loadCityScreen = () => import('./components/City/CityScreen');
 loadCityScreen().catch(() => {}); // hata olursa ekran açılırken yeniden denenir (lazyRetry)
 const CityScreen = lazyScreen(loadCityScreen); // v147 — gezilebilir şehir
+// v171 AKICILIK — App her yeniden çizildiğinde (arkadaş / sohbet / bildirim verisi geldiğinde, altın
+// değiştiğinde…) şehir ekranı da baştan çiziliyordu: App, şehre her seferinde YENİ işlevler (onClose,
+// onEnterRegion…) verdiği için. Artık işlevler sabit "aracılardan" geçer (her zaman App'in en güncel
+// işlevini çağırır, davranış aynı) ve şehir sadece kendi verisi (rozet, örtülme, yarış…) değişince çizilir.
+const CityScreenMemo = memo(CityScreen);
+function StableCityScreen(props) {
+  const latest = useRef(props);
+  latest.current = props;
+  const proxies = useRef({});
+  const next = {};
+  for (const k of Object.keys(props)) {
+    if (typeof props[k] === 'function') {
+      if (!proxies.current[k]) proxies.current[k] = (...a) => latest.current[k]?.(...a);
+      next[k] = proxies.current[k];
+    } else next[k] = props[k];
+  }
+  return <CityScreenMemo {...next} />;
+}
 
 // v166 HIZ: ekran dosyaları sadece İNDİRİLİR (modulepreload — çalıştırılmaz). Eskiden hepsi
 // import() ile çalıştırılıyordu: açılıştan sonra telefonda saniyelerce kasma + kalıcı bellek.
@@ -272,7 +290,11 @@ function GameShell() {
   const [cityReturn, setCityReturn] = useState(null); // v147.1 — şehirden açılan liste/mekân kapanınca şehre (o kapıya) dön
   // v77 performans: kök bileşen sadece HUD alanları değişince yeniden çizilir
   const hudKey = usePlayerSelect(selectHud);
-  const bootDetails = useBootStage(2); // v167 — açılış sırası (bkz. lib/bootStage.js)
+  // v167 açılış sırası (bkz. lib/bootStage.js) — v171: aşama 2'nin parçaları tek karede değil, sırayla açılır (bkz. useBootStageAfter)
+  const bootUnread = useBootStageAfter(2, 300);
+  const bootGang = useBootStageAfter(2, 650);
+  const bootBanner = useBootStageAfter(2, 1000);
+  const bootRing = useBootStageAfter(2, 1300);
   const [hudSusp, hudRep, hudGold] = hudKey.split('|').map(Number);
 
   // v68 — Android geri tuşu: açık ekran/mekân varsa onu kapatır (mekândan →
@@ -636,8 +658,8 @@ function GameShell() {
   return (
     <div className="app-shell">
       {/* v167: ~25 canlı dinleyici (çete, SMS, ChatsApp, Sixtagram…) açılışın 2. aşamasında başlar */}
-      {bootDetails && <GangAlertsBridge uid={user?.uid} onChange={setGangAlerts} />}
-      {bootDetails && <UnreadBridge onChange={setUnread} />}
+      {bootGang && <GangAlertsBridge uid={user?.uid} onChange={setGangAlerts} />}
+      {bootUnread && <UnreadBridge onChange={setUnread} />}
       {exitHint && !exitAsk && <div className="exit-hint">Çıkmak için bir kez daha geri</div>}
       {exitAsk && (
         <ConfirmModal
@@ -670,7 +692,7 @@ function GameShell() {
       <UpdateAppBanner />
 
       {/* v77: internet kafe ödenmiş süre halkası — mekân dışında da görünür */}
-      {user && bootDetails && <NetCreditRing className="vn-fixed" />}
+      {user && bootRing && <NetCreditRing className="vn-fixed" />}
 
       <main className="map-stage">
         {/* v157.4: oyun şehirde açılır — eski 2D harita şehir açıkken hiç kurulmaz (bellek) */}
@@ -777,7 +799,7 @@ function GameShell() {
           onEnterTable={openTable}
         />
       )}
-      {bootDetails && (
+      {bootBanner && (
       <TopNotificationBanner
         onOpenPhone={(type) => {
           const app = type === 'sms' ? 'sms' : 'chatsapp';
@@ -976,7 +998,7 @@ function GameShell() {
 
       {city && (
         // v154: şehir açıkken yarış ekranı ve yarış balonu şehrin üstünde (ns-city-open)
-        <CityScreen
+        <StableCityScreen
           key={city.k}
           spawn={city.spawn}
           onClose={() => setCity(null)}

@@ -14,15 +14,17 @@
 // yavaş telefonda iş yayılır, hızlı telefonda her şey 2-3 sn'de gelir. Her aşamanın bir üst sınırı
 // vardır (takılı kalınmaz). Şehir hiç açılmazsa (ör. başka ekran) aşamalar zamanla yine ilerler.
 // =============================================================================
-import { useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 
 let stage = 0;
 const subs = new Set();
 let cityReadyAt = 0;
 let started = false;
 
+const reachedAt = {}; // v171: aşamaya ulaşılan an (performance.now)
 function setStage(n) {
   if (n <= stage) return;
+  for (let k = stage + 1; k <= n; k++) reachedAt[k] = typeof performance !== 'undefined' ? performance.now() : 0;
   stage = n;
   try {
     performance.mark?.(`ns-boot-${n}`);
@@ -45,6 +47,36 @@ export function useBootStage(n) {
     () => true
   );
 }
+// v171 — AŞAMA 2 TAKILMASI: oyun açıldıktan 2-3 sn sonra (aşama 2) telefon düğmesi, bildirimler,
+// sohbet / SMS / çete dinleyicileri, yayın ve seçim düğmeleri AYNI ANDA kuruluyordu → anlık takılma.
+// Artık aşamaya ulaştıktan `ms` sonra ve telefon boştayken (requestIdleCallback) açılır; her parça
+// farklı gecikmeyle → iş birkaç kareye yayılır. Dinleyiciler aynı, okuma sayısı aynı (sadece zamanı).
+export function useBootStageAfter(n, ms) {
+  const on = useBootStage(n);
+  const passed = () => stage >= n && typeof performance !== 'undefined' && performance.now() - (reachedAt[n] ?? 0) >= ms;
+  const [late, setLate] = useState(passed);
+  useEffect(() => {
+    if (!on || late) return undefined;
+    if (passed()) {
+      setLate(true);
+      return undefined;
+    }
+    let idle = 0;
+    const wait = Math.max(0, ms - (performance.now() - (reachedAt[n] ?? performance.now())));
+    const t = setTimeout(() => {
+      const go = () => setLate(true);
+      if (typeof window !== 'undefined' && window.requestIdleCallback) idle = window.requestIdleCallback(go, { timeout: 700 });
+      else go();
+    }, wait);
+    return () => {
+      clearTimeout(t);
+      if (idle && typeof window !== 'undefined' && window.cancelIdleCallback) window.cancelIdleCallback(idle);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [on, late, n, ms]);
+  return on && late;
+}
+
 // Aşama n'e ulaşınca fn bir kez çalışır (zaten ulaşıldıysa hemen). Dönen işlev iptal eder.
 export function whenBootStage(n, fn) {
   if (stage >= n) {
