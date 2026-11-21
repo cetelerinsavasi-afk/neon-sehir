@@ -304,8 +304,13 @@ function tileInstanced(group, tile = 240) {
 const OTHER_MAPS = ['normalMap', 'roughnessMap', 'metalnessMap', 'emissiveMap', 'alphaMap', 'aoMap', 'bumpMap', 'lightMap', 'envMap', 'specularMap', 'displacementMap'];
 const canonCache = new Map();
 const hex = (c) => (c ? c.getHexString() : '-');
+// v173 HIZ: varsayılan onBeforeCompile'ın yazısı bir kez çıkarılır (eskiden binlerce parçanın her biri
+// için iki işlev metne çevrilip karşılaştırılıyordu). Aynı işlevse metin karşılaştırması atlanır; sonuç aynı.
+const BASE_OBC = THREE.Material.prototype.onBeforeCompile;
+const BASE_OBC_SRC = BASE_OBC.toString();
+const customCompile = (mat) => mat.onBeforeCompile !== BASE_OBC && mat.onBeforeCompile?.toString() !== BASE_OBC_SRC;
 export function canonMat(mat, geo) {
-  if (!mat || mat.isShaderMaterial || mat.onBeforeCompile?.toString() !== THREE.Material.prototype.onBeforeCompile.toString() || mat.userData?.noDedupe) {
+  if (!mat || mat.isShaderMaterial || customCompile(mat) || mat.userData?.noDedupe) {
     return { key: `u:${mat?.uuid}`, mat };
   }
   const map = mat.map;

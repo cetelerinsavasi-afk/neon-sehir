@@ -4126,7 +4126,19 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   // v158 — İÇ MEKÂN ÖRTMESİ: bir mekânın içindeyken dışarısı duvarlarla kapalı; görüş kısalır
   const INDOOR_VIEW = IS_MOBILE ? 45 : 60;
   const TEX_KEYS = ['map', 'emissiveMap', 'normalMap', 'roughnessMap', 'metalnessMap', 'alphaMap', 'aoMap', 'bumpMap', 'lightMap'];
-  function evictGpu(root) {
+  // v173 DONMA: bırakılan HER parça için bütün sahne baştan taranıyordu ("bu doku başka yerde
+  // görünüyor mu?"). Telefonda açılıştan 5 sn sonra, o ana kadar hiç görünmeyen yüzlerce parça aynı
+  // turda bırakılınca bu yüzlerce kez tam sahne taraması = belirgin takılma. Artık tarama bir turda
+  // BİR kez yapılır (liveTex) ve bütün bırakılanlar onu paylaşır. Sonuç aynı.
+  function liveTextures() {
+    const live = new Set();
+    scene.traverseVisible((o) => {
+      const m = o.material;
+      if (m && !Array.isArray(m)) TEX_KEYS.forEach((k) => m[k] && live.add(m[k].source));
+    });
+    return live;
+  }
+  function evictGpu(root, liveTex = null) {
     const texs = new Set();
     root.traverse((o) => {
       if (o.userData?.noEvict) return;
@@ -4136,11 +4148,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     });
     if (!texs.size) return;
     // o an görünen bir şeyin kullandığı doku bırakılmaz (ortak duvar / zemin dokuları)
-    const live = new Set();
-    scene.traverseVisible((o) => {
-      const m = o.material;
-      if (m && !Array.isArray(m)) TEX_KEYS.forEach((k) => m[k] && live.add(m[k].source));
-    });
+    const live = liveTex ? liveTex() : liveTextures();
     texs.forEach((t) => {
       if (!live.has(t.source) && !t.isRenderTargetTexture && t.image) {
         t.dispose();
@@ -4167,6 +4175,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const fx = camFwd.x / fl;
     const fz = camFwd.z / fl;
     pendingShow.length = 0;
+    const evict = []; // v173: bırakılacaklar tur sonunda, tek sahne taramasıyla
     for (const c of cullItems) {
       const dc = Math.hypot(c.x - cx0, c.z - cz0);
       const lim = c.outer ? view : Math.min(view, (t.view + 60) * (view2d() ? 1 : viewK));
@@ -4191,7 +4200,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         if (!c.hidT) c.hidT = now;
         else if (now - c.hidT > EVICT_MS) {
           c.gone = true;
-          evictGpu(c.o);
+          evict.push(c);
         }
       }
     }
@@ -4203,6 +4212,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         c.hidT = 0;
         c.gone = false;
       });
+    }
+    if (evict.length) {
+      let live = null;
+      const liveTex = () => (live ||= liveTextures());
+      evict.forEach((c) => evictGpu(c.o, liveTex));
     }
     scene.fog.near = Math.min(view * 0.6 * fogK, view);
     scene.fog.far = view + 20;
@@ -4994,11 +5008,13 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     // v157.9: şehir başka bir ekranın (ev, işletme, karargah düzenleme) arkasında beklerken ekran
     // kartındaki kopyalar bırakılır (işlemcideki veri kalır; dönüşte görünenler yeniden yüklenir)
     releaseGpu() {
+      let live = null;
+      const liveTex = () => (live ||= liveTextures()); // v173: sahne bir kez taranır
       for (const c of cullItems) {
         if (c.keep || c.gone) continue;
         c.gone = true;
         c.hidT = 0;
-        evictGpu(c.o);
+        evictGpu(c.o, liveTex);
       }
       renderer.renderLists?.dispose?.();
     },

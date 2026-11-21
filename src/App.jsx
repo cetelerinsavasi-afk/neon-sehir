@@ -64,7 +64,16 @@ const HouseHub = lazyScreen(() => import('./components/HouseScreen/HouseHub'));
 // v92 Faz 8 — mekânlar 3D (giriş yapmamış oyuncu eski 2D mekânı görür)
 const VenueHouseScreen = lazyScreen(() => import('./components/Venue3D/VenueHouseScreen'));
 const BusinessHub = lazyScreen(() => import('./components/BusinessHub/BusinessHub'));
-const NetCreditRing = lazyScreen(() => import('./components/Venue/NetCreditRing'));
+// v173 — AÇILIŞTAN 2-3 SN SONRAKİ "YÜKLEME YUVARLAĞI": bu küçük halka da tam ekran sayfalar gibi
+// yükleniyordu; dosyası inerken bütün ekranı karartan dönen yuvarlak çıkıyordu (anlık donma hissi).
+// Artık sessiz yüklenir: inene kadar hiçbir şey görünmez, sonra halka (varsa) belirir.
+const loadNetRing = retryImport(() => import('./components/Venue/NetCreditRing'));
+const NetCreditRingLazy = lazy(() => loadNetRing().catch(() => ({ default: () => null }))); // inmezse sessizce yok
+const NetCreditRing = (props) => (
+  <Suspense fallback={null}>
+    <NetCreditRingLazy {...props} />
+  </Suspense>
+);
 const FutbolFullScreen = lazyScreen(() => import('./components/FutbolScreen/FutbolFullScreen'));
 const GangsFullScreen = lazyScreen(() => import('./components/Gangs/GangsFullScreen'));
 const GangPanel = lazyScreen(() => import('./components/Gangs/GangPanel')); // v160.3
