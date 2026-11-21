@@ -10,7 +10,7 @@ import FutbolLevelBar from './FutbolLevelBar';
 import ManagerBooklet from '../ManagerBooklet/ManagerBooklet';
 import './FutbolTakimim.css';
 
-const FUTBOL_MANAGER_REPUTATION_REQUIRED = 25; // v137
+const FUTBOL_MANAGER_REPUTATION_REQUIRED = 10; // v170 (v137: 25)
 
 
 // FutbolMenajerOl — Bölüm 3/8/15: "Menajer Ol" sekmesi. Menajeri OLMAYAN

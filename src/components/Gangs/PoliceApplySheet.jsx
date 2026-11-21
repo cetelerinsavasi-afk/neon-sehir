@@ -3,7 +3,7 @@
 // Çeteler › Polis Teşkilatı kartından hem Karakol'dan açılır.
 //   Başvuru FORMU KALDIRILDI: oyuncu sadece kod adını yazar; şartları
 //   sağlıyorsa ANINDA polis olur (inceleme / onay yok).
-//   Şartlar (sunucu doğrular): başlangıç görevleri · 25 saygınlık · %0 şüphe ·
+//   Şartlar (sunucu doğrular): başlangıç görevleri · 10 saygınlık · %0 şüphe ·
 //   en az 1 silah · imam ve Mafya Babası olmamak · son 24 saatte polislikten
 //   ayrılmamış / atılmamış olmak.
 //   Yeni katılan polis 24 saat boyunca teşkilattan atılamaz.

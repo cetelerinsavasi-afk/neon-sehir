@@ -213,6 +213,12 @@ function makeRenderer(opts) {
   r.outputColorSpace = THREE.SRGBColorSpace;
   r.shadowMap.enabled = true;
   r.shadowMap.type = THREE.PCFSoftShadowMap;
+  // v170 DONMA / AÇILIŞ: three.js her yeni gölgelendiriciden (malzeme) sonra "derlendi mi, hata var mı"
+  // diye ekran kartına SORUP cevabı bekliyordu — tarayıcıda bu soru oyunu (dokunuş, arayüz dahil)
+  // derleme bitene kadar durdurur: açılışta onlarca kez, şehirde yeni bir şey (araba, mekân, oyuncu)
+  // göründükçe birkaç kez. Yayındaki oyunda sorulmaz; derleme ekran kartında arka planda biter.
+  // Görüntü aynıdır (geliştirmede hata ayıklama için açık kalır).
+  if (import.meta.env?.PROD) r.debug.checkShaderErrors = false;
   r.__lost = false;
   r.domElement.addEventListener('webglcontextlost', (e) => {
     e.preventDefault();

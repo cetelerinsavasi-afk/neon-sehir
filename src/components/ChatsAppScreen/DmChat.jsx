@@ -13,7 +13,7 @@ import ActionMenu from '../ActionMenu/ActionMenu';
 import ReportBlockSheet from '../ReportBlockSheet/ReportBlockSheet';
 import { copyText, useLongPress } from '../ActionMenu/actionMenuUtils';
 import { clockOf, dayLabelOf, sameDay } from './chatsappTime';
-import { CHAT_REACTIONS, ReactionChips, ReplyBar, ReplyQuote, replyDraftOf } from './chatExtras';
+import { CHAT_REACTIONS, ChatInput, ReactionChips, ReplyBar, ReplyQuote, replyDraftOf } from './chatExtras';
 
 // v60 — Arkadaşla birebir sohbet (WhatsApp benzeri). Mesajlar sunucudan
 // geçer (socialAction → sendDm); 7 günden eski mesajlar gösterilmez ve silinir.
@@ -65,8 +65,6 @@ export default function DmChat({ target, onBack }) {
   const raw = useDmMessages(chat?.id, Boolean(chat && friend));
   const cutoff = Date.now() - MESSAGE_TTL_MS;
   const messages = raw.filter((m) => m.createdAtMs > cutoff && !isHiddenForMe(m, m.uid, isBlocked));
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [menuFor, setMenuFor] = useState(null);
   const [reportOf, setReportOf] = useState(null);
@@ -100,19 +98,15 @@ export default function DmChat({ target, onBack }) {
     if (myUnread > 0 && friend) socialAction('markDmRead', { targetUid: target.uid }).catch(() => {});
   }, [myUnread, friend, target.uid]);
 
-  const send = async () => {
-    const t = text.trim();
-    if (!t || busy) return;
-    setBusy(true);
+  const send = async (t) => {
     setError(null);
     try {
       await socialAction('sendDm', { targetUid: target.uid, text: t, ...(replyTo ? { replyToId: replyTo.id } : {}) });
-      setText('');
       setReplyTo(null);
+      return true;
     } catch (err) {
       setError(err.message || 'Mesaj gönderilemedi.');
-    } finally {
-      setBusy(false);
+      return false;
     }
   };
 
@@ -143,22 +137,7 @@ export default function DmChat({ target, onBack }) {
       </div>
       {friend && <ReplyBar replyTo={replyTo} myUid={user.uid} onCancel={() => setReplyTo(null)} />}
       {friend ? (
-        <div className="chatsapp-input-row">
-          <input
-            ref={inputRef}
-            type="text"
-            placeholder="Mesaj yaz…"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && send()}
-            maxLength={MAX_LEN}
-            className="chatsapp-input"
-            aria-label={`${name} kişisine mesaj`}
-          />
-          <button className="chatsapp-send" disabled={busy || !text.trim()} onClick={send}>
-            Gönder
-          </button>
-        </div>
+        <ChatInput onSend={send} maxLength={MAX_LEN} inputRef={inputRef} ariaLabel={`${name} kişisine mesaj`} />
       ) : (
         <p className="ca-empty">Bu oyuncuyla artık arkadaş değilsiniz; sohbet silindi.</p>
       )}

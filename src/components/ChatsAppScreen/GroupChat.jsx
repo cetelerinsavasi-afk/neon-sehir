@@ -11,7 +11,7 @@ import { copyText, useLongPress } from '../ActionMenu/actionMenuUtils';
 import { useBlocks } from '../../contexts/BlocksContext';
 import { isHiddenForMe } from '../../lib/ugcVisibility';
 import { clockOf, tsMs } from './chatsappTime';
-import { CHAT_REACTIONS, ReactionChips, ReplyBar, ReplyQuote, replyDraftOf } from './chatExtras';
+import { CHAT_REACTIONS, ChatInput, ReactionChips, ReplyBar, ReplyQuote, replyDraftOf } from './chatExtras';
 
 // v60 — "Neon Şehir" grubu: eski ChatsApp genel sohbeti (tüm oyuncular).
 // Davranış v53 ile aynı; yalnızca üstte WhatsApp tarzı grup başlığı var.
@@ -50,8 +50,6 @@ export default function GroupChat({ onBack }) {
   const [reportTarget, setReportTarget] = useState(null);
   const [profileOf, setProfileOf] = useState(null);
   const [menuFor, setMenuFor] = useState(null);
-  const [text, setText] = useState('');
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [replyTo, setReplyTo] = useState(null); // v72 — yanıtlanan mesaj
   const bottomRef = useRef(null);
@@ -75,19 +73,15 @@ export default function GroupChat({ onBack }) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
 
-  const handleSend = async () => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    setBusy(true);
+  const handleSend = async (trimmed) => {
     setError(null);
     try {
       await sendChatMessage(trimmed, replyTo?.id || null);
-      setText('');
       setReplyTo(null);
+      return true;
     } catch (err) {
       setError(err.message || 'Mesaj gönderilemedi.');
-    } finally {
-      setBusy(false);
+      return false;
     }
   };
 
@@ -112,21 +106,7 @@ export default function GroupChat({ onBack }) {
         <div ref={bottomRef} />
       </div>
       <ReplyBar replyTo={replyTo} myUid={user.uid} onCancel={() => setReplyTo(null)} />
-      <div className="chatsapp-input-row">
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder="Mesaj yaz…"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          maxLength={300}
-          className="chatsapp-input"
-        />
-        <button className="chatsapp-send" disabled={busy || !text.trim()} onClick={handleSend}>
-          Gönder
-        </button>
-      </div>
+      <ChatInput onSend={handleSend} maxLength={300} inputRef={inputRef} />
       {error && <p className="chatsapp-error">{error}</p>}
       {menuFor && (
         <ActionMenu

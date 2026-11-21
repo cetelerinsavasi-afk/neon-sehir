@@ -143,7 +143,7 @@ export const GANG = {
 // mevcut üyelerin verisine dokunulmadı. Teşkilat üyesi = polis
 // (users.profession === 'polis'); katılım/ayrılık mesleği de birlikte değiştirir.
 export const INTEL = {
-  JOIN_MIN_REPUTATION: 25, // v137 (eskiden 50)
+  JOIN_MIN_REPUTATION: 10, // v170 (v137: 25, eskiden 50)
   JOIN_MAX_SUSPICION: 0, // v109: polis olmak için şüphe %0 olmalı
   // v109: istifa eden / atılan / oylamayla çıkarılan / pasiflikten görevden alınan
   // 24 saat yeniden başvuramaz (memberships/{uid}.intelCooldownUntilMs)

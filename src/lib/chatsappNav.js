@@ -24,3 +24,22 @@ export function takePendingDm() {
   pending = null;
   return p;
 }
+
+// v170 — ŞEHİRDE GİZLİ TELEFON DÜZELTMESİ: şehir açıkken üst bildirim şeridine ya da Oyuncu Kartı
+// → "💬 Mesaj"a dokununca ana sayfanın telefonu ŞEHRİN ALTINDA (görünmeden) açılıyordu: ekranda bir
+// şey olmuyor, arkada ikinci bir ChatsApp (dinleyicileriyle) ve tam hızda dönen şehir kalıyordu.
+// Şehir açık ve görünürken telefon istekleri şehrin kendi telefonuna gider.
+let cityPhoneHost = null;
+export function setCityPhoneHost(fn) {
+  cityPhoneHost = fn;
+  return () => {
+    if (cityPhoneHost === fn) cityPhoneHost = null;
+  };
+}
+export const hasCityPhoneHost = () => Boolean(cityPhoneHost);
+// true dönerse istek şehrin telefonunda açıldı
+export function openInCityPhone(app) {
+  if (!cityPhoneHost) return false;
+  cityPhoneHost(app);
+  return true;
+}

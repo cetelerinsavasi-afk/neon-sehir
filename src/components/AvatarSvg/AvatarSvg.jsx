@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import { buildAvatarSvgInner, DEFAULT_AVATAR } from '../../lib/avatarShapes';
 
 // variant='headshot' (varsayılan): kafa+üst gövdeyi gösterir — chat,
@@ -34,9 +35,10 @@ const VIEWBOX = {
 // pose: 'idle' | 'walk1' | 'walk2' — sadece variant='full' iken görünür
 // etkisi olur (bkz. avatarShapes.buildAvatarSvgInner). Hareket motoru
 // bu iki yürüme karesini değiştirerek basit bir animasyon üretir.
-export default function AvatarSvg({ avatar, size, rounded = false, variant = 'headshot', pose = 'idle' }) {
+// v170: aynı avatar tekrar çizilmez (sohbette her yeni mesajda / yazarken 100 avatar baştan kuruluyordu)
+function AvatarSvg({ avatar, size, rounded = false, variant = 'headshot', pose = 'idle' }) {
   const a = avatar || DEFAULT_AVATAR;
-  const inner = buildAvatarSvgInner(a, { pose });
+  const inner = useMemo(() => buildAvatarSvgInner(a, { pose }), [a, pose]);
 
   const style = size
     ? { width: size, height: size, borderRadius: rounded ? '50%' : 8, overflow: 'hidden', flexShrink: 0 }
@@ -58,3 +60,5 @@ export default function AvatarSvg({ avatar, size, rounded = false, variant = 'he
     </div>
   );
 }
+
+export default memo(AvatarSvg);

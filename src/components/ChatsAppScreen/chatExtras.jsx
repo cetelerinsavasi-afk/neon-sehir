@@ -1,5 +1,6 @@
 // v72 — ChatsApp: mesaja yanıt + emoji tepkileri (genel ve özel sohbet ortak).
 // Sunucu ikizi: functions/chatExtras.js
+import { useState } from 'react';
 import { CHAT_REACTIONS } from '../../../functions/chatExtras.js';
 
 export { CHAT_REACTIONS };
@@ -68,3 +69,39 @@ export function ReplyBar({ replyTo, myUid, onCancel }) {
 
 // Uzun basma menüsü için: mesajdan yanıt taslağı
 export const replyDraftOf = (m, name) => ({ id: m.id, uid: m.uid, name, text: String(m.text || '').replace(/\s+/g, ' ').trim().slice(0, 120) });
+
+// v170 — YAZARKEN KASMA: yazı kutusu kendi bileşeninde. Eskiden her harfte bütün sohbet (100 mesaj +
+// her birinin avatar çizimi) yeniden kuruluyordu; artık harf yazınca sadece bu kutu yenilenir.
+// onSend(metin) → true dönerse kutu temizlenir. Aynı mesaj üst üste (Enter + Gönder) gitmez.
+export function ChatInput({ onSend, maxLength, inputRef, ariaLabel }) {
+  const [text, setText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const send = async () => {
+    const t = text.trim();
+    if (!t || busy) return;
+    setBusy(true);
+    try {
+      if (await onSend(t)) setText('');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="chatsapp-input-row">
+      <input
+        ref={inputRef}
+        type="text"
+        placeholder="Mesaj yaz…"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && send()}
+        maxLength={maxLength}
+        className="chatsapp-input"
+        aria-label={ariaLabel}
+      />
+      <button className="chatsapp-send" disabled={busy || !text.trim()} onClick={send}>
+        Gönder
+      </button>
+    </div>
+  );
+}

@@ -100,10 +100,7 @@ function cityPreload() {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), prefetchList(), cityPreload()],
-  resolve: {
-    alias: [
-      // v165 GEÇİCİ ÖLÇÜM — okuma kaynağı sayacı (bkz. src/lib/fsMeter). Kaldırmak için bu satırı sil.
-      { find: /^firebase\/firestore$/, replacement: fileURLToPath(new URL('./src/lib/fsMeter/firestoreShim.js', import.meta.url)) },
-    ],
-  },
+  // v170: v165'in geçici okuma ölçümü (src/lib/fsMeter) 21 Kasım'da sona erdi — firestore artık
+  // doğrudan yüklenir (her okumada ölçüm sarmalayıcısından geçilmez). Dosyalar duruyor; gerekirse
+  // eski alias satırı geri eklenebilir.
 })

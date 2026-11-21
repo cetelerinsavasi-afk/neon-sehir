@@ -40,11 +40,25 @@ function makeTex(key, w, h, draw, { srgb = true } = {}) {
 }
 
 function grain(g, w, h, n, a, r) {
+  // v170 HIZ: her nokta için yeni bir renk yazısı ("rgba(...)") üretilip çözülüyordu (açılışta on
+  // binlerce kez). Aynı sonuç: iki sabit renk + saydamlık (globalAlpha); rastgele sayıların sırası aynı.
+  if (n <= 0) return;
+  const baseAlpha = g.globalAlpha;
+  let cur = -1;
+  let v = 0;
+  let al = 0;
   for (let i = 0; i < n; i++) {
-    const v = r() > 0.5 ? 255 : 0;
-    g.fillStyle = `rgba(${v},${v},${v},${r() * a})`;
+    v = r() > 0.5 ? 255 : 0;
+    al = r() * a;
+    if (v !== cur) {
+      cur = v;
+      g.fillStyle = v ? '#ffffff' : '#000000';
+    }
+    g.globalAlpha = baseAlpha * al;
     g.fillRect(r() * w, r() * h, 2, 2);
   }
+  g.globalAlpha = baseAlpha;
+  g.fillStyle = `rgba(${v},${v},${v},${al})`; // eskisi gibi son renk seçili kalır
 }
 
 function planks(base, dark, light) {

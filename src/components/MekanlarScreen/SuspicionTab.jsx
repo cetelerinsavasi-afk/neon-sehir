@@ -15,11 +15,10 @@ import { useTaskPass } from '../../hooks/useTaskPass'; // v168.1
 const BRIBE_COST = 3000;
 const VENDOR_COST = 1000;
 // Kademeli saygınlık kazanımı — functions/index.js reputationGainFor ile
-// AYNI eşikler olmalı (v137: 0-49 → +3, 50+ → +1). Sadece görüntü içindir;
-// asıl hesap sunucuda yapılır.
+// AYNI olmalı (v170: her zaman +1). Sadece görüntü içindir; asıl hesap sunucuda yapılır.
 function reputationGainFor(rep) {
-  if (rep >= 50) return 1;
-  return 3;
+  void rep;
+  return 1;
 }
 
 // SuspicionTab (Şüphe) — yeni istek: "şüphe düşürebileceğimiz mekanlar

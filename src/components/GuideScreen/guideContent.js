@@ -70,19 +70,19 @@ export const CATS = [
     { type: 'lines', title: 'Polis',
       kicker: 'Rozet takarsın. Şehir seni başka türlü görür.',
       lines: [
-        L('🧼', 'Temiz sicil (%0 şüphe), 25 saygınlık ve belinde bir silah.'),
+        L('🧼', 'Temiz sicil (%0 şüphe), 10 saygınlık ve belinde bir silah.'),
         L('📝', 'Karakol’dan kod adını yaz, şartları sağlıyorsan rozet anında senin. İlk 24 saat seni kimse atamaz.'),
         L('🕶️', 'Teşkilatta herkes kod adıyla bilinir. Gerçek yüzün gizli kalır.'),
         L('💼', 'Rütbene göre maaş + günün rüşvet payı, her gece 00:00’da cebinde.'),
         L('🚨', 'Bir soygun ekibine sız. Ekipte sivil varsa suçluyu sen yakalarsın, ganimetten payını belediye belirler.'),
         L('😈', 'Rozet seni melek yapmaz. Soygun da yapabilirsin — yakalanırsan bedelin iki katı.'),
       ],
-      tags: ['⭐ 25 saygınlık', '🧼 %0 şüphe', '🔫 1 silah'] },
+      tags: ['⭐ 10 saygınlık', '🧼 %0 şüphe', '🔫 1 silah'] },
     { type: 'lines', title: 'İmam',
       kicker: 'Şehirde tek bir minber var. Belki de üstünde sen dursun.',
       lines: [
         L('🕌', 'Bütün şehirde tek imam vardır.'),
-        L('✨', 'Saygınlığın en az 25, şüphen sıfır olmalı.'),
+        L('✨', 'Saygınlığın en az 10, şüphen sıfır olmalı.'),
         L('📿', 'Her gün 5 vakit ibadet et. Bir de nasihat ver.'),
         L('💰', 'Karşılığı her gün belediyenin belirlediği maaş.'),
         L('🕳️', 'Bir gün aksatırsan imamlığın biter. 24 saat sonra yeniden başvurabilirsin.'),
@@ -229,7 +229,7 @@ export const CATS = [
         L('🐍', 'Hem çetede hem teşkilatta olabilirsin. Köstebek.'),
         L('⚖️', 'Bir polis çetenin Babası olursa iki yol var: çeteyi teslim et ya da rozeti bırak.'),
       ],
-      tags: ['⭐ 25 saygınlık', '🧼 %0 şüphe', '🔫 1 silah'] },
+      tags: ['⭐ 10 saygınlık', '🧼 %0 şüphe', '🔫 1 silah'] },
   ] },
 
   /* -------------------------------------------------------------- */
@@ -301,7 +301,7 @@ export const CATS = [
     { type: 'lines', title: 'Göreve Nasıl Girersin',
       kicker: 'Bir takım seni bekliyor.',
       lines: [
-        L('⭐', '25 saygınlığın varsa başvur.'),
+        L('⭐', '10 saygınlığın varsa başvur.'),
         L('⚡', 'Menajersiz bir takım seni anında kabul eder.'),
         L('👔', 'Menajerli takımda, mevcut menajerden daha yüksek seviyede olmalısın.'),
         L('☝️', 'Aynı anda tek takım. Yenisini istiyorsan öncekinden istifa et.'),

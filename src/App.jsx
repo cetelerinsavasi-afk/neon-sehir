@@ -7,7 +7,7 @@ import BottomBar from './components/BottomBar/BottomBar';
 import PhoneScreen from './components/Phone/PhoneScreen';
 import RegionModal from './components/RegionModal/RegionModal';
 import { SocialProvider, useSocial } from './contexts/SocialContext';
-import { OPEN_DM_EVENT } from './lib/chatsappNav';
+import { OPEN_DM_EVENT, hasCityPhoneHost, openInCityPhone } from './lib/chatsappNav';
 import ReferralPrompt from './components/ReferralPrompt/ReferralPrompt';
 import RaceBubble from './components/RaceTrackScreen/RaceBubble';
 import { GangAlertsContext, useGangAlerts } from './components/Gangs/alerts';
@@ -202,6 +202,8 @@ function GameShell() {
   const chatsAppCount = social.unreadTotal + social.requestCount;
   useEffect(() => {
     const on = () => {
+      // v170: şehir görünürken sohbeti şehrin telefonu açar (bkz. chatsappNav › setCityPhoneHost)
+      if (hasCityPhoneHost()) return;
       setPhoneInitialApp('chatsapp');
       setPhoneOpen(true);
     };
@@ -778,7 +780,9 @@ function GameShell() {
       {bootDetails && (
       <TopNotificationBanner
         onOpenPhone={(type) => {
-          setPhoneInitialApp(type === 'sms' ? 'sms' : 'chatsapp');
+          const app = type === 'sms' ? 'sms' : 'chatsapp';
+          if (openInCityPhone(app)) return; // v170: şehir açıkken şehrin telefonunda
+          setPhoneInitialApp(app);
           setPhoneOpen(true);
         }}
       />

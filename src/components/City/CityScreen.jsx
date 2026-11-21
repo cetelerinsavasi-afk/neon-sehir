@@ -64,6 +64,7 @@ import CityBizList from './CityBizList';
 import CityHouseList from './CityHouseList';
 import VenueLayer from '../Venue3D/VenueLayer';
 import { IS_MOBILE_DEVICE } from '../../lib/photoCache';
+import { OPEN_DM_EVENT, setCityPhoneHost } from '../../lib/chatsappNav';
 import { createCityNet } from './cityNet.js';
 import { MAP_SIZE, buildMapping } from './cityMapMath.js';
 import { setLiveCityEngine } from './cityPhotoHub.js';
@@ -804,6 +805,40 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     else e.resume();
     return undefined;
   }, [panel, ready, raceFull, watchId, heistOn, covered, phoneApp]);
+  // v170 — şehir görünürken telefon istekleri (üst bildirim şeridi, Oyuncu Kartı → 💬 Mesaj) şehrin
+  // kendi telefonunda açılır. Eskiden ana sayfanın telefonu şehrin ALTINDA görünmeden açılıyordu.
+  const panelKindRef = useRef(null);
+  panelKindRef.current = panel?.kind || null;
+  useEffect(() => {
+    if (covered) return undefined;
+    const off = setCityPhoneHost((app) => setPanel({ kind: 'phone', app, k: Date.now() }));
+    // telefon zaten açıksa PhoneScreen kendisi ChatsApp'a geçer; kapalıysa açılır, ChatsApp bekleyen sohbeti alır
+    const onDm = () => {
+      if (panelKindRef.current !== 'phone') setPanel({ kind: 'phone', app: 'chatsapp', k: Date.now() });
+    };
+    window.addEventListener(OPEN_DM_EVENT, onDm);
+    return () => {
+      off();
+      window.removeEventListener(OPEN_DM_EVENT, onDm);
+    };
+  }, [covered]);
+  // v170 — CHATSAPP'TA YAZARKEN OYUNDAN ATMA: telefonda yazı alanına dokununca klavye açılır, oyunun
+  // bütün sayfası küçülüp yeniden çizilir. Şehrin grafik verisi (binalar, araçlar, dokular) o sırada
+  // bellekte durduğu için zayıf / orta telefonlarda bellek taşıp oyun kapanıyordu (Sixtagram'daki gibi).
+  // Artık telefonda bir yazı alanı seçilince şehir grafik belleğini bırakır; telefon kapanınca yakından
+  // uzağa kendiliğinden geri yüklenir. Okuma / yazma yok — sadece telefonun kendi belleği.
+  useEffect(() => {
+    if (!IS_MOBILE_DEVICE || !ready || heistOn || panel?.kind !== 'phone') return undefined;
+    const TYPING = new Set(['text', 'search', 'email', 'number', 'tel', 'password', 'url']);
+    const on = (ev) => {
+      const t = ev.target;
+      if (!t) return;
+      const typing = t.tagName === 'TEXTAREA' || t.isContentEditable || (t.tagName === 'INPUT' && TYPING.has(String(t.type || 'text').toLowerCase()));
+      if (typing) engineRef.current?.releaseGpu?.();
+    };
+    document.addEventListener('focusin', on);
+    return () => document.removeEventListener('focusin', on);
+  }, [panel, ready, heistOn]);
   // v157.9: karargah düzenlemesinden dönüş — şehir kapanmadan bekledi; çizici geri alınır ve
   // düzenlenen karargahın iç tasarımı yeniden okunur (tek okuma)
   const wasCovered = useRef(false);
@@ -1931,7 +1966,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         </Sheet>
       )}
       <SaleToast result={sellResult} onClose={() => setSellResult(null)} />
-      {panel?.kind === 'phone' && <PhoneScreen onClose={() => setPanel(null)} initialApp={panel.app} onAppChange={setPhoneApp} />}
+      {panel?.kind === 'phone' && <PhoneScreen key={panel.k || 0} onClose={() => setPanel(null)} initialApp={panel.app} onAppChange={setPhoneApp} />}
       {orgPanel && (
         <Suspense fallback={null}>
           <GangAlertsContext.Provider value={gangAlerts}>
