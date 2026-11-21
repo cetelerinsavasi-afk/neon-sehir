@@ -401,28 +401,36 @@ export class PetFollower { // v147: şehir de kullanır
     let ty;
     let tz;
     let flying = false;
+    // v175 — ŞEHİR DIŞINDA EVCİL HAYVAN: yükseklik eskiden hep 0'dı (şehrin zemini). Köy yollarında,
+    // tepede, vadide zemin 0 değil → hayvan havada asılı (uçuyor gibi, uzakta sanılıyor) ya da yerin
+    // altında kalıyordu. Artık sahibinin ayak hizası esas alınır (evde / şehirde yine 0 civarı).
+    const base = Number.isFinite(owner.y) ? owner.y : 0;
     if (this.perch && !owner.moving) {
       tx = owner.x - rx * 0.16 * side;
       tz = owner.z - rz * 0.16 * side;
-      ty = (seatPos ? seatPos.y + 0.95 : 1.42) - 0.02;
+      ty = (seatPos ? seatPos.y + 0.95 : base + 1.42) - 0.02;
     } else if (this.perch) {
       flying = true;
       tx = owner.x - rx * 0.3 * side + Math.sin(now / 420) * 0.15;
       tz = owner.z - rz * 0.3 * side;
-      ty = 1.95 + Math.sin(now / 260) * 0.06;
+      ty = base + 1.95 + Math.sin(now / 260) * 0.06;
     } else {
       tx = owner.x + rx * (0.5 + this.sm * 0.3) * side;
       tz = owner.z + rz * (0.5 + this.sm * 0.3) * side;
-      ty = 0;
+      ty = base;
     }
+    // ışınlanma / araçtan inme / uzak kalma: hayvan sahibinin yanına hemen gelir (koşarak yetişmeye çalışmaz)
+    if (this.x !== null && (Math.hypot(tx - this.x, tz - this.z) > 6 || Math.abs(ty - this.y) > 3)) this.x = null;
     if (this.x === null) {
       this.x = tx;
       this.y = ty;
       this.z = tz;
     }
-    const k = Math.min(1, dt * (this.perch ? 5 : 3.5));
     const dx = tx - this.x;
     const dz = tz - this.z;
+    // v175: geride kaldıkça daha hızlı yetişir (koşarken hayvan uzakta kalmasın)
+    const lag = Math.max(0, Math.hypot(dx, dz) - 1.2);
+    const k = Math.min(1, dt * (this.perch ? 5 : 3.5) * (1 + lag));
     this.x += dx * k;
     this.y += (ty - this.y) * k;
     this.z += dz * k;
@@ -446,7 +454,7 @@ export class PetFollower { // v147: şehir de kullanır
     if (showLeash) {
       const hx = owner.x + rx * 0.24 * side;
       const hz = owner.z + rz * 0.24 * side;
-      const hy = seatPos ? seatPos.y + 0.5 : 0.92;
+      const hy = seatPos ? seatPos.y + 0.5 : base + 0.92;
       const fdir = this.flip ? -1 : 1;
       const [ccx, ccy] = petCollarAt(this.id);
       const px = this.x + rx * ccx * this.sm * fdir;

@@ -1865,27 +1865,39 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const offs = (c.offs ||= []);
     offs.push({ at: lt, v: lt - src });
     while (offs.length > 1 && lt - offs[0].at > 8000) offs.shift();
-    let minOff = Infinity;
-    for (const o of offs) if (o.v < minOff) minOff = o.v;
-    const t = src + minOff; // ölçüm anı, BU cihazın saatiyle
     c.src = src;
-    // ekranda şu an çizilen konum (dönüş hızı güncellenmeden ÖNCE — yoksa her kayıtta sıçrar)
+    const buf = (c.buf ||= []);
+    const last = buf[buf.length - 1];
+    // v175: ışınlandı / yeniden doğdu → tampon sıfırlanır, araba yeni yerinde başlar
+    if (last && Math.hypot(st.x - last.x, st.z - last.z) > 25 + Math.abs(last.s) * Math.max(0, (src - last.t) / 1000) * 1.5) {
+      buf.length = 0;
+      c.stale = [];
+      c.ex = 0;
+      c.ez = 0;
+      c.eyaw = 0;
+      c.del = null;
+    }
+    // kayıt beklemesi (sadece araba hareket hâlindeyken anlamlı; park halindeki seyrek kayıt sayılmaz)
+    const stale = (c.stale ||= []);
+    const prev = buf[buf.length - 1];
+    if (prev && Math.abs(prev.s) > 0.3) stale.push({ at: lt, v: Math.min(lt - prev.t, lt - src + 1500) });
+    while (stale.length && lt - stale[0].at > 6000) stale.shift();
+    // ekranda şu an çizilen konum (yeni kayıt eklenmeden ÖNCE)
     const before = predictCar(c);
-    // v147.1 — TAHMİN: son kayıttan (konum + hız + dönüş hızı) arabanın ŞU AN nerede
-    // olduğu hesaplanır; ekrandaki araba kayıt beklemeden akar, yeni kayıt gelince
-    // aradaki küçük fark yumuşakça kapatılır → yanındaki oyuncu gecikme görmez.
-    if (c.t) {
-      let dy = st.y - c.tyaw;
-      while (dy > Math.PI) dy -= Math.PI * 2;
-      while (dy < -Math.PI) dy += Math.PI * 2;
-      const dts = (t - c.t) / 1000;
+    if (prev) {
+      let dy = st.y - prev.yaw;
+      dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      const dts = (src - prev.t) / 1000;
       const yr = dts > 0.05 && dts < 1.5 ? clamp(dy / dts, -3, 3) : 0;
       c.yr = c.yr * 0.4 + yr * 0.6;
     }
+    buf.push({ t: src, x: st.x, z: st.z, yaw: st.y, s: st.s || 0 });
+    while (buf.length > 2 && (buf.length > 120 || src - buf[1].t > 3000)) buf.shift();
+    if (c.del == null) c.del = lt - src + 60;
     c.tx = st.x;
     c.tz = st.z;
     c.tyaw = st.y;
-    c.t = t;
+    c.t = lt;
     c.spd = st.s || 0;
     c.steer = st.st || 0;
     if (!st.d || Math.abs(c.spd) < 0.05) c.yr = 0;
@@ -1910,15 +1922,63 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       c.eyaw = 0;
     }
   }
+  // v175 — YOLCU TİTREMESİ: uzak araba artık "son kayıttan ileri tahmin" yerine kısa bir tampondan
+  // GEÇMİŞTEKİ bir anın konumu olarak çizilir (diğer oyuncuların yürüyüşü gibi). Mobil ağ kayıtları
+  // çoğu zaman 3-4'ü bir arada, ~1 sn'de bir getirir; eski tahmin her toplu gelişte geri çekilip ileri
+  // atılıyordu → yolcu ekranında araba "saniyede bir ilerliyor" gibi titriyordu (yavaşken çok belirgin).
+  // Gecikme ağa göre kendini ayarlar (düzgün ağda kısa, toplu gelişte ~1 sn), kayıtların arası konum +
+  // hız + yönle eğrisel doldurulur. Ağdan ek veri yok; Firestore / RTDB okuma-yazma aynı.
+  function carSampleAt(c, T) {
+    const b = c.buf;
+    if (!b || !b.length) return null;
+    const l = b[b.length - 1];
+    if (T >= l.t) {
+      // tamponun ötesi (kayıt gecikti): son kayıttan kısa tahmin (en fazla 1,2 sn)
+      const age = clamp((T - l.t) / 1000, 0, 1.2);
+      if (Math.abs(l.s) < 0.05) return { x: l.x, z: l.z, yaw: l.yaw };
+      const yaw = l.yaw + (c.yr || 0) * age;
+      const mid = l.yaw + (c.yr || 0) * age * 0.5;
+      return { x: l.x + Math.sin(mid) * l.s * age, z: l.z + Math.cos(mid) * l.s * age, yaw };
+    }
+    if (T <= b[0].t) return { x: b[0].x, z: b[0].z, yaw: b[0].yaw };
+    let i = b.length - 1;
+    while (i > 1 && b[i - 1].t > T) i--;
+    const a = b[i - 1];
+    const e = b[i];
+    const span = Math.max(1, e.t - a.t);
+    const u = clamp((T - a.t) / span, 0, 1);
+    let dy = e.yaw - a.yaw;
+    dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+    const yaw = a.yaw + dy * u;
+    const sp = span / 1000;
+    const d = Math.hypot(e.x - a.x, e.z - a.z);
+    // hız yönü ile kayıtlar arası yol çok farklıysa (ani fren / geri vites) düz çizgi — eğri taşmasın
+    const ok = d > 0.02 && Math.abs(Math.abs(a.s) + Math.abs(e.s)) * 0.5 * sp < d * 2 + 0.5;
+    if (!ok) return { x: a.x + (e.x - a.x) * u, z: a.z + (e.z - a.z) * u, yaw };
+    const u2 = u * u;
+    const u3 = u2 * u;
+    const h00 = 2 * u3 - 3 * u2 + 1;
+    const h10 = u3 - 2 * u2 + u;
+    const h01 = -2 * u3 + 3 * u2;
+    const h11 = u3 - u2;
+    const ax = Math.sin(a.yaw) * a.s * sp;
+    const az = Math.cos(a.yaw) * a.s * sp;
+    const ex = Math.sin(e.yaw) * e.s * sp;
+    const ez = Math.cos(e.yaw) * e.s * sp;
+    return { x: h00 * a.x + h10 * ax + h01 * e.x + h11 * ex, z: h00 * a.z + h10 * az + h01 * e.z + h11 * ez, yaw };
+  }
   function predictCar(c) {
-    if (!c.t) return { x: c.tx, z: c.tz, yaw: c.tyaw };
-    // v149: kayıt gecikirse araba hemen durmasın (1,2 sn'ye kadar tahmin sürer)
-    const age = clamp((Date.now() - c.t) / 1000, 0, 1.2);
-    const s = c.spd || 0;
-    if (Math.abs(s) < 0.05) return { x: c.tx, z: c.tz, yaw: c.tyaw };
-    const yaw = c.tyaw + c.yr * age;
-    const mid = c.tyaw + c.yr * age * 0.5;
-    return { x: c.tx + Math.sin(mid) * s * age, z: c.tz + Math.cos(mid) * s * age, yaw };
+    if (!c.buf?.length || c.del == null) return { x: c.tx, z: c.tz, yaw: c.tyaw };
+    return carSampleAt(c, Date.now() - c.del) || { x: c.tx, z: c.tz, yaw: c.tyaw };
+  }
+  // gecikme hedefi: son 6 sn'de kayıtların en uzun beklettiği süre (+ pay), en az en kısa gecikme + 60 ms
+  function carDelayTarget(c) {
+    let minL = Infinity;
+    for (const o of c.offs || []) if (o.v < minL) minL = o.v;
+    if (!Number.isFinite(minL)) return c.del;
+    let mx = minL;
+    for (const o of c.stale || []) if (o.v > mx) mx = o.v;
+    return clamp(mx + 50, minL + 60, minL + 1300);
   }
   function removeCar(uid) {
     const c = rcars.get(uid);
@@ -2045,6 +2105,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   function updateRemoteCars(dt) {
     rcars.forEach((c, uid) => {
       // v149: fark daha yumuşak kapanır (küçük farklar görünmez, büyükler hızlı)
+      // v175: tampon gecikmesi ağa göre yavaşça ayarlanır (artarken hızlı, azalırken çok yavaş — akış bozulmaz)
+      if (c.del != null) {
+        const tg = carDelayTarget(c);
+        if (tg != null) c.del += (tg - c.del) * Math.min(1, dt * (tg > c.del ? 2.5 : 0.35));
+      }
       const big = Math.hypot(c.ex, c.ez) > 2.5;
       const decay = Math.exp(-dt * (big ? 6 : 3.2));
       c.ex *= decay;
@@ -3479,8 +3544,20 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     me.run = self.run && !swim;
   }
 
+  // v175 — BİR KOLTUĞA BİR KİŞİ: başka bir oyuncu (ya da senaryo karakteri) o koltukta oturuyorsa
+  // koltuk dolu sayılır (mekânlardaki gibi; üst üste oturma yok). Ağdan ek veri yok — oturan oyuncunun
+  // konumu zaten koltuğun kendisi.
+  function seatBusy(st) {
+    for (const r of remotes.values()) {
+      const q = r.st;
+      if (!q || q.p !== 's') continue;
+      if (Math.abs(q.x - st.x) > 0.45 || Math.abs(q.z - st.z) > 0.45) continue;
+      if (Math.hypot(q.x - st.x, q.z - st.z) < 0.4 && (q.sy == null || Math.abs(q.sy - st.y) < 0.45)) return true;
+    }
+    return false;
+  }
   function sitAt(st) {
-    if (driving || !st || st.taken) return;
+    if (driving || !st || st.taken || seatBusy(st)) return;
     self.target = null;
     self.path = null;
     ring.visible = false;
@@ -3506,7 +3583,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       const dy = st.y - me.y;
       if (dy > 1.15 || dy < -0.3) return;
       const d = Math.hypot(st.x - self.x, st.z - self.z);
-      if (d < bd) {
+      if (d < bd && !seatBusy(st)) {
         bd = d;
         best = st;
       }
@@ -4028,7 +4105,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         if (dy > 1.15 || dy < -0.3) return;
         const d = Math.hypot(st.x - self.x, st.z - self.z);
         // v159.3: bazı oturakların erişimi geniş (otobüs durağı banki önden de)
-        if (d < Math.max(sd, st.reach || 0) && d < sdBest) {
+        if (d < Math.max(sd, st.reach || 0) && d < sdBest && !seatBusy(st)) {
           sdBest = d;
           sb = st;
         }
@@ -4635,6 +4712,18 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       const t0 = Date.now();
       while ([...tmpFigs, ...fbFigs].some((f) => !f.tex.ready) && Date.now() - t0 < 5000) await sleep(80);
       if (tmpFigs.some((f) => f.pet)) await sleep(60); // evcil hayvan dokuları
+      // v175 — araçtaki / tribündeki kişinin ARKA dokusu (ense) canlıda ilk gerektiğinde sırayla çizilir;
+      // fotoğraf tek karede çizildiği için henüz hazır olmuyordu → arabada yüz kameraya dönük, motorda /
+      // suda araçta sürücü hiç görünmüyordu. Artık fotoğraftan önce hazırlanır (en çok 3 sn beklenir).
+      const backs = [];
+      tmpFigs.forEach((f) => {
+        const p = f.shot || {};
+        if (p.c) backs.push([f, 'back']);
+        else if (p.sw != null) backs.push([f, p.sy != null ? 'back' : 'backIdle']);
+      });
+      backs.forEach(([f, pose]) => ensureBackTex(f.tex, pose));
+      const t1 = Date.now();
+      while (backs.some(([f, pose]) => f.tex && !f.tex.lazy && !f.tex.tex?.[pose] && f.tex.pending?.[pose]) && Date.now() - t1 < 3000) await sleep(60);
       // v153: stadyum reklamları fotoğrafın çekildiği andaki sponsorlar (eski fotoğraf: varsayılan)
       const stM = stadLot?.info?.match;
       const liveAds = stM?.getSponsors?.() ?? null;

@@ -1195,7 +1195,11 @@ B.piknik = (kit, p, ctx) => {
     kit.box(2.2, 0.08, 0.9, wood, x, gy + 0.74, z, { ry: PI / 2 });
     kit.box(0.7, 0.74, 0.12, wood, x, gy, z - 0.9);
     kit.box(0.7, 0.74, 0.12, wood, x, gy, z + 0.9);
-    for (const s of [-1, 1]) kit.box(0.3, 0.06, 2.2, wood, x + s * 0.75, gy + 0.45, z);
+    for (const s of [-1, 1]) {
+      kit.box(0.3, 0.06, 2.2, wood, x + s * 0.75, gy + 0.45, z);
+      // v175: piknik bankına oturulur (bank başına 2 kişi; yüz masaya dönük, kalkınca dışarı)
+      for (const d of [-0.5, 0.5]) kit.seats.push({ o: kit.group, x: x + s * 0.75, y: gy + 0.51, z: z + d, yaw: (s * PI) / 2 });
+    }
     kit.solid(x, z, 0.9, 1.1);
     if (i % 2 === 0) kit.item('mangal', x, z + 2.4, 0, 0, { y: gy });
   });

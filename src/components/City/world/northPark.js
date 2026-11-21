@@ -255,7 +255,11 @@ export function buildNorthPark(groundAt) {
       kit.box(2.2, 0.08, 0.9, wood, x, gy + 0.74, z);
       kit.box(0.12, 0.74, 0.7, wood, x - 0.9, gy, z);
       kit.box(0.12, 0.74, 0.7, wood, x + 0.9, gy, z);
-      for (const s of [-1, 1]) kit.box(2.2, 0.06, 0.3, wood, x, gy + 0.45, z + s * 0.75);
+      for (const s of [-1, 1]) {
+        kit.box(2.2, 0.06, 0.3, wood, x, gy + 0.45, z + s * 0.75);
+        // v175: piknik bankına oturulur (bank başına 2 kişi)
+        for (const d of [-0.5, 0.5]) kit.seats.push({ o: kit.group, x: x + d, y: gy + 0.51, z: z + s * 0.75, yaw: s > 0 ? 0 : PI });
+      }
       kit.solid(x, z, 1.1, 0.9);
       if (i % 2 === 0) kit.item('mangal', x + 2.2, z, 0, 0, { y: gy });
     });
