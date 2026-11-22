@@ -22,6 +22,16 @@ export const STORE_APPS = [
     feats: ['Para gönderme ve isteme', 'Tüm hesap hareketleri tek listede', 'Kredi ve yatırımlar'],
   },
   {
+    id: 'borsa',
+    name: 'Neon Borsa',
+    title: 'Neon Borsa',
+    sub: 'Mekân hisseleri',
+    cat: 'Finans',
+    size: '12 MB',
+    desc: 'Seyyar satıcıların hisselerini al, sat. Mekânların günlük gelirinden payına düşen altın her gece hesabına birikir; istediğin zaman topla.',
+    feats: ['Hisse al-sat, saatlik fiyat grafiği', 'Her gece gelir payı', 'Mekân mekân gelir detayı'],
+  },
+  {
     id: 'fabrika',
     name: 'Fabrika',
     title: 'Fabrika',

@@ -11,6 +11,14 @@ export function PhoneSvgIcon({ id, size = 30 }) {
         <path d="M14.6 12.6a3 3 0 1 0 0 4.3" />
       </svg>
     );
+  if (id === 'borsa')
+    return (
+      <svg {...common} {...P} strokeWidth={2.1}>
+        <path d="M3.5 17.5l5.2-5.6 3.8 3.3 7.8-8.4" />
+        <path d="M15.2 6.8h5.1v5.1" />
+        <path d="M3.5 21h17" />
+      </svg>
+    );
   if (id === 'fabrika')
     return (
       <svg {...common} {...P}>

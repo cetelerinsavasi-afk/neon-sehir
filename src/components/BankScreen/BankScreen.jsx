@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useInvestmentPrices } from '../../hooks/useInvestmentPrices';
@@ -12,7 +12,7 @@ import {
   repayStateDebt,
 } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
-import PriceChart from '../PriceChart/PriceChart';
+import { useBackClose } from '../../lib/backStack';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import CreditSection from './CreditSection';
 import './BankScreen.css';
@@ -29,6 +29,104 @@ function ChangeBadge({ pct }) {
       {positive ? '▲' : '▼'} {Math.abs(pct)}%
     </span>
   );
+}
+
+// v176 — Parara yeni tasarım: büyük, degrade dolgulu fiyat grafiği (gerçek piksel boyutunda)
+function BankChart({ points, color }) {
+  const ref = useRef(null);
+  const [w, setW] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const ro = new ResizeObserver(() => setW(el.clientWidth));
+    ro.observe(el);
+    setW(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  const H = 96;
+  const gid = `bank-g-${color.replace('#', '')}`;
+  let svg = null;
+  if (points && points.length >= 2 && w > 0) {
+    const mx = Math.max(...points);
+    const mn = Math.min(...points);
+    const r = mx - mn || 1;
+    const xy = points.map((v, i) => [4 + (i / (points.length - 1)) * (w - 8), H - 6 - ((v - mn) / r) * (H - 14)]);
+    const d = `M${xy.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' L')}`;
+    const last = xy[xy.length - 1];
+    svg = (
+      <svg viewBox={`0 0 ${w} ${H}`} width={w} height={H} aria-hidden="true">
+        <defs>
+          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor={color} stopOpacity=".32" />
+            <stop offset="1" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <path d={`${d} L${w - 4},${H} L4,${H} Z`} fill={`url(#${gid})`} />
+        <path d={d} fill="none" stroke={color} strokeWidth="2.2" strokeLinejoin="round" />
+        <circle cx={last[0]} cy={last[1]} r="4" fill={color} stroke="#0b1220" strokeWidth="2" />
+      </svg>
+    );
+  }
+  return (
+    <div className="bank-chart" ref={ref} style={{ height: H }}>
+      {svg || <p className="bank-hint">Henüz yeterli veri yok.</p>}
+    </div>
+  );
+}
+
+const ICON_P = { fill: 'none', stroke: 'currentColor', strokeWidth: 1.9, strokeLinecap: 'round', strokeLinejoin: 'round' };
+function BankIcon({ id }) {
+  const c = { width: 22, height: 22, viewBox: '0 0 24 24', 'aria-hidden': true, ...ICON_P };
+  if (id === 'faiz')
+    return (
+      <svg {...c}>
+        <rect x="3.5" y="5" width="17" height="14" rx="3" />
+        <circle cx="12" cy="12" r="3.2" />
+        <path d="M12 8.8v-1M12 16.2v-1M15.2 12h1M7.8 12h1" />
+      </svg>
+    );
+  if (id === 'elmas')
+    return (
+      <svg {...c}>
+        <path d="M7 4h10l4 5-9 11L3 9z" />
+        <path d="M3 9h18M9.5 4L8 9l4 11 4-11-1.5-5" />
+      </svg>
+    );
+  if (id === 'hisse')
+    return (
+      <svg {...c}>
+        <path d="M4 20V10M10 20V5M16 20v-7M21 20H3" />
+      </svg>
+    );
+  if (id === 'kripto')
+    return (
+      <svg {...c}>
+        <path d="M12 2.8l8 4.6v9.2l-8 4.6-8-4.6V7.4z" />
+        <path d="M9.5 8.5h3.6a1.8 1.8 0 010 3.5H9.5h4a1.8 1.8 0 010 3.5H9.5zM11 7v1.5M11 15.5V17" />
+      </svg>
+    );
+  if (id === 'yatirimlar')
+    return (
+      <svg {...c}>
+        <path d="M3.5 17.5l5.2-5.6 3.8 3.3 7.8-8.4" />
+        <path d="M15.2 6.8h5.1v5.1" />
+      </svg>
+    );
+  if (id === 'krediler')
+    return (
+      <svg {...c}>
+        <rect x="2.8" y="5.5" width="18.4" height="13" rx="2.5" />
+        <path d="M2.8 10h18.4M6.5 15h4" />
+      </svg>
+    );
+  if (id === 'cezalar')
+    return (
+      <svg {...c}>
+        <path d="M12 3v18M7 21h10M5 7h14" />
+        <path d="M5 7l-2.5 6a2.5 2.5 0 005 0zM19 7l-2.5 6a2.5 2.5 0 005 0z" />
+      </svg>
+    );
+  return null;
 }
 
 // PnlBadge — kullanıcı revizesi: "faize/yatırımlara koyduğumuz paranın
@@ -283,24 +381,53 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
   const cryptoValue = Math.floor(cryptoHoldings * (prices.cryptoPrice ?? 0));
   const totalInvestments = bankBalance + diamondValue + stockValue + cryptoValue;
 
+  const assets = [
+    { key: 'diamond', icon: 'elmas', name: 'Elmas', color: '#19e8ff', pct: prices.diamondChangePct, reversed: diamondReversedRegime, points: diamondPoints, price: prices.diamondPrice ?? 0, holdings: diamondHoldings, value: diamondValue, cost: diamondCostBasis, allLabel: 'Tüm Elmasları Sat' },
+    { key: 'stock', icon: 'hisse', name: 'Hisse Senedi', color: '#ffd23f', pct: prices.stockChangePct, reversed: stockReversedRegime, points: stockPoints, price: prices.stockPrice ?? 0, holdings: stockHoldings, value: stockValue, cost: stockCostBasis, allLabel: 'Tüm Hisseleri Sat' },
+    { key: 'crypto', icon: 'kripto', name: 'Kripto', color: '#ff2e8c', pct: prices.cryptoChangePct, reversed: cryptoReversedRegime, points: cryptoPoints, price: prices.cryptoPrice ?? 0, holdings: cryptoHoldings, value: cryptoValue, cost: cryptoCostBasis, allLabel: 'Tüm Kriptoları Sat' },
+  ];
+  const parts = [
+    { k: 'Faiz', v: bankBalance, c: '#2fd47a' },
+    { k: 'Elmas', v: diamondValue, c: '#19e8ff' },
+    { k: 'Hisse', v: stockValue, c: '#ffd23f' },
+    { k: 'Kripto', v: cryptoValue, c: '#ff2e8c' },
+  ];
+
   return (
     <>
       <div className="bank-total-card">
-        <span className="bank-total-label">Tüm Yatırımların</span>
-        <span className="bank-total-value">{totalInvestments.toLocaleString('tr-TR')} altın</span>
-        <span className="bank-total-breakdown">
-          Faizdeki: {bankBalance.toLocaleString('tr-TR')} · Elmas: {diamondValue.toLocaleString('tr-TR')} · Hisse:{' '}
-          {stockValue.toLocaleString('tr-TR')} · Kripto: {cryptoValue.toLocaleString('tr-TR')}
-        </span>
+        <span className="bank-total-label">Tüm yatırımların</span>
+        <span className="bank-total-value">{totalInvestments.toLocaleString('tr-TR')}</span>
+        <div className="bank-split" aria-hidden="true">
+          {parts.map((x) => (totalInvestments > 0 && x.v > 0 ? <i key={x.k} style={{ flexGrow: x.v, background: x.c }} /> : null))}
+        </div>
+        <div className="bank-split-legend">
+          {parts.map((x) => (
+            <span key={x.k}>
+              <i style={{ background: x.c }} />
+              {x.k} <b>{x.v.toLocaleString('tr-TR')}</b>
+            </span>
+          ))}
+        </div>
       </div>
 
       <div className="bank-section">
-        <div className="bank-section-row">
-          <span>Faizdeki Altın</span>
-          <strong className="bank-highlight">{bankBalance.toLocaleString('tr-TR')}</strong>
+        <div className="bank-asset-head">
+          <span className="bank-asset-ic" style={{ color: '#2fd47a' }}>
+            <BankIcon id="faiz" />
+          </span>
+          <span className="bank-asset-name">
+            Faiz hesabı
+            <small>Her gece %1 · en fazla 100.000</small>
+          </span>
+          <span className="bank-asset-price">
+            <b>{bankBalance.toLocaleString('tr-TR')}</b>
+            <small>
+              günlük +{Math.min(100000, Math.floor(bankBalance * 0.01)).toLocaleString('tr-TR')}
+              {Math.floor(bankBalance * 0.01) >= 100000 ? <strong className="bank-max-tag"> MAX</strong> : null}
+            </small>
+          </span>
         </div>
-        {/* v95: faiz birikmez — her gün 00:00'da cebine yatar */}
-        <p className="bank-hint">Günlük faiz {Math.min(100000, Math.floor(bankBalance * 0.01)).toLocaleString('tr-TR')} altın · %1 faiz{Math.floor(bankBalance * 0.01) >= 100000 ? <strong className="bank-max-tag"> MAX</strong> : null}</p>
         <TradeToggle
           buyLabel="Yatır"
           sellLabel="Çek"
@@ -313,134 +440,48 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
         />
       </div>
 
-      <div className="bank-section">
-        <p className="bank-section-title">
-          Elmas <ChangeBadge pct={prices.diamondChangePct} />
-          {diamondReversedRegime && (
-            <span className="bank-regime-warning">düşme eğiliminde ↓</span>
-          )}
-        </p>
-        <PriceChart points={diamondPoints} color="#19e8ff" />
-        <div className="bank-section-row">
-          <span>Güncel fiyat</span>
-          <strong>{(prices.diamondPrice ?? 0).toLocaleString('tr-TR')} altın/adet</strong>
-        </div>
-        <div className="bank-section-row">
-          <span>Sahip olduğun</span>
-          <strong>
-            {formatUnits(diamondHoldings)} adet (
-            {Math.floor(diamondHoldings * (prices.diamondPrice ?? 0)).toLocaleString('tr-TR')}{' '}
-            altın değerinde)
-          </strong>
-        </div>
-        <PnlBadge currentValue={diamondValue} costBasis={diamondCostBasis} />
-        <TradeToggle
-          buyLabel="Al"
-          sellLabel="Sat"
-          unitPrice={prices.diamondPrice}
-          busy={busy === 'buy-diamond' || busy === 'sell-diamond'}
-          maxBuy={player?.gold ?? 0}
-          maxSell={diamondValue}
-          onBuy={(amount) => run('buy-diamond', () => buyInvestment('diamond', amount))}
-          onSell={(amount) => run('sell-diamond', () => sellInvestment('diamond', amount))}
-          quickAmounts={INVESTMENT_QUICK_AMOUNTS}
-          sellCommissionRate={0.01}
-        />
-        {diamondHoldings > 0 && (
-          <SellAllButton
-            label="Tüm Elmasları Sat"
-            assetValue={diamondValue}
-            busy={busy === 'sell-all-diamond'}
-            onConfirm={() => run('sell-all-diamond', () => sellAllInvestment('diamond'))}
+      {assets.map((a) => (
+        <div className="bank-section" key={a.key}>
+          <div className="bank-asset-head">
+            <span className="bank-asset-ic" style={{ color: a.color }}>
+              <BankIcon id={a.icon} />
+            </span>
+            <span className="bank-asset-name">
+              {a.name}
+              {a.reversed ? <small className="bank-regime-warning">düşme eğiliminde ↓</small> : <small>adet fiyatı</small>}
+            </span>
+            <span className="bank-asset-price">
+              <b>{a.price.toLocaleString('tr-TR')}</b>
+              <ChangeBadge pct={a.pct} />
+            </span>
+          </div>
+          <BankChart points={a.points} color={a.color} />
+          <div className="bank-hold">
+            <span>
+              <small>Sahip olduğun</small>
+              <b>{formatUnits(a.holdings)} adet</b>
+            </span>
+            <span>
+              <small>Değeri</small>
+              <b>{a.value.toLocaleString('tr-TR')}</b>
+            </span>
+          </div>
+          <PnlBadge currentValue={a.value} costBasis={a.cost} />
+          <TradeToggle
+            buyLabel="Al"
+            sellLabel="Sat"
+            unitPrice={a.price}
+            busy={busy === `buy-${a.key}` || busy === `sell-${a.key}`}
+            maxBuy={player?.gold ?? 0}
+            maxSell={a.value}
+            onBuy={(amount) => run(`buy-${a.key}`, () => buyInvestment(a.key, amount))}
+            onSell={(amount) => run(`sell-${a.key}`, () => sellInvestment(a.key, amount))}
+            quickAmounts={INVESTMENT_QUICK_AMOUNTS}
+            sellCommissionRate={0.01}
           />
-        )}
-      </div>
-
-      <div className="bank-section">
-        <p className="bank-section-title">
-          Hisse Senedi <ChangeBadge pct={prices.stockChangePct} />
-          {stockReversedRegime && (
-            <span className="bank-regime-warning">düşme eğiliminde ↓</span>
-          )}
-        </p>
-        <PriceChart points={stockPoints} color="#ffd23f" />
-        <div className="bank-section-row">
-          <span>Güncel fiyat</span>
-          <strong>{(prices.stockPrice ?? 0).toLocaleString('tr-TR')} altın/adet</strong>
+          {a.holdings > 0 && <SellAllButton label={a.allLabel} assetValue={a.value} busy={busy === `sell-all-${a.key}`} onConfirm={() => run(`sell-all-${a.key}`, () => sellAllInvestment(a.key))} />}
         </div>
-        <div className="bank-section-row">
-          <span>Sahip olduğun</span>
-          <strong>
-            {formatUnits(stockHoldings)} adet (
-            {Math.floor(stockHoldings * (prices.stockPrice ?? 0)).toLocaleString('tr-TR')} altın
-            değerinde)
-          </strong>
-        </div>
-        <PnlBadge currentValue={stockValue} costBasis={stockCostBasis} />
-        <TradeToggle
-          buyLabel="Al"
-          sellLabel="Sat"
-          unitPrice={prices.stockPrice}
-          busy={busy === 'buy-stock' || busy === 'sell-stock'}
-          maxBuy={player?.gold ?? 0}
-          maxSell={stockValue}
-          onBuy={(amount) => run('buy-stock', () => buyInvestment('stock', amount))}
-          onSell={(amount) => run('sell-stock', () => sellInvestment('stock', amount))}
-          quickAmounts={INVESTMENT_QUICK_AMOUNTS}
-          sellCommissionRate={0.01}
-        />
-        {stockHoldings > 0 && (
-          <SellAllButton
-            label="Tüm Hisseleri Sat"
-            assetValue={stockValue}
-            busy={busy === 'sell-all-stock'}
-            onConfirm={() => run('sell-all-stock', () => sellAllInvestment('stock'))}
-          />
-        )}
-      </div>
-
-      <div className="bank-section">
-        <p className="bank-section-title">
-          Kripto <ChangeBadge pct={prices.cryptoChangePct} />
-          {cryptoReversedRegime && (
-            <span className="bank-regime-warning">düşme eğiliminde ↓</span>
-          )}
-        </p>
-        <PriceChart points={cryptoPoints} color="#ff2e8c" />
-        <div className="bank-section-row">
-          <span>Güncel fiyat</span>
-          <strong>{(prices.cryptoPrice ?? 0).toLocaleString('tr-TR')} altın/adet</strong>
-        </div>
-        <div className="bank-section-row">
-          <span>Sahip olduğun</span>
-          <strong>
-            {formatUnits(cryptoHoldings)} adet (
-            {Math.floor(cryptoHoldings * (prices.cryptoPrice ?? 0)).toLocaleString('tr-TR')} altın
-            değerinde)
-          </strong>
-        </div>
-        <PnlBadge currentValue={cryptoValue} costBasis={cryptoCostBasis} />
-        <TradeToggle
-          buyLabel="Al"
-          sellLabel="Sat"
-          unitPrice={prices.cryptoPrice}
-          busy={busy === 'buy-crypto' || busy === 'sell-crypto'}
-          maxBuy={player?.gold ?? 0}
-          maxSell={cryptoValue}
-          onBuy={(amount) => run('buy-crypto', () => buyInvestment('crypto', amount))}
-          onSell={(amount) => run('sell-crypto', () => sellInvestment('crypto', amount))}
-          quickAmounts={INVESTMENT_QUICK_AMOUNTS}
-          sellCommissionRate={0.01}
-        />
-        {cryptoHoldings > 0 && (
-          <SellAllButton
-            label="Tüm Kriptoları Sat"
-            assetValue={cryptoValue}
-            busy={busy === 'sell-all-crypto'}
-            onConfirm={() => run('sell-all-crypto', () => sellAllInvestment('crypto'))}
-          />
-        )}
-      </div>
+      ))}
       {error && <p className="bank-error">{error}</p>}
     </>
   );
@@ -454,10 +495,17 @@ function PenaltiesTab({ player, busy, error, run }) {
 
   return (
     <div className="bank-section">
-      <p className="bank-section-title">Devlete Borcun</p>
-      <div className="bank-section-row">
-        <span>Toplam borç</span>
-        <strong className="bank-debt">{debtToState.toLocaleString('tr-TR')}</strong>
+      <div className="bank-asset-head">
+        <span className="bank-asset-ic" style={{ color: debtToState > 0 ? '#ff5a6e' : '#2fd47a' }}>
+          <BankIcon id="cezalar" />
+        </span>
+        <span className="bank-asset-name">
+          Devlete borcun
+          <small>{debtToState > 0 ? 'Kazancının yarısı borca gider' : 'Borcun yok'}</small>
+        </span>
+        <span className="bank-asset-price">
+          <b className={debtToState > 0 ? 'bank-debt' : ''}>{debtToState.toLocaleString('tr-TR')}</b>
+        </span>
       </div>
       {debtToState > 0 ? (
         <>
@@ -489,10 +537,78 @@ function PenaltiesTab({ player, busy, error, run }) {
 }
 
 const CARDS = [
-  { id: 'yatirimlar', label: 'Yatırımlar', emoji: '📈', desc: 'Elmas ve kripto al-sat, faize para yatır.' },
-  { id: 'krediler', label: 'Krediler', emoji: '🏦', desc: 'Kredi puanınla kredi çek, borcunu öde.' },
-  { id: 'cezalar', label: 'Cezalar', emoji: '⚖️', desc: 'Devlete olan borcunu gör ve öde.' },
+  { id: 'yatirimlar', label: 'Yatırımlar', desc: 'Faiz, elmas, hisse senedi, kripto' },
+  { id: 'krediler', label: 'Krediler', desc: 'Kredi puanınla kredi çek, öde' },
+  { id: 'cezalar', label: 'Cezalar', desc: 'Devlete borcunu gör ve öde' },
 ];
+const TAB_TITLE = { yatirimlar: 'Yatırımlar', krediler: 'Krediler', cezalar: 'Cezalar' };
+
+// kart numarası: oyuncuya sabit 4 hane (süs)
+const cardNo = (id) => String([...String(id || 'neon')].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) % 10000, 7)).padStart(4, '0');
+
+// v176 — Parara ana sayfa: banka kartı (toplam varlık) + hizmetler
+function BankHome({ player, prices, onOpen }) {
+  const gold = player?.gold ?? 0;
+  const bank = player?.bankBalance ?? 0;
+  const inv =
+    Math.floor((player?.diamondHoldings ?? 0) * (prices.diamondPrice ?? 0)) +
+    Math.floor((player?.stockHoldings ?? 0) * (prices.stockPrice ?? 0)) +
+    Math.floor((player?.cryptoHoldings ?? 0) * (prices.cryptoPrice ?? 0));
+  const debt = player?.debtToState ?? 0;
+  const credit = player?.credit || null;
+  const name = player?.displayName || 'Neon Şehir';
+  return (
+    <div className="bank-home">
+      <div className="bank-card">
+        <div className="bank-card-top">
+          <span className="bank-card-brand">Parara</span>
+          <span className="bank-card-chip" aria-hidden="true" />
+        </div>
+        <span className="bank-card-label">Toplam varlık</span>
+        <span className="bank-card-total">{(gold + bank + inv).toLocaleString('tr-TR')}</span>
+        <div className="bank-card-bottom">
+          <span className="bank-card-name">{name}</span>
+          <span className="bank-card-no" aria-hidden="true">•••• {cardNo(player?.id)}</span>
+        </div>
+      </div>
+      <div className="bank-quick">
+        <span>
+          <small>Cüzdan</small>
+          <b>{gold.toLocaleString('tr-TR')}</b>
+        </span>
+        <span>
+          <small>Faizde</small>
+          <b>{bank.toLocaleString('tr-TR')}</b>
+        </span>
+        <span>
+          <small>Yatırım</small>
+          <b>{inv.toLocaleString('tr-TR')}</b>
+        </span>
+      </div>
+      <p className="bank-h">Hizmetler</p>
+      <div className="bank-list">
+        {CARDS.map((c) => {
+          const tag = c.id === 'cezalar' && debt > 0 ? `${debt.toLocaleString('tr-TR')} borç` : c.id === 'krediler' && credit ? 'Aktif kredi' : null;
+          return (
+            <button key={c.id} className="bank-row" onClick={() => onOpen(c.id)}>
+              <span className={`bank-row-ic ic-${c.id}`}>
+                <BankIcon id={c.id} />
+              </span>
+              <span className="bank-row-mid">
+                <b>{c.label}</b>
+                <small>{c.desc}</small>
+              </span>
+              {tag && <span className={`bank-row-tag${c.id === 'cezalar' ? ' bad' : ''}`}>{tag}</span>}
+              <span className="bank-row-go" aria-hidden="true">
+                ›
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 export default function BankScreen() {
   const { user } = useAuth();
@@ -501,6 +617,8 @@ export default function BankScreen() {
   const [tab, setTab] = useState(null);
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
+  // v176: Android geri tuşu önce bölümü kapatır (Parara ana sayfasına döner)
+  useBackClose(Boolean(tab), () => setTab(null));
 
   if (!user) {
     return <SignInPrompt message="Bankayı kullanmak için giriş yapmalısın." />;
@@ -518,24 +636,12 @@ export default function BankScreen() {
     }
   };
 
-  if (!tab) {
-    return (
-      <div className="bank-picker">
-        {CARDS.map((c) => (
-          <button key={c.id} className="bank-picker-card" onClick={() => setTab(c.id)}>
-            <span className="bank-picker-emoji">{c.emoji}</span>
-            <span className="bank-picker-title">{c.label}</span>
-            <span className="bank-picker-desc">{c.desc}</span>
-          </button>
-        ))}
-      </div>
-    );
-  }
+  if (!tab) return <BankHome player={player} prices={prices} onOpen={setTab} />;
 
   return (
     <div className="bank-screen">
       <button className="bank-back-btn" onClick={() => setTab(null)}>
-        ← Geri
+        <span aria-hidden="true">‹</span> {TAB_TITLE[tab]}
       </button>
 
       {tab === 'yatirimlar' && (

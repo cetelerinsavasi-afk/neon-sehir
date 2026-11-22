@@ -702,6 +702,8 @@ export const houseAction = (payload) =>
   });
 // v147 — Gezilebilir şehir (functions/cityPhoto.js): op 'photoShot' → imzalı fotoğraf karesi
 export const cityAction = (payload) => httpsCallable(functions, 'cityAction')(payload).then((r) => r.data);
+// v176 — Neon Borsa: { op: 'al' | 'sat', co } · { op: 'topla' }
+export const borsaAction = (payload) => httpsCallable(functions, 'borsaAction')(payload).then((r) => r.data);
 export const recordVenueVisit = (venue) => httpsCallable(functions, 'recordVenueVisit')({ venue });
 
 // v66 — Zümrüt Mağazası: zümrüt karşılığı altın paketi

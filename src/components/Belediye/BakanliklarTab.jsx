@@ -125,15 +125,7 @@ function Ticaret({ r, c, rates }) {
     ['sfg_araba', 'Oyunun galerisi', 'sfAraba'],
   ].map(([k, name, rid]) => ({ key: k, name, n: nf(st[`${k}_n`]), ciro: nf(st[`${k}_ciro`]), kar: nf(st[`${k}_kar`]), rate: pctOf(rates, rid), tax: nf(st[`${k}_vergi`]) }));
   const sfTax = (c.in.vergi_sifirSilah || 0) + (c.in.vergi_sifirAraba || 0);
-  // v145 — seyyar satıcı gelirleri (tamamı devlete): satıcı başına adet / tutar
-  const sy = [
-    ['kk', '🌯 Kokoreççi'],
-    ['sm', '🥯 Simitçi'],
-    ['dn', '🐟 Balık Ekmekçi'],
-    ['kf', '🍔 Köfteci'],
-    ['md', '🦪 Midyeci'],
-    ['dd', '🍦 Dondurmacı'],
-  ].map(([k, name]) => ({ key: k, name, n: nf(st[`sy_${k}_n`]), ciro: nf(st[`sy_${k}_ciro`]) }));
+  // v176: seyyar satıcı tablosu kaldırıldı (gelirler Neon Borsa hissedarlarına gidiyor)
   return (
     <>
       <Kpis
@@ -142,7 +134,8 @@ function Ticaret({ r, c, rates }) {
           { label: 'Oyunun gazinosu', value: nf(gzTotal), sub: 'kârın tamamı devlete' },
           { label: 'Sıfır satış vergisi', value: nf(sfTax), sub: 'kârdan' },
           { label: 'Piyango vergisi', value: nf(c.in.vergi_piyango), sub: st.pi_bilet ? `${nf(st.pi_bilet)} bilet · ödül ${nf(st.pi_odul)}` : null },
-          { label: 'Seyyar satıcılar', value: nf(c.in.seyyar_satis), sub: st.sy_n ? `${nf(st.sy_n)} satış · tamamı devlete` : 'tamamı devlete' },
+          // v176: seyyar satıcı gelirleri artık Neon Borsa hissedarlarına → yerine hisse gelir vergisi
+          { label: 'Hisse senedi vergisi', value: nf(c.in.vergi_hisse), sub: `%${rates.hisse ?? 10} · gelir toplanırken${c.in.seyyar_sahipsiz ? ` · hissedarsız mekân geliri ${nf(c.in.seyyar_sahipsiz)}` : ''}` },
           { label: 'Benzinlik', value: nf(c.in.benzinlik), sub: st.bz_n ? `⛽ ${nf(st.bz_benzin_n)} · 🛒 ${nf(st.bz_market_n)} · tamamı devlete` : 'benzin + market · tamamı devlete' },
         ]}
       />
@@ -170,20 +163,6 @@ function Ticaret({ r, c, rates }) {
         rows={gz}
         foot={{ name: 'Toplam', v: nf(gzTotal) }}
       />
-      {sy.some((x) => x.n !== '0') && (
-        <>
-          <h4 className="bd-h">Seyyar satıcılar</h4>
-          <Table
-            cols={[
-              { k: 'name', label: 'Satıcı' },
-              { k: 'n', label: 'Satış', num: true },
-              { k: 'ciro', label: 'Devlete giden', num: true },
-            ]}
-            rows={sy}
-            foot={{ name: 'Toplam', n: nf(st.sy_n), ciro: nf(c.in.seyyar_satis) }}
-          />
-        </>
-      )}
       <h4 className="bd-h">Sıfır satışlar</h4>
       <Table
         cols={[

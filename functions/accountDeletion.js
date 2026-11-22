@@ -8,6 +8,7 @@
 // Not: enforceReadOnly Firestore prototiplerini geçici olarak kilitler — yalnızca
 // tek başına çalışan yerel betikte kullanılır, Cloud Functions içinde ÇAĞRILMAZ.
 // =============================================================================
+import { BORSA_CO_IDS, BORSA_DOC, coState, holdState } from './borsa.js'; // v176 Neon Borsa
 export const TOMBSTONE_NAME = 'Silinmiş Oyuncu';
 export const TOMBSTONE_STAFF = 'Silinmiş Yetkili';
 export const REDACTED_TEXT = '[hesap silindi]';
@@ -452,6 +453,16 @@ export async function buildDeletionPlan({ db, auth, uid, email, FieldPath, now =
     });
   }
 
+  // v176 — Neon Borsa: hisseler havuza döner (satış parası silinen hesaba yazılmaz)
+  const borsaShares = BORSA_CO_IDS.reduce((a, id) => a + holdState(user, id).n, 0);
+  if (user?.borsa)
+    add('flow', {
+      what: 'Neon Borsa hisseleri',
+      paths: [userRef.path, BORSA_DOC],
+      detail: `${borsaShares} hisse mekânların havuzuna geri döner (ön temizlik).`,
+      ops: [{ phase: PHASES.PRECLEAN, type: 'borsaRelease' }],
+    });
+
   const liman = await counted(db.collection('limanOrders').doc(uid).get());
   if (liman.exists) add('delete', { what: 'Liman siparişi (teslimat bekleyen kalemler)', paths: [liman.ref.path], note: 'teslimatın silinmiş hesaba yazılmaması için ön temizlikte silinir', ops: [del(liman.ref.path, PHASES.PRECLEAN)] });
 
@@ -834,6 +845,28 @@ export async function applyPlan({ db, auth, FieldValue, callables, plan, log = (
         const ref = db.doc(op.machinePath);
         const s = await tx.get(ref);
         if (s.exists && s.data().workerId === uid) tx.update(ref, { workerId: null, workerName: null });
+      });
+    },
+    // v176 — Neon Borsa: hisseler havuza döner, hissedar sayısı düşer (idempotent: borsa alanı silinir)
+    async borsaRelease() {
+      await db.runTransaction(async (tx) => {
+        const uRef = db.collection('users').doc(uid);
+        const mRef = db.doc(BORSA_DOC);
+        const [u, m] = await Promise.all([tx.get(uRef), tx.get(mRef)]);
+        const user = u.data();
+        if (!user?.borsa) return;
+        const market = m.data() || {};
+        const patch = { co: {}, updatedAtMs: Date.now() };
+        let any = false;
+        for (const id of BORSA_CO_IDS) {
+          const h = holdState(user, id);
+          if (!h.n) continue;
+          const co = coState(market, id);
+          patch.co[id] = { n: Math.max(0, co.n - h.n), h: Math.max(0, co.h - 1) };
+          any = true;
+        }
+        tx.update(uRef, { borsa: FieldValue.delete(), borsaSon: FieldValue.delete() });
+        if (any) tx.set(mRef, patch, { merge: true });
       });
     },
     async clearHandover(op) {

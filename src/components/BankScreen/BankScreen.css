@@ -1,342 +1,549 @@
+/* v176 — Parara Bank yeni tasarım (işlem mantığı aynı; sadece görünüm)
+   Zemin: telefonun koyu lacivert zemini · Vurgu: Parara mavisi #3f86ff, altın #ffd23f,
+   kazanç yeşili #2fd47a, zarar kırmızısı #ff5a6e */
+.bank-home,
 .bank-screen {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.bank-picker {
+  --bk-card: #0f1726;
+  --bk-line: rgba(255, 255, 255, 0.07);
+  --bk-dim: #8796ae;
+  --bk-blue: #3f86ff;
+  --bk-gold: #ffd23f;
+  --bk-up: #2fd47a;
+  --bk-down: #ff5a6e;
   display: flex;
   flex-direction: column;
   gap: 12px;
+  color: #eef3fb;
+}
+.bank-home button,
+.bank-screen button {
+  font: inherit;
+  color: inherit;
 }
 
-.bank-picker-card {
+/* ---------- ana sayfa ---------- */
+.bank-card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 22px;
+  padding: 18px 18px 16px;
+  min-height: 178px;
   display: flex;
   flex-direction: column;
+  background: radial-gradient(120% 90% at 100% 0%, rgba(120, 200, 255, 0.35), transparent 55%), radial-gradient(90% 90% at 0% 100%, rgba(25, 232, 255, 0.22), transparent 60%), linear-gradient(140deg, #2a64e8 0%, #13328f 60%, #0b1d57 100%);
+  box-shadow: 0 18px 30px -18px rgba(40, 110, 255, 0.7);
+}
+.bank-card::after {
+  content: '';
+  position: absolute;
+  right: -40px;
+  bottom: -70px;
+  width: 200px;
+  height: 200px;
+  border-radius: 50%;
+  border: 26px solid rgba(255, 255, 255, 0.06);
+  pointer-events: none;
+}
+.bank-card-top {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 6px;
-  padding: 20px;
+  margin-bottom: 14px;
+}
+.bank-card-brand {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.3px;
+}
+.bank-card-chip {
+  width: 36px;
+  height: 27px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #ffe9a3, #d6a53a 55%, #f6d77c);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
+}
+.bank-card-label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.72);
+}
+.bank-card-total {
+  font-size: clamp(26px, 9vw, 34px);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
+  line-height: 1.15;
+}
+.bank-card-bottom {
+  margin-top: auto;
+  padding-top: 14px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  gap: 10px;
+}
+.bank-card-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bank-card-no {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.bank-quick {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.bank-quick span {
+  background: var(--bk-card);
   border-radius: 14px;
-  border: 1px solid var(--panel-border);
-  background: #05070c;
-  color: var(--text);
-  cursor: pointer;
-  text-align: center;
+  padding: 10px 10px;
+  display: grid;
+  gap: 2px;
 }
-
-.bank-picker-card:hover {
-  border-color: var(--neon-cyan);
-}
-
-.bank-picker-emoji {
-  font-size: 34px;
-}
-
-.bank-picker-title {
-  font-size: 16px;
-  font-weight: 700;
-}
-
-.bank-picker-desc {
+.bank-quick small,
+.bank-hold small,
+.bank-asset-name small {
+  color: var(--bk-dim);
   font-size: 12px;
-  color: var(--text-dim);
-  line-height: 1.4;
+}
+.bank-quick b {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bank-h {
+  margin: 6px 2px 0;
+  font-size: 13px;
+  color: var(--bk-dim);
+  font-weight: 600;
+}
+.bank-list {
+  background: var(--bk-card);
+  border-radius: 18px;
+  overflow: hidden;
+}
+.bank-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+.bank-row + .bank-row {
+  border-top: 1px solid var(--bk-line);
+}
+.bank-row:active {
+  background: rgba(255, 255, 255, 0.04);
+}
+.bank-row-ic {
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+}
+.bank-row-ic.ic-yatirimlar {
+  background: rgba(47, 212, 122, 0.14);
+  color: var(--bk-up);
+}
+.bank-row-ic.ic-krediler {
+  background: rgba(63, 134, 255, 0.16);
+  color: #7fb0ff;
+}
+.bank-row-ic.ic-cezalar {
+  background: rgba(255, 90, 110, 0.14);
+  color: var(--bk-down);
+}
+.bank-row-mid {
+  display: grid;
+  gap: 1px;
+}
+.bank-row-mid b {
+  font-size: 15.5px;
+}
+.bank-row-mid small {
+  color: var(--bk-dim);
+  font-size: 12.5px;
+}
+.bank-row-tag {
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: rgba(63, 134, 255, 0.16);
+  color: #9cc2ff;
+  white-space: nowrap;
+}
+.bank-row-tag.bad {
+  background: rgba(255, 90, 110, 0.16);
+  color: #ff8d9b;
+}
+.bank-row-go {
+  color: var(--bk-dim);
+  font-size: 22px;
+  line-height: 1;
 }
 
+/* ---------- bölümler ---------- */
 .bank-back-btn {
   align-self: flex-start;
-  padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px solid var(--panel-border);
-  background: var(--panel);
-  color: var(--text);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.bank-section {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  background: #05070c;
-  border: 1px solid var(--panel-border);
-  border-radius: 10px;
-  padding: 12px;
-}
-
-.bank-section-title {
-  margin: 0;
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
-}
-
-/* bank-regime-warning — kullanıcı revizesi: elmas/hisse senedi/kripto
-   fiyatı kendi "ters rejim" eşiğini (bkz. functions/index.js
-   hourlyInvestmentUpdate) geçtiğinde panelin sağ üstünde kırmızı bir
-   uyarı gösterilir, böylece oyuncular o seviyenin üzerinin riskli
-   olduğunu anlar. */
-.bank-regime-warning {
-  margin-left: auto;
-  color: var(--neon-pink);
-  font-weight: 800;
-  letter-spacing: 0;
-  text-transform: none;
-  font-size: 11px;
-}
-
-.bank-section-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12px;
-  color: var(--text-dim);
-}
-
-.bank-highlight {
-  color: var(--neon-cyan);
-}
-
-.bank-debt-hint {
-  color: var(--neon-pink);
-}
-
-.bank-debt {
-  color: var(--neon-pink);
-}
-
-.bank-hint {
-  margin: 0;
-  font-size: 11px;
-  color: var(--text-dim);
-}
-
-.bank-max-tag {
-  color: var(--neon-yellow);
-  font-weight: 800;
-}
-
-.bank-trade {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.bank-trade-buttons {
-  display: flex;
-  gap: 8px;
-}
-
-.bank-trade-btn {
-  flex: 1;
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid var(--panel-border);
-  background: var(--panel);
-  color: var(--text);
-  font-size: 13px;
+  gap: 6px;
+  min-height: 36px;
+  padding: 0 12px 0 8px;
+  border-radius: 12px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.06);
+  color: #eef3fb;
+  font-size: 14px;
   font-weight: 600;
   cursor: pointer;
 }
-
-.bank-trade-btn:hover {
-  border-color: var(--neon-cyan);
+.bank-back-btn span {
+  font-size: 20px;
+  line-height: 1;
+  color: #7fb0ff;
 }
-
-.bank-trade-btn.active {
-  border-color: var(--neon-cyan);
-  color: var(--neon-cyan);
-  background: rgba(25, 232, 255, 0.08);
-}
-
-.bank-trade-panel {
+.bank-total-card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 10px;
-  background: #0a0308;
-  border: 1px solid var(--panel-border);
-  border-radius: 8px;
+  gap: 4px;
+  padding: 16px;
+  border-radius: 20px;
+  background: radial-gradient(110% 90% at 100% 0%, rgba(63, 134, 255, 0.32), transparent 60%), linear-gradient(140deg, #14254a, #0d1629);
+  border: 1px solid rgba(63, 134, 255, 0.25);
 }
-
-.bank-btn.primary {
-  border-color: rgba(255, 46, 140, 0.5);
-  background: rgba(255, 46, 140, 0.12);
+.bank-total-label {
+  font-size: 13px;
+  color: #b8c9ea;
 }
-
-/* bank-sell-confirm — kullanıcı revizesi: "satarken bu kadar komisyon
-   oranı var emin misin diye sorsun" — komisyonlu her satışta (elmas/
-   hisse senedi/kripto) TradeToggle'ın normal miktar panelinin yerini
-   alan onay kutusu, "Tüm Kriptoları Sat"taki (.bank-sell-all-confirm)
-   ile aynı görsel dilde. */
-.bank-sell-confirm {
-  border-color: rgba(255, 46, 140, 0.35);
+.bank-total-value {
+  font-size: 30px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.4px;
 }
-
-.bank-change-badge {
-  font-size: 11px;
+.bank-split {
+  display: flex;
+  gap: 3px;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  margin: 8px 0 6px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.bank-split i {
+  display: block;
+  flex-basis: 0;
+  min-width: 4px;
+}
+.bank-split-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 12px;
+  color: var(--bk-dim);
+}
+.bank-split-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.bank-split-legend i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.bank-split-legend b {
+  color: #eef3fb;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.bank-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+  background: var(--bk-card);
+}
+.bank-asset-head {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+.bank-asset-ic {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, 0.06);
+}
+.bank-asset-name {
+  display: grid;
+  font-size: 16px;
   font-weight: 700;
-  margin-left: 6px;
+  line-height: 1.25;
 }
-
-.bank-change-badge.up {
-  color: var(--neon-cyan);
+.bank-asset-name small {
+  font-weight: 400;
 }
-
-.bank-change-badge.down {
-  color: var(--neon-pink);
+.bank-asset-price {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
 }
-
-.bank-pnl-badge {
+.bank-asset-price b {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.bank-asset-price small {
+  font-size: 12px;
+  color: var(--bk-up);
+  white-space: nowrap;
+}
+.bank-chart {
+  position: relative;
+  margin: 0 -4px;
+}
+.bank-chart svg {
+  display: block;
+}
+.bank-hold {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+.bank-hold span {
+  display: grid;
+  gap: 1px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 12px;
+  padding: 8px 10px;
+}
+.bank-hold b {
+  font-variant-numeric: tabular-nums;
+  font-size: 14.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bank-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.bank-section-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 13px;
+}
+.bank-highlight {
+  color: var(--bk-gold);
+}
+.bank-regime-warning {
+  color: #ffb36b !important;
+  font-weight: 600;
+}
+.bank-max-tag {
+  color: var(--bk-gold);
+  font-weight: 800;
+}
+.bank-debt {
+  color: var(--bk-down);
+}
+.bank-debt-hint {
+  color: #ffb3bd;
+}
+.bank-hint {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--bk-dim);
+}
+.bank-hint.small {
+  font-size: 12px;
+}
+.bank-change-badge {
   display: inline-block;
   font-size: 12px;
   font-weight: 700;
-  margin: 2px 0 6px;
-  padding: 3px 8px;
-  border-radius: 6px;
-  border: 1px solid transparent;
-}
-
-.bank-pnl-badge.up {
-  color: var(--neon-cyan);
-  border-color: rgba(25, 232, 255, 0.35);
-  background: rgba(25, 232, 255, 0.08);
-}
-
-.bank-pnl-badge.down {
-  color: var(--neon-pink);
-  border-color: rgba(255, 46, 140, 0.35);
-  background: rgba(255, 46, 140, 0.08);
-}
-
-.bank-amount-preview {
-  font-size: 10px;
-  color: var(--neon-cyan);
-  padding-left: 2px;
-}
-
-.bank-sell-all {
-  padding: 8px;
+  padding: 2px 7px;
   border-radius: 8px;
-  border: 1px dashed var(--panel-border);
-  background: transparent;
-  color: var(--text-dim);
-  font-size: 11px;
+  white-space: nowrap;
+}
+.bank-change-badge.up {
+  color: var(--bk-up);
+  background: rgba(47, 212, 122, 0.12);
+}
+.bank-change-badge.down {
+  color: var(--bk-down);
+  background: rgba(255, 90, 110, 0.12);
+}
+.bank-pnl-badge {
+  align-self: flex-start;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 10px;
+}
+.bank-pnl-badge.up {
+  color: var(--bk-up);
+  background: rgba(47, 212, 122, 0.1);
+}
+.bank-pnl-badge.down {
+  color: var(--bk-down);
+  background: rgba(255, 90, 110, 0.1);
+}
+
+/* ---------- al / sat ---------- */
+.bank-trade {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bank-trade-buttons {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.bank-trade-btn {
+  min-height: 44px;
+  border-radius: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.bank-trade-buttons .bank-trade-btn:first-child.active {
+  background: var(--bk-up);
+  border-color: var(--bk-up);
+  color: #04220f;
+}
+.bank-trade-buttons .bank-trade-btn:last-child.active {
+  background: var(--bk-down);
+  border-color: var(--bk-down);
+  color: #2b0309;
+}
+.bank-trade-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+}
+.bank-amount-preview {
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--bk-dim);
+}
+.bank-commission-preview strong {
+  color: #eef3fb;
+}
+.bank-btn {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 13px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 14.5px;
+  font-weight: 700;
   cursor: pointer;
 }
-
-.bank-sell-all:hover:not(:disabled) {
-  border-color: var(--neon-pink);
-  color: var(--neon-pink);
+.bank-btn.primary {
+  background: var(--bk-blue);
+  border-color: var(--bk-blue);
+  color: #fff;
 }
-
+.bank-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.bank-sell-confirm .bank-hint strong {
+  color: #eef3fb;
+}
+.bank-sell-all {
+  min-height: 40px;
+  border-radius: 12px;
+  border: 1px dashed rgba(255, 90, 110, 0.45);
+  background: none;
+  color: #ff8d9b;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
 .bank-sell-all:disabled {
-  opacity: 0.5;
-  cursor: default;
+  opacity: 0.4;
+  cursor: not-allowed;
 }
-
-/* bank-sell-all-confirm — YENİ İSTEK (madde 4): "Tüm Kriptoları Sat"
-   artık tek tıkla anında satmıyor, önce %1 komisyon dahil net tutarı
-   gösteren bu onay kutusuna geçiyor. */
 .bank-sell-all-confirm {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 10px;
-  background: #0a0308;
-  border: 1px solid rgba(255, 46, 140, 0.35);
-  border-radius: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255, 90, 110, 0.07);
+  border: 1px solid rgba(255, 90, 110, 0.25);
 }
-
-.bank-hint.small {
-  font-size: 10px;
-}
-
-.bank-commission-preview {
-  color: var(--neon-pink);
-}
-
 .bank-sell-all-confirm-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 8px;
 }
-
-.bank-sell-all-confirm-row .bank-btn {
-  flex: 1;
-}
-
 .bank-input {
-  width: 100%;
-  padding: 8px 10px;
-  border-radius: 8px;
-  border: 1px solid var(--panel-border);
-  background: var(--panel);
-  color: var(--text);
-  font-size: 12px;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #eef3fb;
+  font-size: 16px;
 }
-
 .bank-input:focus {
   outline: none;
-  border-color: var(--neon-cyan);
+  border-color: var(--bk-blue);
 }
-
-.bank-btn {
-  padding: 8px 14px;
-  border-radius: 8px;
-  border: 1px solid var(--panel-border);
-  background: var(--panel);
-  color: var(--text);
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.bank-btn:hover:not(:disabled) {
-  border-color: var(--neon-cyan);
-  color: var(--neon-cyan);
-}
-
-.bank-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
 .bank-error {
-  color: var(--neon-pink);
-  font-size: 12px;
   margin: 0;
-}
-
-.bank-total-card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-  background: linear-gradient(180deg, rgba(255, 210, 63, 0.1), transparent);
-  border: 1px solid #ffd23f;
+  padding: 10px 12px;
   border-radius: 12px;
-  padding: 16px;
-  text-align: center;
+  background: rgba(255, 90, 110, 0.1);
+  color: #ff8d9b;
+  font-size: 13px;
 }
 
-.bank-total-label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-dim);
+/* Krediler bölümü (CreditSection) bankanın yeni yüzeyleriyle uyumlu */
+.bank-screen .cr-score {
+  border-radius: 20px;
+  border-color: rgba(63, 134, 255, 0.3);
+  background: radial-gradient(110% 90% at 100% 0%, rgba(63, 134, 255, 0.3), transparent 60%), linear-gradient(140deg, #14254a, #0d1629);
 }
-
-.bank-total-value {
-  font-size: 26px;
-  font-weight: 800;
-  color: #ffd23f;
-}
-
-.bank-total-breakdown {
-  font-size: 10px;
-  color: var(--text-dim);
+.bank-screen .cr-active,
+.bank-screen .cr-take,
+.bank-screen .cr-legacy-card {
+  border-radius: 18px;
+  background: var(--bk-card);
+  border-color: transparent;
 }

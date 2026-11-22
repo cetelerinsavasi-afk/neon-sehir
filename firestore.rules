@@ -76,6 +76,12 @@ service cloud.firestore {
     // ---------------------------------------------------------------------
     // Herkese açık, salt-okunur veriler (Cloud Functions tarafından yazılır)
     // ---------------------------------------------------------------------
+    // v176 — Neon Borsa piyasası (tek belge: borsa/piyasa). Herkes okur, sadece sunucu yazar.
+    match /borsa/{docId} {
+      allow read: if isSignedIn() && docId == 'piyasa';
+      allow write: if false;
+    }
+
     match /investments/{date} {
       allow read: if isSignedIn();
       allow write: if false;

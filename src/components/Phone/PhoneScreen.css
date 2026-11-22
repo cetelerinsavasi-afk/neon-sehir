@@ -601,6 +601,10 @@
   background: radial-gradient(120% 90% at 20% 0%, #4ff3ff 0%, transparent 55%), linear-gradient(150deg, #19c8ff 0%, #6a3cff 52%, #ff2e8c 100%);
   color: #fff;
 }
+.tone-borsa {
+  background: radial-gradient(120% 90% at 20% 0%, #5ff7ff 0%, transparent 55%), linear-gradient(150deg, #19c8e8 0%, #0f8f6e 100%);
+  color: #fff;
+}
 .tone-fabrika {
   background: linear-gradient(160deg, #ffb340, #d2510f);
   color: #fff;
