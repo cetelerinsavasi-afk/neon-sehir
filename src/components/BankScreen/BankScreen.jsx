@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useInvestmentPrices } from '../../hooks/useInvestmentPrices';
@@ -15,7 +15,12 @@ import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import { useBackClose } from '../../lib/backStack';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import CreditSection from './CreditSection';
+import { useBorsaMarket } from '../../hooks/useBorsaMarket';
+import { retryImport } from '../../lib/lazyRetry';
+import { BORSA_CO_IDS, holdState, coState, sellAllValue, pendingAll } from '../../../functions/borsa.js';
 import './BankScreen.css';
+
+const BorsaApp = lazy(retryImport(() => import('../Phone/borsa/BorsaApp'))); // v185: Neon Borsa bankada
 
 function formatUnits(n) {
   return n.toLocaleString('tr-TR', { maximumFractionDigits: 6 });
@@ -110,6 +115,14 @@ function BankIcon({ id }) {
       <svg {...c}>
         <path d="M3.5 17.5l5.2-5.6 3.8 3.3 7.8-8.4" />
         <path d="M15.2 6.8h5.1v5.1" />
+      </svg>
+    );
+  if (id === 'borsa')
+    return (
+      <svg {...c}>
+        <path d="M7 4v3M7 15v5M17 3v4M17 13v5" />
+        <rect x="4.6" y="7" width="4.8" height="8" rx="1.2" />
+        <rect x="14.6" y="7" width="4.8" height="6" rx="1.2" />
       </svg>
     );
   if (id === 'krediler')
@@ -536,18 +549,33 @@ function PenaltiesTab({ player, busy, error, run }) {
   );
 }
 
+// v185: Neon Borsa bankanın içinde (ayrı uygulama kaldırıldı)
 const CARDS = [
   { id: 'yatirimlar', label: 'Yatırımlar', desc: 'Faiz, elmas, hisse senedi, kripto' },
+  { id: 'borsa', label: 'Borsa', desc: 'Mekân ve şirket hisseleri' },
   { id: 'krediler', label: 'Krediler', desc: 'Kredi puanınla kredi çek, öde' },
   { id: 'cezalar', label: 'Cezalar', desc: 'Devlete borcunu gör ve öde' },
 ];
-const TAB_TITLE = { yatirimlar: 'Yatırımlar', krediler: 'Krediler', cezalar: 'Cezalar' };
+const TAB_TITLE = { yatirimlar: 'Yatırımlar', borsa: 'Borsa', krediler: 'Krediler', cezalar: 'Cezalar' };
+const hasBorsa = (p) => BORSA_CO_IDS.some((id) => { const h = holdState(p, id); return h.n > 0 || h.p > 0; });
 
 // kart numarası: oyuncuya sabit 4 hane (süs)
 const cardNo = (id) => String([...String(id || 'neon')].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) % 10000, 7)).padStart(4, '0');
 
 // v176 — Parara ana sayfa: banka kartı (toplam varlık) + hizmetler
 function BankHome({ player, prices, onOpen }) {
+  // v185: piyasa belgesi sadece hissesi olan oyuncu için okunur (olmayan için borsa değeri 0)
+  const own = hasBorsa(player);
+  const { data: market } = useBorsaMarket(own);
+  const borsa = useMemo(() => {
+    if (!own || !market) return { value: 0, pend: 0 };
+    let value = 0;
+    for (const id of BORSA_CO_IDS) {
+      const n = holdState(player, id).n;
+      if (n > 0) value += sellAllValue(n, coState(market, id).n);
+    }
+    return { value, pend: pendingAll(player, market).total };
+  }, [own, player, market]);
   const gold = player?.gold ?? 0;
   const bank = player?.bankBalance ?? 0;
   const inv =
@@ -565,7 +593,7 @@ function BankHome({ player, prices, onOpen }) {
           <span className="bank-card-chip" aria-hidden="true" />
         </div>
         <span className="bank-card-label">Toplam varlık</span>
-        <span className="bank-card-total">{(gold + bank + inv).toLocaleString('tr-TR')}</span>
+        <span className="bank-card-total">{(gold + bank + inv + borsa.value).toLocaleString('tr-TR')}</span>
         <div className="bank-card-bottom">
           <span className="bank-card-name">{name}</span>
           <span className="bank-card-no" aria-hidden="true">•••• {cardNo(player?.id)}</span>
@@ -573,22 +601,29 @@ function BankHome({ player, prices, onOpen }) {
       </div>
       <div className="bank-quick">
         <span>
-          <small>Cüzdan</small>
-          <b>{gold.toLocaleString('tr-TR')}</b>
-        </span>
-        <span>
-          <small>Faizde</small>
+          <small>Faiz</small>
           <b>{bank.toLocaleString('tr-TR')}</b>
         </span>
         <span>
           <small>Yatırım</small>
           <b>{inv.toLocaleString('tr-TR')}</b>
         </span>
+        <span>
+          <small>Borsa</small>
+          <b>{borsa.value.toLocaleString('tr-TR')}</b>
+        </span>
       </div>
       <p className="bank-h">Hizmetler</p>
       <div className="bank-list">
         {CARDS.map((c) => {
-          const tag = c.id === 'cezalar' && debt > 0 ? `${debt.toLocaleString('tr-TR')} borç` : c.id === 'krediler' && credit ? 'Aktif kredi' : null;
+          const tag =
+            c.id === 'cezalar' && debt > 0
+              ? `${debt.toLocaleString('tr-TR')} borç`
+              : c.id === 'krediler' && credit
+                ? 'Aktif kredi'
+                : c.id === 'borsa' && borsa.pend > 0
+                  ? `+${borsa.pend.toLocaleString('tr-TR')}`
+                  : null;
           return (
             <button key={c.id} className="bank-row" onClick={() => onOpen(c.id)}>
               <span className={`bank-row-ic ic-${c.id}`}>
@@ -598,7 +633,7 @@ function BankHome({ player, prices, onOpen }) {
                 <b>{c.label}</b>
                 <small>{c.desc}</small>
               </span>
-              {tag && <span className={`bank-row-tag${c.id === 'cezalar' ? ' bad' : ''}`}>{tag}</span>}
+              {tag && <span className={`bank-row-tag${c.id === 'cezalar' ? ' bad' : c.id === 'borsa' ? ' up' : ''}`}>{tag}</span>}
               <span className="bank-row-go" aria-hidden="true">
                 ›
               </span>
@@ -617,8 +652,13 @@ export default function BankScreen() {
   const [tab, setTab] = useState(null);
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
+  const [borsaSel, setBorsaSel] = useState(null); // v185 — { id, name } (Borsa › mekân sayfası)
   // v176: Android geri tuşu önce bölümü kapatır (Parara ana sayfasına döner)
-  useBackClose(Boolean(tab), () => setTab(null));
+  useBackClose(Boolean(tab), () => {
+    setTab(null);
+    setBorsaSel(null);
+  });
+  useBackClose(Boolean(borsaSel), () => setBorsaSel(null));
 
   if (!user) {
     return <SignInPrompt message="Bankayı kullanmak için giriş yapmalısın." />;
@@ -640,12 +680,17 @@ export default function BankScreen() {
 
   return (
     <div className="bank-screen">
-      <button className="bank-back-btn" onClick={() => setTab(null)}>
-        <span aria-hidden="true">‹</span> {TAB_TITLE[tab]}
+      <button className="bank-back-btn" onClick={() => (borsaSel ? setBorsaSel(null) : setTab(null))}>
+        <span aria-hidden="true">‹</span> {tab === 'borsa' && borsaSel ? borsaSel.name : TAB_TITLE[tab]}
       </button>
 
       {tab === 'yatirimlar' && (
         <InvestmentsTab player={player} prices={prices} busy={busy} error={error} run={run} />
+      )}
+      {tab === 'borsa' && (
+        <Suspense fallback={<p className="bank-loading">Yükleniyor…</p>}>
+          <BorsaApp embed selected={borsaSel?.id || null} onSelect={(id, name) => setBorsaSel(id ? { id, name } : null)} />
+        </Suspense>
       )}
       {tab === 'krediler' && <CreditSection />}
       {tab === 'cezalar' && <PenaltiesTab player={player} busy={busy} error={error} run={run} />}

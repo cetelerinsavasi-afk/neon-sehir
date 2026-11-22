@@ -17,6 +17,7 @@
 // Gün sınırı türe göre: spor salonu 19:00 (futbol günü), diğerleri 00:00.
 // =============================================================================
 
+import { ownListingStock } from './autoSupply.js'; // v186
 import { BIZ_TYPES, ALL_BIZ_KEYS, bizDayKey, prevDayKey, bizOpenAllDay } from './businessCatalogData.js';
 import { taxLedgerWrite } from './tax.js';
 
@@ -193,7 +194,16 @@ export function createBusiness({ db, FieldValue, now = () => Date.now() }) {
       if (h.bizShortage?.smsDay === today) continue;
       // v124: stok sahibinin ortak envanterinde (Mağaza / fabrika) — dolan malzemenin işareti kalkar
       const invSnaps = await Promise.all(items.map((k) => db.collection('users').doc(h.ownerUid).collection('inventory').doc(k).get()));
-      const still = items.filter((k, i) => !(Number(invSnaps[i].exists ? invSnaps[i].data().quantity : 0) > 0));
+      // v186: envanterde yoksa sahibin kendi Mağaza ilanına da bakılır (malzemesini satışa koyana hatırlatma gitmez)
+      const have = await Promise.all(
+        items.map(async (k, i) => {
+          const inv = Number(invSnaps[i].exists ? invSnaps[i].data().quantity : 0) || 0;
+          if (inv > 0) return inv;
+          const ls = await db.collection('marketplaceListings').where('sellerId', '==', h.ownerUid).where('itemType', '==', 'material').where('materialType', '==', k).where('sold', '==', false).get();
+          return ownListingStock(ls.docs.map((x) => ({ id: x.id, ...x.data() })), h.ownerUid);
+        })
+      );
+      const still = items.filter((k, i) => !(have[i] > 0));
       if (!still.length) {
         await d.ref.update({ bizShortage: { items: {}, smsDay: h.bizShortage?.smsDay || null }, bizShortagePending: false });
         continue;

@@ -36,7 +36,6 @@ const FactoryScreen = lazy(retryImport(() => import('../FactoryScreen/FactoryScr
 const FutbolFullScreen = lazy(retryImport(() => import('../FutbolScreen/FutbolFullScreen')));
 const BelediyeScreen = lazy(retryImport(() => import('../Belediye/BelediyeScreen')));
 const BusinessesApp = lazy(retryImport(() => import('./BusinessesApp')));
-const BorsaApp = lazy(retryImport(() => import('./borsa/BorsaApp'))); // v176 Neon Borsa
 
 // Telefon 3 sayfa, gerçek telefondaki gibi yana kaydırılır:
 //   [ Gazete ]  ←  [ Ana ekran ]  →  [ Altın · Neon Şehir · Bi fikrin mi var? ]
@@ -50,7 +49,6 @@ const STORE_ICON = {
   parara: { id: 'parara', glyph: 'P', note: 'Parara', tone: 'banka' },
   fabrika: { id: 'fabrika', note: 'Fabrika', tone: 'fabrika', svg: true },
   isletme: { id: 'isletme', note: 'İşletme', tone: 'isletme', svg: true },
-  borsa: { id: 'borsa', note: 'Neon Borsa', tone: 'borsa', svg: true }, // v176
   futbol: { id: 'futbol', note: 'Futbol', tone: 'futbol', svg: true },
   belediye: { id: 'belediye', note: 'Belediye', tone: 'belediye', svg: true },
 };
@@ -108,10 +106,9 @@ const APP_TITLES = {
   parara: 'Parara Bank',
   fabrika: 'Fabrika',
   isletme: 'İşletmelerim',
-  borsa: 'Neon Borsa',
 };
 // v161: eski 'banka' kısayolları (ör. altın butonu) artık Parara uygulamasını açar
-const normApp = (id) => (id === 'banka' ? 'parara' : id);
+const normApp = (id) => (id === 'banka' || id === 'borsa' ? 'parara' : id); // v185: Borsa bankada
 
 function useClock() {
   const [now, setNow] = useState(() => new Date(Date.now()));
@@ -313,7 +310,6 @@ export default function PhoneScreen({ onClose, initialApp = null, onAppChange = 
   const apps = usePhoneApps(user?.uid || null, { staff, playerReady: Boolean(player) });
   const [storeDetail, setStoreDetail] = useState(null);
   const [bizSel, setBizSel] = useState(null); // { id, name }
-  const [borsaSel, setBorsaSel] = useState(null); // v176 — { id, name } (Neon Borsa mekân sayfası)
   const [edit, setEdit] = useState(false);
   const [askDelete, setAskDelete] = useState(null);
   // eski 'banka' kısayolu: Parara kuruluysa açılır, değilse Cappstore'da Parara sayfası
@@ -326,7 +322,6 @@ export default function PhoneScreen({ onClose, initialApp = null, onAppChange = 
     setOpenAppRaw(id);
     if (id !== 'cappstore') setStoreDetail(null);
     if (id !== 'isletme') setBizSel(null);
-    if (id !== 'borsa') setBorsaSel(null);
   };
   useEffect(() => {
     if (STORE_BY_ID[openApp] && !apps.order.includes(openApp)) {
@@ -357,10 +352,9 @@ export default function PhoneScreen({ onClose, initialApp = null, onAppChange = 
   useBackClose(true, onClose);
   useBackClose(Boolean(openApp), () => setOpenApp(null));
   // v161: uygulama içi alt sayfa (Cappstore detayı / işletme ayarları) önce kapanır
-  useBackClose(Boolean(storeDetail || bizSel || borsaSel), () => {
+  useBackClose(Boolean(storeDetail || bizSel), () => {
     setStoreDetail(null);
     setBizSel(null);
-    setBorsaSel(null);
   });
   useBackClose(edit, () => setEdit(false));
   // Kısayoldan / bildirimden doğrudan açılan uygulama da "görüldü" sayılır
@@ -452,19 +446,18 @@ export default function PhoneScreen({ onClose, initialApp = null, onAppChange = 
           <button
             className="phone-nav-back"
             onClick={() => {
-              if (storeDetail || bizSel || borsaSel) {
+              if (storeDetail || bizSel) {
                 setStoreDetail(null);
                 setBizSel(null);
-                setBorsaSel(null);
               } else setOpenApp(null);
             }}
             aria-label="Geri"
           >
             ‹
           </button>
-          <span className="phone-nav-title">{openApp === 'isletme' && bizSel ? bizSel.name : openApp === 'borsa' && borsaSel ? borsaSel.name : APP_TITLES[openApp]}</span>
+          <span className="phone-nav-title">{openApp === 'isletme' && bizSel ? bizSel.name : APP_TITLES[openApp]}</span>
           <span className="phone-nav-right">
-            {(openApp === 'parara' || openApp === 'borsa') && (
+            {openApp === 'parara' && (
               <span className="phone-header-gold">
                 <span className="phone-header-gold-coin" />
                 {(player?.gold ?? 0).toLocaleString('tr-TR')}
@@ -472,7 +465,7 @@ export default function PhoneScreen({ onClose, initialApp = null, onAppChange = 
             )}
           </span>
         </div>
-        <div className={`phone-app-body${openApp === 'rehber' || openApp === 'neon-gazete' || openApp === 'sixtagram' || openApp === 'cappstore' || openApp === 'borsa' ? ' full' : ''}`}>
+        <div className={`phone-app-body${openApp === 'rehber' || openApp === 'neon-gazete' || openApp === 'sixtagram' || openApp === 'cappstore' ? ' full' : ''}`}>
           <Suspense fallback={<div className="phone-app-loading">Yükleniyor…</div>}>
           {openApp === 'sms' && <MessagesScreen />}
           {openApp === 'ikinci-el' && <MarketplaceScreen />}
@@ -488,7 +481,6 @@ export default function PhoneScreen({ onClose, initialApp = null, onAppChange = 
               <BusinessesApp selected={bizSel?.id || null} onSelect={(id, name) => setBizSel({ id, name })} />
             </Suspense>
           )}
-          {openApp === 'borsa' && <BorsaApp selected={borsaSel?.id || null} onSelect={(id, name) => setBorsaSel(id ? { id, name } : null)} />}
           {openApp === 'chatsapp' && <ChatsAppScreen />}
           {openApp === 'gazete' && <NewspaperScreen />}
           {openApp === 'sixtagram' && <SixtagramScreen />}

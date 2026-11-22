@@ -19,17 +19,7 @@ export const STORE_APPS = [
     cat: 'Finans',
     size: '14 MB',
     desc: 'Altınını gönder, iste, hesap hareketlerini takip et. Telefonda hazır gelen Parara Bank artık Cappstore’da; istediğin zaman indirip silebilirsin.',
-    feats: ['Para gönderme ve isteme', 'Tüm hesap hareketleri tek listede', 'Kredi ve yatırımlar'],
-  },
-  {
-    id: 'borsa',
-    name: 'Neon Borsa',
-    title: 'Neon Borsa',
-    sub: 'Mekân hisseleri',
-    cat: 'Finans',
-    size: '12 MB',
-    desc: 'Seyyar satıcıların hisselerini al, sat. Mekânların günlük gelirinden payına düşen altın her gece hesabına birikir; istediğin zaman topla.',
-    feats: ['Hisse al-sat, saatlik fiyat grafiği', 'Her gece gelir payı', 'Mekân mekân gelir detayı'],
+    feats: ['Para gönderme ve isteme', 'Tüm hesap hareketleri tek listede', 'Kredi, yatırımlar ve borsa'],
   },
   {
     id: 'fabrika',

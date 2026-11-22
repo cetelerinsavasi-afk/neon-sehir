@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../../../firebase';
+import { useBorsaMarket } from '../../../hooks/useBorsaMarket';
 import { useAuth } from '../../../contexts/AuthContext';
 import { usePlayer } from '../../../hooks/usePlayer';
 import { useBelediyeRates } from '../../../hooks/useBelediyeRates';
@@ -24,6 +23,7 @@ import {
   avgIncome,
   sortCos,
   sellAllValue,
+  marketGainAll,
 } from '../../../../functions/borsa.js';
 import { rateFrac } from '../../../../functions/belediyeRates.js';
 import './BorsaApp.css';
@@ -35,24 +35,17 @@ import './BorsaApp.css';
 // =============================================================================
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 
-let shared = { data: null, ready: false };
-function useMarket() {
-  const [snap, setSnap] = useState(shared);
-  useEffect(
-    () =>
-      onSnapshot(
-        doc(db, 'borsa', 'piyasa'),
-        (s) => {
-          shared = { data: s.exists() ? s.data() : null, ready: true };
-          setSnap(shared);
-        },
-        () => setSnap({ data: shared.data, ready: true })
-      ),
-    []
+// v185: hisselerimin piyasa kaynaklı değer değişimi
+function Gain({ gain, pct }) {
+  if (!gain) return <span className="borsa-gain fl">%0</span>;
+  const up = gain > 0;
+  return (
+    <span className={`borsa-gain ${up ? 'up' : 'dn'}`}>
+      {`${up ? '▲ +' : '▼ −'}${fmt(Math.abs(gain))}`}
+      {pct != null && <i>{` %${Math.abs(pct).toFixed(1)}`}</i>}
+    </span>
   );
-  return snap;
 }
-
 function Change({ pct }) {
   if (pct == null) return <span className="borsa-chg fl">—</span>;
   if (Math.abs(pct) < 0.05) return <span className="borsa-chg fl">%0</span>;
@@ -126,11 +119,11 @@ function BigChart({ points, color }) {
   );
 }
 
-export default function BorsaApp({ selected, onSelect }) {
+export default function BorsaApp({ selected, onSelect, embed = false }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const rates = useBelediyeRates();
-  const { data: market, ready } = useMarket();
+  const { data: market, ready } = useBorsaMarket();
   const [tab, setTab] = useState('all');
   const [range, setRange] = useState('d');
   const [sheet, setSheet] = useState(false);
@@ -151,7 +144,8 @@ export default function BorsaApp({ selected, onSelect }) {
         return n > 0 ? { id: c.id, name: c.name, n, value: sellAllValue(n, coState(market, c.id).n) } : null;
       })
       .filter(Boolean);
-    return { rows, total: rows.reduce((a, r) => a + r.value, 0), shares: rows.reduce((a, r) => a + r.n, 0) };
+    // v185: piyasa kaynaklı kâr/zarar (kendi alış-satışım hariç)
+    return { rows, total: rows.reduce((a, r) => a + r.value, 0), shares: rows.reduce((a, r) => a + r.n, 0), ...marketGainAll(player, market) };
   }, [player, market]);
   const [sellAsk, setSellAsk] = useState(false);
   useBackClose(sellAsk, () => setSellAsk(false));
@@ -310,6 +304,7 @@ export default function BorsaApp({ selected, onSelect }) {
                 <span className="borsa-coin" />
                 {fmt(worth.total)}
               </b>
+              <Gain gain={worth.gain} pct={worth.pct} />
             </div>
             <button className="borsa-btn rd-gh" disabled={Boolean(busy)} onClick={() => setSellAsk(true)}>
               Hepsini sat
@@ -334,7 +329,11 @@ export default function BorsaApp({ selected, onSelect }) {
                     {c.name}
                     {h > 0 && <span className="borsa-own">{h}</span>}
                   </span>
-                  <span className="borsa-sub">{`%${co.n} dolu`}</span>
+                  {/* v186: hissedarlara günlük dağıtılan toplam gelirin son 10 gün ortalaması */}
+                  <span className="borsa-sub borsa-sub2">
+                    <span>{`%${co.n} dolu`}</span>
+                    {co.inc.length > 0 && <span>{`ort. gelir: ${fmt(Math.floor(avgIncome(co.inc)))}`}</span>}
+                  </span>
                   <span className="borsa-fill">
                     <i style={{ width: `${co.n}%` }} />
                   </span>
@@ -365,7 +364,7 @@ export default function BorsaApp({ selected, onSelect }) {
       return `${r.shares} hisse satıldı · +${fmt(r.total)}`;
     });
   return (
-    <div className="borsa">
+    <div className={`borsa${embed ? ' embed' : ''}`}>
       <div className={`borsa-scroll${sel ? ' has-act' : ''}`}>{body}</div>
       {actions}
       {sellAsk && worth.shares > 0 && (

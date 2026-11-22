@@ -344,6 +344,8 @@ export default function ComposeModal({ onClose, onPosted }) {
         gearUpgraded: !!vehicle.gearUpgraded,
         tankUpgraded: !!vehicle.tankUpgraded,
         lifeDays: vehicle.lifeDays ?? null,
+        // v185: önizleme de modifiyeli hali gösterir (sunucu da mods'u gönderiye yazar)
+        ...(vehicle.mods && Object.keys(vehicle.mods).length ? { mods: vehicle.mods } : {}),
       }
     );
   };

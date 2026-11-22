@@ -474,3 +474,18 @@
 .borsa-worth b { display: inline-flex; align-items: center; gap: 6px; font-size: 22px; font-variant-numeric: tabular-nums; }
 .borsa-btn.rd-gh { flex: 0 0 auto; padding: 10px 14px; border-radius: 12px; background: rgba(255, 84, 112, 0.12); border: 1px solid rgba(255, 84, 112, 0.5); color: #ff8a9c; font-weight: 700; }
 .borsa-note { margin: 6px 2px 10px; font-size: 12px; opacity: 0.7; }
+/* v185 — Hisselerim: piyasa kaynaklı kâr/zarar */
+.borsa-gain { display: block; margin-top: 3px; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.borsa-gain i { font-style: normal; font-weight: 600; opacity: 0.75; }
+.borsa-gain.up { color: var(--b-gr); }
+.borsa-gain.dn { color: var(--b-rd); }
+.borsa-gain.fl { color: var(--b-pm); }
+/* v185 — bankanın içinde (Parara › Borsa): sayfa akışında, kendi kaydırması yok */
+.borsa.embed { height: auto; overflow: visible; background: transparent; margin: 0 -4px; }
+.borsa.embed .borsa-scroll { overflow: visible; padding: 2px 0 6px; }
+.borsa.embed .borsa-scroll.has-act { padding-bottom: 6px; }
+.borsa.embed .borsa-act { position: sticky; bottom: -12px; margin: 0 -8px; padding: 18px 8px 12px; }
+.borsa.embed .borsa-shade { position: fixed; z-index: 3000; }
+.borsa.embed .borsa-toast { position: fixed; z-index: 3001; }
+/* v186 — listede doluluk + ortalama günlük gelir */
+.borsa-sub2 { display: flex; gap: 12px; white-space: nowrap; }

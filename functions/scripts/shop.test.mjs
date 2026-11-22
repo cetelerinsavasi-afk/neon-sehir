@@ -708,3 +708,61 @@ test('v177 motor galerisi: sadece 4 motor; galeri sadece araba; oyunun motor gal
   const motors = h.keys('vehicles/').map((k) => h.G(k)).filter((v) => v.ownerId === 'ali' && v.catalogId === 22);
   assert.equal(motors.length, 2);
 });
+
+test('v186 envanter boş, malzeme kendi ilanında: ilan sessizce azalır, stok hatırlatması yok; ilan da azalınca var', async () => {
+  const h = setup();
+  const id = await openShop(h, 'silahci');
+  await h.act('usta', { op: 'prices', houseId: id, materials: { tamirMalzemesi: { mat: 8, labor: 2 } } });
+  matListing(h, 'OWN', 'usta', 8, 25);
+  weapon(h, 'w1', 'ali');
+  weapon(h, 'w2', 'ali');
+  h.present('ali', id);
+  const usta0 = h.G('users/usta').gold;
+  const r = await h.act('ali', { op: 'workshop', shop: id, itemId: 'w1', action: 'repair', expect: 100 });
+  assert.equal(r.autoSupplied, 10);
+  assert.equal(h.G('marketplaceListings/OWN').quantity, 15);
+  assert.equal(h.G('users/usta').gold, usta0 + 100 - 10, 'kendi ilanı parasız');
+  const msgs = () => h.keys('users/usta/messages/').map((k) => h.G(k));
+  assert.ok(!msgs().some((m) => m.type === 'biz_auto_supply'), 'sadece kendi ilanı → SMS yok');
+  assert.ok(!h.G(`houses/${id}`).bizShortagePending, '15 kaldı, bir iş daha karşılanır → hatırlatma yok');
+  await h.act('ali', { op: 'workshop', shop: id, itemId: 'w2', action: 'repair', expect: 100 });
+  assert.equal(h.G('marketplaceListings/OWN').quantity, 5);
+  assert.equal(h.G(`houses/${id}`).bizShortagePending, true, '5 kaldı (10 lazım) → hatırlatma');
+  assert.equal(await h.business.sendShortageSms(), 0, 'ilanda hâlâ malzeme var → SMS yerine işaret kalkar');
+  assert.deepEqual(h.G(`houses/${id}`).bizShortage.items, {});
+});
+
+test('v186 kendi ilanı + Mağaza: eksik kısım şimdiki sistemle alınır, SMS gider', async () => {
+  const h = setup();
+  const id = await openShop(h, 'silahci');
+  await h.act('usta', { op: 'prices', houseId: id, materials: { tamirMalzemesi: { mat: 8, labor: 2 } } });
+  h.S('users/zeki', { displayName: 'Zeki', gold: 0 });
+  matListing(h, 'OWN', 'usta', 8, 4);
+  matListing(h, 'Z', 'zeki', 6, 50);
+  weapon(h, 'w1', 'ali');
+  h.present('ali', id);
+  const r = await h.act('ali', { op: 'workshop', shop: id, itemId: 'w1', action: 'repair', expect: 100 });
+  assert.equal(r.autoSupplied, 10);
+  assert.equal(h.G('marketplaceListings/OWN').sold, true);
+  assert.equal(h.G('marketplaceListings/Z').quantity, 44);
+  assert.equal(h.G('users/zeki').gold, 36);
+  assert.ok(h.keys('users/usta/messages/').map((k) => h.G(k)).some((m) => m.type === 'biz_auto_supply' && /kendi Mağaza ilanından 4 adet/.test(m.text)));
+  assert.equal(h.G(`houses/${id}`).bizShortagePending, true);
+});
+
+test('v186 envanter yetiyor ama ilan + envanter bir sonraki işe yetmiyor → hatırlatma; yetiyorsa yok', async () => {
+  const h = setup();
+  const id = await openShop(h, 'silahci');
+  await h.act('usta', { op: 'prices', houseId: id, materials: { tamirMalzemesi: { mat: 8, labor: 2 } } });
+  h.S('users/usta/inventory/tamirMalzemesi', { quantity: 12 });
+  matListing(h, 'OWN', 'usta', 8, 8);
+  weapon(h, 'w1', 'ali');
+  weapon(h, 'w2', 'ali');
+  h.present('ali', id);
+  await h.act('ali', { op: 'workshop', shop: id, itemId: 'w1', action: 'repair', expect: 100 });
+  assert.equal(inv(h, 'usta', 'tamirMalzemesi'), 2);
+  assert.equal(h.G('marketplaceListings/OWN').quantity, 8, 'envanter yettiği için ilana dokunulmaz');
+  assert.ok(!h.G(`houses/${id}`).bizShortagePending, '2 + 8 = 10 → bir iş daha olur');
+  await h.act('ali', { op: 'workshop', shop: id, itemId: 'w2', action: 'repair', expect: 100 });
+  assert.equal(h.G(`houses/${id}`).bizShortagePending, true);
+});

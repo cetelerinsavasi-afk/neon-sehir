@@ -34,6 +34,19 @@ export const BORSA_SHARES = 100;
 export const BORSA_MAX_PER_PLAYER = 10;
 export const BORSA_COMMISSION = 0.01;
 export const BORSA_IDLE_DAYS = 20;
+// v185: uyarı SMS'i ile otomatik satış arası en az (günlük tarama ~24 saatte bir; birkaç dk kayma payı)
+export const BORSA_WARN_MIN_MS = 23 * 3600_000;
+// 20 gün kuralı adımı: 'warn' (19+ gün, uyarılmadı) · 'sell' (20+ gün, en az 23 saat önce uyarıldı) · null
+export function idleStep(user, t) {
+  const son = Number(user?.borsaSon);
+  if (!Number.isFinite(son) || son <= 0) return null;
+  const days = (t - son) / 86_400_000;
+  if (days < BORSA_IDLE_DAYS - 1) return null;
+  const uy = Number(user?.borsaUyari) || 0;
+  const warned = uy > son;
+  if (!warned) return 'warn';
+  return days >= BORSA_IDLE_DAYS && t - uy >= BORSA_WARN_MIN_MS ? 'sell' : null;
+}
 export const BORSA_CHART_LEN = 24 * 7; // saatlik nokta, 7 gün
 export const BORSA_INC_LEN = 10; // son 10 günün geliri
 export const BORSA_ACC_SCALE = 1000; // acc: binde bir altın / hisse
@@ -88,7 +101,41 @@ export function coState(market, id) {
 // Oyuncunun bir mekândaki payı (eksikse boş)
 export function holdState(player, id) {
   const h = player?.borsa?.[id] || {};
-  return { n: int(h.n), a: int(h.a), p: int(h.p), c: int(h.c) };
+  const out = { n: int(h.n), a: int(h.a), p: int(h.p), c: int(h.c) };
+  // v185: r = son işlemimden sonraki piyasa fiyatı (1 hisse), g = o zamana kadar biriken piyasa kâr/zararı
+  if (h.r != null) out.r = int(h.r);
+  if (h.g != null) out.g = Math.trunc(num(h.g));
+  return out;
+}
+// v185 — Hisselerim kâr/zarar: SADECE piyasa hareketi (kendi alışım fiyatı yükseltse, satışım düşürse de sayılmaz).
+// Her işlemimde o ana kadarki kazanç g'ye eklenir ve referans (r) işlemden sonraki fiyata çekilir.
+// Eski paylarda r yok → ortalama maliyet (c/n; alışta ödenen taban = alıştan sonraki satış fiyatı).
+const refOf = (hold) => (hold.r != null ? hold.r : hold.n > 0 ? Math.floor(hold.c / hold.n) : 0);
+export function marketGain(hold, coN) {
+  if (!hold || int(hold.n) <= 0) return 0;
+  return Math.trunc(num(hold.g)) + int(hold.n) * (sellBase(coN) - refOf(hold));
+}
+// İşlemden önce: kazancı g'ye al, ardından (adet değişince) r yeni fiyat olur
+export function rebase(hold, coN, nextN, nextCoN) {
+  if (nextN <= 0) {
+    const { r: _r, g: _g, ...rest } = hold;
+    return { ...rest, n: 0 };
+  }
+  let g = marketGain(hold, coN);
+  if (hold.n > 0 && nextN < hold.n) g = Math.round((g * nextN) / hold.n); // satılan payın kâr/zararı gider
+  return { ...hold, n: nextN, r: sellBase(nextCoN), g };
+}
+// Tüm hisselerin piyasa kâr/zararı + yüzde (referans değerine göre)
+export function marketGainAll(player, market) {
+  let gain = 0;
+  let base = 0;
+  for (const id of BORSA_CO_IDS) {
+    const h = holdState(player, id);
+    if (h.n <= 0) continue;
+    gain += marketGain(h, coState(market, id).n);
+    base += h.n * refOf(h) - Math.trunc(num(h.g));
+  }
+  return { gain, pct: base > 0 ? (gain / base) * 100 : null };
 }
 // Biriken (henüz toplanmamış, vergisiz) gelir
 export function pendingOf(hold, co) {
@@ -175,6 +222,7 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
       const co = coState(market, id);
       let hold = settle(holdState(user, id), co);
       const u = { borsaSon: t };
+      if (user.borsaUyari) u.borsaUyari = FieldValue.delete(); // v185: 20 gün uyarısı geçersiz
       const m = { updatedAtMs: t };
       let price;
       if (op === 'al') {
@@ -185,7 +233,7 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
         const base = buyBase(co.n);
         u.gold = FieldValue.increment(-price);
         u.goldTag = goldTag('borsa', { borsaKom: -(price - base) });
-        hold = { ...hold, n: hold.n + 1, c: hold.c + base };
+        hold = { ...rebase(hold, co.n, hold.n + 1, co.n + 1), c: hold.c + base };
         m.co = { [id]: { n: co.n + 1, h: co.h + (hold.n === 1 ? 1 : 0) } };
       } else {
         if (hold.n <= 0) fail('failed-precondition', 'Bu mekânda hissen yok.');
@@ -194,7 +242,7 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
         const avg = Math.floor(hold.c / hold.n);
         u.gold = FieldValue.increment(price);
         u.goldTag = goldTag('borsa', { borsaKz: base - avg, borsaKom: -(base - price) });
-        hold = { ...hold, n: hold.n - 1, c: hold.n - 1 > 0 ? hold.c - avg : 0 };
+        hold = { ...rebase(hold, co.n, hold.n - 1, co.n - 1), c: hold.n - 1 > 0 ? hold.c - avg : 0 };
         m.co = { [id]: { n: Math.max(0, co.n - 1), h: Math.max(0, co.h - (hold.n === 0 ? 1 : 0)) } };
       }
       if (hold.n > 0 || hold.p > 0) u[`borsa.${id}`] = hold;
@@ -240,7 +288,7 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
         kom += base - got;
         shares += hold.n;
         m.co[id] = { n, h: Math.max(0, co.h - 1) };
-        const left = { ...hold, n: 0, c: 0 };
+        const left = { ...rebase(hold, co.n, 0, 0), c: 0 };
         after[id] = left;
         u[`borsa.${id}`] = left.p > 0 ? left : FieldValue.delete();
       }
@@ -249,6 +297,7 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
       u.gold = FieldValue.increment(total);
       u.goldTag = goldTag('borsa', { borsaKz: kz, borsaKom: -kom });
       u.borsaSon = hasAny(user, after) ? t : FieldValue.delete();
+      if (user.borsaUyari) u.borsaUyari = FieldValue.delete();
       tx.update(userRef(uid), u);
       tx.set(marketRef(), m, { merge: true });
       return { ok: true, op: 'satHepsi', total, shares };
@@ -268,6 +317,7 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
       if (total <= 0) fail('failed-precondition', 'Toplanacak gelir yok.');
       const r = splitCollect(total, taxFrac(day), user.debtToState);
       const u = { gold: FieldValue.increment(r.pay), goldTag: goldTag('borsaGelir'), borsaSon: t };
+      if (user.borsaUyari) u.borsaUyari = FieldValue.delete();
       if (r.toDebt) u.debtToState = FieldValue.increment(-r.toDebt);
       for (const id of BORSA_CO_IDS) {
         const h = holdState(user, id);
@@ -382,18 +432,42 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
   }
 
   // ---- 20 gün kuralı --------------------------------------------------------
+  // v185: satıştan ~24 saat önce SMS uyarısı. Günlük taramada 19 günü geçenler uyarılır (borsaUyari),
+  // uyarısının üzerinden en az BORSA_WARN_MIN_MS geçmiş 20 günlükler satılır. Uyarı almadan satış olmaz.
   async function sweepIdle() {
-    const cutoff = now() - BORSA_IDLE_DAYS * 86_400_000;
-    const snap = await db.collection('users').where('borsaSon', '<', cutoff).orderBy('borsaSon', 'asc').limit(100).get();
+    const t = now();
+    const cutoff = t - BORSA_IDLE_DAYS * 86_400_000;
+    const warnCut = t - (BORSA_IDLE_DAYS - 1) * 86_400_000;
+    const snap = await db.collection('users').where('borsaSon', '<', warnCut).orderBy('borsaSon', 'asc').limit(200).get();
     let n = 0;
+    let w = 0;
     for (const d of snap.docs) {
+      const st = idleStep(d.data(), t);
       try {
-        if (await liquidate(d.id, cutoff)) n++;
+        if (st === 'sell' && (await liquidate(d.id, cutoff))) n++;
+        else if (st === 'warn' && (await warnIdle(d.id, warnCut))) w++;
       } catch (err) {
-        log.error?.(`borsa tasfiye ${d.id}`, err);
+        log.error?.(`borsa 20 gün ${d.id}`, err);
       }
     }
+    if (w) log.log?.(`borsa: ${w} oyuncuya 24 saat uyarısı`);
     return n;
+  }
+  async function warnIdle(uid, warnCut) {
+    const t = now();
+    return db.runTransaction(async (tx) => {
+      const uSnap = await tx.get(userRef(uid));
+      const user = uSnap.data();
+      if (!user || idleStep(user, t) !== 'warn' || !(Number(user.borsaSon) < warnCut)) return false;
+      tx.update(userRef(uid), { borsaUyari: t });
+      tx.set(userRef(uid).collection('messages').doc(), {
+        text: '📈 Neon Borsa: 24 saat içinde borsada işlem yapmazsan tüm hisselerin otomatik satılacak.',
+        createdAt: FieldValue.serverTimestamp(),
+        read: false,
+        type: 'borsa_uyari',
+      });
+      return true;
+    });
   }
   async function liquidate(uid, cutoff) {
     const t = now();
@@ -401,7 +475,7 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
     return db.runTransaction(async (tx) => {
       const [uSnap, mSnap] = await Promise.all([tx.get(userRef(uid)), tx.get(marketRef())]);
       const user = uSnap.data();
-      if (!user || !(Number(user.borsaSon) < cutoff)) return false;
+      if (!user || !(Number(user.borsaSon) < cutoff) || idleStep(user, t) !== 'sell') return false;
       const market = mSnap.data() || {};
       const { total } = pendingAll(user, market);
       // en değerli hisseden başlayarak sat
@@ -425,7 +499,7 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
         m.co[id] = { n, h: Math.max(0, co.h - 1) };
       }
       const r = splitCollect(total, taxFrac(day), user.debtToState);
-      const u = { borsa: FieldValue.delete(), borsaSon: FieldValue.delete(), gold: FieldValue.increment(sale + r.pay), goldTag: goldTag('borsa', { borsaKz: kz, borsaKom: -kom, borsaGelir: r.pay }) };
+      const u = { borsa: FieldValue.delete(), borsaSon: FieldValue.delete(), borsaUyari: FieldValue.delete(), gold: FieldValue.increment(sale + r.pay), goldTag: goldTag('borsa', { borsaKz: kz, borsaKom: -kom, borsaGelir: r.pay }) };
       if (r.toDebt) u.debtToState = FieldValue.increment(-r.toDebt);
       tx.update(userRef(uid), u);
       if (order.length) tx.set(marketRef(), m, { merge: true });

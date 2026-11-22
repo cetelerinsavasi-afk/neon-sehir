@@ -156,6 +156,18 @@
   background: rgba(47, 212, 122, 0.14);
   color: var(--bk-up);
 }
+.bank-row-ic.ic-borsa {
+  background: rgba(25, 232, 255, 0.13);
+  color: #19e8ff;
+}
+.bank-row-tag.up {
+  color: var(--bk-gold);
+}
+.bank-loading {
+  color: var(--bk-dim);
+  text-align: center;
+  padding: 24px 0;
+}
 .bank-row-ic.ic-krediler {
   background: rgba(63, 134, 255, 0.16);
   color: #7fb0ff;

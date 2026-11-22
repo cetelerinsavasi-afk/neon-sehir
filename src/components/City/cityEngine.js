@@ -2709,9 +2709,20 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     // (yatarak geniş dönüş); otobüs / tır — kısa dönüş için daha çok direksiyon açısı
     const moto = Boolean(c.v.moto);
     const horse = c.v.ride === 'horse';
-    c.steer += (-st - c.steer) * Math.min(1, dt * (st ? (moto && !horse ? 2.2 : 3.6) : moto && !horse ? 4 : 6));
-    const delta = (c.steer * P.steer) / (1 + Math.abs(vF0) * (moto ? 0.085 : c.v.len > 6 ? 0.03 : 0.045));
+    // v185: hızlıyken direksiyon daha yumuşak döner (tuşa basınca ani savrulma olmasın); bırakınca hızlı toplar
+    const spd0 = Math.abs(vF0);
+    const steerIn = (moto && !horse ? 2.2 : 3.6) / (horse ? 1 : 1 + Math.max(0, spd0 - 12) * 0.03);
+    c.steer += (-st - c.steer) * Math.min(1, dt * (st ? steerIn : moto && !horse ? 4 : 6));
+    const steerDiv = 1 + spd0 * (moto ? 0.085 : c.v.len > 6 ? 0.03 : 0.045);
+    const delta = (c.steer * P.steer) / steerDiv;
     let yawRate = (vF0 * Math.tan(delta)) / c.v.wb;
+    // v185: hıza göre dönüş sınırı (şehirde; yarışlar ayrı oyunda) — tam kırıldığında yanal ivme ~22+0,35·v m/sn²'yi
+    // geçmez: yavaşken aynı, 100+ km/sa'te tek dokunuşta şerit atlamaz. Kısmi direksiyon oranı korunur.
+    if (!horse && spd0 > 8) {
+      const yawFull = (spd0 * Math.tan(P.steer / steerDiv)) / c.v.wb;
+      const cap = (22 + 0.35 * spd0) / spd0;
+      if (yawFull > cap) yawRate *= cap / yawFull;
+    }
     // v159.4 — AT: tekerlekli araç gibi değil — dururken de yerinde döner, yavaşken keskin, hızlanınca
     // daha geniş döner (dönüş hızdan bağımsız açısal hız), geri giderken ters
     if (horse) yawRate = (c.steer * P.steer * 3.4) / (1 + Math.abs(vF0) * 0.07) * (vF0 < -0.3 ? -1 : 1);

@@ -57,7 +57,7 @@ import { sanitizeMods, compactMods, modCost } from './vehicleMods.js';
 import { isVehicleId } from './vehicleKinds.js';
 import { vehicleShopOf, canModify } from './fleet.js'; // v177: galeri → araba, motor galerisi → motor, ticari / bisiklet / at dükkânda yok
 import { itemListingTimeFields, batchesOf, consumeBatches, nextExpireAtMs, materialTtl } from './listingBatches.js';
-import { planAutoSupply, planGameSupply, AUTO_SUPPLY_MAT_NAMES } from './autoSupply.js';
+import { planAutoSupply, planGameSupply, ownListingStock, AUTO_SUPPLY_MAT_NAMES } from './autoSupply.js';
 import { VEHICLE_CATALOG, WEAPON_CATALOG } from './catalogData.js';
 import { VEHICLE_WEAPON_INITIAL_LIFE_DAYS, WEAPON_INITIAL_LIFE_DAYS } from './itemRules.js';
 import { newSaleTax } from './tax.js';
@@ -282,9 +282,11 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       // ödenir. Vergiden sonra sahip en az +1 altın kâr etmiyorsa alım yapılmaz
       // ("malzeme yok"). Sahibin kendi işi (selfService) için otomatik alım yok.
       let supply = null;
+      let allListings = null;
       const readListings = async () => {
         const lsnap = await tx.get(listingsRef.where('itemType', '==', 'material').where('materialType', '==', material).where('sold', '==', false));
-        return lsnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        allListings = lsnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        return allListings;
       };
       if (isGame) {
         // v129 — oyunun dükkânının envanteri yok: malzeme Mağaza'dan en ucuzdan,
@@ -313,6 +315,22 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       }
       if (Number(p.expect) !== cost.total) fail('aborted', `price-changed:${cost.total}`);
       if (!selfService && Number(user.gold || 0) < cost.total) fail('failed-precondition', 'gold');
+      // v186 — stok hatırlatması envanter + sahibin KENDİ Mağaza ilanını sayar (malzemesini satışa koyan
+      // sahibe "stok bitiyor" gitmez; ilanından da yetmeyecek kadar azalınca gider). İlanlar sadece
+      // envanter tek başına yetmiyorsa ve işaret henüz yoksa okunur (tedarikte zaten okunmuşsa yeniden okunmaz).
+      let shortNow = false;
+      if (!isGame && !h.bizShortage?.items?.[material]) {
+        const invLeft = shopHave - cost.shopQty + (supply ? supply.need : 0); // tedarik kısmı envanterden düşmez
+        if (invLeft < qty) {
+          let own;
+          if (allListings) own = ownListingStock(allListings, h.ownerUid) - (supply ? supply.ownQty : 0);
+          else {
+            const os2 = await tx.get(listingsRef.where('sellerId', '==', h.ownerUid).where('itemType', '==', 'material').where('materialType', '==', material).where('sold', '==', false));
+            own = ownListingStock(os2.docs.map((d) => ({ id: d.id, ...d.data() })), h.ownerUid);
+          }
+          shortNow = Math.max(0, invLeft) + Math.max(0, own) < qty;
+        }
+      }
 
       // --- yazmalar ---
       if (!selfService && cost.total > 0) tx.update(userRef(uid), { gold: FieldValue.increment(-cost.total), goldTag: goldTag('atolye') });
@@ -331,14 +349,14 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
         }
         if (supply) {
           applySupplyListingsTx(tx, { supply, buyerId: h.ownerUid });
-          ownerSupplySms(tx, { supply, h, houseId, material, type });
+          // v186: sadece kendi ilanından kullanıldıysa SMS yok (ilan sessizce azalır)
+          if (supply.extQty > 0) ownerSupplySms(tx, { supply, h, houseId, material, type });
         }
         business?.recordIncomeTx(tx, { houseId, h, amount: cost.labor, kind: 'labor', customerUid: uid, products: { [`${action}:${itemType}`]: 1 }, tax: taxLabor });
         if (cost.material > 0) business?.recordIncomeTx(tx, { houseId, h, amount: cost.material, kind: 'material', customerUid: uid, materialsUsed: { [material]: cost.shopQty }, tax: taxMat });
         // Aynı işi bir daha karşılayamayacak kadar stok kaldıysa sahibe (günde en
         // fazla bir kez, toplu) SMS için işaretle — bkz. business.sendShortageSms
-        const left = shopHave - cost.shopQty;
-        if (left < qty && !h.bizShortage?.items?.[material]) {
+        if (shortNow) {
           tx.update(houseRef(houseId), { [`bizShortage.items.${material}`]: true, bizShortagePending: true });
         }
       }

@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeFirestore, FieldValue } from '../gang/test/fakeFirestore.js';
-import { createBorsa, buyCost, sellGet, pendingOf, splitCollect, change24h, sellAllValue, sortCos, BORSA_COS } from '../borsa.js';
+import { createBorsa, buyCost, sellGet, pendingOf, splitCollect, change24h, sellAllValue, sortCos, BORSA_COS, marketGainAll, idleStep } from '../borsa.js';
 import { stateWrite, stateDayKey } from '../stateTreasury.js';
 import { addDayKey } from '../belediyeRates.js';
 import { goldTag } from '../moneyLog.js';
@@ -238,6 +238,15 @@ test('20 gün kuralı: en uzun pasif önce, satış + gelir yatar, SMS gider', a
   set(Date.parse('2026-12-22T00:01:00+03:00'));
   await b.trade('aktif', { op: 'al', co: 'kokorecci' });
   await b.hourly();
+  // v185: önce 24 saat uyarısı (satış yok)
+  assert.equal((await u('eski')).borsa.kokorecci.n, 2);
+  assert.ok((await u('yeni')).borsaUyari);
+  assert.equal((await u('aktif')).borsaUyari, undefined);
+  const warn = await db.collection('users/eski/messages').get();
+  assert.equal(warn.size, 1);
+  assert.match(warn.docs[0].data().text, /24 saat/);
+  set(Date.parse('2026-12-23T00:01:00+03:00'));
+  await b.hourly();
   const ue = await u('eski');
   const uy = await u('yeni');
   assert.equal(ue.borsa, undefined);
@@ -250,9 +259,10 @@ test('20 gün kuralı: en uzun pasif önce, satış + gelir yatar, SMS gider', a
   assert.equal(ue.debtToState, 1_000_000 - 9_000);
   // yeni sonra: n=2 → 1980; satış parası borca gitmez; gelir 10.000 → 9.000
   assert.equal(uy.gold, 1_000_000 - 3030 + 1980 + 9_000); // 3. hisseyi 3.030'a almıştı
-  const sms = await db.collection('users/eski/messages').get();
-  assert.equal(sms.size, 1);
-  assert.match(sms.docs[0].data().text, /20 gündür/);
+  const sms = (await db.collection('users/eski/messages').get()).docs.map((d) => d.data()).filter((x) => x.type === 'borsa_tasfiye');
+  assert.equal(sms.length, 1);
+  assert.match(sms[0].text, /20 gündür/);
+  assert.equal(ue.borsaUyari, undefined);
 });
 
 test('hesap silme: hisseler havuza döner', async () => {
@@ -296,4 +306,42 @@ test('v181 hepsini sat: tüm mekânlar, tek tek satmakla aynı tutar, gösterile
   assert.equal(m.co.kokorecci.h, 1);
   assert.equal(m.co.nakliye.n, 0);
   await assert.rejects(b.sellAll('a', {}), /hissen yok/);
+});
+
+test('v185 hisselerim kâr/zarar: kendi alış-satışım değeri oynatmaz, sadece piyasa', async () => {
+  const { b, user, u, market } = setup();
+  await user('a', 10_000_000);
+  await user('z', 10_000_000);
+  const gain = async () => marketGainAll(await u('a'), await market()).gain;
+  await b.trade('a', { op: 'al', co: 'simitci' });
+  await b.trade('a', { op: 'al', co: 'simitci' });
+  assert.equal(await gain(), 0); // kendi alışım fiyatı yükseltti ama kâr sayılmaz
+  await b.trade('z', { op: 'al', co: 'simitci' });
+  await b.trade('z', { op: 'al', co: 'simitci' });
+  assert.equal(await gain(), 2 * 2 * 1000); // başkaları 2 aldı → 2 hissem × 2 basamak
+  await b.trade('a', { op: 'sat', co: 'simitci' });
+  assert.equal(await gain(), 2000); // satışım düşürdü ama zarar sayılmaz; kalan 1 hissenin payı kalır
+  await b.trade('z', { op: 'sat', co: 'simitci' });
+  await b.trade('z', { op: 'sat', co: 'simitci' });
+  assert.equal(await gain(), 0);
+  await b.trade('z', { op: 'sat', co: 'simitci' }).catch(() => {});
+  await b.trade('a', { op: 'sat', co: 'simitci' });
+  assert.equal((await u('a')).borsa?.simitci, undefined);
+});
+
+test('v185 eski pay (r yok): ortalama maliyet referans', () => {
+  const p = { borsa: { simitci: { n: 2, c: 3000, a: 0, p: 0 } } }; // 1. ve 2. hisse: 1000 + 2000
+  const m = { co: { simitci: { n: 4 } } };
+  assert.equal(marketGainAll(p, m).gain, 2 * (4000 - 1500));
+});
+
+test('v185 20 gün adımı: uyarısız satış yok, uyarıdan 23 saat önce satış yok', () => {
+  const D = 86_400_000;
+  const t = T0;
+  assert.equal(idleStep({ borsaSon: t - 18.9 * D }, t), null);
+  assert.equal(idleStep({ borsaSon: t - 19.1 * D }, t), 'warn');
+  assert.equal(idleStep({ borsaSon: t - 25 * D }, t), 'warn');
+  assert.equal(idleStep({ borsaSon: t - 20.5 * D, borsaUyari: t - 10 * 3600_000 }, t), null);
+  assert.equal(idleStep({ borsaSon: t - 20.5 * D, borsaUyari: t - 24 * 3600_000 }, t), 'sell');
+  assert.equal(idleStep({ borsaSon: t - 20.5 * D, borsaUyari: t - 30 * D }, t), 'warn'); // eski uyarı (işlemden önce)
 });

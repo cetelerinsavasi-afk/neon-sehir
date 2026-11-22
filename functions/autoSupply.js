@@ -37,6 +37,13 @@ const usable = (listings) =>
     .map((l) => ({ l, unit: unitOf(l), stock: Math.floor(Number(l.quantity || 0)) }))
     .filter((c) => c.stock > 0 && Number.isFinite(c.unit) && c.unit > 0);
 
+// v186: sahibin kendi Mağaza ilanlarındaki kullanılabilir malzeme (stok hatırlatması envanter + ilan sayar)
+export function ownListingStock(listings, ownerUid) {
+  return usable(listings)
+    .filter((c) => c.l.sellerId === ownerUid)
+    .reduce((a, c) => a + c.stock, 0);
+}
+
 // OYUNCU dükkânı. Sıra: envanter → (v129) sahibin KENDİ ilanları (para el
 // değiştirmez, envanter gibi) → başkalarının ilanları (fiyat ≤ sahibin fiyatı,
 // en ucuz / eşitse stoğu az). Kâr koruması yalnızca başkasından alınan kısma.
