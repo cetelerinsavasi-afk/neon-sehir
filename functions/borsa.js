@@ -80,6 +80,8 @@ export function coState(market, id) {
     h: int(c.h),
     acc: int(c.acc),
     inc: Array.isArray(c.inc) ? c.inc.map(int).slice(-BORSA_INC_LEN) : [],
+    // v182: 1 hissenin günlük kazancı (son 10 gün; hissedarı yoksa tek hisse hepsini alırdı)
+    ps: Array.isArray(c.ps) ? c.ps.map(int).slice(-BORSA_INC_LEN) : [],
     ch: Array.isArray(c.ch) ? c.ch.map(int).slice(-BORSA_CHART_LEN) : [],
   };
 }
@@ -345,14 +347,17 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
         if (doDist) {
           let acc = co.acc;
           let inc = co.inc;
+          let ps = co.ps;
           for (const d of dues) {
             const gross = int(incomes[d]?.[c.id]);
             if (co.n > 0) acc += Math.floor((gross * BORSA_ACC_SCALE) / co.n);
             else if (gross > 0) out.unowned[d] = (out.unowned[d] || 0) + gross;
             inc = [...inc, gross].slice(-BORSA_INC_LEN);
+            ps = [...ps, co.n > 0 ? Math.floor(gross / co.n) : gross].slice(-BORSA_INC_LEN);
           }
           p.acc = acc;
           p.inc = inc;
+          p.ps = ps;
         }
         if (market?.chHour !== hourKey) {
           p.ch = [...co.ch, sellBase(co.n)].slice(-BORSA_CHART_LEN);

@@ -132,6 +132,9 @@ test('gece dağıtımı, toplama, borç ve tekrar çalışmada çift dağıtım 
   assert.equal(m.distDay, day0);
   assert.equal(m.co.kofteci.inc.at(-1), 33_000);
   assert.equal(m.co.midyeci.inc.at(-1), 5_000);
+  // v182: 1 hissenin günlük kazancı (3 hisse → 11.000; hissedarsız → tek hisse hepsini alırdı)
+  assert.equal(m.co.kofteci.ps.at(-1), 11_000);
+  assert.equal(m.co.midyeci.ps.at(-1), 5_000);
   // tekrar: çift dağıtım yok
   const r2 = await b.hourly();
   assert.deepEqual(r2.distributed, []);

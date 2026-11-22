@@ -205,7 +205,7 @@ export default function BorsaApp({ selected, onSelect }) {
           <VendorAvatar id={sel} size={64} />
           <div>
             <h2>{meta.name}</h2>
-            <span className="borsa-sub">{`${co.h} hissedar · ${meta.kind === 'sirket' ? 'şirket' : 'seyyar satıcı'}`}</span>
+            <span className="borsa-sub">{meta.kind === 'sirket' ? 'Şirket' : 'Seyyar satıcı'}</span>
           </div>
         </div>
         {/* v178: alış ve satış fiyatı ayrı (komisyon dahil, şu an 1 hisse) */}
@@ -232,12 +232,13 @@ export default function BorsaApp({ selected, onSelect }) {
           ))}
         </div>
         <div className="borsa-stats">
+          {/* v183: hissedarlara her gün dağıtılan toplam paranın son 10 günlük ortalaması */}
           <div>
-            <small>Son 10 gün ort. gelir</small>
-            <b className="borsa-gold">{co.inc.length ? fmt(avgIncome(co.inc)) : '—'}</b>
+            <small>Hissedarlara günlük · 10 gün ort.</small>
+            <b className="borsa-gold">{co.inc.length ? fmt(Math.floor(avgIncome(co.inc))) : '—'}</b>
           </div>
           <div>
-            <small>Dünkü gelir</small>
+            <small>Hissedarlara · dün</small>
             <b>{co.inc.length ? fmt(co.inc[co.inc.length - 1]) : '—'}</b>
           </div>
           <div>
@@ -333,7 +334,7 @@ export default function BorsaApp({ selected, onSelect }) {
                     {c.name}
                     {h > 0 && <span className="borsa-own">{h}</span>}
                   </span>
-                  <span className="borsa-sub">{`${co.h} hissedar · %${co.n} dolu · ort. ${co.inc.length ? fmt(avgIncome(co.inc)) : '—'}`}</span>
+                  <span className="borsa-sub">{`%${co.n} dolu`}</span>
                   <span className="borsa-fill">
                     <i style={{ width: `${co.n}%` }} />
                   </span>
