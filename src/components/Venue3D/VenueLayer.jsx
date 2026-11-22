@@ -4,7 +4,7 @@ import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { enterInterior, enterPark, recordVenueVisit } from '../../services/gameActions';
 import { venueTo2d } from '../../../functions/venueLayouts.js';
-import { CamiiPart, BankaPart, GazinoPart, KarakolPart, GaleriPart, SilahPart, ModifiyePart, ParkPart, BelediyePart, VendorPart, TeskilatPart } from './venueParts';
+import { CamiiPart, BankaPart, GazinoPart, KarakolPart, GaleriPart, MotoGaleriPart, SilahPart, ModifiyePart, ParkPart, BelediyePart, VendorPart, TeskilatPart } from './venueParts';
 import '../../styles/worldScreenChrome.css';
 import './Venue3D.css';
 import { occEnter, occKey } from '../../lib/occupancy';
@@ -27,6 +27,7 @@ const PARTS = {
   gazino: GazinoPart,
   karakol: KarakolPart,
   araba_galerisi: GaleriPart,
+  motor_galerisi: MotoGaleriPart, // v177
   silah_magazasi: SilahPart,
   modifiye_garaji: ModifiyePart,
   park: ParkPart,

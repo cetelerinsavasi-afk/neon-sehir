@@ -535,6 +535,55 @@ export const VENUES = {
   },
 
   // ===========================================================================
+  // v177 — NEON MOTOR GALERİSİ (camiinin arkasındaki binanın zemin katı). Şehirde kapıdaki
+  // listeden "Neon Motor Galerisi" seçilince içine girilir. Satış masasında "🏍️ Satılık motorlar".
+  // light: eski 2D konum kaydı tutulmaz (ek Firestore yazması yok).
+  // ===========================================================================
+  motor_galerisi: {
+    houseId: 'game_motogaleri',
+    name: 'Neon Motor Galerisi',
+    icon: '🏍️',
+    loc: 'motor_galerisi',
+    light: true,
+    v: 1,
+    wall: 'beton_blok',
+    floor: 'epoksi_siyah',
+    items: [
+      // sergi: dört motor (arkadakiler döner platformda)
+      it('mg_p1', 'carplatform', -5.4, -3.8),
+      it('mg_m1', 'moto_sport', -5.4, -3.8, 1, 1),
+      it('mg_p2', 'carplatform', 0.6, -3.8),
+      it('mg_m2', 'moto_chopper', 0.6, -3.8, 7, 2),
+      it('mg_m3', 'moto_scooter', -6.6, 2.8, 2, 3),
+      it('mg_m4', 'moto_cross', -3.6, 3.2, 2, 4),
+      it('mg_st1', 'stanchion', -5.4, -1.1),
+      it('mg_st2', 'stanchion', 0.6, -1.1),
+      it('mg_sr', 'showroom', -2.4, -7),
+      it('mg_n1', 'neon_acik', 4.6, -7),
+      it('mg_gf', 'graffiti', -9, 0.4, 2),
+      it('mg_tw', 'toolwall', 9, 3.4, 6),
+      it('mg_ti1', 'tires', 8.2, 5.6),
+      it('mg_ti2', 'tires', -8.2, -6.0),
+      // satış masası + bekleme
+      it('mg_od', 'officedesk', 7.2, -1.6, 6),
+      it('mg_cm1', 'chairm', 5.9, -2.0, 2),
+      it('mg_cm2', 'chairm', 5.9, -1.1, 2),
+      it('mg_kc', 'kcoffee', 8.4, -5.8, 6),
+      it('mg_wc', 'watercooler', 8.4, -4.6, 6),
+      it('mg_pl1', 'plantb', -8.3, 6.3),
+      it('mg_pl2', 'plantb', 8.3, 6.3),
+      it('mg_w1', 'window', -9, -3.4, 2),
+      it('mg_dr', 'doordeco', 5, 7, 4),
+    ],
+    stations: {
+      mg_od: [{ act: 'gallery', label: '🏍️ Motor satın al' }],
+    },
+    npcs: [
+      { id: 'npc_motorcu', name: 'Motorcu Kaan', x: 8.0, z: -1.6, left: true, av: AV.dealer, station: 'mg_od', lines: ['Hoş geldin! Kurye mi olacaksın, yoksa sadece rüzgâr mı?', 'Spor motor şehirde roket gibi gider.', 'Scooter ilk motor için ideal, yakıtı da az.', 'Kaskını takmayı unutma!'] },
+    ],
+  },
+
+  // ===========================================================================
   // v145 — SEYYAR SATICILAR (açık hava). Haritadaki yerlerine göre: Kokoreççi
   // gazinonun yanında (neon, otopark), Simitçi sahilde, Dönerci fabrika ile
   // parkın köşesinde (yaya geçidi), Köfteci limanda (konteynerler, rıhtım).

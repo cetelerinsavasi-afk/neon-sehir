@@ -992,7 +992,13 @@ function GameShell() {
         )
       )}
 
-      {motorShopOpen && <MotorGalleryScreen onClose={() => closeVenueMaybeReturnToVisit(setMotorShopOpen)} />}
+      {/* v177: oyunun motor galerisi — araba galerisi gibi 3D mekân (açılamazsa düz liste) */}
+      {motorShopOpen &&
+        (user ? (
+          <VenueHouseScreen venue="motor_galerisi" onExit={() => closeVenueMaybeReturnToVisit(setMotorShopOpen)} fallback={<MotorGalleryScreen onClose={() => closeVenueMaybeReturnToVisit(setMotorShopOpen)} />} />
+        ) : (
+          <MotorGalleryScreen onClose={() => closeVenueMaybeReturnToVisit(setMotorShopOpen)} />
+        ))}
 
       {weaponShopOpen && (
         user ? (

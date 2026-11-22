@@ -37,13 +37,17 @@ export const STABLES = {
   golyaka: { animal: 'deve', seller: 'Deveci Halil', pen: [41, 30, 53, 44], x: 39.2, z: 37, r: 3.6 },
   camlica: { animal: 'at', seller: 'Çoban Yusuf', pen: [31, 8, 48, 21], x: 29.2, z: 14.5, r: 3.6 },
 };
-// yayanın yakınındaki ahır → { key, animal } | null (geo() önbellekli; sadece iki köy)
+// yayanın yakınındaki ahır (çoban / kapı ya da ağılın içi) → { key, animal } | null (geo() önbellekli)
 export function stableAt(x, z) {
   for (const p of geo().pads) {
     const S = p.village ? STABLES[p.key] : null;
     if (!S || Math.abs(x - p.mx) > 90 || Math.abs(z - p.mz) > 90) continue;
     const w = fromPad(p, S.x, S.z);
     if (Math.hypot(x - w.x, z - w.z) < S.r) return { key: p.key, animal: S.animal };
+    // ağılın (ahırın) içindeyken de
+    const l = toPad(p, x, z);
+    const [x0, z0, x1, z1] = S.pen;
+    if (l.x > x0 && l.x < x1 && l.z > z0 && l.z < z1) return { key: p.key, animal: S.animal };
   }
   return null;
 }

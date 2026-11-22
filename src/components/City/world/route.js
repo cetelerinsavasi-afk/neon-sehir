@@ -275,15 +275,19 @@ const ss = (a, b, x) => {
   return t * t * (3 - 2 * t);
 };
 export const TERRAIN = { x0: -800, x1: 3050, z0: -2950, z1: 150 };
-// v177 — ÇÖL: haritanın sağ altında, Gölyaka Köyü'nün çevresi (3. biyom: çimen · karlı kuzey · çöl).
-// Sadece görünüm (renk + bitki örtüsü); yükseklik / fizik değişmez. 0 = çöl değil … 1 = tam çöl.
-export const DESERT = { x: 840, z: -215, r0: 190, r1: 330 };
+// v177 — ÇÖL: haritanın sağ altında, Gölyaka Köyü'nden doğuya, Akçay deresinin kıyısına kadar uzanan
+// kuşak (3. biyom: çimen · karlı kuzey · çöl). Köy yolu bu kuşağın içinden dereye iner.
+// Sadece görünüm (renk + zemin dokusu + bitki örtüsü); yükseklik / fizik değişmez. 0 … 1 = tam çöl.
+export const DESERT = { ax: 760, az: -250, bx: 1640, bz: -300, r0: 230, r1: 360, x0: 360, x1: 2040, z0: -700, z1: 150 };
 export function desertK(x, z) {
-  const dx = x - DESERT.x;
-  const dz = z - DESERT.z;
-  if (Math.abs(dx) > DESERT.r1 + 40 || Math.abs(dz) > DESERT.r1 + 40) return 0;
-  const d = Math.hypot(dx, dz) + fbm(x / 120, z / 120, 3) * 55;
-  return 1 - ss(DESERT.r0, DESERT.r1, d);
+  if (x < DESERT.x0 || x > DESERT.x1 || z < DESERT.z0 || z > DESERT.z1) return 0;
+  const vx = DESERT.bx - DESERT.ax;
+  const vz = DESERT.bz - DESERT.az;
+  const t = Math.max(0, Math.min(1, ((x - DESERT.ax) * vx + (z - DESERT.az) * vz) / (vx * vx + vz * vz)));
+  const d = Math.hypot(x - DESERT.ax - vx * t, z - DESERT.az - vz * t) + fbm(x / 120, z / 120, 3) * 70;
+  // Kuğu Gölü'nün çevresi yeşil kalır
+  const lake = ss(LAKE.r * 1.3, LAKE.r * 2.3, Math.hypot(x - LAKE.x, z - LAKE.z));
+  return (1 - ss(DESERT.r0, DESERT.r1, d)) * lake;
 }
 
 // özellikler

@@ -99,6 +99,48 @@ function noiseFill(g, w, h, base, amp, n = 9000, size = 2) {
     g.fillRect(Math.random() * w, Math.random() * h, size, size);
   }
 }
+// v177 — kum dokusu (512 px, döşenebilir): açık taban, rüzgârın dizdiği dalgacıklar (tepe ışıklı, yamaç
+// gölgeli), arada iri / ince kum taneleri ve çakıl
+function sandTexture(g, w, h) {
+  g.fillStyle = '#c9c9c9';
+  g.fillRect(0, 0, w, h);
+  const N = 24;
+  const sp = h / N;
+  const TAU = Math.PI * 2;
+  for (let k = -1; k <= N + 1; k++) {
+    const kk = ((k % N) + N) % N;
+    const ph = kk * 0.73;
+    const yAt = (x) => k * sp + Math.sin((TAU * x * 2) / w + ph) * 5 + Math.sin((TAU * x * 5) / w + ph * 1.7) * 2.2;
+    for (const [dy, col, lw] of [[0, 'rgba(255,255,255,0.22)', 3.2], [3.4, 'rgba(70,60,50,0.20)', 3.6], [6.5, 'rgba(70,60,50,0.07)', 4]]) {
+      g.beginPath();
+      for (let x = 0; x <= w; x += 4) {
+        const y = yAt(x) + dy;
+        if (x === 0) g.moveTo(x, y);
+        else g.lineTo(x, y);
+      }
+      g.strokeStyle = col;
+      g.lineWidth = lw;
+      g.stroke();
+    }
+  }
+  // taneler
+  for (let i = 0; i < 26000; i++) {
+    const v = Math.random();
+    g.fillStyle = v < 0.5 ? `rgba(255,255,255,${0.08 + v * 0.12})` : `rgba(60,50,40,${0.05 + (v - 0.5) * 0.14})`;
+    g.fillRect(Math.random() * w, Math.random() * h, 1.4, 1.4);
+  }
+  // seyrek çakıl
+  for (let i = 0; i < 140; i++) {
+    const x = Math.random() * w;
+    const y = Math.random() * h;
+    const r = 1.2 + Math.random() * 2.2;
+    g.fillStyle = `rgba(${90 + Math.random() * 40},${75 + Math.random() * 30},${60 + Math.random() * 20},0.55)`;
+    g.beginPath();
+    g.ellipse(x, y, r * 1.3, r, Math.random() * 3, 0, TAU);
+    g.fill();
+  }
+}
+
 // yol: 11 m genişlik × 12 m boy; kenar çizgileri ±4 m, ortada kesikli çizgi
 function roadTexture(solidCenter = false) {
   return canvasTexture(256, 280, (g, w, h) => {
@@ -156,6 +198,30 @@ function mats() {
     MAT.water.map.needsUpdate = true;
   }
   MAT.terrain = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.95, map: canvasTexture(256, 256, (g, w, h) => noiseFill(g, w, h, '#bdbdbd', 46, 16000, 2)) });
+  // v177 — çöl zemini: rüzgâr kum dalgacıkları + kum taneleri (köşe başına aSand ağırlığıyla karışır).
+  // İki ölçekte (16 m ve 53 m, döndürülmüş) örneklenir → tekrar eden desen görünmez.
+  const sandMap = canvasTexture(512, 512, sandTexture);
+  MAT.terrain.onBeforeCompile = (sh) => {
+    sh.uniforms.sandMap = { value: sandMap };
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute float aSand;\nvarying float vSand;\nvarying vec2 vWXZ;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvSand = aSand;\nvWXZ = (modelMatrix * vec4(transformed, 1.0)).xz;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nuniform sampler2D sandMap;\nvarying float vSand;\nvarying vec2 vWXZ;')
+      .replace(
+        '#include <map_fragment>',
+        `#ifdef USE_MAP
+  vec4 sampledDiffuseColor = texture2D( map, vMapUv );
+  if (vSand > 0.01) {
+    vec3 s1 = texture2D( sandMap, vWXZ / 16.0 ).rgb;
+    vec3 s2 = texture2D( sandMap, mat2(0.8, -0.6, 0.6, 0.8) * vWXZ / 53.0 ).rgb;
+    sampledDiffuseColor.rgb = mix( sampledDiffuseColor.rgb, s1 * 0.62 + s2 * 0.38, clamp(vSand, 0.0, 1.0) );
+  }
+  diffuseColor *= sampledDiffuseColor;
+#endif`
+      );
+  };
+  MAT.terrain.customProgramCacheKey = () => 'terrain_sand_v177';
   return MAT;
 }
 
@@ -175,6 +241,7 @@ export function buildTerrain(cell = 8, { carve = null } = {}) {
   for (let j = 0; j < nz; j++) for (let i = 0; i < nx; i++) if (inBeach(T.x0 + i * cell, T.z0 + j * cell, -0.01)) Hd[j * nx + i] -= 0.45;
   const pos = new Float32Array(nx * nz * 3);
   const col = new Float32Array(nx * nz * 3);
+  const sandW = new Float32Array(nx * nz); // v177: çöl dokusu ağırlığı
   const uv = new Float32Array(nx * nz * 2);
   const c = new THREE.Color();
   const grass = new THREE.Color('#5f8f3a');
@@ -223,6 +290,7 @@ export function buildTerrain(cell = 8, { carve = null } = {}) {
         const rip = 0.5 + 0.5 * Math.sin((x * 0.55 + z * 0.85) / 7 + fbm(x / 40, z / 40, 2) * 4);
         dune.copy(dSand).lerp(dDark, rip * 0.45 + Math.max(0, fbm(x / 25, z / 25, 2)) * 0.25);
         c.lerp(dune, dk * (slope < 0.9 ? 0.95 : 0.6));
+        sandW[k] = dk * (slope < 0.9 ? 1 : 0.55);
       }
       const dl = Math.hypot(x - LAKE.x, z - LAKE.z);
       if (dl < LAKE.r * 1.35 && h < LAKE.y + 2.2) c.lerp(sand, 0.85);
@@ -261,6 +329,7 @@ export function buildTerrain(cell = 8, { carve = null } = {}) {
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  g.setAttribute('aSand', new THREE.BufferAttribute(sandW, 1));
   g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   g.setIndex(idx);
   g.computeVertexNormals();
@@ -834,11 +903,9 @@ export function buildDesertFlora(group, groundAt, { count = 520, skip = null } =
   const cacti = [];
   const bushes = [];
   const rocks = [];
-  for (let i = 0; i < count * 4 && cacti.length + bushes.length + rocks.length < count; i++) {
-    const a = rnd() * PI * 2;
-    const r = Math.sqrt(rnd()) * DESERT.r1;
-    const x = DESERT.x + Math.cos(a) * r;
-    const z = DESERT.z + Math.sin(a) * r;
+  for (let i = 0; i < count * 8 && cacti.length + bushes.length + rocks.length < count; i++) {
+    const x = DESERT.x0 + rnd() * (DESERT.x1 - DESERT.x0);
+    const z = DESERT.z0 + rnd() * (DESERT.z1 - DESERT.z0);
     const dk = desertK(x, z);
     const pick = rnd();
     const sc = 0.7 + rnd() * 0.7;

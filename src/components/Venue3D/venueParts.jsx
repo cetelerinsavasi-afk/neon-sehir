@@ -387,6 +387,20 @@ export function GaleriPart({ panel, setPanel, onOpenHeist, walk }) {
   );
 }
 
+// ── v177 MOTOR GALERİSİ ─────────────────────────────────────────────────────────
+export function MotoGaleriPart({ panel, setPanel, walk }) {
+  return (
+    <>
+      <TopBtns show={walk && !panel} setPanel={setPanel} items={[{ panel: 'gallery', label: '🏍️ Satılık motorlar' }]} />
+      {panel === 'gallery' && (
+        <Sheet title="🏍️ Neon Motor Galerisi — Güncel Fiyat Listesi" onClose={() => setPanel(null)} closeLabel="Motorcudan Uzaklaş">
+          <VehicleGalleryScreen shop="motogaleri" />
+        </Sheet>
+      )}
+    </>
+  );
+}
+
 // ── SİLAH MAĞAZASI ─────────────────────────────────────────────────────────────
 export function SilahPart({ panel, setPanel, walk }) {
   const open = panel === 'weapon' || panel === 'workshop';

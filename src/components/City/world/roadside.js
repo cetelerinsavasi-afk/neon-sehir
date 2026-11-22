@@ -1221,6 +1221,81 @@ B.piknik = (kit, p, ctx) => {
 };
 
 // --- KÖY -----------------------------------------------------------------------------------
+// v177 — ARNAVUT KALDIRIMI: iri, yuvarlatılmış düzensiz taşlar; aralarda toprak. Döşenebilir (512 px = 3 m).
+const COBBLE_M = 3;
+function cobbleTex() {
+  return canvasTex('arnavut_kaldirimi_v1', 512, 512, (g, w, h, r) => {
+    g.fillStyle = '#5b4d3b';
+    g.fillRect(0, 0, w, h);
+    const cols = ['#9a9184', '#a8a092', '#8a8276', '#b3aa98', '#857b6c', '#9c8f7a', '#7d776e'];
+    const rows = 8;
+    const ch = h / rows;
+    for (let j = 0; j < rows; j++) {
+      const n = 7 + (j % 2);
+      const cw = w / n;
+      const off = j % 2 ? cw * 0.5 : 0;
+      for (let i = 0; i < n; i++) {
+        const cx = i * cw + off + (r() - 0.5) * cw * 0.18;
+        const cy = j * ch + ch / 2 + (r() - 0.5) * ch * 0.16;
+        const rx = cw * (0.4 + r() * 0.06);
+        const ry = ch * (0.4 + r() * 0.06);
+        const k = 7 + Math.floor(r() * 3);
+        const pts = [];
+        for (let q = 0; q < k; q++) {
+          const a = (q / k) * Math.PI * 2 + r() * 0.35;
+          const rr = 0.82 + r() * 0.2;
+          pts.push([Math.cos(a) * rx * rr, Math.sin(a) * ry * rr]);
+        }
+        const col = cols[Math.floor(r() * cols.length)];
+        // kenarlardan taşan taş karşı kenarda da çizilir (döşenebilir)
+        for (const ox of [-w, 0, w]) for (const oy of [-h, 0, h]) {
+          const x0 = cx + ox;
+          const y0 = cy + oy;
+          if (x0 + rx < 0 || x0 - rx > w || y0 + ry < 0 || y0 - ry > h) continue;
+          g.beginPath();
+          pts.forEach(([px, py], q) => {
+            const [nx, ny] = pts[(q + 1) % k];
+            const mx = (px + nx) / 2;
+            const my = (py + ny) / 2;
+            if (q === 0) g.moveTo(x0 + (pts[k - 1][0] + px) / 2, y0 + (pts[k - 1][1] + py) / 2);
+            g.quadraticCurveTo(x0 + px, y0 + py, x0 + mx, y0 + my);
+          });
+          g.closePath();
+          g.fillStyle = col;
+          g.fill();
+          // üstten ışık, alttan gölge (taşın kabarıklığı)
+          const gr = g.createRadialGradient(x0 - rx * 0.3, y0 - ry * 0.35, 1, x0, y0, Math.max(rx, ry) * 1.1);
+          gr.addColorStop(0, 'rgba(255,255,255,0.28)');
+          gr.addColorStop(0.55, 'rgba(255,255,255,0)');
+          gr.addColorStop(1, 'rgba(0,0,0,0.32)');
+          g.fillStyle = gr;
+          g.fill();
+          g.strokeStyle = 'rgba(40,32,24,0.55)';
+          g.lineWidth = 2.2;
+          g.stroke();
+        }
+      }
+    }
+    // toz / ince taneler
+    for (let i = 0; i < 9000; i++) {
+      const v = r();
+      g.fillStyle = v < 0.5 ? `rgba(255,255,255,${0.04 + v * 0.08})` : `rgba(30,24,18,${0.04 + (v - 0.5) * 0.1})`;
+      g.fillRect(r() * w, r() * h, 1.5, 1.5);
+    }
+  });
+}
+const cobbleCache = new Map();
+function cobbleMat(w, d) {
+  const k = `${w.toFixed(2)}x${d.toFixed(2)}`;
+  if (cobbleCache.has(k)) return cobbleCache.get(k);
+  const map = cobbleTex().clone();
+  map.needsUpdate = true;
+  map.repeat.set(w / COBBLE_M, d / COBBLE_M);
+  const m = new THREE.MeshStandardMaterial({ map, roughness: 0.88, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+  cobbleCache.set(k, m);
+  return m;
+}
+
 B.koy = (kit, p, ctx) => (p.key === 'camlica' ? koyCamlica(kit, p, ctx) : koyGolyaka(kit, p, ctx));
 function koyGolyaka(kit, p, ctx) {
   const Y = 0.05;
@@ -1229,9 +1304,12 @@ function koyGolyaka(kit, p, ctx) {
   // çim zemin + toprak yollar
   // zemin: arazi (köy düzlüğü oyuldu) — ayrı çim düzlemi yok
   const dirt = M('#a08a63', 0.95);
+  // v177: köy içi yollar iri taş döşeli (arnavut kaldırımı) — 3 m'de bir tekrar eden doku
   const road = (w, d, x, z) => {
     const o = kit.box(w, 0.04, d, dirt, x, 0, z, { cast: false });
     o.receiveShadow = true;
+    const top = kit.mesh(new THREE.PlaneGeometry(w, d), cobbleMat(w, d), x, 0.043, z, 0, { cast: false, rx: -PI / 2 });
+    top.receiveShadow = true;
   };
   road(7, D * 2 + 4, 0, 0); // ana yol (giriş → meydan → köy sonu)
   road(W * 1.6, 6, 0, -6); // köy içi enine yol
