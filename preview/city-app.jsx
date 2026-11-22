@@ -13,6 +13,8 @@ const q = new URLSearchParams(location.search);
 const uid = q.get('uid') || PREVIEW_UID;
 const spawn = q.get('spawn') || 'ev';
 fakeDb.doc(`users/${uid}`).set({ displayName: uid, gold: 1e7, avatar: { gender: 'erkek', hairStyle: 'short', clothing: 'hoodie' } }, { merge: true });
+// v178: ?ob=1 → Rıza Amca'nın ilk görevi (fabrika) açık
+if (q.get('ob')) fakeDb.doc(`users/${uid}`).set({ onboardingStep: Number(q.get('ob')), onboardingV: 4 }, { merge: true });
 if (q.get('power')) fakeDb.doc(`weapons/${uid}_w1`).set({ ownerId: uid, power: Number(q.get('power')), lifeDays: 10 });
 [1, 6, 12, 13, 21, 23, 24].forEach((id) => fakeDb.doc(`vehicles/${uid}_${id}`).set({ ownerId: uid, catalogId: id, lifeDays: 30, mods: null }));
 window.__ready = true;

@@ -5270,7 +5270,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
           const key = k.group.name.slice(7);
           return { x: p.x, z: p.z, icon: '🛒', name: { kokorecci: 'Kokoreççi', kofteci: 'Köfteci', donerci: 'Balık Ekmekçi', simitci: 'Simitçi', midyeci: 'Midyeci', dondurmaci: 'Dondurmacı' }[key] || key, vendor: key };
         });
-        gmap = createMap({ city, cityExtraLots: [], solids: [...solids, ...W.townSolids], citySolidCount: solids.length, town: W.town, sample: W.groundAt, lotTypes: LOT_TYPES, vendors, extraBld: W.venues.filter((v) => v.lot).map((v) => ({ type: v.type, x: v.wx, z: v.wz, hw: VROOM.W / 2 + 0.3, hd: VROOM.D / 2 + 0.3, yaw: v.ry })), roadside: { ...rsGeo(), solids: W.rsSolids }, park: W.park });
+        gmap = createMap({ city, cityExtraLots: [], solids: [...solids, ...W.townSolids], citySolidCount: solids.length, town: W.town, sample: W.groundAt, lotTypes: LOT_TYPES, vendors, extraBld: W.venues.filter((v) => v.lot).map((v) => ({ type: v.type, x: v.wx, z: v.wz, hw: VROOM.W / 2 + 0.3, hd: VROOM.D / 2 + 0.3, yaw: v.ry })), roadside: { ...rsGeo(), solids: W.rsSolids }, park: W.park, extraPois: zones.filter((z) => z.kind === 'shopDoor' && z.venue === 'motogaleri').map((z) => ({ x: z.x, z: z.z, type: 'motogaleri', glyph: 'moto', icon: '🏍️', name: 'Motor Galerisi', color: '#e9651c' })) });
       }
       return gmap;
     },
@@ -5278,6 +5278,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     mapGo(p) {
       if (!p) return false;
       if (p.type && W.venues.some((v) => v.type === p.type)) return api.enterVenue(p.type);
+      if (p.type === 'motogaleri') {
+        const sp = spawnPoint('motor_galerisi'); // v178: kapının önü
+        api.teleportWorld(sp.x, sp.z, sp.yaw);
+        return true;
+      }
       if (p.rs) {
         const pd = rsGeo().pads.find((q) => q.key === p.rs);
         if (pd) {

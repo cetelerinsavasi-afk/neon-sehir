@@ -601,3 +601,9 @@ body.ns-city-open .ta-root { z-index: 96; }
 /* v177 — kiralık bisiklet süresi */
 .cs-rent { margin-bottom: 4px; background: linear-gradient(180deg, #2fb35a, #1f7a3d) !important; border-color: #3ad07a !important; }
 .cs-rent-chip { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 64px); left: 50%; transform: translateX(-50%); z-index: 30; padding: 6px 14px; border-radius: 999px; background: rgba(15, 40, 24, 0.85); border: 1px solid #3ad07a; color: #d8ffe4; font-weight: 800; font-variant-numeric: tabular-nums; pointer-events: none; }
+/* v178 — görev oku (Rıza Amca: fabrika) */
+.cs-venue-btn.cs-guided { position: relative; box-shadow: 0 0 0 2px #ffd23f, 0 0 18px rgba(255, 210, 63, 0.65); animation: cs-guide-glow 1.2s ease-in-out infinite; }
+.cs-guide-arrow { position: absolute; left: calc(100% + 8px); top: 50%; width: 0; height: 0; border-top: 11px solid transparent; border-bottom: 11px solid transparent; border-right: 16px solid #ffd23f; filter: drop-shadow(0 0 6px rgba(255, 210, 63, 0.8)); transform: translateY(-50%); animation: cs-guide-poke 0.8s ease-in-out infinite; pointer-events: none; }
+.cs-guide-arrow::after { content: ''; position: absolute; left: 14px; top: -4px; width: 16px; height: 8px; border-radius: 3px; background: #ffd23f; }
+@keyframes cs-guide-poke { 0%, 100% { transform: translate(0, -50%); } 50% { transform: translate(8px, -50%); } }
+@keyframes cs-guide-glow { 0%, 100% { box-shadow: 0 0 0 2px #ffd23f, 0 0 10px rgba(255, 210, 63, 0.4); } 50% { box-shadow: 0 0 0 2px #ffd23f, 0 0 22px rgba(255, 210, 63, 0.85); } }

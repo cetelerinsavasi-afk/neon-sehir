@@ -1432,6 +1432,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const uiVenue = venue || shopDoorVenue;
   const vui = !driving && !riding ? VENUE_UI[uiVenue] || null : null;
   const fleetJob = !driving && !riding ? FLEET_VENUE[uiVenue] || (atTirLot ? 'tir' : null) : null; // v177
+  const guideFab = !guest && uiVenue === 'fabrika' && currentOnboardingTaskId(player) === 1; // v178: fabrika görevi
   const animalNear = !driving && !riding ? stableNear : null; // v177: 'at' | 'deve'
   const bikeShopNear = !driving && !riding && atBikeShop; // v177
   // v177 — kiralık bisiklet: kirala (1 dk peşin) → bisiklet yanına gelir; süre takibi aşağıdaki efektte
@@ -1862,8 +1863,10 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                     </button>
                   )}
                   {vui.inCity && (
-                    <button className="cs-venue-btn" onClick={() => (guest ? setAskSignIn(true) : setPanel({ kind: 'region', region: vui.inCity }))}>
+                    <button className={`cs-venue-btn${guideFab && vui.inCity === 'fabrika' ? ' cs-guided' : ''}`} onClick={() => (guest ? setAskSignIn(true) : setPanel({ kind: 'region', region: vui.inCity }))}>
                       {vui.label}
+                      {/* v178: Rıza Amca'nın fabrika görevinde düğmeyi gösteren ok (görev bitince kalkar) */}
+                      {guideFab && vui.inCity === 'fabrika' && <span className="cs-guide-arrow" aria-hidden="true" />}
                     </button>
                   )}
                   {vui.heist && HEIST_LABELS[vui.heist] && (

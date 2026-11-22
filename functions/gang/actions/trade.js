@@ -17,7 +17,7 @@
 //    içermez.
 import { GANG, productById, atLeast } from '../config.js';
 import { addDays, daysBetweenKeys, hhmmOf, nextWindowStartMs } from '../time.js';
-import { vehicleShopOf } from '../../fleet.js'; // v177: sadece galeri / motor galerisi araçları
+import { galeriSells } from '../../fleet.js'; // v180: sadece araba galerisinin arabaları
 
 export function createTradeActions(core, treasury) {
   const { FV, fail, readMembership, ledger, gangLog, announce, posInt, requireGangMember, requireRank, requestGuard, unitsOfItems, depotFree } = core;
@@ -127,7 +127,7 @@ export function createTradeActions(core, treasury) {
       const it = core.parseItemKey(key);
       if (!it || it.productId !== productId) fail('invalid-argument', 'Geçersiz ürün kalemi.');
       // v177: ticari araçlar (taksi, otobüs, tır, ambulans, polis) ticaret yolundan getirilemez
-      if (it.kind === 'vehicle' && !vehicleShopOf(it.catalogId)) fail('invalid-argument', 'Bu araç ticaret yolundan getirilemez.');
+      if (it.kind === 'vehicle' && !galeriSells(it.catalogId)) fail('invalid-argument', 'Çeteler sadece araba galerisinde satılan arabaları sipariş edebilir.'); // v180
       items[key] = posInt(qty);
     }
     if (Object.keys(items).length === 0) fail('invalid-argument', 'Sipariş boş.');

@@ -128,6 +128,19 @@ function glyph(g, key) {
         fill();
       });
       break;
+    case 'moto': // v178: motor galerisi
+      [-0.5, 0.52].forEach((x) => {
+        g.beginPath();
+        g.arc(x, 0.28, 0.26, 0, PI * 2);
+        stroke();
+      });
+      L([[-0.5, 0.28], [-0.12, -0.12], [0.3, -0.12], [0.52, 0.28]]);
+      stroke();
+      L([[0.3, -0.12], [0.36, -0.42], [0.58, -0.46]]);
+      stroke();
+      L([[-0.32, -0.2], [0.08, -0.2]]);
+      stroke();
+      break;
     case 'target':
       g.beginPath();
       g.arc(0, 0, 0.6, 0, PI * 2);
@@ -377,7 +390,7 @@ function drawPin(g, x, y, r, color, key, small) {
   g.restore();
 }
 
-export function createMap({ city, cityExtraLots, solids, citySolidCount, town, sample, lotTypes, vendors, extraBld = [], roadside = null, park = null }) {
+export function createMap({ city, cityExtraLots, solids, citySolidCount, town, sample, lotTypes, vendors, extraBld = [], roadside = null, park = null, extraPois = [] }) {
   // --- 1) BÖLGE katmanı: arazi gölgelendirmesi (kabartma) + su ---------------------------
   const WS = 0.25;
   const T = TERRAIN;
@@ -649,6 +662,7 @@ export function createMap({ city, cityExtraLots, solids, citySolidCount, town, s
     pois.push({ ...p, type: l.type, glyph: GLYPH_OF[l.type], icon: d.icon, name: d.name, color: ICON_COL[l.type] || '#555', big: ['stadyum', 'park', 'liman', 'belediye', 'banka'].includes(l.type) });
   });
   vendors.forEach((v) => pois.push({ ...v, small: true, glyph: 'fork', color: '#e07a1f' }));
+  extraPois.forEach((q) => pois.push(q)); // v178: motor galerisi vb. (lot olmayan dükkânlar)
   town.pois.forEach((p) => pois.push(p));
   pois.push({ ...frameAt(TAGS.gise), type: 'gise', glyph: 'toll', icon: '🚧', name: 'Gişeler', color: '#1f6fd0' });
   pois.push({ ...frameAt(LEN - 46), type: 'gise', glyph: 'toll', icon: '🚧', name: 'Kervankent Gişeleri', color: '#1f6fd0' });

@@ -8,7 +8,7 @@ import { dateKeyOf, hourOf, windowSlotOf, weekdayOfKey, addDays } from './time.j
 import { goldTag } from '../moneyLog.js';
 import { stateWrite } from '../stateTreasury.js';
 import { intelReviewRanks } from './ranks.js';
-import { vehicleShopOf } from '../fleet.js'; // v177
+import { galeriSells } from '../fleet.js'; // v180
 
 
 export const TEST_WORLD = 'test';
@@ -635,7 +635,7 @@ export function createCore(deps) {
     const p = productById(productId);
     if (!p) return [];
     if (p.kind === 'weapon') return Object.keys(catalogs.WEAPON_CATALOG).map((id) => parseItemKey(`silah:${id}`));
-    if (p.kind === 'vehicle') return Object.keys(catalogs.VEHICLE_CATALOG).filter((id) => vehicleShopOf(id)).map((id) => parseItemKey(`araba:${id}`)); // v177: sadece galeri / motor galerisi araçları
+    if (p.kind === 'vehicle') return Object.keys(catalogs.VEHICLE_CATALOG).filter((id) => galeriSells(id)).map((id) => parseItemKey(`araba:${id}`)); // v180: sadece araba galerisinde satılan arabalar
     return [parseItemKey(p.id)];
   }
 

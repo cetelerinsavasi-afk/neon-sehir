@@ -1305,14 +1305,19 @@ function koyGolyaka(kit, p, ctx) {
   // zemin: arazi (köy düzlüğü oyuldu) — ayrı çim düzlemi yok
   const dirt = M('#a08a63', 0.95);
   // v177: köy içi yollar iri taş döşeli (arnavut kaldırımı) — 3 m'de bir tekrar eden doku
-  const road = (w, d, x, z) => {
+  // v178: kesişen iki yolun taşları üst üste titreşmesin → enine yol 4 mm yukarıda (ty)
+  const road = (w, d, x, z, ty = 0.043) => {
     const o = kit.box(w, 0.04, d, dirt, x, 0, z, { cast: false });
     o.receiveShadow = true;
-    const top = kit.mesh(new THREE.PlaneGeometry(w, d), cobbleMat(w, d), x, 0.043, z, 0, { cast: false, rx: -PI / 2 });
+    const top = kit.mesh(new THREE.PlaneGeometry(w, d), cobbleMat(w, d), x, ty, z, 0, { cast: false, rx: -PI / 2 });
     top.receiveShadow = true;
+    if (ty > 0.045) {
+      top.material.polygonOffsetFactor = -3;
+      top.material.polygonOffsetUnits = -3;
+    }
   };
   road(7, D * 2 + 4, 0, 0); // ana yol (giriş → meydan → köy sonu)
-  road(W * 1.6, 6, 0, -6); // köy içi enine yol
+  road(W * 1.6, 6, 0, -6, 0.047); // köy içi enine yol
   // meydan: çınar, çeşme, kahvehane, cami, bakkal
   const sq = { x: 0, z: -6 };
   bigTree(kit, sq.x + 9, Y, sq.z + 8, 1.4);
