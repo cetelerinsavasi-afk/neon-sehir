@@ -20,7 +20,7 @@ const now = () => Date.now() + shift;
 const borsa = createBorsa({ db: fakeDb, FieldValue, HttpsError: PreviewHttpsError, goldTag, stateWrite, taxFrac: () => 0.1, dayKey: (ms) => stateDayKey(ms), addDayKey, now });
 window.__fnHook = {
   ...(window.__fnHook || {}),
-  borsaAction: (uid, data) => (data?.op === 'topla' ? borsa.collect(uid) : borsa.trade(uid, data)),
+  borsaAction: (uid, data) => (data?.op === 'topla' ? borsa.collect(uid) : data?.op === 'satHepsi' ? borsa.sellAll(uid, data) : borsa.trade(uid, data)),
 };
 const income = (day, sk, amount) => fakeDb.doc(`stateLedger/${day}_s0`).set({ dayKey: day, stat: { [`hs_${sk}`]: FieldValue.increment(amount) } }, { merge: true });
 window.__borsa = { borsa, fakeDb, hourly: () => borsa.hourly(), income, shiftHours: (h) => (shift += h * 3600_000), now };

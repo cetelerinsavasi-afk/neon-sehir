@@ -204,6 +204,55 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
     });
   }
 
+  // ---- v181: Hisselerim › Hepsini sat (tüm mekânlar, onaylı) -------------------
+  // Her mekânda hisseler sırayla satılır (her satışta fiyat bir basamak düşer — tek tek satmakla aynı).
+  // Biriken gelir silinmez (sonra toplanır). expect: ekranda gösterilen toplam; değiştiyse satış olmaz.
+  async function sellAll(uid, data) {
+    const t = now();
+    return db.runTransaction(async (tx) => {
+      const [uSnap, mSnap] = await Promise.all([tx.get(userRef(uid)), tx.get(marketRef())]);
+      const user = uSnap.data();
+      if (!user) fail('failed-precondition', 'Oyuncu bulunamadı.');
+      const market = mSnap.data() || {};
+      const u = {};
+      const m = { co: {}, updatedAtMs: t };
+      let total = 0;
+      let kz = 0;
+      let kom = 0;
+      let shares = 0;
+      const after = {};
+      for (const id of BORSA_CO_IDS) {
+        const co = coState(market, id);
+        const hold = settle(holdState(user, id), co);
+        if (hold.n <= 0) continue;
+        let n = co.n;
+        let base = 0;
+        let got = 0;
+        for (let i = 0; i < hold.n && n > 0; i++) {
+          base += sellBase(n);
+          got += sellGet(n);
+          n -= 1;
+        }
+        total += got;
+        kz += base - hold.c;
+        kom += base - got;
+        shares += hold.n;
+        m.co[id] = { n, h: Math.max(0, co.h - 1) };
+        const left = { ...hold, n: 0, c: 0 };
+        after[id] = left;
+        u[`borsa.${id}`] = left.p > 0 ? left : FieldValue.delete();
+      }
+      if (!shares) fail('failed-precondition', 'Satılacak hissen yok.');
+      if (data?.expect != null && Number(data.expect) !== total) fail('aborted', `price-changed:${total}`);
+      u.gold = FieldValue.increment(total);
+      u.goldTag = goldTag('borsa', { borsaKz: kz, borsaKom: -kom });
+      u.borsaSon = hasAny(user, after) ? t : FieldValue.delete();
+      tx.update(userRef(uid), u);
+      tx.set(marketRef(), m, { merge: true });
+      return { ok: true, op: 'satHepsi', total, shares };
+    });
+  }
+
   // ---- Gelirleri topla ------------------------------------------------------
   async function collect(uid) {
     const t = now();
@@ -411,5 +460,5 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
     });
   }
 
-  return { trade, collect, hourly, sweepIdle, liquidate, releaseForDeletion, incomesOf };
+  return { trade, sellAll, collect, hourly, sweepIdle, liquidate, releaseForDeletion, incomesOf };
 }

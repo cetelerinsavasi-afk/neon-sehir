@@ -143,6 +143,18 @@ export default function BorsaApp({ selected, onSelect }) {
 
   const cos = useMemo(() => sortCos(market), [market]);
   const pend = useMemo(() => pendingAll(player, market), [player, market]);
+  // v181: elindeki hisselerin şu an satılırsa toplam değeri (komisyon dahil, her satışta fiyat bir basamak düşer)
+  const worth = useMemo(() => {
+    const rows = sortCos(market)
+      .map((c) => {
+        const n = holdState(player, c.id).n;
+        return n > 0 ? { id: c.id, name: c.name, n, value: sellAllValue(n, coState(market, c.id).n) } : null;
+      })
+      .filter(Boolean);
+    return { rows, total: rows.reduce((a, r) => a + r.value, 0), shares: rows.reduce((a, r) => a + r.n, 0) };
+  }, [player, market]);
+  const [sellAsk, setSellAsk] = useState(false);
+  useBackClose(sellAsk, () => setSellAsk(false));
   if (!user) return <SignInPrompt message="Neon Borsa'yı kullanmak için giriş yapmalısın." />;
 
   const gold = player?.gold ?? 0;
@@ -160,7 +172,7 @@ export default function BorsaApp({ selected, onSelect }) {
       const r = await borsaAction(payload);
       show(ok(r));
     } catch (err) {
-      show(err?.message || 'İşlem yapılamadı.', true);
+      show(String(err?.message || '').startsWith('price-changed') ? 'Fiyat değişti, tekrar bak' : err?.message || 'İşlem yapılamadı.', true);
     } finally {
       setBusy(null);
     }
@@ -193,12 +205,23 @@ export default function BorsaApp({ selected, onSelect }) {
           <VendorAvatar id={sel} size={64} />
           <div>
             <h2>{meta.name}</h2>
-            <span className="borsa-sub">{`${co.h} hissedar · ${co.kind === 'sirket' ? 'şirket' : 'seyyar satıcı'}`}</span>
+            <span className="borsa-sub">{`${co.h} hissedar · ${meta.kind === 'sirket' ? 'şirket' : 'seyyar satıcı'}`}</span>
           </div>
         </div>
+        {/* v178: alış ve satış fiyatı ayrı (komisyon dahil, şu an 1 hisse) */}
         <div className="borsa-bigp">
-          <b>{fmt(sellBase(co.n))}</b> <Change pct={change24h(co.ch, sellBase(co.n))} />
-          <span className="borsa-sub">{cost == null ? 'Hisse fiyatı · alış kapalı' : 'Hisse fiyatı'}</span>
+          <div className="borsa-ab2">
+            <div className="al">
+              <small>Alış</small>
+              <b>{cost == null ? 'Kapalı' : fmt(cost)}</b>
+            </div>
+            <div className="sat">
+              <small>Satış</small>
+              <b>{co.n ? fmt(get) : '—'}</b>
+            </div>
+          </div>
+          <Change pct={change24h(co.ch, sellBase(co.n))} />
+          <span className="borsa-sub"> son 24 saat</span>
         </div>
         <BigChart points={pts.slice(-n)} color={VENDOR_LOOK[sel]?.c || '#19e8ff'} />
         <div className="borsa-rng" role="group" aria-label="Grafik aralığı">
@@ -277,9 +300,24 @@ export default function BorsaApp({ selected, onSelect }) {
             Hisselerim
           </button>
         </div>
+        {/* v181: Hisselerim — elindeki hisselerin şu anki toplam değeri + (onaylı) hepsini sat */}
+        {tab === 'mine' && worth.shares > 0 && (
+          <div className="borsa-worth">
+            <div>
+              <small>{`${worth.shares} hisse · şu anki değeri`}</small>
+              <b>
+                <span className="borsa-coin" />
+                {fmt(worth.total)}
+              </b>
+            </div>
+            <button className="borsa-btn rd-gh" disabled={Boolean(busy)} onClick={() => setSellAsk(true)}>
+              Hepsini sat
+            </button>
+          </div>
+        )}
         <div className="borsa-sec">
           <span>Mekân</span>
-          <span>Hisse fiyatı</span>
+          <span>Alış · Satış</span>
         </div>
         {!ready && <p className="borsa-empty">Yükleniyor…</p>}
         {ready && list.length === 0 && <p className="borsa-empty">Henüz hissen yok.</p>}
@@ -301,7 +339,14 @@ export default function BorsaApp({ selected, onSelect }) {
                   </span>
                 </span>
                 <span className="borsa-px">
-                  <b>{fmt(sellBase(co.n))}</b>
+                  <span className="borsa-ab">
+                    <i>Al</i>
+                    <b>{buyCost(co.n) == null ? '—' : fmt(buyCost(co.n))}</b>
+                  </span>
+                  <span className="borsa-ab s">
+                    <i>Sat</i>
+                    <b>{co.n ? fmt(sellGet(co.n)) : '—'}</b>
+                  </span>
                   <Change pct={change24h(co.ch, sellBase(co.n))} />
                   <Mini points={series(co)} />
                 </span>
@@ -313,10 +358,45 @@ export default function BorsaApp({ selected, onSelect }) {
   }
 
   const split = splitCollect(pend.total, taxFrac, player?.debtToState);
+  const sellAllNow = () =>
+    run('satHepsi', { op: 'satHepsi', expect: worth.total }, (r) => {
+      setSellAsk(false);
+      return `${r.shares} hisse satıldı · +${fmt(r.total)}`;
+    });
   return (
     <div className="borsa">
       <div className={`borsa-scroll${sel ? ' has-act' : ''}`}>{body}</div>
       {actions}
+      {sellAsk && worth.shares > 0 && (
+        <div className="borsa-shade" onClick={(e) => e.target === e.currentTarget && !busy && setSellAsk(false)}>
+          <div className="borsa-sheet" role="dialog" aria-label="Hepsini sat">
+            <div className="borsa-grab" />
+            <h3>Tüm hisseler satılsın mı?</h3>
+            {worth.rows.map((w) => (
+              <div key={w.id} className="borsa-ln">
+                <span className="borsa-ln-n">
+                  <VendorAvatar id={w.id} size={30} />
+                  {`${w.name} · ${w.n}`}
+                </span>
+                <span>{fmt(w.value)}</span>
+              </div>
+            ))}
+            <div className="borsa-ln tot">
+              <span>Hesabına geçecek</span>
+              <span className="borsa-gold">{fmt(worth.total)}</span>
+            </div>
+            {pend.total > 0 && <p className="borsa-note">Biriken gelirin silinmez, sonra toplayabilirsin.</p>}
+            <div className="borsa-row">
+              <button className="borsa-btn gh" disabled={Boolean(busy)} onClick={() => setSellAsk(false)}>
+                Vazgeç
+              </button>
+              <button className="borsa-btn rd" disabled={Boolean(busy)} onClick={sellAllNow}>
+                {busy === 'satHepsi' ? '…' : 'Hepsini sat'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {sheet && (
         <div className="borsa-shade" onClick={(e) => e.target === e.currentTarget && setSheet(false)}>
           <div className="borsa-sheet" role="dialog" aria-label="Gelir detayları">

@@ -410,6 +410,7 @@ export const borsaAction = onCall(async (request) => {
   const p = request.data || {};
   if (p.op === 'al' || p.op === 'sat') return borsa.trade(uid, p);
   if (p.op === 'topla') return borsa.collect(uid);
+  if (p.op === 'satHepsi') return borsa.sellAll(uid, p); // v181
   throw new HttpsError('invalid-argument', 'Geçersiz işlem.');
 });
 // v177 — tek seferlik: polis arabaları + aynı türden fazla ticari araçlar (kalan ömre göre ödenerek) kaldırılır,

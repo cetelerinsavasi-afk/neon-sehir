@@ -263,11 +263,34 @@ test('hesap silme: hisseler havuza döner', async () => {
   const m = await market();
   assert.equal(m.co.simitci.n, 1);
   assert.equal(m.co.simitci.h, 1);
-  assert.equal((await u('a')).borsa, undefined);
+  assert.deepEqual((await u('a')).borsa || {}, {});
   assert.equal(await b.releaseForDeletion('a'), 0);
 });
 
 test('biriken gelir formülü', () => {
   assert.equal(pendingOf({ n: 3, a: 1000, p: 5 }, { acc: 4000 }), 5 + 9);
   assert.equal(pendingOf({ n: 0, a: 0, p: 7 }, { acc: 99999 }), 7);
+});
+
+test('v181 hepsini sat: tüm mekânlar, tek tek satmakla aynı tutar, gösterilen tutar değiştiyse satmaz', async () => {
+  const { b, user, u, market } = setup();
+  await user('a', 1_000_000);
+  await user('z', 1_000_000);
+  for (let i = 0; i < 3; i++) await b.trade('a', { op: 'al', co: 'kokorecci' });
+  await b.trade('a', { op: 'al', co: 'nakliye' });
+  await b.trade('z', { op: 'al', co: 'kokorecci' });
+  const m0 = await market();
+  const want = sellAllValue(3, m0.co.kokorecci.n) + sellAllValue(1, m0.co.nakliye.n);
+  const g0 = (await u('a')).gold;
+  await assert.rejects(b.sellAll('a', { expect: want + 1 }), /price-changed/);
+  const r = await b.sellAll('a', { expect: want });
+  assert.equal(r.total, want);
+  assert.equal(r.shares, 4);
+  assert.equal((await u('a')).gold, g0 + want);
+  assert.deepEqual((await u('a')).borsa || {}, {});
+  const m = await market();
+  assert.equal(m.co.kokorecci.n, 1);
+  assert.equal(m.co.kokorecci.h, 1);
+  assert.equal(m.co.nakliye.n, 0);
+  await assert.rejects(b.sellAll('a', {}), /hissen yok/);
 });
