@@ -38,7 +38,7 @@ export function useBizReminders() {
         setShops(
           s.docs
             .map((d) => ({ id: d.id, type: d.data().biz?.type || null, name: d.data().name || '' }))
-            .filter((h) => h.type === 'galeri' || h.type === 'silahci' || h.type === 'depo' || h.type === 'gazino')
+            .filter((h) => h.type === 'galeri' || h.type === 'motogaleri' || h.type === 'silahci' || h.type === 'depo' || h.type === 'gazino')
         );
       },
       () => setShops([])
@@ -86,7 +86,7 @@ export function useBizReminders() {
 
   // v130 — silahçı / galeri stoğu (dükkân başına 1 belge)
   const [shopStock, setShopStock] = useState({});
-  const stockIds = shops.filter((h) => h.type === 'galeri' || h.type === 'silahci').map((h) => h.id).join(',');
+  const stockIds = shops.filter((h) => h.type === 'galeri' || h.type === 'motogaleri' || h.type === 'silahci').map((h) => h.id).join(',');
   useEffect(() => {
     if (!stockIds) {
       setShopStock({});
@@ -130,6 +130,9 @@ export function useBizReminders() {
       const tag = shops.filter((x) => x.type === h.type).length > 1 && h.name ? ` (${h.name})` : '';
       if (h.type === 'galeri' && shopStock[h.id] === 0) {
         list.push({ id: `galeri-car-${h.id}`, emoji: '🚗', text: 'Galerine araba ekle (Envanter › Vitrine ekle)' + tag });
+      }
+      if (h.type === 'motogaleri' && shopStock[h.id] === 0) {
+        list.push({ id: `motogaleri-${h.id}`, emoji: '🏍️', text: 'Motor galerine motor ekle (Envanter › Vitrine ekle)' + tag }); // v177
       }
       if (h.type === 'depo') {
         const v = depoView[h.id];

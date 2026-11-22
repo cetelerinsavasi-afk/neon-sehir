@@ -19,6 +19,9 @@ export const OUTER = { x1: cx(COLS + 1) + BLOCK / 2 + (P - BLOCK), z0: cz(-2) - 
 // v155: sınır = dış servis yolunun kenarı (doğu/kuzey), kordon (batı), rıhtım (güney)
 // v155: kuzeydeki orman parkına yaya kapıları (dış servis yolunun kuzey kenarında, x)
 export const PARK_GATES = [-60, 20, 100, 180];
+// v177: seyyar bisikletçi — x = 100 kapısının hemen içinde, yolun doğusunda (satış + kiralama).
+// Yaya r metre yaklaşınca "🚲 Bisikletçi" düğmesi çıkar.
+export const BIKE_SHOP = { x: 105.4, z: -191.5, r: 3.4 };
 // v155: doğu kenarında çakıllı yola açılan geçit (z) — şehrin güneydoğusundaki hurdalık / çete bölgesi
 export const EAST_GATE_Z = 60;
 export const BOUNDS = { x0: KORDON_X + 1.4, x1: OUTER.x1 - 0.6, z0: OUTER.z0 + 0.6, z1: COAST_Z + 19 };

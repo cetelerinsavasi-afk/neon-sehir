@@ -133,7 +133,7 @@ export const transferTax = (price, rates = ratesFor()) => Math.max(0, Math.round
 // v127: devlet defterinde kalem — maaş vergisi işe göre, işletme vergisi türe göre
 function stateCatOf(source, uid, ref, bizType) {
   // v130: oyuncu dükkânı da oyunun dükkânı da aynı kalem (sıfır satış kâr vergisi)
-  if (source === 'sifir') return bizType === 'galeri' ? 'vergi_sifirAraba' : 'vergi_sifirSilah';
+  if (source === 'sifir') return bizType === 'galeri' || bizType === 'motogaleri' ? 'vergi_sifirAraba' : 'vergi_sifirSilah'; // v177 motor galerisi
   if (uid === '__game__') return 'vergi_oyun';
   if (source === 'maas') return ref === 'futbolcu' ? 'vergi_maasFutbolcu' : ref === 'menajer' ? 'vergi_maasMenajer' : 'vergi_maasIsci';
   if (source === 'isletme' && bizType) return `vergi_isl_${bizType}`;

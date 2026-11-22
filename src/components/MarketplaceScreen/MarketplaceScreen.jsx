@@ -19,7 +19,10 @@ import {
   buyListing,
   advertiseListing,
 } from '../../services/gameActions';
-import { vehicleCatalog } from '../../data/vehicleCatalog';
+import { vehicleCatalog, vehicleKindOfId } from '../../data/vehicleCatalog';
+import { VehicleKindTabs } from '../VehicleGalleryScreen/VehicleGalleryScreen';
+import '../VehicleGalleryScreen/VehicleGalleryScreen.css';
+import { canResell } from '../../../functions/fleet.js'; // v177: bisiklet / at / deve 2. elde satılmaz
 import { itemListingBand } from '../../../functions/itemRules.js'; // v166: 2. el fiyat aralığı sunucuyla birebir
 import { canRepairVehicle } from '../../../functions/vehicleKinds.js';
 import { weaponCatalog } from '../../data/weaponCatalog';
@@ -168,7 +171,7 @@ function estimateValue({ kind, catalogId, repairsUsed, lifeDays, level }) {
   const life = Math.max(0, Math.min(cap, lifeDays ?? cap));
   const left = life + Math.max(0, MAX_REPAIRS - (repairsUsed || 0)) * bonus;
   const pct = Math.max(0, Math.min(1, left / total));
-  return { value: Math.round(max * pct), pct, max, left, total, level: lvl };
+  return { value: Math.round(max * pct), pct, max, left, total, level: lvl, noLevel: noRepair };
 }
 const vehicleLevelOf = (raceLevel, gearUp, tankUp) => (Number.isInteger(raceLevel) && raceLevel >= 1 ? raceLevel : 1 + (gearUp ? 1 : 0) + (tankUp ? 1 : 0));
 function estimateOfListing(l) {
@@ -190,7 +193,7 @@ function EstimateLine({ est }) {
       {est.total ? (
         <small className="market-estimate-why">
           {' '}
-          · seviye {est.level} · ömür {est.left}/{est.total} (%{Math.round(est.pct * 100)})
+          {est.noLevel ? '' : ` · seviye ${est.level}`} · ömür {est.left}/{est.total} (%{Math.round(est.pct * 100)})
         </small>
       ) : null}
     </span>
@@ -304,7 +307,8 @@ function SellForm({ onCreated, onClose, initialItemType }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
-  const sellableVehicles = vehicles.filter((v) => !v.mortgaged && !v.seizedByBank && !v.listed);
+  const [vk, setVk] = useState('araba'); // v177: araba / ticari / motor
+  const sellableVehicles = vehicles.filter((v) => !v.mortgaged && !v.seizedByBank && !v.listed && canResell(v.catalogId) && vehicleKindOfId(v.catalogId) === vk);
   const sellableWeapons = weapons.filter((w) => !w.listed);
 
   const priceRange = (() => {
@@ -410,10 +414,15 @@ function SellForm({ onCreated, onClose, initialItemType }) {
         {itemType === 'vehicle' && (
           <>
             <p className="market-step-label">1. Aracını Seç</p>
+            <VehicleKindTabs
+              value={vk}
+              onChange={(k) => {
+                setVk(k);
+                setSelectedId('');
+              }}
+            />
             <div className="market-item-picker">
-              {sellableVehicles.length === 0 && (
-                <p className="market-hint">Satışa uygun (ipoteksiz, el konulmamış) bir aracın yok.</p>
-              )}
+              {sellableVehicles.length === 0 && <p className="market-hint">{vk === 'motor' ? 'Satılabilecek motorun yok (bisiklet, at ve deve 2. elde satılmaz).' : 'Bu türde satılabilecek aracın yok.'}</p>}
               {sellableVehicles.map((v) => {
                 const selected = selectedId === v.id;
                 return (
@@ -424,7 +433,7 @@ function SellForm({ onCreated, onClose, initialItemType }) {
                   >
                     <CarImg className="market-item-photo" catalogId={v.catalogId} mods={v.mods || null} alt={vehicleDisplayName(v)} />
                     <span className="market-item-name">{vehicleDisplayName(v)}</span>
-                    <ListingCarStats vehicle={v} />
+                    {vk === 'araba' ? <ListingCarStats vehicle={v} /> : <LifeOnly lifeDays={v.lifeDays} />}
                   </button>
                 );
               })}
@@ -523,6 +532,21 @@ function SellForm({ onCreated, onClose, initialItemType }) {
 }
 
 // sellerLabel: v125 — Mağaza'da satıcı adı yerine fabrika / işletme adı
+// v177 — ticari ve motorlarda hız / ivme / nitro yok: sadece kalan ömür
+const isCarId = (id) => vehicleKindOfId(id) === 'araba';
+function LifeOnly({ lifeDays }) {
+  const cap = lifeCapOf('vehicle');
+  const life = Math.max(0, Math.min(cap, Number(lifeDays ?? cap)));
+  return (
+    <div className="market-life-only">
+      <span>⏳ {life} / {cap} gün</span>
+      <div className="market-listing-life-bar">
+        <div className="market-listing-life-fill" style={{ width: `${Math.round((life / cap) * 100)}%` }} />
+      </div>
+    </div>
+  );
+}
+
 function ListingCard({ listing, isMine, busy, onCancel, onBuy, noGold = false, sellerLabel = null }) {
   let media = null;
   if (listing.itemType === 'vehicle') {
@@ -557,7 +581,7 @@ function ListingCard({ listing, isMine, busy, onCancel, onBuy, noGold = false, s
       {media}
       <div className="market-listing-info">
         <span className="market-listing-label">{listingLabel(listing)}</span>
-        {listing.itemType === 'vehicle' && <ListingCarStats listing={listing} />}
+        {listing.itemType === 'vehicle' && isCarId(listing.vehicleCatalogId) && <ListingCarStats listing={listing} />}
         <span className="market-listing-price">
           {isQuantifiable ? (
             <>
@@ -572,7 +596,8 @@ function ListingCard({ listing, isMine, busy, onCancel, onBuy, noGold = false, s
           {!isMine && <span className="market-seller"> · {sellerLabel || listing.sellerName}</span>}
         </span>
         {isLifeItem && <EstimateLine est={estimateOfListing(listing)} />}
-        {lifeDays != null && (
+        {lifeDays != null && listing.itemType === 'vehicle' && !isCarId(listing.vehicleCatalogId) && <LifeOnly lifeDays={lifeDays} />}
+        {lifeDays != null && !(listing.itemType === 'vehicle' && !isCarId(listing.vehicleCatalogId)) && (
           <div className="market-listing-life-row">
             <span className="market-listing-life-label">
               Ömür: {lifeDays} / {lifeCap} gün · Tamir hakkı: {MAX_REPAIRS - repairsUsed}/
@@ -722,6 +747,7 @@ export default function MarketplaceScreen() {
   const [onlyNew, setOnlyNew] = useState(false);
   // v130: "En pahalı" — ilanlar en pahalıdan ucuza (tek liste)
   const [priciest, setPriciest] = useState(false);
+  const [vk, setVk] = useState('araba'); // v177: araç ilanlarında araba / ticari / motor sekmeleri
   useEffect(() => {
     setOnlyNew(false);
     setPriciest(false);
@@ -808,6 +834,7 @@ export default function MarketplaceScreen() {
       ? []
       : listings
           .filter((l) => l.itemType === view)
+          .filter((l) => view !== 'vehicle' || vehicleKindOfId(l.vehicleCatalogId) === vk)
           .filter((l) => !onlyNew || isBrandNewListing(l));
   const myListings = categoryListings.filter((l) => l.sellerId === user?.uid);
   const advantageousListings = categoryListings
@@ -888,6 +915,7 @@ export default function MarketplaceScreen() {
             </button>
           </div>
 
+          {view === 'vehicle' && <VehicleKindTabs value={vk} onChange={setVk} />}
           {(view === 'vehicle' || view === 'weapon') && (
             <div className="market-new-filter">
               <button className={`market-btn small ${onlyNew ? 'primary' : ''}`} aria-pressed={onlyNew} onClick={() => setOnlyNew((v) => !v)}>

@@ -4,7 +4,7 @@
 // parseller, bina tabanları (çarpışma kutuları), yol ızgarası, otoyol, kasaba.
 // Oyunun eski düz harita resminin yerine geçebilecek şekilde tasarlandı.
 // =============================================================================
-import { R, TERRAIN, LAKE, RIVER, TOWN, fromTown, frameAt, TAGS, LEN, shoreX } from './route.js';
+import { R, TERRAIN, LAKE, RIVER, TOWN, fromTown, frameAt, TAGS, LEN, shoreX, desertK } from './route.js';
 import { COAST_X, KORDON_X, OUTER, COAST_Z } from '../cityLayout.js';
 import { DECKS, BEACH_POIS } from '../coast.js';
 import { fromPad } from './roadsideGeo.js';
@@ -404,6 +404,9 @@ export function createMap({ city, cityExtraLots, solids, citySolidCount, town, s
         else if (h > 40) col = [216, 228, 200];
         else col = [222, 234, 206];
         if (!water && ((z > 70 && h < 1.4) || (west && h < 1.2))) col = [239, 227, 194];
+        // v177 çöl (Gölyaka çevresi)
+        const dk = water ? 0 : desertK(x, z);
+        if (dk > 0) col = [col[0] + (241 - col[0]) * dk, col[1] + (222 - col[1]) * dk, col[2] + (176 - col[2]) * dk];
         const k = water ? 0 : shade * 26;
         const o = (j * wc.width + i) * 4;
         img.data[o] = Math.max(0, Math.min(255, col[0] + k));

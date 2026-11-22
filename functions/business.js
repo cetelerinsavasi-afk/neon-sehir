@@ -24,7 +24,7 @@ export const BIZ_INCOME_KINDS = ['service', 'sale', 'material', 'labor', 'menu',
 // Oyunun kendi işletmeleri de kazancına göre sıralanır (en üstte durmak zorunda
 // değil). Gelirleri businessDaily/game_{tür}_{gün} altında tutulur; sıra
 // gameVenues/{tür}.bizRank'e yazılır (spor için ayrıca houses/game_spor).
-export const GAME_VENUE_TYPES = ['silahci', 'galeri', 'modifiye', 'spor'];
+export const GAME_VENUE_TYPES = ['silahci', 'galeri', 'motogaleri', 'modifiye', 'spor']; // v177 motor galerisi
 export const gameVenueId = (type) => `game_${type}`;
 export const GAME_VENUE_OWNER = '__game__';
 

@@ -2022,6 +2022,76 @@ const HORSE_ITEM = {
     g.userData.tail = tail;
   },
 };
+// v177 — DEVE (tek hörgüçlü): uzun bacaklar, kavisli boyun, hörgücün üstünde iki kişilik renkli eyer.
+// Atla aynı yürüyüş düzeni (userData.legs / neck / tail) → aynı yürüme / tırıs animasyonu.
+const CAMEL_ITEM = {
+  seats: [[0, 2.36, 0.08]],
+  box: [0.36, 1.35],
+  build(g, { tint }) {
+    const m = new THREE.Group();
+    m.rotation.y = -PI / 2;
+    g.add(m);
+    const coat = new THREE.MeshStandardMaterial({ color: tint.c, roughness: 0.85 });
+    const shade = new THREE.MeshStandardMaterial({ color: new THREE.Color(tint.c).multiplyScalar(0.72), roughness: 0.85 });
+    const padM = new THREE.MeshStandardMaterial({ color: '#3a2a1c', roughness: 0.8 });
+    const box = (w, h, d, mat, x, y, z, rz = 0, par = m) => {
+      const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+      o.position.set(x, y, z);
+      o.rotation.z = rz;
+      par.add(o);
+      return o;
+    };
+    // gövde + göğüs + hörgüç
+    box(1.55, 0.62, 0.62, coat, 0, 1.72, 0);
+    box(0.5, 0.55, 0.56, coat, 0.66, 1.66, 0, 0.25);
+    box(0.5, 0.5, 0.56, coat, -0.66, 1.7, 0, -0.2);
+    const hump = new THREE.Mesh(new THREE.SphereGeometry(0.42, 10, 8), coat);
+    hump.scale.set(1.25, 0.75, 0.82);
+    hump.position.set(-0.08, 2.05, 0);
+    m.add(hump);
+    // eyer: kilim + iki oturak + yan püsküller
+    const rug = new THREE.MeshStandardMaterial({ color: '#b8262e', roughness: 0.7 });
+    const rug2 = new THREE.MeshStandardMaterial({ color: '#f2c14e', roughness: 0.7 });
+    box(1.15, 0.08, 0.78, rug, -0.12, 2.27, 0);
+    box(1.17, 0.03, 0.8, rug2, -0.12, 2.23, 0);
+    box(0.36, 0.1, 0.5, padM, 0.08, 2.34, 0);
+    box(0.36, 0.1, 0.5, padM, -0.37, 2.38, 0);
+    for (const z of [-0.41, 0.41]) {
+      box(0.9, 0.42, 0.03, rug, -0.12, 2.02, z);
+      for (let i = 0; i < 5; i++) box(0.04, 0.12, 0.04, rug2, -0.5 + i * 0.19, 1.76, z);
+    }
+    // boyun (önden yukarı kıvrılır) + baş
+    const neck = new THREE.Group();
+    neck.position.set(0.85, 1.85, 0);
+    m.add(neck);
+    box(0.3, 0.8, 0.28, coat, 0.28, 0.12, 0, -1.05, neck);
+    box(0.24, 0.62, 0.24, coat, 0.62, 0.52, 0, -0.15, neck);
+    box(0.56, 0.24, 0.26, coat, 0.82, 0.86, 0, -0.12, neck);
+    box(0.2, 0.16, 0.22, shade, 1.08, 0.79, 0, -0.12, neck);
+    box(0.08, 0.12, 0.06, coat, 0.6, 1.02, 0.09, 0, neck);
+    box(0.08, 0.12, 0.06, coat, 0.6, 1.02, -0.09, 0, neck);
+    // kuyruk
+    const tail = new THREE.Group();
+    tail.position.set(-0.8, 1.86, 0);
+    m.add(tail);
+    box(0.07, 0.6, 0.07, shade, -0.06, -0.3, 0, -0.15, tail);
+    // uzun bacaklar (diz + geniş taban)
+    const legs = [];
+    [[0.58, 0.2, 0], [0.58, -0.2, PI], [-0.55, 0.2, PI], [-0.55, -0.2, 0]].forEach(([x, z, ph]) => {
+      const lg = new THREE.Group();
+      lg.position.set(x, 1.48, z);
+      box(0.17, 0.72, 0.17, coat, 0, -0.36, 0, 0, lg);
+      box(0.15, 0.08, 0.15, shade, 0, -0.74, 0, 0, lg);
+      box(0.12, 0.62, 0.12, coat, 0, -1.08, 0, 0, lg);
+      box(0.2, 0.07, 0.22, padM, 0.02, -1.42, 0, 0, lg);
+      m.add(lg);
+      legs.push({ g: lg, ph });
+    });
+    g.userData.legs = legs;
+    g.userData.neck = neck;
+    g.userData.tail = tail;
+  },
+};
 const MOTO_DEF = {
   scooter: { k: 'moto_scooter', name: 'Scooter', seats: 2, phys: { vmax: 22, acc: 6, grip: 9, steer: 0.5 } },
   cross: { k: 'moto_cross', name: 'Cross Motor', seats: 1, phys: { vmax: 33, acc: 10, grip: 9, steer: 0.48 } },
@@ -2030,6 +2100,8 @@ const MOTO_DEF = {
   // v157.4: binekler — motorlardan yavaş (at scooter'dan bir tık hızlı), yaya alanlarına girer
   bisiklet: { item: BIKE_ITEM, name: 'Bisiklet', seats: 1, ride: 'bike', phys: { vmax: 13.5, acc: 4.6, grip: 9, steer: 0.6 } }, // v159.4: ~1,5 kat hızlı
   at: { item: HORSE_ITEM, name: 'At', seats: 1, ride: 'horse', phys: { vmax: 24, acc: 6.5, grip: 9, steer: 0.52 } },
+  // v177: deve — at ile bisiklet arası hız, 2 kişilik; sürüşü atla aynı (ride: 'horse' → kask yok, atın dönüşü)
+  deve: { item: CAMEL_ITEM, name: 'Deve', seats: 2, ride: 'horse', phys: { vmax: 18.5, acc: 5.2, grip: 9, steer: 0.5 } },
 };
 const MOTO_FINISH = { parlak: [0.22, 0.55], metalik: [0.15, 0.9], mat: [0.85, 0.1], krom: [0.05, 1], sedef: [0.18, 0.7] };
 // v157.4: binek (bisiklet / at) — yaya alanı, sessiz (motor sesi yok), atın yürüyüşü

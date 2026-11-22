@@ -99,6 +99,7 @@ const BIZ_TOP_BUTTONS = {
   ],
   modifiye: [{ panel: 'workshop', label: '🛠️ Tamir / Geliştirme' }],
   galeri: [{ panel: 'showcase', label: '🚗 Satılık arabalar' }],
+  motogaleri: [{ panel: 'showcase', label: '🏍️ Satılık motorlar' }], // v177
   cafe: [{ panel: 'menu', label: '🍽️ Menü' }],
   bar: [{ panel: 'menu', label: '🍽️ Menü' }],
   spor: [{ panel: 'gym', label: '🏋️ Spor yap (üyelik)' }],
@@ -2086,7 +2087,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
           {panel === 'showcase' && bizType && (
             <div className="wk-sheet-bg" onClick={() => setPanel(null)}>
               <div className="wk-sheet" onClick={(e) => e.stopPropagation()}>
-                <ShopShowcase houseId={houseId} kind={bizType === 'galeri' ? 'vehicle' : 'weapon'} own={Boolean(houseDoc?.ownerUid) && houseDoc.ownerUid === user?.uid} onClose={() => setPanel(null)} />
+                <ShopShowcase houseId={houseId} kind={bizType === 'galeri' || bizType === 'motogaleri' ? 'vehicle' : 'weapon'} shop={bizType === 'motogaleri' ? 'motogaleri' : 'galeri'} own={Boolean(houseDoc?.ownerUid) && houseDoc.ownerUid === user?.uid} onClose={() => setPanel(null)} />
               </div>
             </div>
           )}

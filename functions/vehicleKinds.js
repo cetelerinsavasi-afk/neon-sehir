@@ -10,9 +10,9 @@ import { VEHICLE_CATALOG } from './catalogData.js';
 
 export const CAR_IDS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 export const TICARI_IDS = [11, 12, 13, 14, 15];
-export const MOTOR_IDS = [21, 22, 23, 24, 25, 26]; // v157.4: 25 bisiklet, 26 at
-// yaya alanlarına girebilen binekler (bisiklet, at) — meslek yok
-export const RIDE_IDS = [25, 26];
+export const MOTOR_IDS = [21, 22, 23, 24, 25, 26, 27]; // v157.4: 25 bisiklet, 26 at · v177: 27 deve
+// yaya alanlarına girebilen binekler (bisiklet, at, deve) — meslek yok
+export const RIDE_IDS = [25, 26, 27];
 export const isRideId = (id) => RIDE_IDS.includes(Number(id));
 export const ALL_VEHICLE_IDS = [...CAR_IDS, ...TICARI_IDS, ...MOTOR_IDS];
 
@@ -38,11 +38,13 @@ export const canRepairVehicle = (id) => isCarId(id);
 export const JOBS = {
   // v157: tır ve otobüste iki mesafe — yakın (şehir içi) ve uzak (O-77 → Kervankent). dailyFar: uzak hak,
   // farMul: uzak işin kazanç çarpanı (yol uzun + kaza riski fazla)
-  tir: { id: 11, name: 'Tır', icon: '🚛', daily: 5, dailyFar: 2, farMul: 3, avg: 5000, unit: 'sevkiyat', verb: 'Sevkiyat' },
-  otobus: { id: 12, name: 'Otobüs', icon: '🚌', daily: 1, dailyFar: 1, farMul: 1.5, avg: 10000, unit: 'sefer', verb: 'Sefer' },
-  taksi: { id: 13, name: 'Taksi', icon: '🚕', daily: 10, avg: 1000, unit: 'yolcu', verb: 'Yolcu' },
+  // v177: şoförlük vergisi + %10 şirket payı geldi → iş başı ücretler arttı (tır 5.000→6.000, otobüs 10.000→12.500,
+  // taksi 1.000→1.500, ambulans 3.000→3.500). Polis arabası oyundan kalktı (görev kayıtları için tanım duruyor).
+  tir: { id: 11, name: 'Tır', icon: '🚛', daily: 5, dailyFar: 2, farMul: 3, avg: 6000, unit: 'sevkiyat', verb: 'Sevkiyat' },
+  otobus: { id: 12, name: 'Otobüs', icon: '🚌', daily: 1, dailyFar: 1, farMul: 1.5, avg: 12500, unit: 'sefer', verb: 'Sefer' },
+  taksi: { id: 13, name: 'Taksi', icon: '🚕', daily: 10, avg: 1500, unit: 'yolcu', verb: 'Yolcu' },
   polis: { id: 14, name: 'Polis', icon: '🚓', daily: 10, avg: 4000, unit: 'görev', verb: 'Görev' },
-  ambulans: { id: 15, name: 'Ambulans', icon: '🚑', daily: 10, avg: 3000, unit: 'hasta', verb: 'Hasta' },
+  ambulans: { id: 15, name: 'Ambulans', icon: '🚑', daily: 10, avg: 3500, unit: 'hasta', verb: 'Hasta' },
   // v154: motokurye — HER motorla (21-24); satıcıdan al → mekâna götür. Ücret mesafeyle artar.
   kurye: { id: 21, name: 'Motokurye', icon: '🛵', daily: 10, avg: 500, unit: 'sipariş', verb: 'Teslimat', motor: true },
 };

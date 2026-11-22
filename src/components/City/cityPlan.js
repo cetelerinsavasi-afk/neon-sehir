@@ -161,7 +161,7 @@ export function buildCity() {
       for (const x of [-9, 9]) kit.item('palm', x, lot.d / 2 - 2, 0, 0);
       kit.item('parkbench', -5, lot.d / 2 - 1.2, 4, 0);
       kit.item('parkbench', 5, lot.d / 2 - 1.2, 4, 0);
-    } else B.buildFiller(kit, lot, n * 31 + l.i0 * 7 + l.j0 * 13, { tall: l.far ? 1.7 : l.outer ? 1.25 : 1 });
+    } else B.buildFiller(kit, lot, n * 31 + l.i0 * 7 + l.j0 * 13, { tall: l.far ? 1.7 : l.outer ? 1.25 : 1, motoShop: l.i0 === 0 && l.j0 === 0 }); // v177: camiinin arkası
     // kaldırım lambaları + ağaçlar (blok kenarları)
     if (l.type !== 'park') sidewalkProps(kit, lot, n, l);
     const entry = { ...l, kit, info, def, mx, mz, bw, bd, ry, lot };

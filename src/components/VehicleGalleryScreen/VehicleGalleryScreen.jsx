@@ -9,6 +9,7 @@ import './VehicleGalleryScreen.css';
 import { CarStatBars } from '../RaceTrackScreen/CarStats';
 import { useShopOffers, withOfferPrices } from '../../hooks/useShopOffers';
 import { priceChangedText } from '../../lib/priceChanged';
+import { vehicleShopOf } from '../../../functions/fleet.js';
 
 // v151 — galeri 3 sekme: Araba · Ticari (meslek) · Motor
 export const GALLERY_TABS = [
@@ -17,10 +18,10 @@ export const GALLERY_TABS = [
   ['motor', '🏍️ Motor'],
 ];
 export const kindOfCar = (car) => car?.kind || 'araba';
-export function VehicleKindTabs({ value, onChange }) {
+export function VehicleKindTabs({ value, onChange, tabs = GALLERY_TABS }) {
   return (
     <div className="vg-tabs">
-      {GALLERY_TABS.map(([k, l]) => (
+      {tabs.map(([k, l]) => (
         <button key={k} className={value === k ? 'on' : ''} onClick={() => onChange(k)}>
           {l}
         </button>
@@ -45,13 +46,13 @@ const BUY_FEEDBACK_MS = 2500;
 // istediğin kadar aynı modeli alabilirsin — sunucu tarafı (buyVehicle)
 // da aynı şekilde güncellendi.
 // v130 — oyuncu galerisi de aynı ekranı kullanır: items = [{ ...katalog, price }] · onBuy(katalog) · disabledText
-export default function VehicleGalleryScreen({ items = null, onBuy = null, disabledText = null }) {
+// v177: shop = 'galeri' (10 araba) | 'motogaleri' (4 motor) — sekme yok, her dükkân tek tür satar
+export default function VehicleGalleryScreen({ items = null, onBuy = null, disabledText = null, shop = 'galeri' }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
   const [justBoughtIds, setJustBoughtIds] = useState(() => new Set());
-  const [tab, setTab] = useState('araba');
   const feedbackTimeouts = useRef({});
   // v132: oyunun galerisi — en ucuz oyuncu galerisinin fiyatı
   const best = useShopOffers('vehicle', { enabled: !items && Boolean(user), excludeMine: true });
@@ -69,7 +70,7 @@ export default function VehicleGalleryScreen({ items = null, onBuy = null, disab
 
   const gold = player?.gold ?? 0;
 
-  const list = (items || withOfferPrices(vehicleCatalog, best)).filter((c) => kindOfCar(c) === tab);
+  const list = (items || withOfferPrices(vehicleCatalog, best)).filter((c) => vehicleShopOf(c.id) === shop);
   const handleBuy = async (car) => {
     const catalogId = car.id;
     setBusy(catalogId);
@@ -96,8 +97,7 @@ export default function VehicleGalleryScreen({ items = null, onBuy = null, disab
 
   return (
     <div className="vehicle-gallery">
-      <VehicleKindTabs value={tab} onChange={setTab} />
-      {list.length === 0 && <p className="vg-empty">Bu sekmede satılık araç yok.</p>}
+      {list.length === 0 && <p className="vg-empty">Şu an satılık {shop === 'motogaleri' ? 'motor' : 'araba'} yok.</p>}
       {list.map((car) => {
         const justBought = justBoughtIds.has(car.id);
         return (

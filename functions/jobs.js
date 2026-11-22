@@ -14,6 +14,7 @@
 import { JOBS, jobOf, jobPerf, jobReward, jobCountKey, jobDailyOf } from './vehicleKinds.js';
 import { LIMAN_BAY, DEPOTS, HOSPITAL, BUS_STOPS, ROAD_SPOTS, manhattan, busRouteLen, KURYE_PICKUPS, KURYE_DROPS, KURYE_MIN_LEN, kuryeMul, OTOGARS, FAR_TIR_LEN, FAR_BUS_LEN, FAR_DEPOT, HWY_ENTRY } from './cityJobsData.js';
 import { goldTag } from './moneyLog.js';
+import { fleetOfJob, splitDriverIncome, isRetiredVehicle } from './fleet.js';
 
 const isId = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
 const dayKey = (ms = Date.now()) => new Date(ms + 3 * 3600_000).toISOString().slice(0, 10); // İstanbul günü
@@ -126,7 +127,9 @@ export function planJob(job, near = null, far = false) {
   return null;
 }
 
-export function createJobs({ db, FieldValue, HttpsError, splitIncomeForDebt, now = () => Date.now() }) {
+// v177: stateWrite + taxFrac + companyStatKey verilirse taksi / otobüs / tır / ambulans gelirinden şoförlük
+// vergisi (Ticaret) ve %10 şirket payı kesilir (functions/fleet.js); motokurye kesintisiz.
+export function createJobs({ db, FieldValue, HttpsError, splitIncomeForDebt, stateWrite = null, taxFrac = null, companyStatKey = null, now = () => Date.now() }) {
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
   };
@@ -140,6 +143,7 @@ export function createJobs({ db, FieldValue, HttpsError, splitIncomeForDebt, now
     if (v.listed) fail('failed-precondition', 'listed');
     if (v.seizedByBank) fail('failed-precondition', 'seized');
     if ((v.lifeDays ?? 20) <= 0) fail('failed-precondition', 'life0');
+    if (isRetiredVehicle(v.catalogId)) fail('failed-precondition', 'retired'); // v177: polis arabası kalktı
     return job;
   }
   // oyuncunun bugün bu meslekte tamamladığı iş sayısı (araç sayısından bağımsız; v157: uzak ayrı)
@@ -187,7 +191,10 @@ export function createJobs({ db, FieldValue, HttpsError, splitIncomeForDebt, now
       const hits = Math.max(0, Math.min(50, Math.floor(Number(p.hits) || 0)));
       const perf = jobPerf(t, run.par, hits);
       const total = jobReward(J.avg, Number(run.mul) || 1, perf);
-      const { goldDelta, debtDelta } = splitIncomeForDebt(u.debtToState, total);
+      // v177: şoförlük vergisi + şirket payı (kurye hariç), kalan net gelir borç kuralına girer
+      const fl = stateWrite && taxFrac && fleetOfJob(job) ? fleetOfJob(job) : null;
+      const cut = fl ? splitDriverIncome(job, total, taxFrac(dayKey(now()))) : { gross: total, tax: 0, share: 0, net: total };
+      const { goldDelta, debtDelta } = splitIncomeForDebt(u.debtToState, cut.net);
       const nn = n + 1;
       const day = dayKey(now());
       const counts = u.jobs?.day === day ? { ...(u.jobs.n || {}) } : {};
@@ -195,9 +202,13 @@ export function createJobs({ db, FieldValue, HttpsError, splitIncomeForDebt, now
       tx.update(uRef(uid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('meslek'), debtToState: FieldValue.increment(debtDelta), jobs: { day, n: counts } });
       tx.update(vRef(p.vehicleId), {
         job: { run: null, last: { at: now(), total, t: Math.round(t), hits } },
-        jobEarned: FieldValue.increment(total),
+        jobEarned: FieldValue.increment(cut.net),
       });
-      return { ok: true, total, toDebt: total - goldDelta, perf: { speed: Math.round(perf.speed * 100) / 100, dmg: Math.round(perf.dmg * 100) / 100 }, t: Math.round(t), hits, left: daily - nn, daily, far };
+      if (fl) {
+        const sk = companyStatKey?.(fl.co);
+        stateWrite(tx, db, FieldValue, { kind: 'in', cat: 'vergi_sofor', amount: cut.tax, atMs: now(), dayKey: day, stat: { ...(sk && cut.share ? { [sk]: cut.share } : {}), [`sf_${job}_n`]: 1, [`sf_${job}_brut`]: total } });
+      }
+      return { ok: true, total, gross: total, tax: cut.tax, share: cut.share, net: cut.net, toDebt: cut.net - goldDelta, perf: { speed: Math.round(perf.speed * 100) / 100, dmg: Math.round(perf.dmg * 100) / 100 }, t: Math.round(t), hits, left: daily - nn, daily, far };
     });
   }
 

@@ -6,7 +6,8 @@
 // =============================================================================
 import * as THREE from 'three';
 import { Kit, M, glowMat } from '../kit.js';
-import { OUTER, PARK_GATES } from '../cityLayout.js';
+import { OUTER, PARK_GATES, BIKE_SHOP } from '../cityLayout.js';
+import { buildVehicle } from '../vehicles.js'; // v177: bisikletçinin sergi bisikletleri
 import { shoreX } from '../coastShape.js';
 import { terrainH } from './route.js';
 
@@ -234,6 +235,36 @@ export function buildNorthPark(groundAt) {
     kit.box(0.12, 1.9, 2.4, M('#6b4a2e', 0.85), gx + 5.5, gy, gz - 2);
     kit.sign('ormanpano', 'Yürüyüş parkuru 1,1 km · Gölet · Seyir Tepesi', 0.22, gx + 5.43, gy + 1.5, gz - 2, -PI / 2, { color: '#ffffff', bg: '#2f4a22', font: '700 80px Arial, sans-serif', light: false });
   }
+  // v177 — SEYYAR BİSİKLETÇİ (x = 100 kapısının içi): tenteli tezgâh, sergi bisikletleri, kiralık tabelası
+  {
+    const bx = BIKE_SHOP.x + 1.6;
+    const bz = BIKE_SHOP.z - 1.2;
+    const gy = y(bx, bz);
+    const wood = M('#6b4a2e', 0.85);
+    const green = M('#2f8f4a', 0.6);
+    kit.box(2.4, 0.95, 1.1, wood, bx, gy, bz);
+    kit.box(2.5, 0.06, 1.2, M('#d9c39a', 0.7), bx, gy + 0.95, bz);
+    for (const [ax, az] of [[-1.3, -0.7], [1.3, -0.7], [-1.3, 0.7], [1.3, 0.7]]) kit.box(0.08, 2.5, 0.08, M('#2a2d33', 0.5, 0.5), bx + ax, gy, bz + az);
+    for (let i = 0; i < 5; i++) kit.box(0.56, 0.06, 1.7, i % 2 ? M('#f2efe6', 0.7) : green, bx - 1.12 + i * 0.56, gy + 2.5, bz, { cast: true });
+    kit.box(2.5, 0.62, 0.05, M('#1f5a32', 0.7), bx, gy + 1.69, bz); // tabelalar sırt sırta: arkadaki ters görünmesin
+    kit.sign('bisikletci', '🚲 BİSİKLET · KİRALIK', 0.42, bx, gy + 2.0, bz - 0.62, PI, { color: '#ffffff', bg: '#2f8f4a', font: '900 100px Arial, sans-serif', light: false });
+    kit.sign('bisikletci2', '🚲 BİSİKLET · KİRALIK', 0.42, bx, gy + 2.0, bz + 0.62, 0, { color: '#ffffff', bg: '#2f8f4a', font: '900 100px Arial, sans-serif', light: false });
+    kit.solid(bx, bz, 1.25, 0.6);
+    // sergi: 3 renkli bisiklet, park demirinde
+    kit.box(3.6, 0.06, 0.06, M('#9aa0a8', 0.4, 0.7), bx + 0.2, gy + 0.55, bz + 2.1);
+    ['#1f8fe0', '#c8141e', '#f6c400'].forEach((c, i) => {
+      try {
+        const v = buildVehicle(25, { paint: c });
+        v.root.position.set(bx - 1.0 + i * 1.1, gy, bz + 2.1);
+        v.root.rotation.y = PI / 2;
+        kit.group.add(v.root);
+      } catch {
+        /* önizleme / test ortamı */
+      }
+    });
+    kit.solid(bx + 0.2, bz + 2.1, 1.9, 0.5);
+    kit.npcs.push({ id: 'npc_bisikletci', name: 'Bisikletçi Emre', av: { clothing: 'tshirt', clothColor: '#2f8f4a', hat: 'cap', hatColor: '#f6c400', pantsColor: '#2b3550' }, x: BIKE_SHOP.x, z: BIKE_SHOP.z, lines: ['Dakikası 100 altın, binip gez!', 'Kendi bisikletini de alabilirsin, rengini seç.', 'Parkın halkası 1,1 km — pedala bas!'] });
+  }
   // çocuk parkı
   {
     const c = CLEAR[0];
@@ -323,7 +354,9 @@ export function buildNorthPark(groundAt) {
     const meadow = Math.sin(x * 0.045) * Math.cos(z * 0.06) > 0.55;
     if (meadow && rnd() < 0.85) continue;
     const sc = 0.7 + rnd() * 0.6;
-    trees.push([x, y(x, z) - 0.15, z, sc, rnd() * PI * 2, rnd(), rnd() < 0.55 ? 'pine' : 'leaf']);
+    const t = [x, y(x, z) - 0.15, z, sc, rnd() * PI * 2, rnd(), rnd() < 0.55 ? 'pine' : 'leaf'];
+    if (Math.hypot(x - BIKE_SHOP.x, z - BIKE_SHOP.z) < 7) continue; // v177: bisikletçinin yeri (rnd sırası aynı)
+    trees.push(t);
   }
   // kuş sesi yok; birkaç mantar / çalı
   for (let i = 0; i < 160; i++) {

@@ -31,6 +31,22 @@ export const VILLAGE_DEFS = [
   { key: 'camlica', name: 'Çamlıca Köyü', s: 3330, side: -1, d: 190, along: 18, y: 2.0, W: 110, D: 92 },
 ];
 export const BR_HALF = 3.4; // köy yolu yarı genişliği
+// v177 — köy ahırları (köyün yerel koordinatı): pen = [x0, z0, x1, z1] ağıl; x, z = çoban (kapının önü).
+// Oyuncu (yaya) çobana / kapıya r metre yaklaşınca sol üstte binek düğmesi çıkar (stableAt).
+export const STABLES = {
+  golyaka: { animal: 'deve', seller: 'Deveci Halil', pen: [41, 30, 53, 44], x: 39.2, z: 37, r: 3.6 },
+  camlica: { animal: 'at', seller: 'Çoban Yusuf', pen: [31, 8, 48, 21], x: 29.2, z: 14.5, r: 3.6 },
+};
+// yayanın yakınındaki ahır → { key, animal } | null (geo() önbellekli; sadece iki köy)
+export function stableAt(x, z) {
+  for (const p of geo().pads) {
+    const S = p.village ? STABLES[p.key] : null;
+    if (!S || Math.abs(x - p.mx) > 90 || Math.abs(z - p.mz) > 90) continue;
+    const w = fromPad(p, S.x, S.z);
+    if (Math.hypot(x - w.x, z - w.z) < S.r) return { key: p.key, animal: S.animal };
+  }
+  return null;
+}
 const LAKE_C = { x: 585, z: -545 };
 
 // --- dönüşümler -----------------------------------------------------------------------------

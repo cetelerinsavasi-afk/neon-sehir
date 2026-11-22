@@ -3,6 +3,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useWeapons } from '../../hooks/useWeapons';
 import { useVehicles } from '../../hooks/useVehicles';
+import { canModify } from '../../../functions/fleet.js';
 import { useInventory } from '../../hooks/useInventory';
 import { shopAction } from '../../services/gameActions';
 import { weaponCatalog } from '../../data/weaponCatalog';
@@ -77,7 +78,8 @@ export default function Workshop({ shop, onClose }) {
   const [seenPrice, setSeenPrice] = useState(null);
   const [studio, setStudio] = useState(false); // v150
 
-  const items = useMemo(() => (isWeapon ? weapons : vehicles).filter((x) => !x.listed), [isWeapon, weapons, vehicles]);
+  // v177: bisiklet / at / deve atölyeye girmez (tamir, geliştirme, modifiye yok)
+  const items = useMemo(() => (isWeapon ? weapons : vehicles.filter((v) => canModify(v.catalogId))).filter((x) => !x.listed), [isWeapon, weapons, vehicles]);
   // v124: birden çok silah varsa varsayılan seçim EN GÜÇLÜ silah (araçta ilk sıradaki)
   const defaultItem = useMemo(
     () => (isWeapon ? items.reduce((best, w) => (!best || Number(w.power || 0) > Number(best.power || 0) ? w : best), null) : items[0] || null),

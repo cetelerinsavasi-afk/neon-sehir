@@ -678,3 +678,33 @@ test('v151 oyunun modifiye garajı: para (vergi kesilerek) dünün EN AZ kazanan
   await h.act('m2', { op: 'modify', shop: 'game', vehicleId: 'v2', mods: { paint: '#19e8ff' }, expect: 100 });
   assert.ok(h.G('users/m3').gold > m3);
 });
+
+test('v177 motor galerisi: sadece 4 motor; galeri sadece araba; oyunun motor galerisi; ticari / bisiklet / at hiçbir dükkânda', async () => {
+  const h = gameSetup();
+  const g = await openShop(h, 'galeri');
+  const m = await stockedShop(h, 'veli', 33_000, { type: 'motogaleri', cid: 22 });
+  // galeri motor / ticari ekleyemez, motor galerisi araba ekleyemez
+  await assert.rejects(h.act('usta', { op: 'stockAdd', houseId: g, catalogId: 22 }), /motor galerisinde/);
+  await assert.rejects(h.act('usta', { op: 'stockAdd', houseId: g, catalogId: 13 }), /dükkânlarda satılmıyor/);
+  await assert.rejects(h.act('veli', { op: 'stockAdd', houseId: m, catalogId: 2 }), /araba galerisinde/);
+  await assert.rejects(h.act('veli', { op: 'stockAdd', houseId: m, catalogId: 25 }), /dükkânlarda satılmıyor/);
+  // vitrine ekle listesi: galeri → 1–10, motor galerisi → 21–24
+  const qg = await h.act('usta', { op: 'stockQuote', houseId: g });
+  assert.deepEqual(Object.keys(qg.prices).map(Number).sort((a, b) => a - b), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+  const qm = await h.act('veli', { op: 'stockQuote', houseId: m });
+  assert.deepEqual(Object.keys(qm.prices).map(Number).sort((a, b) => a - b), [21, 22, 23, 24]);
+  // başka türün fiyatı gönderilirse yok sayılır
+  await h.act('veli', { op: 'stockPrices', houseId: m, prices: { 22: 34_000, 2: 9_000 } });
+  assert.equal(h.G(`shopStocks/${m}`).prices['2'], undefined);
+  // oyunun motor galerisi: oyuncu motor galerisi ucuzsa o satar
+  assert.equal(h.G('shopOffers/vehicle').offers['22'][m], 34_000);
+  h.S('users/ali', { ...h.G('users/ali'), gold: 500_000 });
+  const r = await h.shop.gameStoreBuy('ali', 'vehicle', 22, 34_000);
+  assert.equal(r.fromShop, true);
+  const r2 = await h.shop.gameStoreBuy('ali', 'vehicle', 22, 35_000);
+  assert.equal(r2.fromShop, false);
+  await assert.rejects(h.shop.gameStoreBuy('ali', 'vehicle', 13), /dükkânlarda satılmıyor/);
+  await assert.rejects(h.shop.gameStoreBuy('ali', 'vehicle', 26), /dükkânlarda satılmıyor/);
+  const motors = h.keys('vehicles/').map((k) => h.G(k)).filter((v) => v.ownerId === 'ali' && v.catalogId === 22);
+  assert.equal(motors.length, 2);
+});

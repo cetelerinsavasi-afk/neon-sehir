@@ -15,7 +15,7 @@ const addDays = (k, n) => new Date(Date.parse(`${k}T12:00:00+03:00`) + n * 86_40
 const todayKey = () => new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10);
 
 // Defter kalemi → yeni sistemdeki kalem (bakanlık + ad). Aynı adı alanlar birleşir.
-const BIZ = { silahci: 'Silahçı', modifiye: 'Modifiye', spor: 'Spor Salonu', cafe: 'Kafe', bar: 'Bar', internet: 'İnternet Kafe', sinema: 'Ofis', studyo: 'Ofis', mescit: 'Ofis', galeri: 'Galeri', gazino: 'Kumarhane', ofis: 'Ofis' };
+const BIZ = { silahci: 'Silahçı', modifiye: 'Modifiye', spor: 'Spor Salonu', cafe: 'Kafe', bar: 'Bar', internet: 'İnternet Kafe', sinema: 'Ofis', studyo: 'Ofis', mescit: 'Ofis', galeri: 'Galeri', motogaleri: 'Motor Galerisi', gazino: 'Kumarhane', ofis: 'Ofis' };
 function groupOf(kind, cat) {
   if (kind === 'in') {
     if (cat === 'vergi_fabrika') return ['sanayi', 'Fabrika vergisi'];

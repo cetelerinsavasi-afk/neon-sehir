@@ -55,6 +55,7 @@ import {
 import { goldTag } from './moneyLog.js';
 import { sanitizeMods, compactMods, modCost } from './vehicleMods.js';
 import { isVehicleId } from './vehicleKinds.js';
+import { vehicleShopOf, canModify } from './fleet.js'; // v177: galeri → araba, motor galerisi → motor, ticari / bisiklet / at dükkânda yok
 import { itemListingTimeFields, batchesOf, consumeBatches, nextExpireAtMs, materialTtl } from './listingBatches.js';
 import { planAutoSupply, planGameSupply, AUTO_SUPPLY_MAT_NAMES } from './autoSupply.js';
 import { VEHICLE_CATALOG, WEAPON_CATALOG } from './catalogData.js';
@@ -439,6 +440,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       const v = vs.data();
       if (v.listed) fail('failed-precondition', 'listed');
       if (v.seizedByBank) fail('failed-precondition', 'mortgaged');
+      if (!canModify(v.catalogId)) fail('failed-precondition', 'Bisiklet, at ve deveye modifiye yapılmaz.'); // v177
       const cid = Number(v.catalogId);
       if (!isVehicleId(cid)) fail('invalid-argument', 'Bu araç modifiye edilemez.');
       const want = sanitizeMods(cid, p.mods);
@@ -467,17 +469,24 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
 
   // ---- v130 STOK (silahçı / galeri) -------------------------------------------------
   const stockRef = (houseId) => db.collection('shopStocks').doc(houseId);
-  const cleanCid = (kind, v) => {
+  // v177: type verilirse (dükkân türü) araç o dükkânın sattıklarından olmalı
+  const cleanCid = (kind, v, type = null) => {
     const cid = String(Math.floor(Number(v) || 0));
     if (!catalogOf(kind)[cid]) fail('invalid-argument', 'Geçersiz ürün.');
+    if (kind === 'vehicle') {
+      const shop = vehicleShopOf(cid);
+      if (!shop) fail('failed-precondition', 'Bu araç dükkânlarda satılmıyor.');
+      if (type && shop !== type) fail('failed-precondition', shop === 'motogaleri' ? 'Motorlar motor galerisinde satılır.' : 'Arabalar araba galerisinde satılır.');
+    }
     return cid;
   };
+  const sellsHere = (kind, type, cid) => kind !== 'vehicle' || vehicleShopOf(cid) === type;
   // Stok belgesi (başka türden kalmışsa boş sayılır)
   const stockOf = (snap, type) => {
     const d = snap?.exists ? snap.data() : null;
     return d && d.type === type ? d : { items: {}, paid: {}, prices: {} };
   };
-  const TYPE_OF_KIND = { weapon: 'silahci', vehicle: 'galeri' };
+  const TYPES_OF_KIND = { weapon: ['silahci'], vehicle: ['galeri', 'motogaleri'] }; // v177: dizin ortak (katalog no'ları çakışmaz)
 
   // ---- v132 TEKLİF DİZİNİ: shopOffers/{weapon|vehicle} -------------------------------
   // Oyunun mağazası artık stoğu olan oyuncu dükkânlarının EN UCUZUNU satar (para o
@@ -498,13 +507,12 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
     await db.runTransaction(async (tx) => {
       const s = await tx.get(ref);
       if (s.exists && s.data()?.v === 1) return;
-      const type = TYPE_OF_KIND[kind];
-      const ss = await tx.get(db.collection('shopStocks').where('type', '==', type));
+      const ss = await tx.get(db.collection('shopStocks').where('type', 'in', TYPES_OF_KIND[kind]));
       const offers = {};
       for (const d of ss.docs) {
         const st = d.data();
         for (const cid of Object.keys(st.items || {})) {
-          if (!catalogOf(kind)[cid] || stockQty(st, cid) < 1) continue;
+          if (!catalogOf(kind)[cid] || stockQty(st, cid) < 1 || !sellsHere(kind, st.type, cid)) continue;
           (offers[cid] ||= {})[d.id] = clampStockPrice(catalogOf(kind)[cid].price, st.prices?.[cid]);
         }
       }
@@ -549,6 +557,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
     const cands = [...(await playerCandidates(get, kind)), ...(await gangCandidates(get, gctx, kind))];
     const prices = {};
     for (const cid of Object.keys(catalogOf(kind))) {
+      if (!sellsHere(kind, type, cid)) continue; // v177: galeri → arabalar, motor galerisi → motorlar
       prices[cid] = bestStockPrice(catalogOf(kind)[cid].price, cands.filter((c) => c.catalogId === Number(cid)));
     }
     return { ok: true, kind, prices };
@@ -573,7 +582,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       requireOwner(h, uid);
       const type = requireBiz(h, Object.keys(STOCK_KIND));
       const kind = STOCK_KIND[type];
-      const cid = cleanCid(kind, p.catalogId);
+      const cid = cleanCid(kind, p.catalogId, kind === 'vehicle' ? type : null);
       const e = catalogOf(kind)[cid];
       const unit = stockUnitCost(e.price);
       const [us, ss] = await Promise.all([tx.get(userRef(uid)), tx.get(stockRef(houseId))]);
@@ -669,6 +678,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       const st = stockOf(ss, type);
       const prices = { ...(st.prices || {}) };
       for (const [k, v] of Object.entries(input)) {
+        if (!catalogOf(kind)[String(Math.floor(Number(k) || 0))] || !sellsHere(kind, type, k)) continue; // v177: bu dükkânın satmadığı ürün — yok say
         const cid = cleanCid(kind, k);
         const b = stockPriceBand(catalogOf(kind)[cid].price);
         const price = Number(v);
@@ -677,6 +687,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       }
       tx.set(stockRef(houseId), { ownerUid: h.ownerUid, type, items: st.items || {}, paid: st.paid || {}, prices, updatedAtMs: now() });
       for (const cid of Object.keys(input)) {
+        if (!catalogOf(kind)[String(Math.floor(Number(cid) || 0))] || !sellsHere(kind, type, cid)) continue;
         const c = cleanCid(kind, cid);
         if (stockQty(st, c) > 0) offerWrite(tx, kind, houseId, c, prices[c]);
       }
@@ -736,7 +747,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       const h = await txHouse(tx, houseId);
       const type = requireBiz(h, Object.keys(STOCK_KIND));
       const kind = STOCK_KIND[type];
-      const cid = cleanCid(kind, p.catalogId);
+      const cid = cleanCid(kind, p.catalogId, kind === 'vehicle' ? type : null);
       if (h.ownerUid === uid) fail('failed-precondition', 'own-shop');
       if (!(await txPresent(tx, uid, houseId))) fail('failed-precondition', 'not-present');
       const [ss, us, os] = await Promise.all([tx.get(stockRef(houseId)), tx.get(userRef(uid)), tx.get(userRef(h.ownerUid))]);
@@ -764,7 +775,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
   async function gameStoreBuy(uid, kind, catalogId, expect = null) {
     const cid = cleanCid(kind, catalogId);
     const e = catalogOf(kind)[cid];
-    const type = TYPE_OF_KIND[kind];
+    const type = kind === 'vehicle' ? vehicleShopOf(cid) : 'silahci'; // v177: motorlar motor galerisinden
     await ensureOffers(kind);
     let result = null;
     await db.runTransaction(async (tx) => {

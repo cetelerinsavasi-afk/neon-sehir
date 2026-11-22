@@ -20,6 +20,7 @@ export const MONEY_SOURCES = {
   piyango: { icon: '🎟️', label: 'Piyango' },
   sampiyona: { icon: '🏆', label: 'Şampiyona ödülü' },
   arac: { icon: '🚗', label: 'Araç alımı' },
+  bisikletKira: { icon: '🚲', label: 'Bisiklet kirası' }, // v177
   silah: { icon: '🔫', label: 'Silah alımı' },
   amazor: { icon: '📦', label: 'Amazor alışverişi' },
   malzeme: { icon: '🔩', label: 'Malzeme satışı' },
@@ -27,6 +28,10 @@ export const MONEY_SOURCES = {
   yatirim: { icon: '💹', label: 'Yatırım' }, // v92.3 öncesi kayıtlar
   yatirimKz: { icon: '💹', label: 'Yatırım kâr / zarar' },
   komisyon: { icon: '🧾', label: 'Yatırım satış komisyonu' },
+  borsa: { icon: '📈', label: 'Neon Borsa al-sat' }, // v176
+  borsaKz: { icon: '📈', label: 'Neon Borsa kâr / zarar' },
+  borsaKom: { icon: '🧾', label: 'Neon Borsa komisyonu' },
+  borsaGelir: { icon: '📈', label: 'Neon Borsa hisse geliri' },
   faiz: { icon: '🏦', label: 'Banka faizi' },
   kredi: { icon: '💳', label: 'Kredi' },
   devletBorcu: { icon: '🏛️', label: 'Devlet borcu ödemesi' },

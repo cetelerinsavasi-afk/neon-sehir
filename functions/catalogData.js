@@ -30,6 +30,9 @@ export const VEHICLE_CATALOG = {
   // (para kazandırmaz); motorlardan yavaş ama yayaların girdiği her yere girer.
   25: { name: 'Bisiklet', kind: 'motor', gearLevel: 1, baseTank: 0, price: 7500, storage: 0, turboCount: 0 },
   26: { name: 'At', kind: 'motor', gearLevel: 1, baseTank: 0, price: 75000, storage: 0, turboCount: 0 },
+  // v177 — DEVE: 2 kişilik, hızı at ile bisiklet arası. Gölyaka Köyü'nün çobanından (ahır) alınır;
+  // renk satın alırken seçilir, modifiye / 2. el yok.
+  27: { name: 'Deve', kind: 'motor', gearLevel: 1, baseTank: 0, price: 50000, storage: 0, turboCount: 0 },
 };
 
 // Fiyatlar (kullanıcı revizesi) — tamir/geliştirme malzemesi miktarı

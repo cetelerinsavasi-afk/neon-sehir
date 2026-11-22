@@ -698,3 +698,6 @@
   font-weight: 600;
   cursor: pointer;
 }
+
+/* v177 — ticari / motor: sadece kalan ömür */
+.market-life-only { display: flex; flex-direction: column; gap: 4px; margin: 4px 0; font-size: 12px; opacity: 0.9; width: 100%; }

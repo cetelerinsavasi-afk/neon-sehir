@@ -16,10 +16,12 @@ const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 // v130 — Müşteri: oyuncu silahçısı / galerisi. Oyunun mağazasıyla aynı ekran;
 // sadece stokta olan ürünler, dükkânın fiyatıyla (stok adedi yazmaz).
 // v150: own → dükkân sahibi kendi dükkânından ALAMAZ (sunucu da reddeder): ürünleri görür, alamaz
-export default function ShopShowcase({ houseId, kind, own = false, onClose }) {
+// v177: shop = 'galeri' | 'motogaleri' (araç dükkânının sattığı tür)
+export default function ShopShowcase({ houseId, kind, own = false, onClose, shop = 'galeri' }) {
   const { player } = usePlayer();
   const stock = useShopStock(houseId);
   const isW = kind === 'weapon';
+  const moto = !isW && shop === 'motogaleri';
   const catalog = isW ? weaponCatalog : vehicleCatalog;
   // son adet alınınca ürün hemen kaybolmasın — butonda "Satın Alındı ✓" görünsün
   const [recent, setRecent] = useState({});
@@ -55,7 +57,7 @@ export default function ShopShowcase({ houseId, kind, own = false, onClose }) {
     <div className="bz sh-root">
       <div className="bz-head">
         <div className="bz-head-main">
-          <h3>{isW ? '🔫 Silahlar' : '🚗 Arabalar'}</h3>
+          <h3>{isW ? '🔫 Silahlar' : moto ? '🏍️ Motorlar' : '🚗 Arabalar'}</h3>
         </div>
         {onClose && (
           <button className="bz-x" onClick={onClose}>
@@ -74,11 +76,11 @@ export default function ShopShowcase({ houseId, kind, own = false, onClose }) {
           <div className="hs-spinner" />
         </div>
       ) : items.length === 0 ? (
-        <p className="bz-note sh-empty">{isW ? '🔫' : '🚗'} Tükendi</p>
+        <p className="bz-note sh-empty">{isW ? '🔫' : moto ? '🏍️' : '🚗'} Tükendi</p>
       ) : (
         <>
           {own && <p className="bz-warn">🏪 Burası senin dükkânın: kendi dükkânından alışveriş yapamazsın. Rakip bir dükkândan ya da oyunun mağazasından al.</p>}
-          <Screen items={items} onBuy={onBuy} />
+          <Screen items={items} onBuy={onBuy} {...(isW ? {} : { shop })} />
         </>
       )}
     </div>

@@ -1620,6 +1620,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       }
       key = 'park';
     }
+    // v177: oyunun motor galerisi (camiinin arkası) — kapısının önü, yüz kapıya dönük
+    if (key === 'motor_galerisi' || key?.region === 'motor_galerisi') {
+      const mz = zones.find((z) => z.kind === 'shopDoor' && z.venue === 'motogaleri');
+      if (mz) return { x: mz.x + Math.sin(mz.out) * 1.4, z: mz.z + Math.cos(mz.out) * 1.4, yaw: mz.out, pitch: 0.36 };
+    }
     // v157: Kervankent / dış dünya noktası
     if (key && typeof key === 'object' && key.world && Number.isFinite(key.x) && Number.isFinite(key.z)) return { x: key.x, z: key.z, yaw: key.yaw ?? Math.PI };
     // v157.4: oyun açılışı — evin kapısının ÖNÜNDE (dışarıda), yüz yola dönük

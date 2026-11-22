@@ -44,6 +44,21 @@ export const BIZ_TYPES = {
       { any: ['kcoffee'], n: 1 },
     ],
   },
+  // v177 — MOTOR GALERİSİ: galeri ile aynı stok sistemi; sadece 4 motoru satar (Scooter, Cross,
+  // Chopper, Spor). Oyunun motor galerisi camiinin arkasındaki binanın zemin katında (içine girilmez,
+  // kapıda liste). Araba galerisi artık motor satmaz.
+  motogaleri: {
+    label: 'Motor Galerisi',
+    icon: '🏍️',
+    region: 'motor_galerisi',
+    day: 'midnight',
+    groups: [
+      { any: ['moto_sport'], n: 1 },
+      { any: ['moto_chopper'], n: 1 },
+      { any: ['moto_scooter'], n: 1 },
+      { any: ['moto_cross'], n: 1 },
+    ],
+  },
   modifiye: {
     label: 'Modifiye Garajı',
     icon: '🔧',
@@ -192,6 +207,10 @@ export const BIZ_ITEM_LABELS = {
   car_classic: { name: 'Klasik', icon: '🚗' },
   car_pickup: { name: 'Pikap', icon: '🛻' },
   officedesk: { name: 'Makam Masası', icon: '💼' },
+  moto_sport: { name: 'Spor Motor', icon: '🏍️' }, // v177 motor galerisi
+  moto_chopper: { name: 'Chopper', icon: '🏍️' },
+  moto_scooter: { name: 'Scooter', icon: '🛵' },
+  moto_cross: { name: 'Cross Motor', icon: '🏍️' },
   bosstable: { name: 'Patron Masası', icon: '🕴️' }, // v124 depo
   crates: { name: 'Kaçak Kasalar', icon: '📦' }, // v124 depo
   piyangogise: { name: 'Piyango Gişesi', icon: '🎟️' }, // v124 gazino

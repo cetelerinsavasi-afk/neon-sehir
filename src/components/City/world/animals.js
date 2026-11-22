@@ -146,6 +146,57 @@ const KINDS = {
       return { g, legs, head, tail };
     },
   },
+  // v177 — ahırların satılık hayvanları: Gölyaka'da develer, Çamlıca'da atlar (ağılda dolaşır)
+  deve: {
+    speed: 0.4, run: 1.2, flee: 0, wander: 5, idle: [6, 16], scale: 1, peck: true,
+    build(v) {
+      const g = new THREE.Group();
+      const b = M(['#c9a26b', '#e2c79a', '#a87a48'][v % 3]);
+      const dk = M('#5a4030');
+      part(g, BOX(1.5, 0.6, 0.6), b, 0, 1.72, 0);
+      part(g, SPH(0.42), b, -0.08, 2.05, 0).scale.set(1.25, 0.75, 0.82);
+      if (v % 2 === 0) {
+        part(g, BOX(1.1, 0.08, 0.76), M('#b8262e', 0.7), -0.1, 2.25, 0);
+        part(g, BOX(0.9, 0.4, 0.03), M('#b8262e', 0.7), -0.1, 2.02, 0.4);
+        part(g, BOX(0.9, 0.4, 0.03), M('#b8262e', 0.7), -0.1, 2.02, -0.4);
+      }
+      const head = new THREE.Group();
+      head.position.set(0.85, 1.85, 0);
+      g.add(head);
+      part(head, BOX(0.3, 0.8, 0.28), b, 0.28, 0.12, 0, 0, 0, -1.05);
+      part(head, BOX(0.24, 0.62, 0.24), b, 0.62, 0.52, 0, 0, 0, -0.15);
+      part(head, BOX(0.56, 0.24, 0.26), b, 0.82, 0.86, 0, 0, 0, -0.12);
+      part(head, BOX(0.2, 0.16, 0.22), dk, 1.08, 0.79, 0, 0, 0, -0.12);
+      const tail = new THREE.Group();
+      tail.position.set(-0.78, 1.86, 0);
+      g.add(tail);
+      part(tail, BOX(0.07, 0.6, 0.07), dk, -0.04, -0.3, 0);
+      const legs = [[0.58, 0.2], [0.58, -0.2], [-0.55, 0.2], [-0.55, -0.2]].map(([x, z]) => leg(g, x, 1.48, z, 0.15, 1.46, b));
+      return { g, legs, head, tail };
+    },
+  },
+  at: {
+    speed: 0.6, run: 2.6, flee: 0, wander: 7, idle: [4, 12], scale: 1, peck: true,
+    build(v) {
+      const g = new THREE.Group();
+      const b = M(['#7a4a2a', '#1c1714', '#e9e4da', '#b5692e', '#9a9a96'][v % 5]);
+      const dk = M('#2a1a12');
+      part(g, BOX(1.35, 0.55, 0.5), b, 0, 1.2, 0);
+      part(g, BOX(0.5, 0.42, 0.46), b, 0.55, 1.28, 0, 0, 0, 0.15);
+      const head = new THREE.Group();
+      head.position.set(0.62, 1.38, 0);
+      g.add(head);
+      part(head, BOX(0.32, 0.75, 0.3), b, 0.2, 0.24, 0, 0, 0, -0.55);
+      part(head, BOX(0.52, 0.26, 0.26), b, 0.46, 0.54, 0, 0, 0, -0.25);
+      part(head, BOX(0.4, 0.62, 0.06), dk, 0.12, 0.34, 0, 0, 0, -0.55);
+      const tail = new THREE.Group();
+      tail.position.set(-0.68, 1.38, 0);
+      g.add(tail);
+      part(tail, BOX(0.12, 0.66, 0.14), dk, -0.2, -0.38, 0, 0, 0, -0.28);
+      const legs = [[0.5, 0.17], [0.5, -0.17], [-0.5, 0.17], [-0.5, -0.17]].map(([x, z]) => leg(g, x, 1.0, z, 0.13, 0.98, b));
+      return { g, legs, head, tail };
+    },
+  },
   koyun: {
     speed: 0.5, run: 2.2, flee: 2.5, wander: 6, idle: [3, 10], scale: 1, peck: true,
     build() {

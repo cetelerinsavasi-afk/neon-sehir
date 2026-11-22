@@ -84,6 +84,10 @@ export const RATE_GROUPS = [
     ],
   },
   { m: 'ticaret', id: 'piyango', title: 'Piyango Vergisi', unit: '%', items: [pct('piyango', 'Piyango Kazancı')] },
+  // v176 — Neon Borsa: hisse gelirleri TOPLANIRKEN kesilir (al-satta vergi yok)
+  { m: 'ticaret', id: 'hisse', title: 'Hisse Senedi Gelir Vergisi', unit: '%', items: [pct('hisse', 'Hisse Senedi Gelir Vergisi')] },
+  // v177 — taksi / otobüs / tır / ambulans gelirleri (motokurye hariç)
+  { m: 'ticaret', id: 'sofor', title: 'Şoförlük Gelir Vergisi', unit: '%', items: [pct('sofor', 'Şoförlük (taksi, otobüs, tır, ambulans)')] },
   // v132: 2. el satış vergisi kaldırıldı (araç / silah / malzeme 2. el satışları vergisiz)
   {
     m: 'ticaret',

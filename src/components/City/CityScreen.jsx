@@ -25,7 +25,11 @@ import { currentOnboardingTaskId } from '../../../functions/onboardingData.js';
 import { AMCA, isStoryNpcId } from './story/storyData.js'; // v168
 const AMCA_ID = AMCA.id;
 import { FUEL_PRICE, GAS_MARKET_MENU } from '../../../functions/gasStation.js';
-import { GAS_STATION, FAR_DEPOT, LIMAN_BAY, OTOGARS } from '../../../functions/cityJobsData.js';
+import { GAS_STATION, FAR_DEPOT, LIMAN_BAY, OTOGARS, DEPOTS } from '../../../functions/cityJobsData.js';
+import { FLEET, countsAsOwned } from '../../../functions/fleet.js'; // v177 ticari araçlar
+import { ANIMALS, animalPrice, BIKE_RENT } from '../../../functions/stable.js'; // v177 at / deve / bisiklet
+import { BIKE_SHOP } from './cityLayout.js';
+import { stableAt } from './world/roadsideGeo.js';
 import { createJobRunner, navRoute } from './cityJobs.js';
 import { JOBS } from '../../../functions/vehicleKinds.js';
 import { invalidateSixtagramFeed } from '../../hooks/useSixtagramFeed';
@@ -102,6 +106,7 @@ const VENUE_UI = {
   netkafe: { biz: 'internet', label: '🖥️ İnternet kafeler', heist: 'internet_kafe' },
   spor: { biz: 'spor', label: '🏋️ Spor salonları' },
   galeri: { biz: 'galeri', label: '🚗 Araba galerileri', heist: 'araba_galerisi' },
+  motogaleri: { biz: 'motogaleri', label: '🏍️ Motor galerileri' }, // v177: camiinin arkası, içine girilmez
   silah: { biz: 'silahci', label: '🔫 Silahçılar', heist: 'silah_magazasi' },
   modifiye: { biz: 'modifiye', label: '🔧 Modifiye garajları' },
   casino: { biz: 'gazino', label: '🎰 Gazinolar', heist: 'casino' },
@@ -116,7 +121,7 @@ const VENUE_UI = {
 };
 // v157.4: Mekanlar › Ziyaret anahtarı → şehirdeki mekân (lot türü)
 const VISIT_LOT = { banka: 'banka', karakol: 'karakol', mosque: 'camii', casino: 'casino', dealership: 'galeri', weaponShop: 'silah', tuningGarage: 'modifiye', belediye: 'belediye', park: 'park' };
-const VENUE_TITLE = { bar: '🍸 Bar', cafe: '☕ Cafe', netkafe: '🖥️ İnternet Kafe', spor: '🏋️ Spor Salonu', galeri: '🚗 Araba Galerisi', silah: '🔫 Silah Mağazası', modifiye: '🔧 Modifiye Garajı', casino: '🎰 Casino', liman: '⚓ Liman & Depo', fabrika: '🏭 Fabrika', ev: '🏠 Ev', banka: '🏦 Banka', camii: '🕌 Camii', karakol: '🚓 Karakol', belediye: '🏛️ Belediye', hastane: '🏥 Hastane', benzinlik: '⛽ Benzinlik Market', otogar: '🚌 Otogar', otogar_kk: '🚌 Kervankent Otogarı', taksi_duragi: '🚕 Taksi Durağı', ofis: '🏢 Ofisler' };
+const VENUE_TITLE = { bar: '🍸 Bar', cafe: '☕ Cafe', netkafe: '🖥️ İnternet Kafe', spor: '🏋️ Spor Salonu', galeri: '🚗 Araba Galerisi', motogaleri: '🏍️ Motor Galerisi', silah: '🔫 Silah Mağazası', modifiye: '🔧 Modifiye Garajı', casino: '🎰 Casino', liman: '⚓ Liman & Depo', fabrika: '🏭 Fabrika', ev: '🏠 Ev', banka: '🏦 Banka', camii: '🕌 Camii', karakol: '🚓 Karakol', belediye: '🏛️ Belediye', hastane: '🏥 Hastane', benzinlik: '⛽ Benzinlik Market', otogar: '🚌 Otogar', otogar_kk: '🚌 Kervankent Otogarı', taksi_duragi: '🚕 Taksi Durağı', ofis: '🏢 Ofisler' };
 const VENDOR_BY_VENUE = Object.fromEntries(Object.entries(VENDORS).map(([id, v]) => [v.venue, { id, ...v }]));
 const BUFE_MENU = [
   { id: 'sosisli', price: 200 },
@@ -127,6 +132,124 @@ const BUFE_MENU = [
   { id: 'latte', price: 500 },
 ];
 const HOLD_MS = 120_000;
+
+// v177 — ticari araç satış noktaları: mekânın içindeyken sol üstte "🚕 Taksi" vb.
+const FLEET_VENUE = { taksi_duragi: 'taksi', otogar: 'otobus', otogar_kk: 'otobus', hastane: 'ambulans' };
+// tır: liman yükleme alanı / teslimat depolarında yürürken (alanın biraz çevresi de)
+const TIR_LOTS = [LIMAN_BAY, ...DEPOTS, FAR_DEPOT];
+const atTirLotOf = (x, z) => TIR_LOTS.some((p) => Math.hypot(x - p.x, z - p.z) < p.r + 5);
+
+// v177 — "Otobüs al" / "Senin otobüsün": açılınca yalnız o türdeki kendi araçların okunur (1–2 okuma)
+export function FleetSheet({ job, uid, gold, onClose }) {
+  const f = FLEET[job];
+  const c = vehicleCatalog.find((x) => x.id === f.cid);
+  const [mine, setMine] = useState(undefined);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const load = useCallback(async () => {
+    try {
+      const s = await getDocs(query(collection(db, 'vehicles'), where('ownerId', '==', uid), where('catalogId', '==', f.cid)));
+      const list = s.docs.map((d) => ({ id: d.id, ...d.data() })).filter(countsAsOwned);
+      list.sort((a, b) => (b.lifeDays ?? 20) - (a.lifeDays ?? 20));
+      setMine(list[0] || null);
+    } catch {
+      setMine(null);
+    }
+  }, [uid, f.cid]);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const buy = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await shopAction({ op: 'fleetBuy', job, expect: c.price });
+      await load();
+    } catch (e) {
+      setErr(e?.message || 'Satın alınamadı.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  const life = mine ? Math.max(0, Number(mine.lifeDays ?? 20)) : 20;
+  return (
+    <Sheet title={`${f.icon} ${f.label}`} onClose={onClose} closeLabel="Kapat">
+      <div className="cs-fleet">
+        <CarImg className="cs-fleet-img" catalogId={c.id} mods={mine?.mods || null} />
+        {mine === undefined && <div className="cs-garage-empty">…</div>}
+        {mine && (
+          <>
+            <b className="cs-fleet-name">{mine.customName || c.name}{mine.listed ? ' · 🏷️ ilanda' : ''}</b>
+            <div className="cs-fleet-life" title={`${life} / 20 gün`}>
+              <i style={{ width: `${(life / 20) * 100}%` }} className={life <= 3 ? 'low' : ''} />
+            </div>
+            <div className="cs-fleet-stats">
+              <span>⏳ <b>{life}</b> gün</span>
+              <span>💰 <b>{fmt(mine.jobEarned || 0)}</b></span>
+            </div>
+          </>
+        )}
+        {mine === null && (
+          <>
+            <b className="cs-fleet-name">{c.name}</b>
+            <div className="cs-fleet-stats">
+              <span>⏳ <b>20</b> gün</span>
+              <span>👥 <b>{c.seats}</b></span>
+            </div>
+            <button className="v3-btn primary cs-fleet-buy" disabled={busy || gold < c.price} onClick={buy}>
+              {busy ? '…' : <>Satın al · {fmt(c.price)} <span className="gold-coin-icon" style={{ width: 13, height: 13 }} /></>}
+            </button>
+          </>
+        )}
+        {err && <p className="vehicle-gallery-error">{err}</p>}
+      </div>
+    </Sheet>
+  );
+}
+
+// v177 — binek satın alma (köy ahırları: at / deve · parktaki bisikletçi): renk seçilir, modifiye yok
+export function AnimalSheet({ kind, gold, onClose, onBought, top = null }) {
+  const a = ANIMALS[kind];
+  const price = animalPrice(kind);
+  const [paint, setPaint] = useState(a.colors[0]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const [done, setDone] = useState(false);
+  const buy = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await shopAction({ op: 'animalBuy', kind, paint, expect: price });
+      setDone(true);
+      onBought?.();
+    } catch (e) {
+      setErr(e?.message || 'Satın alınamadı.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Sheet title={`${a.icon} ${a.label} · ${a.seller}`} onClose={onClose} closeLabel="Kapat">
+      <div className="cs-fleet">
+        {top}
+        <CarImg className="cs-fleet-img" catalogId={a.cid} mods={{ paint }} />
+        <div className="cs-swatches">
+          {a.colors.map((c) => (
+            <button key={c} className={`cs-swatch${c === paint ? ' on' : ''}`} style={{ background: c }} onClick={() => !done && setPaint(c)} aria-label="Renk" />
+          ))}
+        </div>
+        {done ? (
+          <b className="cs-fleet-name">✓ {a.label} garajında</b>
+        ) : (
+          <button className="v3-btn primary cs-fleet-buy" disabled={busy || gold < price} onClick={buy}>
+            {busy ? '…' : <>Satın al · {fmt(price)} <span className="gold-coin-icon" style={{ width: 13, height: 13 }} /></>}
+          </button>
+        )}
+        {err && <p className="vehicle-gallery-error">{err}</p>}
+      </div>
+    </Sheet>
+  );
+}
 
 // v156 — benzinlik pompaları (lot merkezinden 3 m önde, iki kanopi) → "⛽ Benzin al"
 const PUMPS = { x: GAS_STATION.x, z: GAS_STATION.z + 3, r: 9 };
@@ -471,6 +594,13 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const [inStadium, setInStadium] = useState(false);
   const [inPist, setInPist] = useState(false);
   const [atPump, setAtPump] = useState(false); // v156
+  const [atTirLot, setAtTirLot] = useState(false); // v177: tır satış noktası (yürürken)
+  const [stableNear, setStableNear] = useState(null); // v177: köy ahırı (at / deve)
+  const [atBikeShop, setAtBikeShop] = useState(false); // v177: parktaki bisikletçi
+  // v177 — kiralık bisiklet: { end (yerel ms) } · binikken süre dolunca 1 dk daha alınır, inikken bisiklet kaybolur
+  const [rent, setRent] = useState(null);
+  const rentRef = useRef(null);
+  rentRef.current = rent;
   const [fueling, setFueling] = useState(false); // v156 // v154: yarış pisti alanı (tribün / pit)
   // v157 — mekânın içi / dış dünya / yükleme yüzdesi / yatay mod / sürerken sohbet
   const [venue, setVenue] = useState(null);
@@ -642,6 +772,12 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           // v156: arabayla pompaların yanında mı? (⛽ Benzin al)
           const atPump = Boolean(s.driving && s.car && Math.hypot(s.car.x - PUMPS.x, s.car.z - PUMPS.z) < PUMPS.r);
           setAtPump((v) => (v === atPump ? v : atPump));
+          const tl = !s.driving && !s.riding && atTirLotOf(s.x, s.z);
+          setAtTirLot((v) => (v === tl ? v : tl));
+          const sa = !s.driving && !s.riding && s.mode !== 'city' ? stableAt(s.x, s.z)?.animal || null : null;
+          setStableNear((v) => (v === sa ? v : sa));
+          const bs = !s.driving && !s.riding && Math.hypot(s.x - BIKE_SHOP.x, s.z - BIKE_SHOP.z) < BIKE_SHOP.r;
+          setAtBikeShop((v) => (v === bs ? v : bs));
           drawMiniRef.current?.();
           // v166: sadece sürüş durumu + araç adı (hız göstergesi LiveSpeedo'da ayrı güncellenir)
           setHud((h) => {
@@ -1022,6 +1158,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const callCar = (c, veh) => {
     // v150: aracın kayıtlı modifiyesiyle (şehirde modifiyeli hali görünür)
     const r = engineRef.current.callCar(c.id, veh?.mods || null);
+    if (r.ok && rentRef.current) setRent(null); // v177: kendi aracını çağırınca kiralık bisiklet teslim edilir
     setPanel(null);
     flash(r.ok ? `🚗 ${c.name}` : r.reason);
     // v151: ticari araçsa üstte "İşe başla"
@@ -1294,6 +1431,66 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const shopDoorVenue = !driving && !riding && !venue && zone?.kind === 'shopDoor' ? zone.venue : null;
   const uiVenue = venue || shopDoorVenue;
   const vui = !driving && !riding ? VENUE_UI[uiVenue] || null : null;
+  const fleetJob = !driving && !riding ? FLEET_VENUE[uiVenue] || (atTirLot ? 'tir' : null) : null; // v177
+  const animalNear = !driving && !riding ? stableNear : null; // v177: 'at' | 'deve'
+  const bikeShopNear = !driving && !riding && atBikeShop; // v177
+  // v177 — kiralık bisiklet: kirala (1 dk peşin) → bisiklet yanına gelir; süre takibi aşağıdaki efektte
+  const rentBike = async () => {
+    try {
+      const r = await shopAction({ op: 'bikeRent' });
+      const res = engineRef.current?.callCar(25, { paint: BIKE_RENT.paint });
+      if (!res?.ok) {
+        flash(res?.reason || 'Bisiklet getirilemedi');
+        return;
+      }
+      setMyVeh(null);
+      jobRef.current?.setVehicle(null);
+      setRent({ end: Date.now() + (r.until - r.now) });
+      setPanel(null);
+      flash('🚲 Kiralık bisiklet hazır');
+    } catch (e) {
+      flash(e?.message === 'already-paid' ? 'Süren zaten var' : e?.message || 'Kiralanamadı');
+    }
+  };
+  // süre takibi (saniyede bir, sadece kiralıkken): binikken bitmeye 4 sn kala 1 dk daha (100 altın);
+  // inmişken süre dolarsa bisiklet kaybolur; altın yetmezse bisiklet teslim edilir
+  const [rentLeft, setRentLeft] = useState(0);
+  const renting = Boolean(rent);
+  useEffect(() => {
+    if (!renting) return undefined;
+    let busy = false;
+    const end = (text) => {
+      const eng = engineRef.current;
+      if (hudRef.current?.driving) eng?.exitCar?.();
+      eng?.removeMyCar?.();
+      setRent(null);
+      flash(text);
+    };
+    const step = async () => {
+      const r = rentRef.current;
+      if (!r || busy) return;
+      const left = r.end - Date.now();
+      setRentLeft(Math.max(0, Math.ceil(left / 1000)));
+      const onBike = Boolean(hudRef.current?.driving);
+      if (onBike && left <= 4000) {
+        busy = true;
+        try {
+          const x = await shopAction({ op: 'bikeRent' });
+          if (rentRef.current) setRent({ end: Date.now() + (x.until - x.now) });
+        } catch {
+          end('🚲 Altının bitti, bisiklet teslim edildi');
+        } finally {
+          busy = false;
+        }
+        return;
+      }
+      if (!onBike && left <= 0) end('🚲 Kira süresi doldu, bisiklet teslim edildi');
+    };
+    step();
+    const iv = setInterval(step, 1000);
+    return () => clearInterval(iv);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [renting]);
   // v159.1: kapalı dükkânın / evin kapısına gelince liste (ör. "🚗 Araba galerileri") kendiliğinden açılır;
   // elle kapatılabilir, uzaklaşınca kapanır
   useEffect(() => {
@@ -1514,6 +1711,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
               <b>+{fmt(jobPaid.total)} <i>altın</i></b>
               <small>
                 ⏱️ hız ×{jobPaid.perf?.speed} · 💥 hasar ×{jobPaid.perf?.dmg}
+                {jobPaid.tax > 0 ? ` · 🏛️ −${fmt(jobPaid.tax)}` : ''}
+                {jobPaid.share > 0 ? ` · 🏢 −${fmt(jobPaid.share)}` : ''}
                 {jobPaid.toDebt > 0 ? ` · ${fmt(jobPaid.toDebt)} borca` : ''}
               </small>
             </div>
@@ -1609,7 +1808,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           </div>
           {/* v157.8 — sol üst: şüphe · altın, hemen altında mekân düğmeleri (Evler / galeriler… + soygun);
               liste düğmeleri açılıp kapanır, liste açıkken sağ üstünde "al / aç" düğmesi */}
-          {!driving && (!guest || vui || hqVenue) && (
+          {!driving && (!guest || vui || hqVenue || fleetJob || animalNear || bikeShopNear) && (
             <div className="v3-menu cs-lmenu" ref={lmenuRef}>
               {!guest && bootWorld && <div className={`v3-badge v3-sus ${susCls}`}>🕵️ Şüphe <b>%{sus}</b></div>}
               {!guest && bootWorld && <div className="v3-badge cs-gold"><span className="gold-coin-icon" style={{ width: 13, height: 13 }} /> <b>{fmt(gold)}</b></div>}
@@ -1632,6 +1831,27 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                       </button>
                     )
                   )}
+                </div>
+              )}
+              {bikeShopNear && (
+                <div className="cs-venue-bar">
+                  <button className="cs-venue-btn" onClick={() => (guest ? setAskSignIn(true) : setPanel({ kind: 'bike' }))}>
+                    🚲 Bisikletçi
+                  </button>
+                </div>
+              )}
+              {animalNear && (
+                <div className="cs-venue-bar">
+                  <button className="cs-venue-btn" onClick={() => (guest ? setAskSignIn(true) : setPanel({ kind: 'animal', animal: animalNear }))}>
+                    {ANIMALS[animalNear].icon} {ANIMALS[animalNear].label}
+                  </button>
+                </div>
+              )}
+              {fleetJob && (
+                <div className="cs-venue-bar">
+                  <button className="cs-venue-btn" onClick={() => (guest ? setAskSignIn(true) : setPanel({ kind: 'fleet', job: fleetJob }))}>
+                    {FLEET[fleetJob].icon} {FLEET[fleetJob].label}
+                  </button>
                 </div>
               )}
               {vui && (vui.biz || vui.region || vui.inCity || vui.heist) && (
@@ -1848,6 +2068,25 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           {toast && <div className="hs-toast">{toast}</div>}
         </>
       )}
+      {rent && (
+        <div className="cs-rent-chip">
+          🚲 {Math.floor(rentLeft / 60)}:{String(rentLeft % 60).padStart(2, '0')}
+        </div>
+      )}
+      {panel?.kind === 'bike' && user && (
+        <AnimalSheet
+          kind="bisiklet"
+          gold={gold}
+          onClose={() => setPanel(null)}
+          top={
+            <button className="v3-btn primary cs-fleet-buy cs-rent" disabled={gold < BIKE_RENT.perMin || Boolean(rent)} onClick={rentBike}>
+              {rent ? '🚲 Kiralık bisikletin var' : <>⏱️ Kirala · {fmt(BIKE_RENT.perMin)} <span className="gold-coin-icon" style={{ width: 13, height: 13 }} /> / dk</>}
+            </button>
+          }
+        />
+      )}
+      {panel?.kind === 'animal' && user && <AnimalSheet kind={panel.animal} gold={gold} onClose={() => setPanel(null)} />}
+      {panel?.kind === 'fleet' && user && <FleetSheet job={panel.job} uid={user.uid} gold={gold} onClose={() => setPanel(null)} />}
       {panel?.kind === 'garage' && (
         <GarageSheet
           onClose={() => setPanel(null)}

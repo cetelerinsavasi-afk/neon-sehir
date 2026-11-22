@@ -275,6 +275,16 @@ const ss = (a, b, x) => {
   return t * t * (3 - 2 * t);
 };
 export const TERRAIN = { x0: -800, x1: 3050, z0: -2950, z1: 150 };
+// v177 — ÇÖL: haritanın sağ altında, Gölyaka Köyü'nün çevresi (3. biyom: çimen · karlı kuzey · çöl).
+// Sadece görünüm (renk + bitki örtüsü); yükseklik / fizik değişmez. 0 = çöl değil … 1 = tam çöl.
+export const DESERT = { x: 840, z: -215, r0: 190, r1: 330 };
+export function desertK(x, z) {
+  const dx = x - DESERT.x;
+  const dz = z - DESERT.z;
+  if (Math.abs(dx) > DESERT.r1 + 40 || Math.abs(dz) > DESERT.r1 + 40) return 0;
+  const d = Math.hypot(dx, dz) + fbm(x / 120, z / 120, 3) * 55;
+  return 1 - ss(DESERT.r0, DESERT.r1, d);
+}
 
 // özellikler
 export const LAKE = { x: 585, z: -545, r: 108, y: 1.2 };

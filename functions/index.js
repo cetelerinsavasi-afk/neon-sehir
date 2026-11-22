@@ -79,7 +79,12 @@ import { isMsgId, nextReaction, replyQuoteOf } from './chatExtras.js';
 import { VENUES } from './venueLayouts.js';
 import { VENDORS, VENDOR_COST as VENDOR_DAILY_COST } from './vendorData.js';
 import { goldTag, recordGoldChange, cleanupMoneyLog, realizeSale, realizeBankWithdraw } from './moneyLog.js';
-import { stateWrite, statWrite, closeStateDays, readStateReport } from './stateTreasury.js';
+import { stateWrite, statWrite, closeStateDays, readStateReport, stateDayKey } from './stateTreasury.js';
+import { createBorsa, borsaCoOfVendor, borsaIncomeStatKey, borsaCompanyStatKey, BORSA_TAX_RATE_ID } from './borsa.js'; // v176 Neon Borsa
+import { createFleet, SOFOR_TAX_RATE_ID, canResell, NO_RESALE_TEXT } from './fleet.js'; // v177 ticari araçlar
+import { createStable } from './stable.js'; // v177 at / deve / bisiklet
+import { newVehicleDoc } from './shop.js';
+import { addDayKey as rateAddDayKey } from './belediyeRates.js';
 import { policeBustSplit, heistStateEntries, heistStat, crimeLockedBySuspicion, CRIME_LOCK_TEXT, CRIME_LOCK_TEAM_TEXT, BELEDIYE_CRIME_TEXT, BELEDIYE_CRIME_TEAM_TEXT } from './policeRules.js';
 
 admin.initializeApp();
@@ -310,12 +315,29 @@ const jobs = createJobs({
   FieldValue: admin.firestore.FieldValue,
   HttpsError,
   splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
+  // v177: şoförlük vergisi (Ticaret) + %10 şirket payı (Neon Borsa)
+  stateWrite,
+  taxFrac: (day) => rateFrac(ratesFor(day), SOFOR_TAX_RATE_ID),
+  companyStatKey: (co) => borsaCompanyStatKey(co),
 });
+// v177 — ticari araçlar: durak / terminal / hastane / yükleme alanından satın alma (shopAction op: fleetBuy)
+const fleet = createFleet({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  goldTag,
+  statWrite,
+  newVehicleDoc,
+  companyStatKey: (co) => borsaCompanyStatKey(co),
+  dayKey: (ms) => stateDayKey(ms),
+});
+// v177 — binekler: köy ahırlarından at / deve, parktaki bisikletçiden bisiklet (shopAction op: animalBuy)
+const stable = createStable({ db, FieldValue: admin.firestore.FieldValue, HttpsError, goldTag, statWrite, newVehicleDoc, dayKey: (ms) => stateDayKey(ms) });
 // v132: silahçı / galeri stoğu çete deposu ilanlarından da alınır (çete sistemi aşağıda kurulunca bağlanır)
 const shopGangSource = { current: null };
 const shop = createShop({
   gangSource: shopGangSource,
-  extraOps: { ...venue.ops, ...gym.ops, ...homeOffice.ops, ...office.ops, ...depo.ops, ...casino.ops, ...sixSocial.ops, ...jobs.ops },
+  extraOps: { ...venue.ops, ...gym.ops, ...homeOffice.ops, ...office.ops, ...depo.ops, ...casino.ops, ...sixSocial.ops, ...jobs.ops, ...fleet.ops, ...stable.ops },
   db,
   FieldValue: admin.firestore.FieldValue,
   HttpsError,
@@ -369,6 +391,35 @@ export const cityAction = onCall(async (request) => {
   if (p.op === 'fuelBuy') return gasStation.fuelBuy(uid);
   if (p.op === 'marketBuy') return gasStation.marketBuy(uid, p);
   throw new HttpsError('invalid-argument', 'Geçersiz işlem.');
+});
+
+// v176 — NEON BORSA (seyyar satıcı hisseleri) — functions/borsa.js
+// op: 'al' | 'sat' (co: mekân) · 'topla' (birikmiş gelir, vergi + borç payı)
+const borsa = createBorsa({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  HttpsError,
+  goldTag,
+  stateWrite,
+  taxFrac: (day) => rateFrac(ratesFor(day), BORSA_TAX_RATE_ID),
+  dayKey: (ms) => stateDayKey(ms),
+  addDayKey: (k, n) => rateAddDayKey(k, n),
+});
+export const borsaAction = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const p = request.data || {};
+  if (p.op === 'al' || p.op === 'sat') return borsa.trade(uid, p);
+  if (p.op === 'topla') return borsa.collect(uid);
+  throw new HttpsError('invalid-argument', 'Geçersiz işlem.');
+});
+// v177 — tek seferlik: polis arabaları + aynı türden fazla ticari araçlar (kalan ömre göre ödenerek) kaldırılır,
+// galerilerdeki ticari araç stoğu iade edilir. Bittikten sonra her saat yalnızca 1 okuma (bayrak).
+export const fleetMigrateV177 = onSchedule({ schedule: '20 * * * *', timeZone: 'Europe/Istanbul', timeoutSeconds: 540 }, async () => {
+  await fleet.migrateV177();
+});
+// Saat başı: grafik noktası; 00:01'de dünün geliri dağıtılır, ardından 20 gün kuralı
+export const borsaHourly = onSchedule({ schedule: '1 * * * *', timeZone: 'Europe/Istanbul', timeoutSeconds: 300 }, async () => {
+  await borsa.hourly();
 });
 
 // v77 — İşletmeler: günlük rapor + dünkü kazanca göre sıralama. Saatlik
@@ -6090,6 +6141,7 @@ export const claimPoliceSalary = onCall(async (request) => {
 //     sadece ürün ele gelir (VENDORS[..].menu fiyatı).
 //   • Seyyar satıcı gelirlerinin tamamı devlete (Ticaret Bakanlığı ·
 //     stateLedger in.seyyar_satis; analiz: stat sy_* ).
+//     v176: artık Neon Borsa hissedarlarına (stat hs_<kod>, functions/borsa.js).
 //   • vendorId artık listeyle doğrulanır (eskiden her metin kabul ediliyordu).
 // ---------------------------------------------------------------------------
 const VENDOR_COST = VENDOR_DAILY_COST;
@@ -6156,13 +6208,14 @@ export const buyFromVendor = onCall(async (request) => {
       if (houseId && presSnap.exists && presSnap.data().houseId === houseId) tx.update(presRef, { holding: itemId });
     }
     // v145: seyyar satıcı geliri devlete (Ticaret Bakanlığı)
-    stateWrite(tx, db, admin.firestore.FieldValue, {
-      kind: 'in',
-      cat: 'seyyar_satis',
-      amount: price,
+    // v176: gelir artık devlete DEĞİL, Neon Borsa hissedarlarına (gece 00:00 sonrası dağıtılır —
+    // functions/borsa.js). Aynı defter parçasına sadece sayaç yazılır (ek yazma yok):
+    // sy_* analiz sayaçları + hs_<kod> (o günün dağıtılacak geliri).
+    const co = borsaCoOfVendor(vendorId);
+    statWrite(tx, db, admin.firestore.FieldValue, {
       atMs: t,
       dayKey: dateKey,
-      stat: { sy_n: 1, [`sy_${sk}_n`]: 1, [`sy_${sk}_ciro`]: price, ...(isMenu ? { sy_menu_n: 1 } : { sy_gun_n: 1 }) },
+      stat: { sy_n: 1, [`sy_${sk}_n`]: 1, [`sy_${sk}_ciro`]: price, ...(isMenu ? { sy_menu_n: 1 } : { sy_gun_n: 1 }), ...(co ? { [borsaIncomeStatKey(co.sk)]: price } : {}) },
     });
   });
 
@@ -10255,6 +10308,7 @@ export const createListing = onCall(async (request) => {
       if (v.mortgaged || v.seizedByBank) {
         throw new HttpsError('failed-precondition', 'İpotekli/el konulmuş araç satılamaz.');
       }
+      if (!canResell(v.catalogId)) throw new HttpsError('failed-precondition', NO_RESALE_TEXT); // v177
       if (v.listed) {
         throw new HttpsError('failed-precondition', 'Bu araç zaten listelenmiş.');
       }
@@ -10511,6 +10565,7 @@ export const instantSellListing = onCall(async (request) => {
       if (v.mortgaged || v.seizedByBank || v.listed) {
         throw new HttpsError('failed-precondition', 'Bu araç şu an satılamaz.');
       }
+      if (!canResell(v.catalogId)) throw new HttpsError('failed-precondition', NO_RESALE_TEXT); // v177
       const vehicleLifeDays = v.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
       if (vehicleLifeDays <= 0) {
         throw new HttpsError(
@@ -10863,6 +10918,8 @@ export const buyListing = onCall(async (request) => {
     if (!buyer || (buyer.gold || 0) < cost) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');
     }
+    // v177: her ticari türden en fazla 1 araç (2. elden de) — okumalar yazmalardan önce
+    if (listing.itemType === 'vehicle') await fleet.assertCanOwn(tx, uid, listing.vehicleCatalogId);
 
     // Firestore transaction kuralı: TÜM okumalar yazmalardan önce olmalı.
     const isSystemListing = listing.sellerId === 'system';
@@ -22915,7 +22972,7 @@ shopGangSource.current = gangFunctions.system.stockSource; // v132
 // =============================================================================
 const BELEDIYE_SIX_UID = '__belediye__';
 // Gece raporu ekleri (biten gün): işletme sayıları, polis rütbeleri, içerik üreticileri
-const BELEDIYE_BIZ_COUNT_TYPES = ['silahci', 'modifiye', 'galeri', 'spor', 'cafe', 'bar', 'internet', 'gazino', 'depo', 'sinema', 'studyo', 'mescit'];
+const BELEDIYE_BIZ_COUNT_TYPES = ['silahci', 'modifiye', 'galeri', 'motogaleri', 'spor', 'cafe', 'bar', 'internet', 'gazino', 'depo', 'sinema', 'studyo', 'mescit'];
 async function belediyeReportExtra(dateKey) {
   const y = addDaysToDateKey(dateKey, -1);
   const out = {};

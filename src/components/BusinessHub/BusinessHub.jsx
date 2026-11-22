@@ -36,6 +36,7 @@ export const GAME_VENUE = {
   // loc: interiorPresence.locationId (Soygun › Ziyaret sekmesindeki sayıyla aynı kaynak)
   silahci: { name: 'Neon Silah Mağazası', loc: 'silah_magazasi' },
   galeri: { name: 'Neon Araba Galerisi', loc: 'araba_galerisi' },
+  motogaleri: { name: 'Neon Motor Galerisi' }, // v177: içine girilmez, motor listesi açılır
   modifiye: { name: 'Neon Modifiye Garajı', loc: 'modifiye_garaji' },
   // spor: oyunun salonu da 3D bir ev (houses/game_spor) — içine girilir
   // v132: oyunun salonu kapalı (gizli) — sadece oyuncuların salonları listelenir

@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { Kit, M, glowMat, floorMat, floorRep, canvasTex } from '../kit.js';
 import { buildVehicle } from '../vehicles.js';
 import { ROAD_HALF, frameAt } from './route.js';
-import { geo, fromPad, BR_HALF } from './roadsideGeo.js';
+import { geo, fromPad, BR_HALF, STABLES } from './roadsideGeo.js';
 import { buildBenzinlikVenue, buildHqVenue, HQ_SLOTS, ROOM as VROOM_RS, stripVenueInt } from './venues.js';
 
 const PI = Math.PI;
@@ -1288,6 +1288,25 @@ function koyGolyaka(kit, p, ctx) {
   ctx.animals.push({ kind: 'kopek', x: 6, z: 20, v: 0, area: yard, homeR: 30 });
   for (const [x, z] of [[ah.x + 10, ah.z - 8], [ah.x + 12, ah.z - 5], [ah.x + 9, ah.z - 4]]) kit.item('hay', x, z, 1, 0, { y: Y });
   kit.item('tractor', ah.x - 10, ah.z - 7, 6, 0, { y: Y });
+  // v177 — DEVE AĞILI (çöl köyü): ahırın doğusunda, batıdan kapılı; kapıda Deveci Halil.
+  // Kapıya / çobana yaklaşınca "🐪 Deve" (roadsideGeo.STABLES.golyaka)
+  {
+    const S = STABLES.golyaka;
+    const [x0, z0, x1, z1] = S.pen;
+    fenceRun(kit, x0, z0, x1, z0, Y);
+    fenceRun(kit, x1, z0, x1, z1, Y);
+    fenceRun(kit, x0, z1, x1, z1, Y);
+    fenceRun(kit, x0, z0, x0, S.z - 2, Y);
+    fenceRun(kit, x0, S.z + 2, x0, z1, Y);
+    for (const [hx, hz] of [[x1 - 1.6, z0 + 1.6], [x1 - 1.6, z0 + 3.4]]) kit.item('hay', hx, hz, 0, 0, { y: Y });
+    kit.box(2.6, 0.5, 0.9, M('#8a6a45', 0.85), x1 - 2, Y, z1 - 1.4); // su yalağı
+    kit.box(2.3, 0.08, 0.7, M('#6fa3b8', 0.1, 0.2), x1 - 2, Y + 0.45, z1 - 1.4, { cast: false });
+    kit.box(0.14, 2.4, 0.14, M('#6b4a2e', 0.85), x0 - 0.6, Y, z0 - 0.6);
+    kit.sign(`${p.key}_deveci`, '🐪 DEVECİ', 0.5, x0 - 0.68, Y + 2.6, z0 - 0.6, -PI / 2, { color: '#fff6dc', bg: '#8a4a1a', font: '900 100px Arial, sans-serif', light: false });
+    const pen = [x0 + 1.2, z0 + 1.2, x1 - 1.2, z1 - 1.2];
+    for (let i = 0; i < 3; i++) ctx.animals.push({ kind: 'deve', x: x0 + 3 + i * 3.5, z: z0 + 4 + (i % 2) * 5, v: i, area: pen, homeR: 6 });
+    ctx.npc.push({ x: S.x, z: S.z, name: S.seller, av: { clothing: 'vest', clothColor: '#8a4a1a', hat: 'scarf', hatColor: '#f2e6b8', facialHair: 'full', hairColor: '#2a2420', pantsColor: '#3a3226' }, lines: ['Hoş geldin! Develerim çölün gemisi, yorulmaz.', 'Arkana bir kişi daha alır, iki kişilik.', 'Rengini sen seç, eyerini ben vurayım.'] });
+  }
   // tarla (sebze sıraları) + korkuluk
   for (let r = 0; r < 4; r++) for (let c = 0; c < 3; c++) kit.item('vegbed', -40 + c * 4.2, 34 + r * 2.6, 0, 0, { y: Y, solid: false });
   kit.item('scarecrow', -34, 40, 0, 0, { y: Y });
@@ -1469,6 +1488,26 @@ function koyCamlica(kit, p, ctx) {
   fenceRun(kit, 46, -14, 46, 4, Y);
   fenceRun(kit, 26, -14, 26, -6, Y);
   ctx.animals.push({ kind: 'kopek', x: 0, z: 22, v: 2, area: yard, homeR: 26 });
+  // v177 — AT AĞILI + üstü örtülü ahır: çay bahçesinin doğusu, batıdan kapılı; kapıda Çoban Yusuf
+  {
+    const S = STABLES.camlica;
+    const [x0, z0, x1, z1] = S.pen;
+    fenceRun(kit, x0, z0, x1, z0, Y);
+    fenceRun(kit, x1, z0, x1, z1, Y);
+    fenceRun(kit, x0, z1, x1, z1, Y);
+    fenceRun(kit, x0, z0, x0, S.z - 2, Y);
+    fenceRun(kit, x0, S.z + 2, x0, z1, Y);
+    const wood = M('#5a3d26', 0.85);
+    for (const [px, pz] of [[x1 - 4.4, z0 + 1], [x1 - 0.6, z0 + 1], [x1 - 4.4, z1 - 1], [x1 - 0.6, z1 - 1]]) kit.box(0.22, 3, 0.22, wood, px, Y, pz);
+    kit.box(5, 0.2, z1 - z0, M('#7a4a2a', 0.8), x1 - 2.5, Y + 3, (z0 + z1) / 2);
+    kit.box(0.12, 1.2, z1 - z0 - 2, M('#8a6a45', 0.85), x1 - 0.5, Y, (z0 + z1) / 2);
+    for (const [hx, hz] of [[x1 - 2, z0 + 3], [x1 - 2, z0 + 5], [x1 - 2, z1 - 3]]) kit.item('hay', hx, hz, 0, 0, { y: Y });
+    kit.box(0.14, 2.4, 0.14, M('#6b4a2e', 0.85), x0 - 0.6, Y, z0 - 0.6);
+    kit.sign(`${p.key}_ahir`, '🐎 AHIR', 0.5, x0 - 0.68, Y + 2.6, z0 - 0.6, -PI / 2, { color: '#fff6dc', bg: '#3f5a2a', font: '900 100px Arial, sans-serif', light: false });
+    const pen = [x0 + 1.2, z0 + 1.2, x1 - 5, z1 - 1.2];
+    [0, 1, 3].forEach((v, i) => ctx.animals.push({ kind: 'at', x: x0 + 3 + i * 3, z: z0 + 3 + i * 3, v, area: pen, homeR: 6 }));
+    ctx.npc.push({ x: S.x, z: S.z, name: S.seller, av: { clothing: 'vest', clothColor: '#3a2a1a', hat: 'cap', hatColor: '#6b4a2e', facialHair: 'mustache', pantsColor: '#2a2420' }, lines: ['Yaylanın en iyi atları bunlar!', 'Doru mu olsun, yağız mı? Seç bakalım.', 'Ata binen eğerini, kılıç kuşanan bileğini…'] });
+  }
   camlicaMezarlik(kit, Y);
   // köylüler
   ctx.npc.push({ x: cb.x + 4.6, z: cb.z + 1.5, name: 'Çaycı Selim', av: { clothing: 'vest', clothColor: '#3a2a1a', hat: 'cap', hatColor: '#1a1a1a', facialHair: 'mustache', pantsColor: '#2a2420' }, lines: ['Demlik yeni demlendi, buyur!', 'Yaylanın havası başka.'] });

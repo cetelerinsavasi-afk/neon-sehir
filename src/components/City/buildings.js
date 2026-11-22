@@ -11,7 +11,9 @@ const PI = Math.PI;
 
 // --- ortak parçalar -----------------------------------------------------------
 // Pencereli kule: 4 yan düzlem (UV ölçekli, paylaşılan cephe malzemesi) + çatı
-export function tower(kit, { w, d, h, x = 0, z = 0, style = 'apt_warm', roof = '#16181f', crown = null, seed = 0, base = null }) {
+// v177 — hole: ön cephenin (+z) zemin katında içi görünen oyuk (motor galerisi showroom'u):
+//   { x0, x1 (kule merkezine göre), h (yükseklik), depth } — cephe, gövde ve subasman oyuğun etrafından kurulur
+export function tower(kit, { w, d, h, x = 0, z = 0, style = 'apt_warm', roof = '#16181f', crown = null, seed = 0, base = null, hole = null }) {
   const mat = facadeMat(style);
   const real = isRealFacade(style);
   const ou = (seed % 8) / 8;
@@ -24,19 +26,45 @@ export function tower(kit, { w, d, h, x = 0, z = 0, style = 'apt_warm', roof = '
   ];
   const y0 = base ? base.h : 0;
   const hh = h - y0;
-  sides.forEach(([sw, sx, sz, ry]) => {
+  // cephe parçası: yerel [a,b] × [ya,yb] (desen bütün cepheyle hizalı kalır)
+  const facePiece = (a, b, ya, yb, sz) => {
+    if (b - a < 0.01 || yb - ya < 0.01) return;
+    const g = planeGeo(b - a, yb - ya, (b - a) / FACADE_TILE.w, (yb - ya) / FACADE_TILE.h, ou + (a + w / 2) / FACADE_TILE.w, ov + (ya - y0) / FACADE_TILE.h);
+    kit.mesh(g, mat, x + (a + b) / 2, (ya + yb) / 2, z + sz, 0, { cast: false });
+  };
+  sides.forEach(([sw, sx, sz, ry], si) => {
+    if (si === 0 && hole) {
+      facePiece(-w / 2, w / 2, Math.max(y0, hole.h), h, sz);
+      facePiece(-w / 2, hole.x0, y0, hole.h, sz);
+      facePiece(hole.x1, w / 2, y0, hole.h, sz);
+      return;
+    }
     const g = planeGeo(sw, hh, sw / FACADE_TILE.w, hh / FACADE_TILE.h, ou, ov);
     kit.mesh(g, mat, x + sx, y0 + hh / 2, z + sz, ry, { cast: false });
   });
   // gölge için içi dolu gövde (görünmez değil: koyu, yanlardan biraz içeride)
-  kit.box(w - 0.08, h, d - 0.08, M(real ? '#b9b2a6' : '#121319', 0.9), x, 0, z, { receive: false });
+  const bodyM = M(real ? '#b9b2a6' : '#121319', 0.9);
+  if (hole) {
+    const dz = hole.depth;
+    const zf = z + d / 2 - 0.04;
+    kit.box(w - 0.08, h, d - 0.08 - dz, bodyM, x, 0, z - dz / 2, { receive: false });
+    kit.box(w - 0.08, h - hole.h, dz, bodyM, x, hole.h, zf - dz / 2, { receive: false });
+    kit.box(hole.x0 + w / 2 - 0.04, hole.h, dz, bodyM, x + (-w / 2 + 0.04 + hole.x0) / 2, 0, zf - dz / 2, { receive: false });
+    kit.box(w / 2 - 0.04 - hole.x1, hole.h, dz, bodyM, x + (hole.x1 + w / 2 - 0.04) / 2, 0, zf - dz / 2, { receive: false });
+  } else kit.box(w - 0.08, h, d - 0.08, bodyM, x, 0, z, { receive: false });
   kit.box(w + 0.3, 0.5, d + 0.3, M(real ? '#d8d1c3' : roof, 0.85), x, h, z); // korkuluk / parapet
   kit.box(w - 0.6, 0.12, d - 0.6, M(real ? '#8e8a83' : '#1d2028', 0.95), x, h + 0.02, z, { cast: false });
   if (real) {
     const trim = M(facadeTrim(style), 0.8);
     // saçak + zemin kat subasman
     kit.box(w + 0.55, 0.28, d + 0.55, trim, x, h - 0.4, z);
-    kit.box(w + 0.14, 0.7, d + 0.14, M('#8f8a80', 0.85), x, 0, z, { cast: false });
+    const subM = M('#8f8a80', 0.85);
+    if (hole) {
+      // subasman oyuğun önünden geçmez (vitrin yere kadar)
+      kit.box(w + 0.14, 0.7, d + 0.14 - hole.depth, subM, x, 0, z - hole.depth / 2, { cast: false });
+      kit.box(hole.x0 + w / 2 + 0.07, 0.7, hole.depth, subM, x + (-w / 2 - 0.07 + hole.x0) / 2, 0, z + d / 2 + 0.07 - hole.depth / 2, { cast: false });
+      kit.box(w / 2 + 0.07 - hole.x1, 0.7, hole.depth, subM, x + (hole.x1 + w / 2 + 0.07) / 2, 0, z + d / 2 + 0.07 - hole.depth / 2, { cast: false });
+    } else kit.box(w + 0.14, 0.7, d + 0.14, subM, x, 0, z, { cast: false });
     // kat silmeleri (gölge çizgisi veren çıkıntı) — konutlarda
     if (facadeKind(style) === 'apt' || facadeKind(style) === 'stone') {
       for (let fy = y0 + 3.2; fy < h - 1.5; fy += 3.2) kit.box(w + 0.22, 0.1, d + 0.22, trim, x, fy - 0.12, z, { cast: false });
@@ -932,28 +960,101 @@ const SHOPS = [
 // v154 (prototip): açık renkli, gerçekçi cepheler (eski koyu neon cepheler: apt_warm, apt_cool, office, brick, purple)
 const STYLES = ['beyaz', 'bej', 'krem', 'tas', 'cam_ofis', 'somon', 'beyaz', 'tugla_acik', 'bej', 'yesil', 'cam_yesil', 'krem'];
 const CROWNS = [null, null, null, '#19e8ff', null, null, null, null];
-export function buildFiller(kit, lot, seed, { tall = 1, plaza = false } = {}) {
+// v177 — motoShop: camiinin arkasındaki bloğun (0,0) caddeye bakan ECZANE'si NEON MOTOR GALERİSİ olur:
+// camlı vitrinden içi görünen showroom (içine girilmez; kapıda motor galerileri listesi). rng sırası
+// değişmez (önce tüm hücreler hesaplanır, sonra çizilir) → diğer binalar aynı kalır.
+const MOTO_SHOW = ['moto_sport', 'moto_chopper', 'moto_scooter', 'moto_cross'];
+const SHOW_DEPTH = 5.4;
+const SHOW_H = 3.0;
+export function buildFiller(kit, lot, seed, { tall = 1, plaza = false, motoShop = false } = {}) {
   const { w, d } = lot;
   const r = rng(seed * 7919 + 13);
   kit.floor('kaldirim', w, d, 0, 0);
   const n = plaza ? 1 : r() < 0.4 ? 2 : r() < 0.6 ? 4 : 1;
   const cells = n === 1 ? [[0, plaza ? -d / 4 : 0, w - 2, plaza ? d / 2 - 1 : d - 2]] : n === 2 ? [[-w / 4, 0, w / 2 - 1.4, d - 2], [w / 4, 0, w / 2 - 1.4, d - 2]] : [[-w / 4, -d / 4, w / 2 - 1.4, d / 2 - 1.4], [w / 4, -d / 4, w / 2 - 1.4, d / 2 - 1.4], [-w / 4, d / 4, w / 2 - 1.4, d / 2 - 1.4], [w / 4, d / 4, w / 2 - 1.4, d / 2 - 1.4]];
-  cells.forEach(([x, z, cw, cd], i) => {
+  const plan = cells.map(([x, z, cw, cd], i) => {
     const tw = cw - r() * 2;
     const td = cd - r() * 2;
     const h = (12 + Math.floor(r() * 10) * 3.2) * tall;
     const style = STYLES[Math.floor(r() * STYLES.length)];
-    tower(kit, { w: tw, d: td, h, x, z, style, crown: CROWNS[Math.floor(r() * CROWNS.length)], seed: seed + i * 5 });
+    const crown = CROWNS[Math.floor(r() * CROWNS.length)];
     // ön yüzde dükkân (yola bakan taraf: +z)
+    let front = null;
     if (z + td / 2 > d / 2 - 4 || n === 1 || r() < 0.4) {
       const sh = SHOPS[Math.floor(r() * SHOPS.length)];
-      shopfront(kit, { x, z: z + td / 2 + 0.05, w: Math.min(tw - 1, 8), text: sh[0], color: sh[1], awn: sh[2] });
+      front = { x, z: z + td / 2 + 0.05, w: Math.min(tw - 1, 8), sh, street: z + td / 2 > d / 2 - 4 };
     }
+    return { x, z, tw, td, h, style, crown, seed: seed + i * 5, front };
+  });
+  // v177: motor galerisi = caddeye bakan ilk ECZANE (yoksa caddeye bakan ilk dükkân)
+  const fronts = plan.filter((c) => c.front);
+  const mc = motoShop ? fronts.find((c) => c.front.street && c.front.sh[0] === 'ECZANE') || fronts.find((c) => c.front.street) || null : null;
+  plan.forEach((c) => {
+    const hole = c === mc && c.td > SHOW_DEPTH + 2 ? { x0: -c.front.w / 2, x1: c.front.w / 2, h: SHOW_H, depth: SHOW_DEPTH } : null;
+    tower(kit, { w: c.tw, d: c.td, h: c.h, x: c.x, z: c.z, style: c.style, crown: c.crown, seed: c.seed, hole });
+    if (!c.front) return;
+    if (c === mc) motoShowroom(kit, { x: c.front.x, zf: c.z + c.td / 2, w: c.front.w, inside: Boolean(hole) });
+    else shopfront(kit, { x: c.front.x, z: c.front.z, w: c.front.w, text: c.front.sh[0], color: c.front.sh[1], awn: c.front.sh[2] });
   });
   if (!plaza) {
     kit.item('streetlamp', w / 2 - 0.6, d / 2 - 0.6, 4);
     if (r() < 0.6) kit.item('trash', -w / 2 + 0.8, d / 2 - 0.8, 0, 0);
   }
+}
+
+// v177 — NEON MOTOR GALERİSİ: kulenin zemin katındaki oyukta camlı showroom (dışarıdan görünür)
+const SIDEWALK_Y = 0.14; // kit.floor('kaldirim') yüksekliği — eşyalar kaldırıma gömülmesin
+function motoShowroom(kit, { x, zf, w, inside }) {
+  const hw = w / 2;
+  const zb = zf - SHOW_DEPTH;
+  const zm = (zf + zb) / 2;
+  const ORANGE = '#ff8a3d';
+  const FY = 0.18; // showroom zemini (kaldırımdan bir tık yukarıda)
+  if (inside) {
+    // zemin (parlak koyu karo), duvarlar, tavan
+    kit.box(w, FY, SHOW_DEPTH, M('#14161b', 0.18, 0.55), x, 0, zm, { cast: false });
+    kit.box(w - 0.2, 0.01, SHOW_DEPTH - 0.4, M('#22252d', 0.12, 0.6), x, FY, zm, { cast: false });
+    kit.box(w, SHOW_H, 0.12, M('#191b21', 0.6), x, 0, zb + 0.06, { cast: false });
+    for (const sx of [-1, 1]) {
+      kit.box(0.12, SHOW_H, SHOW_DEPTH, M('#1d2027', 0.6), x + sx * (hw - 0.06), 0, zm, { cast: false });
+      kit.box(0.05, 0.05, SHOW_DEPTH - 0.3, glowMat(ORANGE, 2.2), x + sx * (hw - 0.14), 0.32, zm, { cast: false });
+    }
+    kit.box(w, 0.1, SHOW_DEPTH, M('#101216', 0.7), x, SHOW_H - 0.1, zm, { cast: false });
+    // tavanda iki ışık şeridi + arka duvarda neon çerçeve ve yazı
+    for (const lx of [-hw / 2, hw / 2]) kit.box(0.12, 0.04, SHOW_DEPTH - 1, glowMat('#fff4e6', 2.6), x + lx, SHOW_H - 0.15, zm, { cast: false });
+    kit.box(w - 1, 0.06, 0.04, glowMat(ORANGE, 2.6), x, 2.55, zb + 0.14, { cast: false });
+    kit.box(w - 1, 0.06, 0.04, glowMat(ORANGE, 2.6), x, 0.75, zb + 0.14, { cast: false });
+    const tex = textCanvas('NEON MOTO', ORANGE);
+    const sw = Math.min(w - 2, 0.7 * tex.userData.aspect);
+    kit.mesh(new THREE.PlaneGeometry(sw, 0.7), new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false, depthWrite: false }), x, 1.65, zb + 0.14, 0, { cast: false, receive: false });
+    // 4 motor döner platformlarda (ışıklı halka), arka köşede tezgâh
+    const spots = [[-hw + 1.3, zf - 1.7, 1], [-hw / 2 + 0.2, zb + 1.6, 0], [hw / 2 - 0.2, zb + 1.6, 0], [hw - 1.3, zf - 1.7, 7]];
+    spots.forEach(([px, pz, rot], i) => {
+      kit.cyl(0.95, 1.0, 0.1, M('#2a2d35', 0.25, 0.7), x + px, FY, pz, 28, { cast: false });
+      kit.cyl(1.0, 1.0, 0.02, glowMat(ORANGE, 1.8), x + px, FY + 0.1, pz, 28, { cast: false, open: true });
+      kit.item(MOTO_SHOW[i], x + px, pz, rot, i, { y: FY + 0.1, solid: false });
+    });
+    kit.box(1.6, 1.0, 0.6, M('#2b2e36', 0.35, 0.4), x, FY, zb + 0.55, { cast: false });
+    kit.box(1.7, 0.06, 0.7, glowMat(ORANGE, 1.6), x, FY + 1.0, zb + 0.55, { cast: false });
+    kit.light(x, 2.3, zm, '#ffd2a8', 7, 9);
+  }
+  // camlı cephe: yere kadar cam, ince kayıtlar, ortada cam kapı
+  const frame = M('#1a1c22', 0.35, 0.7);
+  kit.mesh(new THREE.PlaneGeometry(w, SHOW_H), GLASS(), x, SHOW_H / 2, zf + 0.03, 0, { cast: false });
+  for (const fx of [-hw, -hw / 2, -0.7, 0.7, hw / 2, hw]) kit.box(0.1, SHOW_H, 0.1, frame, x + fx, 0, zf + 0.05);
+  kit.box(w + 0.1, 0.12, 0.12, frame, x, SHOW_H - 0.06, zf + 0.05);
+  kit.box(1.4, 0.08, 0.1, frame, x, 2.35, zf + 0.06, { cast: false });
+  // tente + neon tabela (eski dükkân tabelasıyla aynı dil)
+  kit.box(w, 0.18, 1.3, M('#3a1d0e', 0.7), x, SHOW_H + 0.05, zf + 0.75);
+  kit.box(w, 0.05, 0.05, glowMat(ORANGE, 2.4), x, SHOW_H + 0.05, zf + 1.4, { cast: false });
+  const tex = textCanvas('MOTOR GALERİSİ', ORANGE);
+  const sw = Math.min(w - 0.6, 0.62 * tex.userData.aspect);
+  kit.mesh(new THREE.PlaneGeometry(sw, 0.62), new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false, depthWrite: false }), x, SHOW_H + 0.55, zf + 0.2, 0, { cast: false, receive: false });
+  kit.pool(x, zf + 2.2, ORANGE, 6, 0.17, 0.4);
+  // kapının iki yanında kaldırımda sergi motoru (tekerler kaldırımın üstünde)
+  kit.item('moto_sport', x - 3.0, zf + 1.55, 7, 3, { y: SIDEWALK_Y });
+  kit.item('moto_cross', x + 3.0, zf + 1.55, 1, 2, { y: SIDEWALK_Y });
+  kit.zone({ kind: 'shopDoor', venue: 'motogaleri', title: '🏍️ Neon Motor Galerisi', x, z: zf + 1.65, r: 2.4 });
 }
 
 // =============================================================================

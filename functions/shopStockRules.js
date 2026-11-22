@@ -14,7 +14,8 @@
 //     prices: { katalogId: satış fiyatı }, updatedAtMs }
 // =============================================================================
 
-export const STOCK_KIND = { silahci: 'weapon', galeri: 'vehicle' };
+// v177: motor galerisi de araç (vehicle) stoğu tutar; hangi aracı kimin sattığı fleet.js vehicleShopOf
+export const STOCK_KIND = { silahci: 'weapon', galeri: 'vehicle', motogaleri: 'vehicle' };
 export const STOCK_COST_FRAC = 0.75;
 export const STOCK_MIN_PRICE_FRAC = 0.8;
 export const STOCK_ADD_MAX = 50; // tek seferde en fazla

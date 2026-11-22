@@ -28,6 +28,8 @@
 //                gece 00:00'da yeni güne yazılır (functions/gameCasinoVault.js)
 //   ist_*      — istihbaratın kazandığı her şey (savaş, bahis, rüşvet, çökertme…)
 //   seyyar_satis — v145: seyyar satıcılardan alışverişin tamamı (günlük alışveriş + menü)
+//                  v176: artık yazılmıyor — seyyar gelirleri Neon Borsa hissedarlarına (functions/borsa.js);
+//                  hissedarı olmayan mekânın günlük geliri seyyar_sahipsiz, hisse gelir vergisi vergi_hisse
 //
 // YAZMA: gün + parça (shard) belgelerine artırma — stateLedger/{gün}_s{0..N}.
 // Aynı belgeye çok oyuncu aynı anda yazmasın diye 16 parça; okuma tarafı
@@ -85,7 +87,10 @@ export const STATE_IN = {
   vergi_isl_gazino: 'Vergi · İşletme · Kumarhane',
   vergi_sifirSilah: 'Vergi · Sıfır silah satış kârı', // v130
   vergi_sifirAraba: 'Vergi · Sıfır araba satış kârı', // v130
-  seyyar_satis: 'Seyyar satıcı satışları', // v145 — Ticaret Bakanlığı
+  seyyar_satis: 'Seyyar satıcı satışları', // v145 — Ticaret Bakanlığı (v176'dan beri yazılmıyor)
+  seyyar_sahipsiz: 'Neon Borsa · o gün hissedarı olmayan şirketlerin geliri', // v176 Neon Borsa (v177: şirketler de)
+  vergi_sofor: 'Vergi · Şoförlük gelirleri', // v177 (taksi, otobüs, tır, ambulans)
+  vergi_hisse: 'Vergi · Hisse senedi gelirleri', // v176 Neon Borsa (toplarken)
   benzinlik: 'Benzinlik satışları (benzin + market)', // v156 — Ticaret Bakanlığı
   bagis: 'Belediyeye bağışlar',
   adaylik: 'Belediye başkanlığı adaylık ücretleri', // v136

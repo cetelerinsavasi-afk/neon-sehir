@@ -41,6 +41,7 @@ const hhmm = (ms) => new Date(ms).toLocaleTimeString('tr-TR', { hour: '2-digit',
 const BIZ_BLURB = {
   silahci: 'Silah sat, silah tamir et ve geliştir.',
   galeri: 'Araba sat.',
+  motogaleri: 'Motor sat.', // v177
   modifiye: 'Araba tamiri, vites ve depo geliştirmesi yap.',
   spor: 'Günlük üyelik sat; oyuncular ve takımlar burada antrenman yapar.',
   internet: 'Dakika ücretiyle oyun cihazı kirala.',
@@ -57,7 +58,7 @@ const BIZ_BLURB = {
 export function BizListPanel({ keys = BIZ_TYPE_KEYS, title = '🏪 İşletmeler', items, invItems, houseDoc, houseId = null, busy, gold = 0, gem = 0, onOpenBiz, onCloseBiz, onFillMissing, onClose, flashType }) {
   const open = houseDoc?.biz?.type || null;
   // v130: silahçı / galeri kapanmadan önce uyarı — stoğun alış parası iade edilir
-  const stock = useShopStock(open === 'silahci' || open === 'galeri' ? houseId : null);
+  const stock = useShopStock(open === 'silahci' || open === 'galeri' || open === 'motogaleri' ? houseId : null);
   const stockN = Object.values(stock?.items || {}).reduce((a, n) => a + (Number(n) || 0), 0);
   const stockRefund = Object.values(stock?.paid || {}).reduce((a, n) => a + (Number(n) || 0), 0);
   const closeLines = stockN > 0 ? [`📦 Stoktaki ${fmt(stockN)} ürün kalkar`, `🪙 Alış parası iade: ${fmt(stockRefund)} altın`] : [];
@@ -188,6 +189,7 @@ const BIZ_PRICE_SECTIONS = {
   silahci: ShopPriceSection,
   modifiye: ShopPriceSection,
   galeri: ShopPriceSection,
+  motogaleri: ShopPriceSection, // v177
   cafe: MenuPriceSection,
   bar: MenuPriceSection,
   internet: NetPriceSection,
@@ -203,6 +205,7 @@ const BIZ_INV_SECTIONS = {
   silahci: ShopInvSection,
   modifiye: ShopInvSection,
   galeri: ShopInvSection,
+  motogaleri: ShopInvSection, // v177
   cafe: MenuInvSection,
   bar: MenuInvSection,
   internet: NetInvSection,

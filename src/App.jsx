@@ -64,6 +64,7 @@ const HouseHub = lazyScreen(() => import('./components/HouseScreen/HouseHub'));
 // v92 Faz 8 — mekânlar 3D (giriş yapmamış oyuncu eski 2D mekânı görür)
 const VenueHouseScreen = lazyScreen(() => import('./components/Venue3D/VenueHouseScreen'));
 const BusinessHub = lazyScreen(() => import('./components/BusinessHub/BusinessHub'));
+const MotorGalleryScreen = lazyScreen(() => import('./components/MotorGallery/MotorGalleryScreen')); // v177
 // v173 — AÇILIŞTAN 2-3 SN SONRAKİ "YÜKLEME YUVARLAĞI": bu küçük halka da tam ekran sayfalar gibi
 // yükleniyordu; dosyası inerken bütün ekranı karartan dönen yuvarlak çıkıyordu (anlık donma hissi).
 // Artık sessiz yüklenir: inene kadar hiçbir şey görünmez, sonra halka (varsa) belirir.
@@ -287,6 +288,7 @@ function GameShell() {
   const [mosqueOpen, setMosqueOpen] = useState(false);
   const [casinoOpen, setCasinoOpen] = useState(false);
   const [dealershipOpen, setDealershipOpen] = useState(false);
+  const [motorShopOpen, setMotorShopOpen] = useState(false); // v177 oyunun motor galerisi
   const [weaponShopOpen, setWeaponShopOpen] = useState(false);
   const [tuningGarageOpen, setTuningGarageOpen] = useState(false);
   const [belediyeOpen, setBelediyeOpen] = useState(false); // v108 — başkanlık makam odası
@@ -335,6 +337,7 @@ function GameShell() {
   useBackClose(mosqueOpen, venueClose(setMosqueOpen));
   useBackClose(casinoOpen, venueClose(setCasinoOpen));
   useBackClose(dealershipOpen, venueClose(setDealershipOpen));
+  useBackClose(motorShopOpen, venueClose(setMotorShopOpen));
   useBackClose(weaponShopOpen, venueClose(setWeaponShopOpen));
   useBackClose(tuningGarageOpen, venueClose(setTuningGarageOpen));
   useBackClose(belediyeOpen, venueClose(setBelediyeOpen));
@@ -639,7 +642,7 @@ function GameShell() {
   // v147.1 — şehirden açılan liste/mekân/soygun ekranı kapanınca (✕) ana sayfa yerine şehre,
   // girilen kapının önüne dönülür
   const somethingOpen = Boolean(
-    watchStreamId || hqView || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || teskilatOpen || vendorRegion || heistTarget !== undefined || activeRegion || activeTableId || (effectiveRaceRoomId && raceExpanded)
+    watchStreamId || hqView || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || motorShopOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || teskilatOpen || vendorRegion || heistTarget !== undefined || activeRegion || activeTableId || (effectiveRaceRoomId && raceExpanded)
   );
   // v157.4: ana sayfa yok — oyun şehirde açılır (evin önünde); hiçbir mekân / ekran açık değilse
   // oyuncu her zaman şehre (girdiği kapının önüne, yoksa evin önüne) döner → asla boşta kalmaz
@@ -661,7 +664,7 @@ function GameShell() {
   }, [city, cityCovered]);
   const homeUi = homeUiOn || !city || cityCovered;
   const mapCovered = Boolean(
-    watchStreamId || hqView || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || teskilatOpen || Boolean(vendorRegion) || Boolean(city) || heistTarget !== undefined || (effectiveRaceRoomId && raceExpanded)
+    watchStreamId || hqView || phoneOpen || profileOpen || houseView || businessView || futbolOpen || gangsOpen || parkOpen || bankOpen || karakolOpen || mosqueOpen || casinoOpen || dealershipOpen || motorShopOpen || weaponShopOpen || tuningGarageOpen || belediyeOpen || teskilatOpen || Boolean(vendorRegion) || Boolean(city) || heistTarget !== undefined || (effectiveRaceRoomId && raceExpanded)
   );
 
   return (
@@ -845,7 +848,7 @@ function GameShell() {
           initialOpenAsk={Boolean(businessView.openAsk)}
           onClose={() => setBusinessView(null)}
           onOpenGameVenue={(t) => {
-            const open = { silahci: setWeaponShopOpen, galeri: setDealershipOpen, modifiye: setTuningGarageOpen, gazino: setCasinoOpen }[t || businessView.type];
+            const open = { silahci: setWeaponShopOpen, galeri: setDealershipOpen, motogaleri: setMotorShopOpen, modifiye: setTuningGarageOpen, gazino: setCasinoOpen }[t || businessView.type];
             setBusinessView(null);
             open?.(true);
           }}
@@ -989,6 +992,8 @@ function GameShell() {
         )
       )}
 
+      {motorShopOpen && <MotorGalleryScreen onClose={() => closeVenueMaybeReturnToVisit(setMotorShopOpen)} />}
+
       {weaponShopOpen && (
         user ? (
           <VenueHouseScreen venue="silah_magazasi" onExit={() => closeVenueMaybeReturnToVisit(setWeaponShopOpen)} fallback={<WeaponShopWorldScreen onExit={() => closeVenueMaybeReturnToVisit(setWeaponShopOpen)} />} />
@@ -1076,7 +1081,7 @@ function GameShell() {
               return;
             }
             if (game) {
-              const open = { silahci: setWeaponShopOpen, galeri: setDealershipOpen, modifiye: setTuningGarageOpen, gazino: setCasinoOpen }[type];
+              const open = { silahci: setWeaponShopOpen, galeri: setDealershipOpen, motogaleri: setMotorShopOpen, modifiye: setTuningGarageOpen, gazino: setCasinoOpen }[type];
               if (open) open(true);
               else setBusinessView({ type, autoGame: true });
               return;

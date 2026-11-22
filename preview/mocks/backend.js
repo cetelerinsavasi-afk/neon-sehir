@@ -6,7 +6,8 @@ import { createGangSystem } from '../../functions/gang/system.js';
 import { VEHICLE_CATALOG, WEAPON_CATALOG } from '../../functions/catalogData.js';
 import { createHouses } from '../../functions/houses.js';
 import { createBusiness } from '../../functions/business.js';
-import { createShop } from '../../functions/shop.js';
+import { createStable } from '../../functions/stable.js';
+import { createShop, newVehicleDoc } from '../../functions/shop.js';
 import { createJobs } from '../../functions/jobs.js';
 import { createVenue } from '../../functions/venue.js';
 import { createGym } from '../../functions/gym.js';
@@ -61,8 +62,10 @@ export const sixSocial = createSixtagramSocial({ db: fakeDb, FieldValue, HttpsEr
 // v151 meslekler (gerçek sunucu modülü) + önizleme için bir tır / otobüs / taksi / polis / ambulans / motor
 export const jobs = createJobs({ db: fakeDb, FieldValue, HttpsError: PreviewHttpsError, splitIncomeForDebt: (debt, amount) => ({ goldDelta: amount, debtDelta: 0 }) });
 [2, 6, 10, 11, 12, 13, 14, 15, 21, 24].forEach((cid) => fakeDb.doc(`vehicles/pv_${cid}`).set({ ownerId: PREVIEW_UID, catalogId: cid, model: `Araç ${cid}`, lifeDays: 20, repairsUsed: 0 }));
+// v177 binekler (at / deve / bisiklet + kiralık bisiklet) — gerçek sunucu modülü
+export const stable = createStable({ db: fakeDb, FieldValue, HttpsError: PreviewHttpsError, goldTag: (s) => s, statWrite: () => {}, newVehicleDoc, dayKey: (ms) => new Date(ms).toISOString().slice(0, 10) });
 export const shop = createShop({
-  extraOps: { ...venue.ops, ...gym.ops, ...homeOffice.ops, ...office.ops, ...casino.ops, ...sixSocial.ops, ...jobs.ops },
+  extraOps: { ...venue.ops, ...gym.ops, ...homeOffice.ops, ...office.ops, ...casino.ops, ...sixSocial.ops, ...jobs.ops, ...stable.ops },
   db: fakeDb,
   FieldValue,
   HttpsError: PreviewHttpsError,

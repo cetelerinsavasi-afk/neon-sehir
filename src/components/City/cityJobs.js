@@ -417,6 +417,7 @@ const ERR = {
   'not-work-vehicle': 'Bu araçla meslek yapılmaz.',
   listed: 'Araç ilanda — önce ilandan kaldır.',
   life0: 'Aracın ömrü bitti.',
+  retired: 'Bu araçla görev yapılamaz.',
   seized: 'Araca bankaca el konulmuş.',
 };
 
@@ -756,7 +757,7 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
       const r = await call({ op: 'jobDone', vehicleId: veh.id, runId, t: Math.round(t * 10) / 10, hits });
       left = r.left;
       daily = r.daily;
-      onPaid?.({ job, total: r.total, perf: r.perf, t: r.t, hits: r.hits, left: r.left, daily: r.daily, toDebt: r.toDebt });
+      onPaid?.({ job, total: r.net ?? r.total, gross: r.gross ?? r.total, tax: r.tax || 0, share: r.share || 0, perf: r.perf, t: r.t, hits: r.hits, left: r.left, daily: r.daily, toDebt: r.toDebt });
       run = null;
       busy = false;
       if (!active) return;

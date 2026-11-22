@@ -14,7 +14,7 @@ import { VENUE_BUILDERS, ROOM as VROOM, stripVenueInt } from './venues.js';
 import { Kit, M } from '../kit.js';
 import { buildSea } from '../areas.js';
 import { nearest, frameAt, inTunnel, RAIL, LANE, TOWN, toTown, fromTown, inTownRect, LAKE, RIVER, TERRAIN, TAGS, LEN, ROAD_HALF } from './route.js';
-import { buildTerrain, buildRoad, buildTunnel, buildBridge, buildToll, buildSigns, buildTrees, buildWater, buildHorizon, S_EXIT, GISES } from './world.js';
+import { buildTerrain, buildRoad, buildTunnel, buildBridge, buildToll, buildSigns, buildTrees, buildDesertFlora, buildWater, buildHorizon, S_EXIT, GISES } from './world.js';
 import { buildTown } from './town.js';
 import { buildRoadside } from './roadside.js';
 import { Animals } from './animals.js';
@@ -751,12 +751,19 @@ function worldSteps(W, mobile) {
       }
     }
     const treePts = buildTrees(W.hw, (x, z) => W.groundAt(x, z), { count: mobile ? 2200 : 5200, skip: (x, z) => nearFeature(x, z, 6) || inPark(x, z, 6), extra: [...W.park.trees, ...vadiTrees] });
+    // v177: Gölyaka çevresindeki çölün kaktüsleri / çalıları / kayaları (tile'lanmadan önce eklenir)
+    const desertPts = buildDesertFlora(W.hw, (x, z) => W.groundAt(x, z), { count: mobile ? 240 : 520, skip: (x, z) => nearFeature(x, z, 6) });
     W.tiles.push(...tileInstanced(W.hw, 240));
     W.treeHash = new Map();
     treePts.forEach(([x, z, sc]) => {
       const k = `${Math.floor(x / 8)},${Math.floor(z / 8)}`;
       if (!W.treeHash.has(k)) W.treeHash.set(k, []);
       W.treeHash.get(k).push([x, z, 0.26 * sc + 0.06]); // v157.3: sadece gövde (ağaç arası rahat geçilsin)
+    });
+    desertPts.forEach(([x, z, r]) => {
+      const k = `${Math.floor(x / 8)},${Math.floor(z / 8)}`;
+      if (!W.treeHash.has(k)) W.treeHash.set(k, []);
+      W.treeHash.get(k).push([x, z, r]);
     });
   });
   step(82, () => {

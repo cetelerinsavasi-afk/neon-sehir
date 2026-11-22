@@ -4,7 +4,7 @@ import { SharedMaterials } from '../Magaza/Magaza';
 import { shopAction } from '../../services/gameActions';
 import { weaponCatalog } from '../../data/weaponCatalog';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
-import { VehicleKindTabs, kindOfCar } from '../VehicleGalleryScreen/VehicleGalleryScreen';
+import { vehicleShopOf } from '../../../functions/fleet.js'; // v177: galeri → araba, motor galerisi → motor
 import '../VehicleGalleryScreen/VehicleGalleryScreen.css';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useShopStock } from '../../hooks/useShopStock';
@@ -25,7 +25,7 @@ import './Shop.css';
 //   Envanter sekmesi : ortak malzeme envanteri + Mağaza (v124) · v130 vitrine ekle (stok)
 // =============================================================================
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
-const VITRIN_KIND = { silahci: 'weapon', galeri: 'vehicle' };
+const VITRIN_KIND = { silahci: 'weapon', galeri: 'vehicle', motogaleri: 'vehicle' };
 const KIND_TXT = { weapon: { one: 'silah', cap: 'Silah', icon: '🔫' }, vehicle: { one: 'araba', cap: 'Araba', icon: '🚗' } };
 
 function Gold({ v }) {
@@ -114,7 +114,8 @@ function MaterialPrices({ houseId, houseDoc, type }) {
 }
 
 // ---- v130 STOK: oyunun mağazasındaki ürünler ---------------------------------------
-const catalogOfKind = (kind) => (kind === 'weapon' ? weaponCatalog : vehicleCatalog);
+// v177: dükkân türünün sattıkları (galeri: 10 araba · motor galerisi: 4 motor)
+const catalogOfKind = (kind, type) => (kind === 'weapon' ? weaponCatalog : vehicleCatalog.filter((c) => vehicleShopOf(c.id) === type));
 
 function StockThumb({ c, kind }) {
   // v150: araçlar 3D modelden
@@ -123,14 +124,13 @@ function StockThumb({ c, kind }) {
 }
 
 // Fiyatlar sekmesi: her ürün (stokta olmasa da) — stok, değer, satış fiyatı
-function StockPrices({ houseId, kind }) {
+function StockPrices({ houseId, kind, type }) {
   const stock = useShopStock(houseId);
   // v134 piyasa değeri: oyunun mağazasının bu ürünü sattığı fiyat = diğer dükkânların
   // en ucuzu (stoğu olan), kimsede yoksa oyunun fiyatı
   const offers = useShopOffers(kind, { exclude: houseId });
   const marketOf = (c) => (offers[String(c.id)] && offers[String(c.id)] < c.price ? offers[String(c.id)] : c.price);
-  const catalog = catalogOfKind(kind);
-  const [vk, setVk] = useState('araba'); // v151: Araba / Ticari / Motor
+  const catalog = useMemo(() => catalogOfKind(kind, type), [kind, type]);
   const [draft, setDraft] = useState({});
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -157,8 +157,7 @@ function StockPrices({ houseId, kind }) {
   return (
     <div className="bz-sec">
       <p className="bz-sec-title">{KIND_TXT[kind].icon} Fiyatlar</p>
-      {kind === 'vehicle' && <VehicleKindTabs value={vk} onChange={setVk} />}
-      {catalog.filter((c) => kind !== 'vehicle' || kindOfCar(c) === vk).map((c) => {
+            {catalog.map((c) => {
         const b = stockPriceBand(c.price);
         const step = b.step; // v132: fiyata göre 10 / 100 / 1.000 / 10.000
         const v = draft[c.id] ?? savedOf(c);
@@ -202,11 +201,10 @@ function StockPrices({ houseId, kind }) {
 }
 
 // Envanter sekmesi: "Vitrine ekle" → oyunun mağazasındaki ürünler, + ile 1 adet stok
-function StockAdd({ houseId, kind }) {
+function StockAdd({ houseId, kind, type }) {
   const stock = useShopStock(houseId);
   const { player } = usePlayer();
-  const catalog = catalogOfKind(kind);
-  const [vk, setVk] = useState('araba'); // v151: Araba / Ticari / Motor
+  const catalog = useMemo(() => catalogOfKind(kind, type), [kind, type]);
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(null);
   const [msg, setMsg] = useState(null);
@@ -246,8 +244,7 @@ function StockAdd({ houseId, kind }) {
       </button>
       {open && (
         <div className="bz-list">
-          {kind === 'vehicle' && <VehicleKindTabs value={vk} onChange={setVk} />}
-      {catalog.filter((c) => kind !== 'vehicle' || kindOfCar(c) === vk).map((c) => {
+                {catalog.map((c) => {
             const cost = costOf(c);
             return (
               <div key={c.id} className="bz-item sk-row">
@@ -286,7 +283,7 @@ export function ShopPriceSection({ houseId, houseDoc }) {
   return (
     <>
       {WORKSHOP_MATERIALS[type] && <MaterialPrices houseId={houseId} houseDoc={houseDoc} type={type} />}
-      {VITRIN_KIND[type] && <StockPrices houseId={houseId} kind={VITRIN_KIND[type]} />}
+      {VITRIN_KIND[type] && <StockPrices houseId={houseId} kind={VITRIN_KIND[type]} type={type} />}
     </>
   );
 }
@@ -295,7 +292,7 @@ export function ShopInvSection({ houseId, houseDoc }) {
   const parts = useMemo(() => ({ mats: Boolean(WORKSHOP_MATERIALS[type]), vit: VITRIN_KIND[type] }), [type]);
   return (
     <>
-      {parts.vit && <StockAdd houseId={houseId} kind={parts.vit} />}
+      {parts.vit && <StockAdd houseId={houseId} kind={parts.vit} type={type} />}
       {parts.mats && (
         <div className="bz-sec">
           <SharedMaterials holder={type} title="📦 Malzeme envanteri" />

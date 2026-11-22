@@ -46,6 +46,7 @@ export const vehicleCatalog = [
   // v157.4 — bisiklet + at (meslek yok, yaya alanlarına girer)
   { id: 25, kind: 'motor', name: 'Bisiklet', gearLevel: 1, baseTank: 0, price: 7500, storage: 0, turboCount: 0, seats: 1 },
   { id: 26, kind: 'motor', name: 'At', gearLevel: 1, baseTank: 0, price: 75000, storage: 0, turboCount: 0, seats: 1 },
+  { id: 27, kind: 'motor', name: 'Deve', gearLevel: 1, baseTank: 0, price: 50000, storage: 0, turboCount: 0, seats: 2 }, // v177
 ];
 // v151: araç türü (araba / ticari / motor) — galeri sekmeleri
 export const vehicleKindOfId = (id) => vehicleCatalog.find((v) => v.id === Number(id))?.kind || 'araba';

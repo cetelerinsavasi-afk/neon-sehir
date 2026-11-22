@@ -4,7 +4,7 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { floorMat } from '../kit.js';
-import { R, TAGS, LEN, frameAt, nearest, terrainH, naturalH, inTunnel, onBridge, ROAD_HALF, RAIL, TERRAIN, LAKE, RIVER, CITY_RECT, inTownRect, fbm, CITY_EXIT_X, shoreX } from './route.js';
+import { R, TAGS, LEN, frameAt, nearest, terrainH, naturalH, inTunnel, onBridge, ROAD_HALF, RAIL, TERRAIN, LAKE, RIVER, CITY_RECT, inTownRect, fbm, CITY_EXIT_X, shoreX, desertK, DESERT } from './route.js';
 import { BEACH_RECT } from '../coast.js';
 // tünelin ötesindeki soğuk bölge (0…1)
 export const snowK = (x, z) => {
@@ -185,6 +185,10 @@ export function buildTerrain(cell = 8, { carve = null } = {}) {
   const sand = new THREE.Color('#c9b98a');
   const frost = new THREE.Color('#2e4f27'); // karlı bölgede koyu yeşil çimen
   const dirt = new THREE.Color('#8a7656');
+  // v177 çöl: açık kum + rüzgâr kumulları (koyu dalgalar)
+  const dSand = new THREE.Color('#e0c48c');
+  const dDark = new THREE.Color('#c59a5e');
+  const dune = new THREE.Color();
   for (let j = 0; j < nz; j++) {
     for (let i = 0; i < nx; i++) {
       const k = j * nx + i;
@@ -213,6 +217,12 @@ export function buildTerrain(cell = 8, { carve = null } = {}) {
         // zemin de karlı: geniş kar örtüsü, arada koyu yeşil çimen lekeleri
         const patch = Math.max(0, Math.min(1, 0.7 + fbm(x / 38, z / 38, 3) * 1.3));
         c.lerp(snow, sn * patch * (slope < 1.1 ? 0.9 : 0.45));
+      }
+      const dk = desertK(x, z);
+      if (dk > 0) {
+        const rip = 0.5 + 0.5 * Math.sin((x * 0.55 + z * 0.85) / 7 + fbm(x / 40, z / 40, 2) * 4);
+        dune.copy(dSand).lerp(dDark, rip * 0.45 + Math.max(0, fbm(x / 25, z / 25, 2)) * 0.25);
+        c.lerp(dune, dk * (slope < 0.9 ? 0.95 : 0.6));
       }
       const dl = Math.hypot(x - LAKE.x, z - LAKE.z);
       if (dl < LAKE.r * 1.35 && h < LAKE.y + 2.2) c.lerp(sand, 0.85);
@@ -812,6 +822,80 @@ export function buildSigns(group) {
   }
 }
 
+const hash01 = (x, z) => {
+  const v = Math.sin(x * 12.9898 + z * 78.233) * 43758.5453;
+  return v - Math.floor(v);
+};
+
+// --- v177 ÇÖL BİTKİ ÖRTÜSÜ: kaktüs, kuru çalı, kaya (instanced; ağaçların yerine) -------------------
+export function buildDesertFlora(group, groundAt, { count = 520, skip = null } = {}) {
+  let seed = 177;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+  const cacti = [];
+  const bushes = [];
+  const rocks = [];
+  for (let i = 0; i < count * 4 && cacti.length + bushes.length + rocks.length < count; i++) {
+    const a = rnd() * PI * 2;
+    const r = Math.sqrt(rnd()) * DESERT.r1;
+    const x = DESERT.x + Math.cos(a) * r;
+    const z = DESERT.z + Math.sin(a) * r;
+    const dk = desertK(x, z);
+    const pick = rnd();
+    const sc = 0.7 + rnd() * 0.7;
+    const ry = rnd() * PI * 2;
+    if (dk < 0.45 + pick * 0.3) continue;
+    const n = nearest(x, z);
+    if (n && n.dist < 11) continue;
+    if (skip && skip(x, z)) continue;
+    const h = groundAt(x, z);
+    if (Math.abs(groundAt(x + 2, z) - h) + Math.abs(groundAt(x, z + 2) - h) > 2.2) continue;
+    const it = [x, h - 0.05, z, sc, ry];
+    (pick < 0.5 ? cacti : pick < 0.85 ? bushes : rocks).push(it);
+  }
+  // kaktüs: gövde + iki kol (dirsekli)
+  const parts = [];
+  const cyl = (r, hh, x, y, z, rz = 0) => {
+    const g = new THREE.CylinderGeometry(r, r * 1.05, hh, 8);
+    if (rz) g.rotateZ(rz);
+    g.translate(x, y, z);
+    return g.toNonIndexed();
+  };
+  parts.push(cyl(0.32, 3.2, 0, 1.6, 0));
+  parts.push(new THREE.SphereGeometry(0.32, 8, 6, 0, PI * 2, 0, PI / 2).translate(0, 3.2, 0).toNonIndexed());
+  parts.push(cyl(0.2, 0.7, 0.5, 1.35, 0, PI / 2), cyl(0.2, 1.0, 0.82, 1.82, 0));
+  parts.push(cyl(0.18, 0.6, -0.45, 1.95, 0, PI / 2), cyl(0.18, 0.8, -0.72, 2.35, 0));
+  const cg = mergeGeometries(parts.map((g) => (g.index ? g.toNonIndexed() : g)));
+  const bg = new THREE.IcosahedronGeometry(0.75, 0);
+  bg.scale(1.2, 0.6, 1.2);
+  bg.translate(0, 0.35, 0);
+  const rg = new THREE.DodecahedronGeometry(0.9, 0);
+  rg.scale(1.3, 0.7, 1);
+  rg.translate(0, 0.3, 0);
+  const mm = new THREE.Matrix4();
+  const q = new THREE.Quaternion();
+  const up = new THREE.Vector3(0, 1, 0);
+  const col = new THREE.Color();
+  const make = (list, geo, colors, rough = 0.85) => {
+    if (!list.length) return;
+    const im = new THREE.InstancedMesh(geo, new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: rough, flatShading: true }), list.length);
+    list.forEach(([x, y, z, sc, r], i) => {
+      q.setFromAxisAngle(up, r);
+      mm.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(sc, sc, sc));
+      im.setMatrixAt(i, mm);
+      col.set(colors[i % colors.length]);
+      im.setColorAt(i, col);
+    });
+    im.castShadow = true;
+    im.receiveShadow = true;
+    group.add(im);
+  };
+  make(cacti, cg, ['#4f7a3a', '#5d8a44', '#46703a', '#6a9450']);
+  make(bushes, bg, ['#8a7a4a', '#9a8656', '#7a6a3e', '#a59060'], 0.95);
+  make(rocks, rg, ['#b08a5e', '#9c7a52', '#c29a6a'], 0.9);
+  // çarpışma: kaktüs gövdesi ve kayalar
+  return [...cacti.map(([x, , z, sc]) => [x, z, 0.32 * sc]), ...rocks.map(([x, , z, sc]) => [x, z, 0.9 * sc])];
+}
+
 // --- AĞAÇLAR ----------------------------------------------------------------------------------
 export function buildTrees(group, groundAt, { count = 5200, skip = null, extra = [] } = {}) {
   const T = TERRAIN;
@@ -841,7 +925,11 @@ export function buildTrees(group, groundAt, { count = 5200, skip = null, extra =
     if (sl > 3.6) continue;
     const sc = 0.75 + rnd() * 0.7;
     const item = [x, h - 0.2, z, sc, rnd() * PI * 2, rnd()];
-    (h > 45 || rnd() < 0.62 ? pine : leaf).push(item);
+    const isPine = h > 45 || rnd() < 0.62;
+    // v177: çölde ağaç yok (kenarında seyrelir) — rnd sırası değişmesin diye ayrı karma kullanılır
+    const dk = desertK(x, z);
+    if (dk > 0.05 && hash01(x, z) < dk * 1.15) continue;
+    (isPine ? pine : leaf).push(item);
   }
   extra.forEach((t) => (t[6] === 'pine' ? pine : leaf).push(t.slice(0, 6)));
   const trunkM = new THREE.MeshStandardMaterial({ color: '#5a3d26', roughness: 0.9 });
