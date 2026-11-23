@@ -62,7 +62,7 @@ function Change({ pct }) {
 }
 
 function Mini({ points }) {
-  const pts = points.slice(-25);
+  const pts = points.slice(-169); // v190: listede 7 günlük grafik (saatlik nokta)
   if (pts.length < 2) return <span className="borsa-mini" />;
   const mx = Math.max(...pts);
   const mn = Math.min(...pts);
@@ -321,7 +321,7 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
       return (
         <button key={`al-${k}`} className="borsa-btn gr" disabled={!b.x || poor || otherBusy || blockedOp} onClick={() => press(sel, 'al', b.x, b.total)}>
           {full ? `${BORSA_MAX_PER_PLAYER} hisse sınırı` : `${fmtShares(b.x)} hisse al`}
-          <small>{full ? 'Daha fazla alamazsın' : poor ? 'Altın yetmiyor' : fmt(b.total)}</small>
+          <small>{full ? 'Daha fazla alamazsın' : fmt(b.total)}</small>
         </button>
       );
     };
@@ -384,7 +384,6 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
             <b>{myU ? `+${fmt(sellAllValue(myU, co.u))}` : '—'}</b>
           </div>
         </div>
-        <p className="borsa-note">Bugün aldığın hisse, bu gecenin dağıtımından pay almaz; ilk gelirini ertesi geceki dağıtımdan alır.</p>
       </div>
     );
     actions = (
@@ -437,7 +436,7 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
               <Gain gain={worth.gain} pct={worth.pct} />
             </div>
             <button className="borsa-btn rd-gh" disabled={Boolean(busy)} onClick={() => setSellAsk(true)}>
-              Hepsini sat (tüm mekânlar)
+              Hepsini sat
             </button>
           </div>
         )}
@@ -476,11 +475,6 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
                     <Mini points={series(co)} />
                   </span>
                 </button>
-                {tab === 'mine' && my > 0 && (
-                  <button className="borsa-btn rd-gh borsa-it-sell" disabled={Boolean(busy) || Boolean(pend)} onClick={() => askCoSell(c.id)}>
-                    {`Hepsini sat · +${fmt(sellAllValue(my, coState(market, c.id).u))}`}
-                  </button>
-                )}
               </div>
             );
           })}

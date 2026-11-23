@@ -34,7 +34,10 @@ test('ekran: miktarlı buton yazıları, 4 buton + hepsini sat, doluluk çubuğu
   assert.match(s, /hisse al`/);
   assert.match(s, /hisse sat`/);
   assert.match(s, /\{buyBtn\('small'\)\}\s*\{sellBtn\('small'\)\}\s*\{buyBtn\('big'\)\}\s*\{sellBtn\('big'\)\}/);
-  assert.match(s, /Hepsini sat · \+/);
+  assert.match(s, /Sat · \+\$\{fmt\(coSell\.net\)\}/, 'detayda iki adımlı hepsini sat');
+  assert.doesNotMatch(s, /Hepsini sat · \+|tüm mekânlar\)|Bugün aldığın hisse/, 'v190: kaldırılanlar');
+  assert.match(s, /points\.slice\(-169\)/, 'listede 7 günlük mini grafik');
+  assert.doesNotMatch(s, /'Altın yetmiyor'/, 'altın yetmeyince de fiyat yazar');
   assert.match(s, /ort\. gelir: /);
   assert.match(s, /BATCH_MS = 800/);
 });
