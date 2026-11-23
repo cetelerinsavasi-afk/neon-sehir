@@ -57,9 +57,11 @@ const invest = () => {
     }
     if (h % 24 === 20) for (const c of BORSA_COS) await income(stateDayKey(now()), c.sk, rnd(...base[c.id]) * 1000);
     if (h === 150) {
-      await borsa.trade(PREVIEW_UID, { op: 'al', co: 'kokorecci' });
-      await borsa.trade(PREVIEW_UID, { op: 'al', co: 'kokorecci' });
-      await borsa.trade(PREVIEW_UID, { op: 'al', co: 'midyeci' });
+      // v192: saniyede 1 işlem kuralı — işlemler arasında saat 1,1 sn ilerler (önizleme)
+      for (const c of ['kokorecci', 'kokorecci', 'midyeci', 'kofteci']) {
+        shift += 1100;
+        await borsa.trade(PREVIEW_UID, { op: 'al', co: c, x: c === 'kofteci' ? 12_000_000 : 1_000_000 });
+      }
     }
     await borsa.hourly();
   }

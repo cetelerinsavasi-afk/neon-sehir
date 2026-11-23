@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getCachedPhoto, putCachedPhoto, photoKey, whenVisible, runPhotoJob, registerPhotoReleaser, IS_MOBILE_DEVICE } from '../../lib/photoCache';
-import { releaseSharedRenderer } from '../HouseScreen/houseEngine';
+import { releaseSharedRenderer } from '../HouseScreen/sharedRenderer.js'; // v191
 import { createCityEngine } from './cityEngine.js';
 import { prepareCityWorld } from './world/outerWorld.js';
 import { getLiveCityEngine, onLiveCityChange } from './cityPhotoHub.js';

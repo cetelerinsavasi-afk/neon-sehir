@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getThumb } from './houseEngine';
+import { getThumb } from './itemThumbs.js'; // v191: ev motoru şehirle yüklenmesin
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import { botAvatar } from '../../../functions/botData.js';
 import { ANIMAL_BY_KEY, petTintOf } from '../../../functions/animalData.js';

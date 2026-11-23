@@ -474,8 +474,18 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
     }
   }
 
+  // v192 — GÖREVDE KASMA (tır görevini art arda yapınca): bu fonksiyon görev sürerken her 100 ms'de
+  // çağrılıyor ve her seferinde YENİ bir nesne gönderiyordu → koca şehir ekranı (CityScreen) saniyede 10
+  // kez baştan çiziliyordu. Telefon zorlanınca oyun çözünürlüğü / kaliteyi düşürüyordu (pikselleşme).
+  // Artık yalnızca ekranda görünen bir şey değişince gönderilir: yazılar / çubuk hemen, pusula oku 6°,
+  // mesafe yazısı ekranda değişince (5 m · 1 km üstünde 100 m) ve en sık ~4 kez/sn.
+  let uiLast = null;
+  let uiKey = '';
+  let uiAt = 0;
+  const roundDist = (d) => (d == null ? null : d >= 1000 ? Math.round(d / 100) * 100 : Math.round(d / 5) * 5);
   function ui(extra = {}) {
-    onUi?.({
+    const c = active && run ? compass() : {};
+    const out = {
       active,
       busy,
       job,
@@ -483,11 +493,20 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
       daily,
       title: st?.title || '',
       sub: st?.sub || '',
-      bar: st?.bar ?? null,
+      bar: st?.bar != null ? Math.round(st.bar * 50) / 50 : null,
       hits: st?.hits || 0,
-      ...(active && run ? compass() : {}),
+      ...(c.dist != null ? { dir: Math.round(c.dir / 6) * 6, dist: roundDist(c.dist) } : {}),
       ...extra,
-    });
+    };
+    const key = JSON.stringify(out);
+    if (key === uiKey) return;
+    const t = performance.now();
+    const textSame = uiLast && ['active', 'busy', 'job', 'left', 'daily', 'title', 'sub', 'bar', 'hits'].every((k) => uiLast[k] === out[k]);
+    if (textSame && t - uiAt < 250) return; // sadece pusula / mesafe değişti: en sık ~4 kez/sn
+    uiKey = key;
+    uiLast = out;
+    uiAt = t;
+    onUi?.(out);
   }
   let tgt = null; // pusula için: şu anki hedef
   let routeAt = 0;

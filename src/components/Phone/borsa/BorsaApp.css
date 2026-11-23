@@ -498,3 +498,5 @@
 .borsa-it-wrap { display: flex; flex-direction: column; }
 .borsa-it-sell { align-self: flex-end; margin: -4px 4px 10px; font-size: 13px; padding: 7px 12px; }
 .borsa-note.bad { color: #ff8a9c; }
+/* v192 — günlük al-sat hakkı notu (detay) */
+.borsa-note.borsa-day { margin: 2px 14px 12px; padding: 8px 11px; border-radius: 10px; background: rgba(25, 232, 255, 0.07); border: 1px solid rgba(25, 232, 255, 0.18); opacity: 0.9; line-height: 1.4; }

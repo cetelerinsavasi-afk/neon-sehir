@@ -1,14 +1,17 @@
 import * as THREE from 'three';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
-import { drawPet, isPerchPet, petCollarAt, PET_ART, drawFireAura } from '../../lib/cosmeticsArt';
-import { CATALOG_MAP, buildItem, itemBoxes, disposeObject, TINTS, M, gunModel, HELD_GUN_SCALE, DOOR_BUILDERS } from './houseCatalog';
+import { drawPet, PET_ART } from '../../lib/cosmeticsArt';
+import { CATALOG_MAP, buildItem, itemBoxes, disposeObject, TINTS, gunModel, HELD_GUN_SCALE, DOOR_BUILDERS } from './houseCatalog';
 import { DEFAULT_DOOR, sanitizeDoor, doorSpawn, doorSpawnYaw, doorLocalToWorld, resolveEntrance } from '../../../functions/houseDoor.js';
 import { FLOORS, WALLS, floorDef, wallDef, surfaceTexture } from './houseTextures';
 import { HOUSE_PRODUCTS, VENUE_FREE_TAKE_KEYS } from '../../../functions/houseCatalogData.js';
 import { heldCanvas, heldDataUrl } from './heldArt';
 import { cartModel, fillCart, MARKET_PRODUCTS } from './houseCatalogV92';
 import { isAnimalKey } from '../../../functions/animalData.js';
+import { getSharedRenderer, releaseSharedRenderer } from './sharedRenderer.js';
+import { EMOTES, PetFollower, FireAuraFx } from './figureFx.js';
+import { getThumb } from './itemThumbs.js';
+export { getSharedRenderer, releaseSharedRenderer, EMOTES, PetFollower, FireAuraFx, getThumb };
 
 // v92 — market arabası: elde itilen araba ve içindeki ürünler (en fazla 12)
 export const CART_MAX = 12;
@@ -129,13 +132,6 @@ const SPAWN = { x: 5, z: D / 2 - 3.2 };
 const EMOTE_MS = 3200;
 const STREAM_CHAIR_KEYS = ['gamer']; // v80 yayın seti
 const STREAM_PC_KEYS = ['pc']; // v81: yayın sadece Oyuncu Bilgisayarı ile (İnternet Kafe İstasyonu değil)
-export const EMOTES = [
-  { key: 'dans', label: 'Dans et', emoji: '💃' },
-  { key: 'selam', label: 'El salla', emoji: '👋' },
-  { key: 'alkis', label: 'Alkışla', emoji: '👏' },
-  { key: 'zipla', label: 'Zıpla', emoji: '🤸' },
-  { key: 'kalp', label: 'Kalp at', emoji: '❤️' },
-];
 const EMOTE_EMOJI = Object.fromEntries(EMOTES.map((e) => [e.key, e.emoji]));
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -202,78 +198,6 @@ function savePerfTier(v) {
   }
 }
 
-// --- Ortak renderer'lar ------------------------------------------------------
-function makeRenderer(opts) {
-  // v106: Android'de kenar yumuşatma (MSAA) kapalı — yüksek çözünürlükte farkı az, maliyeti büyük
-  // v157.4: telefonlarda (iPhone dahil) kenar yumuşatma kapalı — yüksek çözünürlüklü ekranda farkı az,
-  // ekran kartı belleği ve ısınma maliyeti büyük (iPhone'da oyundan atmaların bir sebebi)
-  const PHONE = IS_ANDROID || (typeof navigator !== 'undefined' && /iPhone|iPad|Mobile/i.test(navigator.userAgent || ''));
-  const r = new THREE.WebGLRenderer({ antialias: !PHONE, powerPreference: 'high-performance', ...opts });
-  r.toneMapping = THREE.ACESFilmicToneMapping;
-  r.outputColorSpace = THREE.SRGBColorSpace;
-  r.shadowMap.enabled = true;
-  r.shadowMap.type = THREE.PCFSoftShadowMap;
-  // v170 DONMA / AÇILIŞ: three.js her yeni gölgelendiriciden (malzeme) sonra "derlendi mi, hata var mı"
-  // diye ekran kartına SORUP cevabı bekliyordu — tarayıcıda bu soru oyunu (dokunuş, arayüz dahil)
-  // derleme bitene kadar durdurur: açılışta onlarca kez, şehirde yeni bir şey (araba, mekân, oyuncu)
-  // göründükçe birkaç kez. Yayındaki oyunda sorulmaz; derleme ekran kartında arka planda biter.
-  // Görüntü aynıdır (geliştirmede hata ayıklama için açık kalır).
-  if (import.meta.env?.PROD) r.debug.checkShaderErrors = false;
-  r.__lost = false;
-  r.domElement.addEventListener('webglcontextlost', (e) => {
-    e.preventDefault();
-    r.__lost = true;
-    r.__onLost?.();
-  });
-  return r;
-}
-const shared = { main: null, mainEnv: null, snap: null, snapEnv: null, spec: null, specEnv: null };
-function envFor(r) {
-  const pm = new THREE.PMREMGenerator(r);
-  const tex = pm.fromScene(new RoomEnvironment(), 0.04).texture;
-  pm.dispose();
-  return tex;
-}
-// v147.1: şehir de aynı ortak çiziciyi kullanır (telefonda tek grafik bağlamı → bellek, çökme yok)
-export function getSharedRenderer(kind = 'main') {
-  let r = shared[kind];
-  if (r && r.__lost) {
-    try {
-      r.dispose();
-    } catch {
-      /* bağlam zaten yok */
-    }
-    r = null;
-    shared[kind] = null;
-  }
-  if (!r) {
-    r = makeRenderer(kind === 'snap' ? { preserveDrawingBuffer: true } : {});
-    shared[kind] = r;
-    shared[`${kind}Env`] = envFor(r);
-  }
-  return { renderer: r, env: shared[`${kind}Env`] };
-}
-
-// v149 — ekran dışı fotoğraf çizicisini (ör. 'snap') tamamen bırak: telefonda Sixtagram
-// fotoğrafları çizildikten sonra ikinci grafik bağlamı bellekte kalmasın.
-export function releaseSharedRenderer(kind) {
-  const r = shared[kind];
-  if (!r) return;
-  shared[kind] = null;
-  try {
-    shared[`${kind}Env`]?.dispose?.();
-  } catch {
-    /* yoksay */
-  }
-  shared[`${kind}Env`] = null;
-  try {
-    r.dispose();
-    r.forceContextLoss?.();
-  } catch {
-    /* bağlam zaten yok */
-  }
-  r.domElement?.remove?.();
-}
 
 // --- Avatar dokuları ---------------------------------------------------------
 const avatarTexCache = new Map();
@@ -357,164 +281,6 @@ function heldGunMesh(product) {
   return outer;
 }
 
-// v78 — evcil hayvan (avatar.pet): sahibinin yanında yürüyen, kameraya dönük
-// küçük sprite + tasma çizgisi. Papağan/baykuş/martı sahibi durunca omzuna konar.
-const PET_CV = 256;
-const PET_PX = 140; // canvas'ta hayvan boyu
-const PET_OX = 110;
-const PET_OY = 220;
-export class PetFollower { // v147: şehir de kullanır
-  constructor(scene, pet) {
-    this.scene = scene;
-    this.id = pet.id;
-    this.perch = isPerchPet(pet.id);
-    this.cv = document.createElement('canvas');
-    this.cv.width = this.cv.height = PET_CV;
-    this.ctx = this.cv.getContext('2d');
-    this.tex = new THREE.CanvasTexture(this.cv);
-    this.tex.colorSpace = THREE.SRGBColorSpace;
-    this.sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.tex, transparent: true, alphaTest: 0.2, toneMapped: false }));
-    this.sm = ((PET_ART[pet.id]?.s || 40) * 0.72 * 1.75) / 159; // metre (avatar 1,75 m)
-    const k = (PET_CV / PET_PX) * this.sm;
-    this.sprite.scale.set(k, k, 1);
-    this.sprite.center.set(PET_OX / PET_CV, 1 - PET_OY / PET_CV);
-    scene.add(this.sprite);
-    this.leashGeo = new THREE.BufferGeometry().setFromPoints(Array.from({ length: 12 }, () => new THREE.Vector3()));
-    this.leash = new THREE.Line(this.leashGeo, new THREE.LineBasicMaterial({ color: 0xff2e88, toneMapped: false }));
-    scene.add(this.leash);
-    this.x = null;
-    this.y = 0;
-    this.z = 0;
-    this.flip = false;
-    this.lastDraw = 0;
-    this.set(pet);
-  }
-  set(pet) {
-    this.pet = pet;
-    this.leash.material.color.set(pet.leashColor || '#ff2e88');
-  }
-  update(dt, now, owner, ang, seatPos) {
-    const rx = Math.cos(ang);
-    const rz = -Math.sin(ang);
-    const side = owner.facingLeft ? -1 : 1;
-    let tx;
-    let ty;
-    let tz;
-    let flying = false;
-    // v175 — ŞEHİR DIŞINDA EVCİL HAYVAN: yükseklik eskiden hep 0'dı (şehrin zemini). Köy yollarında,
-    // tepede, vadide zemin 0 değil → hayvan havada asılı (uçuyor gibi, uzakta sanılıyor) ya da yerin
-    // altında kalıyordu. Artık sahibinin ayak hizası esas alınır (evde / şehirde yine 0 civarı).
-    const base = Number.isFinite(owner.y) ? owner.y : 0;
-    if (this.perch && !owner.moving) {
-      tx = owner.x - rx * 0.16 * side;
-      tz = owner.z - rz * 0.16 * side;
-      ty = (seatPos ? seatPos.y + 0.95 : base + 1.42) - 0.02;
-    } else if (this.perch) {
-      flying = true;
-      tx = owner.x - rx * 0.3 * side + Math.sin(now / 420) * 0.15;
-      tz = owner.z - rz * 0.3 * side;
-      ty = base + 1.95 + Math.sin(now / 260) * 0.06;
-    } else {
-      tx = owner.x + rx * (0.5 + this.sm * 0.3) * side;
-      tz = owner.z + rz * (0.5 + this.sm * 0.3) * side;
-      ty = base;
-    }
-    // ışınlanma / araçtan inme / uzak kalma: hayvan sahibinin yanına hemen gelir (koşarak yetişmeye çalışmaz)
-    if (this.x !== null && (Math.hypot(tx - this.x, tz - this.z) > 6 || Math.abs(ty - this.y) > 3)) this.x = null;
-    if (this.x === null) {
-      this.x = tx;
-      this.y = ty;
-      this.z = tz;
-    }
-    const dx = tx - this.x;
-    const dz = tz - this.z;
-    // v175: geride kaldıkça daha hızlı yetişir (koşarken hayvan uzakta kalmasın)
-    const lag = Math.max(0, Math.hypot(dx, dz) - 1.2);
-    const k = Math.min(1, dt * (this.perch ? 5 : 3.5) * (1 + lag));
-    this.x += dx * k;
-    this.y += (ty - this.y) * k;
-    this.z += dz * k;
-    const lateral = dx * rx + dz * rz;
-    if (Math.abs(lateral) > 0.01) this.flip = lateral < 0;
-    if (this.perch && !owner.moving && Math.hypot(dx, dz, ty - this.y) > 0.05) flying = true;
-    const moving = Math.hypot(dx, dz) * k / Math.max(dt, 0.001) > 0.25;
-    this.sprite.position.set(this.x, this.y, this.z);
-    // doku ~20 fps (yürüme/kuyruk animasyonu)
-    if (now - this.lastDraw > 50) {
-      this.lastDraw = now;
-      const c = this.ctx;
-      c.clearRect(0, 0, PET_CV, PET_CV);
-      const showLeash = this.pet.leash !== false && !this.perch;
-      drawPet(c, this.id, PET_OX, PET_OY, now, { moving, flip: this.perch && !flying ? side < 0 : this.flip, flying, collar: showLeash ? this.pet.leashColor || '#ff2e88' : null, size: PET_PX });
-      this.tex.needsUpdate = true;
-    }
-    // tasma: el → tasma halkası
-    const showLeash = this.pet.leash !== false && !this.perch;
-    this.leash.visible = showLeash;
-    if (showLeash) {
-      const hx = owner.x + rx * 0.24 * side;
-      const hz = owner.z + rz * 0.24 * side;
-      const hy = seatPos ? seatPos.y + 0.5 : base + 0.92;
-      const fdir = this.flip ? -1 : 1;
-      const [ccx, ccy] = petCollarAt(this.id);
-      const px = this.x + rx * ccx * this.sm * fdir;
-      const pz = this.z + rz * ccx * this.sm * fdir;
-      const py = this.y - ccy * this.sm;
-      const pos = this.leashGeo.attributes.position;
-      for (let i = 0; i < 12; i++) {
-        const t = i / 11;
-        const sag = Math.sin(t * Math.PI) * 0.18;
-        pos.setXYZ(i, hx + (px - hx) * t, hy + (py - hy) * t - sag, hz + (pz - hz) * t);
-      }
-      pos.needsUpdate = true;
-    }
-  }
-  dispose() {
-    this.scene.remove(this.sprite);
-    this.scene.remove(this.leash);
-    this.sprite.material.dispose();
-    this.tex.dispose();
-    this.leashGeo.dispose();
-    this.leash.material.dispose();
-  }
-}
-
-// v135 — hareketli ateş aurası: avatar düzleminin hemen arkasında aynı boyda bir
-// düzlem; doku ~20 fps yeniden çizilir (drawFireAura, SVG ölçüsünün yarısı).
-const FIRE_CW = 160;
-const FIRE_CH = 290;
-export class FireAuraFx { // v147: şehir de kullanır
-  constructor(parent) {
-    this.cv = document.createElement('canvas');
-    this.cv.width = FIRE_CW;
-    this.cv.height = FIRE_CH;
-    this.ctx = this.cv.getContext('2d');
-    this.tex = new THREE.CanvasTexture(this.cv);
-    this.tex.colorSpace = THREE.SRGBColorSpace;
-    this.mat = new THREE.MeshBasicMaterial({ map: this.tex, transparent: true, depthWrite: false, toneMapped: false, side: THREE.DoubleSide });
-    this.mesh = new THREE.Mesh(new THREE.PlaneGeometry(AV_PLANE_W, AV_PLANE_H), this.mat);
-    this.mesh.position.z = -0.012;
-    this.mesh.renderOrder = -1;
-    this.mesh.raycast = () => {};
-    parent.add(this.mesh);
-    this.parent = parent;
-    this.last = -1e9;
-  }
-  update(now, visible) {
-    this.mesh.visible = visible;
-    if (!visible || now - this.last < 50) return;
-    this.last = now;
-    this.ctx.clearRect(0, 0, FIRE_CW, FIRE_CH);
-    drawFireAura(this.ctx, FIRE_CW / 2, (562 / 580) * FIRE_CH, FIRE_CW / 320, now);
-    this.tex.needsUpdate = true;
-  }
-  dispose() {
-    this.parent.remove(this.mesh);
-    this.mesh.geometry.dispose();
-    this.mat.dispose();
-    this.tex.dispose();
-  }
-}
 
 class AvatarFigure {
   constructor(scene, labelLayer, { uid, name, avatar, isSelf }) {
@@ -984,53 +750,6 @@ class RoomPetFigure {
     this.mat.dispose();
     this.texMap.dispose();
     this.label?.remove();
-  }
-}
-
-// --- Küçük resimler (katalog rafı) ------------------------------------------
-let thumbCtx = null;
-const thumbCache = new Map();
-function thumbRenderer() {
-  if (thumbCtx && !thumbCtx.r.__lost) return thumbCtx;
-  const r = makeRenderer({ alpha: true, preserveDrawingBuffer: true });
-  r.shadowMap.enabled = false;
-  r.setSize(160, 160, false);
-  r.setPixelRatio(1);
-  r.toneMappingExposure = 1.1;
-  const s = new THREE.Scene();
-  s.environment = envFor(r);
-  s.environmentIntensity = 0.9;
-  s.add(new THREE.HemisphereLight('#dfe8ff', '#302420', 1.2));
-  const dl = new THREE.DirectionalLight('#fff4e0', 2.2);
-  dl.position.set(3, 6, 5);
-  s.add(dl);
-  const cam = new THREE.PerspectiveCamera(30, 1, 0.05, 100);
-  thumbCtx = { r, s, cam };
-  return thumbCtx;
-}
-export function getThumb(k, ti = 0) {
-  const key = `${k}|${ti}`;
-  if (thumbCache.has(key)) return thumbCache.get(key);
-  try {
-    const { r, s, cam } = thumbRenderer();
-    const obj = buildItem(k, { ti, live: false, H: ROOM.H, wallMat: M('#cfcac1', 0.9) });
-    if (!obj) return null;
-    s.add(obj);
-    const box = new THREE.Box3().setFromObject(obj);
-    const size = box.getSize(new THREE.Vector3());
-    const center = box.getCenter(new THREE.Vector3());
-    const radius = Math.max(size.x, size.y, size.z) * 0.62 + 0.05;
-    const dir = new THREE.Vector3(0.9, 0.7, 1.4).normalize();
-    cam.position.copy(center).addScaledVector(dir, radius / Math.tan((cam.fov * Math.PI) / 360));
-    cam.lookAt(center);
-    r.render(s, cam);
-    const url = r.domElement.toDataURL('image/png');
-    s.remove(obj);
-    disposeObject(obj);
-    thumbCache.set(key, url);
-    return url;
-  } catch {
-    return null;
   }
 }
 

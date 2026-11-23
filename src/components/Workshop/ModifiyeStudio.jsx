@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { getSharedRenderer } from '../HouseScreen/houseEngine.js'; // v161: ortak çizici
+import { getSharedRenderer } from '../HouseScreen/sharedRenderer.js'; // v161: ortak çizici (v191: küçük modül)
 import { IS_MOBILE_DEVICE } from '../../lib/photoCache.js';
 import { buildVehicle, VEHICLE_BY_ID } from '../City/vehicles.js';
 import { shopAction } from '../../services/gameActions';

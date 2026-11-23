@@ -7,7 +7,7 @@
 // Bu dosya three.js'i ana pakete sokmamak için CarImg'den tembel yüklenir.
 // =============================================================================
 import * as THREE from 'three';
-import { getSharedRenderer, releaseSharedRenderer } from '../components/HouseScreen/houseEngine.js';
+import { getSharedRenderer, releaseSharedRenderer } from '../components/HouseScreen/sharedRenderer.js'; // v191
 import { buildVehicle } from '../components/City/vehicles.js';
 import { modsKey } from '../../functions/vehicleMods.js';
 import { getCachedPhoto, putCachedPhoto, photoKey, runPhotoJob, onPhotoQueueIdle, IS_MOBILE_DEVICE } from './photoCache.js';

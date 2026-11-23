@@ -32,6 +32,17 @@ const HEARTBEAT_MS = 20_000;
 const MOVE_MS = 330; // yürürken en sık
 const DRIVE_MS = 220; // sürerken en sık
 const CHAT_MS = 1600;
+// v192 — RTDB İNDİRME MALİYETİ (kalabalıkta): her yazım, çevredeki (3×3 hücre) HERKESE iner; 100 kişi aynı
+// yerdeyse bu saatte GB'larca indirme demek (RTDB: ayda 10 GB ücretsiz, sonra GB başı 1 $). Üç önlem:
+//  1) Kalabalıkta yazım aralığı uzar: çevrende ≤15 kişi → aynı (bugünkü his değişmez), 16–30 → ×1,5,
+//     31–60 → ×2, 60+ → ×3 (arabada en çok ×2). Alıcı taraf ara değeri kayıt aralığına göre uzatır, akıcı kalır.
+//  2) Arabadayken (sürücü / yolcu) kişi kaydı konum için yazılmaz (konumu araba kaydı taşır): sadece
+//     durum değişince ya da 3 sn'de bir. Eskiden araba + kişi kaydı ikisi de saniyede ~4,5 kez gidiyordu.
+//  3) Araba kaydı hücre içinde yalnızca DEĞİŞEN alanlarla güncellenir (update). Modifiye JSON'u (≤700 bayt)
+//     eskiden her konum kaydıyla (saniyede ~4,5 kez) yeniden gidiyordu; artık sadece değişince / 15 sn'de bir.
+const IN_CAR_POS_MS = 3000;
+const CAR_FULL_MS = 15_000;
+export const crowdK = (n) => (n <= 15 ? 1 : n <= 30 ? 1.5 : n <= 60 ? 2 : 3);
 
 let modP = null;
 const rt = () => {
@@ -40,7 +51,9 @@ const rt = () => {
 };
 const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
 
-export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar, onCarGone, onChat, onStatus }) {
+// v192 — readOnly: MİSAFİR (giriş yapmamış) şehri boş görmesin diye diğer oyuncuları SADECE izler: hiçbir şey
+// yazmaz, sohbet (m) dinlemez. Kurallar: city/p, city/c, city/u girişsiz okunabilir (database.rules.json).
+export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar, onCarGone, onChat, onStatus, readOnly = false }) {
   let dead = false;
   let offline = !DB_URL;
   let failures = 0;
@@ -87,7 +100,7 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
     }
   };
   async function put(path, val) {
-    if (offline || dead) return false;
+    if (offline || dead || readOnly) return false;
     try {
       const { m, db } = await rt();
       const r = m.ref(db, path);
@@ -103,7 +116,22 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
       return false;
     }
   }
+  // v192: alanları birleştirerek yaz (sadece değişenler iner). Kayıt yoksa / ilk yazımsa put kullanılır.
+  async function patch(path, val) {
+    if (offline || dead || readOnly) return false;
+    if (!armed.has(path)) return put(path, val);
+    try {
+      const { m, db } = await rt();
+      await withTimeout(m.update(m.ref(db, path), { ...val, t: m.serverTimestamp() }), 8000);
+      failures = 0;
+      return true;
+    } catch (e) {
+      fail(e);
+      return false;
+    }
+  }
   async function drop(path) {
+    if (readOnly) return;
     try {
       const { m, db } = await rt();
       const r = m.ref(db, path);
@@ -195,16 +223,16 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
     offs.push(
       m.onValue(m.ref(db, `city/p/${cell}`), (s) => {
         cellPlayers.set(cell, s.val() || {});
-        refresh();
+        soon();
       })
     );
     offs.push(
       m.onValue(m.ref(db, `city/c/${cell}`), (s) => {
         cellCars.set(cell, s.val() || {});
-        refresh();
+        soon();
       })
     );
-    offs.push(
+    if (!readOnly) offs.push(
       m.onValue(m.ref(db, `city/m/${cell}`), (s) => {
         const v = s.val() || {};
         const now = Date.now();
@@ -237,9 +265,29 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
     });
     refresh();
   }
+  // v191 — KALABALIKTA KASMA: hücredeki HERHANGİ bir oyuncu hareket edince (10 oyuncu ≈ saniyede 30-45
+  // kez) bütün oyuncular yeniden motora gönderiliyordu; motor da her seferinde her oyuncunun avatarını
+  // (~8 KB) metne çevirip karşılaştırıyordu → saniyede yüzlerce gereksiz iş, çöp toplayıcı takılmaları.
+  // Oyuncu sayısı arttıkça iş karesiyle büyüyordu (100 kişide oynanmaz). Artık:
+  //  • aynı anda gelen hücre güncellemeleri tek bir birleştirmede işlenir (en sık ~20 kez/sn)
+  //  • motora yalnızca kaydı (zaman damgası) ya da profili DEĞİŞEN oyuncu / araba gönderilir.
+  // Ağdan inen veri, yazım sıklığı, RTDB / Firestore kullanımı AYNI.
+  let soonT = 0;
+  let lastRefreshAt = 0;
+  function soon() {
+    if (soonT || dead) return;
+    const wait = Math.max(0, 50 - (Date.now() - lastRefreshAt));
+    soonT = setTimeout(() => {
+      soonT = 0;
+      refresh();
+    }, wait);
+  }
+  const sentP = new Map(); // uid → { t, x, z, pr } (motora en son gönderilen)
+  const sentC = new Map(); // uid → { t, x, z, n }
   // tüm hücrelerden birleştir → motora bildir
   function refresh() {
     if (dead) return;
+    lastRefreshAt = Date.now();
     const now = Date.now();
     const players = new Map();
     cellPlayers.forEach((obj) => {
@@ -263,6 +311,9 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
       const pr = profileOf(id);
       if (!pr) return; // profil gelince tekrar çağrılır
       shownPlayers.add(id);
+      const last = sentP.get(id);
+      if (last && last.pr === pr && last.t === rec.t && last.x === rec.x && last.z === rec.z) return; // değişmedi
+      sentP.set(id, { t: rec.t, x: rec.x, z: rec.z, pr });
       onPlayer?.(id, { ...rec, n: pr.n, a: pr.a });
     });
     // v147.1: hücre değiştiren / anlık kopan oyuncu hemen silinmez (yanıp sönme yok)
@@ -275,13 +326,18 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
       else if (now - missP.get(id) > 3500) {
         missP.delete(id);
         shownPlayers.delete(id);
+        sentP.delete(id);
         onPlayerGone?.(id);
       }
     });
     cars.forEach((rec, id) => {
       shownCars.add(id);
       const pr = profiles.get(id);
-      onCar?.(id, { ...rec, n: pr && pr !== 'loading' ? pr.n : null });
+      const n = pr && pr !== 'loading' ? pr.n : null;
+      const last = sentC.get(id);
+      if (last && last.t === rec.t && last.x === rec.x && last.z === rec.z && last.n === n) return; // değişmedi
+      sentC.set(id, { t: rec.t, x: rec.x, z: rec.z, n });
+      onCar?.(id, { ...rec, n });
     });
     shownCars.forEach((id) => {
       if (cars.has(id)) {
@@ -292,6 +348,7 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
       else if (now - missC.get(id) > (myRide?.owner === id ? 9000 : 3500)) {
         missC.delete(id);
         shownCars.delete(id);
+        sentC.delete(id);
         onCarGone?.(id);
       }
     });
@@ -337,10 +394,25 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
       lastCarAt = 0;
     }
   }
+  let lastCarFullAt = 0;
+  const sameButPos = (a, b) => {
+    if (!a || !b) return false;
+    for (const k of ['l', 'm', 'p', 'sy', 'e', 'et', 'h', 'ro', 'rk', 'r']) if (a[k] !== b[k]) return false;
+    return true;
+  };
   function tick(state, car) {
     if (dead || away) return;
     const now = Date.now();
+    const k = crowdK(shownPlayers.size);
     const cell = cellOf(state.x, state.z);
+    if (readOnly) {
+      // misafir: sadece çevresini dinler (yazım yok)
+      if (cell !== myCell) {
+        myCell = cell;
+        setInterest(cell);
+      }
+      return;
+    }
     if (cell !== myCell) {
       const old = myCell;
       myCell = cell;
@@ -351,7 +423,9 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
       }
       lastSent = null;
     }
-    const minGap = state.p === 'd' || state.p === 'r' ? DRIVE_MS : MOVE_MS;
+    const inCar = state.p === 'd' || state.p === 'r';
+    // arabadayken sadece konum değiştiyse seyrek (konumu araba kaydı taşır); yürürken kalabalığa göre
+    const minGap = inCar ? (sameButPos(state, lastSent) ? IN_CAR_POS_MS : DRIVE_MS) : MOVE_MS * k;
     if ((changed(state, lastSent) && now - lastSentAt >= minGap) || now - lastSentAt >= HEARTBEAT_MS) {
       lastSent = state;
       lastSentAt = now;
@@ -366,10 +440,18 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
         lastCar = null;
       }
       const moved = !lastCar || Math.hypot(car.x - lastCar.x, car.z - lastCar.z) > 0.15 || Math.abs(car.y - lastCar.y) > 0.02 || car.d !== lastCar.d || car.v !== lastCar.v || car.m !== lastCar.m || car.j !== lastCar.j || Math.abs(car.s - lastCar.s) > 1.5;
-      if ((moved && now - lastCarAt >= DRIVE_MS) || now - lastCarAt >= HEARTBEAT_MS * 3) {
+      if ((moved && now - lastCarAt >= DRIVE_MS * Math.min(2, k)) || now - lastCarAt >= HEARTBEAT_MS * 3) {
+        // tam kayıt: ilk yazım / hücre değişti / araç, modifiye ya da iş durumu değişti / 15 sn'de bir
+        const full = !lastCar || car.v !== lastCar.v || car.m !== lastCar.m || car.j !== lastCar.j || now - lastCarFullAt > CAR_FULL_MS;
         lastCar = car;
         lastCarAt = now;
-        put(`city/c/${cc}/${uid}`, car);
+        if (full) {
+          lastCarFullAt = now;
+          put(`city/c/${cc}/${uid}`, car);
+        } else {
+          const { m: _m, j: _j, v: _v, ...motion } = car;
+          patch(`city/c/${cc}/${uid}`, motion);
+        }
       }
     } else if (myCarCell) {
       drop(`city/c/${myCarCell}/${uid}`);
@@ -379,6 +461,7 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
     }
   }
   function say(text) {
+    if (readOnly) return false;
     const now = Date.now();
     if (now - lastChatAt < CHAT_MS || !myCell) return false;
     lastChatAt = now;
@@ -387,7 +470,7 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
   }
   // yolcu koltuğu: boş ilk koltuğu atomik olarak kap
   async function claimSeat(owner, seats) {
-    if (offline) return null;
+    if (offline || readOnly) return null;
     try {
       const { m, db } = await rt();
       for (let k = 1; k < Math.min(30, seats); k++) {
@@ -416,6 +499,7 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
     paths.forEach((p) => drop(p));
     dead = true;
     clearInterval(sweep);
+    clearTimeout(soonT);
     clearTimeout(awayT);
     clearTimeout(retryT);
     try {
@@ -426,7 +510,7 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
     [...unsubs.keys()].forEach(unsubscribe);
   }
 
-  if (!offline) setProfile(name, avatar);
+  if (!offline && !readOnly) setProfile(name, avatar);
   else onStatus?.('offline');
   // v147.1: bağlantı kopup gelince (mobil ağ) sunucu kayıtlarımızı silmiş olur
   // (onDisconnect) → hemen yeniden yaz + profil
@@ -449,7 +533,13 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
       })
       .catch(() => {});
   }
-  const api = { tick, say, claimSeat, releaseSeat, setProfile, setAway, stop, isOffline: () => offline };
+  // v191: engelleme listesi değişince herkes motora yeniden gönderilsin (engeli kalkan hemen görünür)
+  function resync() {
+    sentP.clear();
+    sentC.clear();
+    refresh();
+  }
+  const api = { tick, say, claimSeat, releaseSeat, setProfile, setAway, stop, resync, isOffline: () => offline };
   if (import.meta.env?.DEV) window.__cityNet = { api, dbg: () => ({ offline, failures, myCell, subs: [...subCells], lastSentAt, dead, shown: [...shownPlayers], prof: [...profiles.keys()], unsubs: [...unsubs.keys()], cells: Object.fromEntries([...cellPlayers].map(([c, v]) => [c, Object.keys(v)])) }) };
   return api;
 }

@@ -13,7 +13,12 @@
 //   • Komisyon %1: alışta eklenir (yukarı), satışta kesilir; tüm yuvarlamalar sistemin lehine.
 //   • Alım birimi (anlık fiyata göre): <10.000 → 1 hisse · 10.000–99.999 → 0,1 · ... (her 10 katta
 //     bir basamak küçülür). Büyük buton = 10 × birim.
-//   • Oyuncu başına mekân başına en çok 20 hisse.
+//   • v192: Oyuncu başına hisse SINIRSIZ. GÜNLÜK BANT: her mekânda günün ilk işlemindeki (= 00:00'daki)
+//     hisse sayısı esas alınır; gün içinde hisse esas ±10 arasında serbestçe alınıp satılır
+//     (00:00'da 10 → gün içinde 0–20). Esas users.borsa.<mekân>.dk (gün) + d0 (o günün esası) alanlarında.
+//     v193: bant = 10 hisse YA DA 1.000.000 altınlık hisse (hangisi azsa). Günün ilk işlemindeki fiyatla
+//     bir kez hesaplanır ve gün boyu sabit kalır (dl alanı) — fiyat oynadıkça hak değişmez.
+//     Sistem satışları (20 gün kuralı, hesap silme) banda tabi değildir.
 //   • Al-satta vergi yok. Hisse satış parası borca gitmez.
 //   • Günlük gelir hak kazanmış hisselere bölünür. GECE TEMETTÜ AVI ENGELİ: iki dağıtım arasında
 //     alınan hisse bir sonraki dağıtımı ATLAR (o günü tam elde tutmamış). O payı diğer (hak
@@ -48,8 +53,10 @@ const UB = 1_000_000n;
 export const BORSA_Q = 10n ** 18n; // gelir ölçeği: altın × Q / birim
 const LEGACY_ACC_TO_A = 10n ** 9n; // v188 acc (binde bir altın / hisse) → A (altın × Q / birim)
 export const BORSA_PRICE_STEP = 1000; // eski BORSA_UNIT: 1 basamak = 1.000 altın
-export const BORSA_MAX_PER_PLAYER = 20; // hisse
-export const BORSA_MAX_UNITS = BORSA_MAX_PER_PLAYER * BORSA_UNITS;
+// v192: kişi başı üst sınır kalktı; yerine günlük bant (00:00'daki hissenin ±10'u)
+export const BORSA_DAY_LIMIT = 10; // hisse
+export const BORSA_DAY_UNITS = BORSA_DAY_LIMIT * BORSA_UNITS;
+export const BORSA_DAY_GOLD = 1_000_000; // v193: günlük bant en çok bu kadar altınlık hisse
 export const BORSA_COMMISSION_PCT = 1n;
 export const BORSA_IDLE_DAYS = 20;
 export const BORSA_RATE_MS = 1000; // oyuncu başına saniyede en fazla 1 borsa isteği
@@ -199,9 +206,9 @@ export function holdState(player, id) {
   const h = player?.borsa?.[id] || {};
   const v2 = Number(h.v) >= BORSA_HOLD_V;
   const out = v2
-    ? { u: int(h.u), a: big(h.a), pq: big(h.pq), b: int(h.b), bd: h.bd ?? null, ba: h.ba != null ? big(h.ba) : null, c: int(h.c) }
+    ? { u: int(h.u), a: big(h.a), pq: big(h.pq), b: int(h.b), bd: h.bd ?? null, ba: h.ba != null ? big(h.ba) : null, c: int(h.c), dk: typeof h.dk === 'string' ? h.dk : null, d0: int(h.d0), dl: int(h.dl) }
     : // TEMBEL GEÇİŞ: eski n tam hisse → n × U birim; a (binde bir altın/hisse) → A ölçeği; p altın → × Q
-      { u: int(h.n) * BORSA_UNITS, a: big(int(h.a)) * LEGACY_ACC_TO_A, pq: big(int(h.p)) * BORSA_Q, b: 0, bd: null, ba: null, c: int(h.c) };
+      { u: int(h.n) * BORSA_UNITS, a: big(int(h.a)) * LEGACY_ACC_TO_A, pq: big(int(h.p)) * BORSA_Q, b: 0, bd: null, ba: null, c: int(h.c), dk: null, d0: 0, dl: 0 };
   if (out.b > out.u) out.b = out.u;
   // v185: r = son işlemimden sonraki piyasa fiyatı (1 hisse), g = o zamana kadar biriken piyasa kâr/zararı
   if (h.r != null) out.r = int(h.r);
@@ -217,8 +224,37 @@ export function holdDoc(h) {
   }
   if (h.r != null) d.r = h.r;
   if (h.g != null) d.g = h.g;
+  if (h.dk) {
+    d.dk = h.dk; // v192: günlük bandın günü + o günün esası (00:00'daki birim)
+    d.d0 = int(h.d0);
+    if (int(h.dl) > 0) d.dl = int(h.dl); // v193: o günün bant genişliği (birim)
+  }
   return d;
 }
+
+// ---- v192 günlük bant -----------------------------------------------------------------
+// today: İstanbul gün anahtarı (sunucu dayKey(t), istemci istanbulDateKey()). Günün ilk işleminde
+// esas = elindeki birim (gün içinde başka işlem olmadığı için 00:00'daki ile aynı).
+// İstanbul günü (UTC+3, yaz saati yok) — sunucudaki stateDayKey ile AYNI biçim (YYYY-AA-GG)
+export const borsaDayKey = (ms = Date.now()) => new Date(ms + 3 * 3600_000).toISOString().slice(0, 10);
+export const dayBase = (hold, today) => (hold?.dk === today ? int(hold.d0) : int(hold?.u));
+// v193: bant genişliği (birim) = 10 hisse ya da 1.000.000 altınlık hisse, hangisi azsa (anlık fiyatla)
+export function dayLimitUnits(coU) {
+  if (coU == null) return BORSA_DAY_UNITS;
+  const p = priceNow(coU);
+  const byGold = Math.floor((BORSA_DAY_GOLD * BORSA_UNITS) / Math.max(1, p));
+  return Math.max(1, Math.min(BORSA_DAY_UNITS, byGold));
+}
+// bugünün bant genişliği: günün ilk işleminde sabitlenen (dl), yoksa şimdiki fiyatla
+export const dayLimit = (hold, today, coU = null) => (hold?.dk === today && int(hold.dl) > 0 ? int(hold.dl) : dayLimitUnits(coU));
+export function dayRoom(hold, today, coU = null) {
+  const u = int(hold?.u);
+  const base = dayBase(hold, today);
+  const lim = dayLimit(hold, today, coU);
+  return { base, lim, buy: Math.max(0, base + lim - u), sell: Math.max(0, u - Math.max(0, base - lim)) };
+}
+// işlemden önce: bant bugüne sabitlenir (esas + genişlik yazılır)
+export const withDay = (hold, today, coU = null) => ({ ...hold, dk: today, d0: dayBase(hold, today), dl: dayLimit(hold, today, coU) });
 
 // ---- gelir (hak kazanma) ---------------------------------------------------------------
 // Dönemi bitmiş (bd < şimdiki dağıtım) alımların hak kazandığı A: bd'den sonraki ilk dağıtımın sonrası.
@@ -319,25 +355,26 @@ export const avgPerShare = (co) => avgIncome(co?.ps);
 export function sortCos(market) {
   return [...BORSA_COS].sort((a, b) => avgPerShare(coState(market, b.id)) - avgPerShare(coState(market, a.id)) || a.name.localeCompare(b.name, 'tr'));
 }
-// Elindeki birimlerin hepsini satarsan eline geçecek (komisyon düşülmüş)
+// Elindeki birimlerin hepsini satarsan eline geçecek (komisyon düşülmüş). Değer gösterimi içindir;
+// v192: bugün satılabilecek miktar için sellAllValue(Math.min(u, dayRoom(..).sell), coU) kullanılır.
 export const sellAllValue = (holdU, coU) => (int(holdU) > 0 ? sellQuote(coU, Math.min(int(holdU), int(coU))).net : 0);
 
 // ---- butonlar (detay ekranı) -------------------------------------------------------
-// Alım: birim kadar; sınır (20 hisse) aşılacaksa sınıra kadar. Satış: birim kadar; elinde daha
-// azsa elindekinin hepsi. x: 0 → buton pasif.
-export function buyAmount(holdU, step) {
-  return Math.max(0, Math.min(int(step), BORSA_MAX_UNITS - int(holdU)));
+// Alım: birim kadar; bugünkü alım hakkı (room.buy) azsa o kadar. Satış: birim kadar; elinde ya da
+// bugünkü satış hakkında (room.sell) daha az varsa o kadar. x: 0 → buton pasif. room yoksa sınırsız.
+export function buyAmount(holdU, step, room = null) {
+  return Math.max(0, Math.min(int(step), room ? int(room.buy) : Infinity));
 }
-export const sellAmount = (holdU, step) => Math.min(int(step), int(holdU));
-export function tradeButtons(coU, holdU) {
+export const sellAmount = (holdU, step, room = null) => Math.min(int(step), int(holdU), room ? int(room.sell) : Infinity);
+export function tradeButtons(coU, holdU, room = null) {
   const step = stepUnits(coU);
   const out = {};
   for (const [k, s] of [
     ['small', step],
     ['big', step * 10],
   ]) {
-    const bx = buyAmount(holdU, s);
-    const sx = sellAmount(holdU, s);
+    const bx = buyAmount(holdU, s, room);
+    const sx = sellAmount(holdU, s, room);
     out[k] = {
       buy: { x: bx, ...(bx > 0 ? buyQuote(coU, bx) : { base: 0, kom: 0, total: 0 }) },
       sell: { x: sx, ...(sx > 0 ? sellQuote(coU, sx) : { base: 0, kom: 0, net: 0 }) },
@@ -409,8 +446,11 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
     for (const [id, co] of Object.entries(cos)) patch.co[id] = { ...(patch.co[id] || {}), ...coDoc(co) };
     tx.set(marketRef(), { ...patch, ...extra }, { merge: true });
   };
-  const holdWrite = (u, id, h) => {
-    u[`borsa.${id}`] = h.u > 0 || h.pq >= BORSA_Q ? holdDoc(h) : FieldValue.delete(); // hissesiz < 1 altın küsurat tutulmaz
+  const holdWrite = (u, id, h, today = null) => {
+    // hissesiz < 1 altın küsurat tutulmaz. v192: bugün hissesini sıfırlayan oyuncunun günlük esası gün
+    // bitene kadar tutulur (yoksa aynı gün geri alırken hakkı yanlış hesaplanır)
+    const keepDay = today != null && h.dk === today && int(h.d0) > 0;
+    u[`borsa.${id}`] = h.u > 0 || h.pq >= BORSA_Q || keepDay ? holdDoc(h) : FieldValue.delete();
   };
   // v189: her işlemden sonra canlı fiyat (S) RTDB'ye; hata işlemi bozmaz
   async function publish(map) {
@@ -459,16 +499,17 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
       const dd = market.distDay ?? null;
       const co = coState(market, id);
       const was = holdState(user, id);
-      let hold = settle(was, co, dd);
+      const today = dayKey(t);
+      let hold = withDay(settle(was, co, dd), today, co.u); // v192: günlük bant · v193: 1 milyon altın sınırı
+      const room = dayRoom(hold, today);
       const u = { borsaSon: t };
       if (user.borsaUyari) u.borsaUyari = FieldValue.delete(); // v185 alanı artık kullanılmıyor
       const next = { ...co };
       let x;
       let paid;
       if (op === 'al') {
-        const room = BORSA_MAX_UNITS - hold.u;
-        if (room <= 0) fail('failed-precondition', `Bir mekândan en fazla ${BORSA_MAX_PER_PLAYER} hisse alabilirsin.`);
-        x = Math.min(want, room);
+        if (room.buy <= 0) fail('failed-precondition', `Bugünkü alım hakkın doldu (günde ±${fmtShares(room.lim)} hisse). Yarın 00:00'da yenilenir.`);
+        x = Math.min(want, room.buy);
         const q = price(() => buyQuote(co.u, x));
         if (data?.expect != null && q.total > Number(data.expect)) fail('aborted', `price-changed:${q.total}`);
         if ((user.gold || 0) < q.total) fail('failed-precondition', 'Yetersiz altın.');
@@ -483,7 +524,8 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
         next.btd = dd;
       } else {
         if (hold.u <= 0) fail('failed-precondition', 'Bu mekânda hissen yok.');
-        x = Math.min(want ?? hold.u, hold.u, co.u);
+        if (room.sell <= 0) fail('failed-precondition', `Bugünkü satış hakkın doldu (günde ±${fmtShares(room.lim)} hisse). Yarın 00:00'da yenilenir.`);
+        x = Math.min(want ?? hold.u, hold.u, co.u, room.sell);
         const q = price(() => sellQuote(co.u, x));
         if (data?.expect != null && q.net < Number(data.expect)) fail('aborted', `price-changed:${q.net}`);
         paid = q.net;
@@ -500,7 +542,7 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
         next.bt = co.btd === dd ? Math.max(0, co.bt - fromB) : 0;
         next.btd = dd;
       }
-      holdWrite(u, id, hold);
+      holdWrite(u, id, hold, today);
       if (!hasAny(user, { [id]: hold })) u.borsaSon = FieldValue.delete();
       tx.update(userRef(uid), u);
       marketWrite(tx, market, { [id]: next }, { updatedAtMs: t });
@@ -521,6 +563,7 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
       rateCheck(user, t);
       const market = mSnap.data() || {};
       const dd = market.distDay ?? null;
+      const today = dayKey(t);
       const u = {};
       const cos = {};
       let total = 0;
@@ -530,21 +573,26 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
       const after = {};
       for (const id of BORSA_CO_IDS) {
         const co = coState(market, id);
-        const hold = settle(holdState(user, id), co, dd);
+        const hold = withDay(settle(holdState(user, id), co, dd), today, co.u);
         if (hold.u <= 0) continue;
-        const x = Math.min(hold.u, co.u);
+        // v192: her mekânda bugünkü satış hakkı kadar (günlük bant)
+        const x = Math.min(hold.u, co.u, dayRoom(hold, today).sell);
+        if (x <= 0) continue;
         const q = price(() => sellQuote(co.u, x));
+        const costPart = x >= hold.u ? hold.c : Number((BigInt(hold.c) * BigInt(x)) / BigInt(hold.u));
         total += q.net;
-        kz += q.base - hold.c;
+        kz += q.base - costPart;
         kom += q.kom;
-        units += hold.u;
-        const fromB = periodOpen(hold, dd) ? hold.b : 0;
-        cos[id] = { ...co, u: co.u - x, h: Math.max(0, co.h - 1), bt: co.btd === dd ? Math.max(0, co.bt - fromB) : 0, btd: dd };
-        const left = { ...rebase(hold, co.u, 0, 0), c: 0, b: 0, bd: null, ba: null };
+        units += x;
+        const rest = hold.u - x;
+        const fromB = periodOpen(hold, dd) ? Math.min(hold.b, x) : 0;
+        cos[id] = { ...co, u: co.u - x, h: Math.max(0, co.h - (rest === 0 ? 1 : 0)), bt: co.btd === dd ? Math.max(0, co.bt - fromB) : 0, btd: dd };
+        let left = { ...rebase(hold, co.u, rest, co.u - x), c: rest > 0 ? hold.c - costPart : 0, b: hold.b - fromB };
+        if (left.b <= 0) left = { ...left, b: 0, bd: null, ba: null };
         after[id] = left;
-        holdWrite(u, id, left);
+        holdWrite(u, id, left, today);
       }
-      if (!units) fail('failed-precondition', 'Satılacak hissen yok.');
+      if (!units) fail('failed-precondition', 'Satılacak hissen yok (ya da bugünkü satış hakların doldu).');
       if (data?.expect != null && Number(data.expect) !== total) fail('aborted', `price-changed:${total}`);
       u.gold = FieldValue.increment(total);
       u.goldTag = goldTag('borsa', { borsaKz: kz, borsaKom: -kom });

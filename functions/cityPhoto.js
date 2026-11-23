@@ -222,7 +222,9 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
       // v152: modifiye (m) ve iş hâli (j: dorse / yolcular / tepe lambası) RTDB kaydından — sahte olamaz
       const m = typeof rec.m === 'string' && rec.m.length <= 700 ? rec.m : '';
       const j = Math.max(0, Math.min(40, Math.floor(Number(rec.j) || 0)));
-      cars.push({ o: c.o, v, x: r2(x), z: r2(z), y: r2(num(c.y, -6, 300) ?? 0), r: r3(wrapYaw(num(c.r, -1e4, 1e4) ?? 0)), st: r2(num(c.st, -1, 1) ?? 0), ...(m ? { m } : {}), ...(j ? { j } : {}) });
+      // v193: tır dorsesinin açısı (sadece görüntü; dorse takılıysa — j > 0)
+      const th = j ? num(c.th, -1.35, 1.35) : null;
+      cars.push({ o: c.o, v, x: r2(x), z: r2(z), y: r2(num(c.y, -6, 300) ?? 0), r: r3(wrapYaw(num(c.r, -1e4, 1e4) ?? 0)), st: r2(num(c.st, -1, 1) ?? 0), ...(m ? { m } : {}), ...(j ? { j } : {}), ...(th ? { th: r3(th) } : {}) });
     });
 
     // kişiler

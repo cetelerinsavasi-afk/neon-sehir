@@ -9,7 +9,7 @@
 // (bugünkü 3D mekânlardakiyle aynı çağrılar → ek maliyet yok).
 // Garaj (kendi arabaların) sadece "Arabalarım" açılınca okunur.
 // =============================================================================
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import CarImg from '../VehicleCard/CarImg'; // v150: araç görseli = 3D model
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
@@ -48,6 +48,7 @@ import { heistCarOf, heistOutcomeOf, heistSceneOf, rememberHeistCar } from '../H
 import PhoneScreen from '../Phone/PhoneScreen';
 import PlayerCard from '../PlayerCard/PlayerCard';
 import ReportBlockSheet from '../ReportBlockSheet/ReportBlockSheet';
+import GuestWelcome from '../Guest/GuestWelcome'; // v192 — misafir karşılama
 import GuestSignInSheet from '../Guest/GuestSignInSheet';
 import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
 import OnboardingPanel from '../OnboardingPanel/OnboardingPanel';
@@ -61,7 +62,7 @@ import { useStadiumMatches } from '../../hooks/useStadiumMatches';
 import { liveState } from './stadiumMatch.js';
 import ShadyDealPanel from '../ShadyDeal/ShadyDealPanel';
 import SaleToast from '../ShadyDeal/SaleToast';
-import { EMOTES } from '../HouseScreen/houseEngine';
+import { EMOTES } from '../HouseScreen/figureFx.js'; // v191
 import { createCityEngine } from './cityEngine.js';
 import { prepareCityWorld } from './world/outerWorld.js';
 import CityBizList from './CityBizList';
@@ -430,6 +431,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const [heistWait, setHeistWait] = useState(false); // v166: video başlamadan önceki bekleme (Geç düğmesi)
   const heistSkipRef = useRef(false);
   const [toast, setToast] = useState(null);
+  const [hitFx, setHitFx] = useState(null); // v193: çarpma ekran efekti
   const [msgs, setMsgs] = useState([]);
   const [run, setRun] = useState(true); // v160.3: şehirde hızlı koşma varsayılan açık
   const runRef = useRef(true);
@@ -653,6 +655,12 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const [card, setCard] = useState(null);
   const [report, setReport] = useState(null);
   const [chatOpen, setChatOpen] = useState(false); // v151: sohbet geçmişi açık mı
+  // v193: sohbet büyütülünce (ve yeni mesaj gelince) en alta — en yeni mesajlar görünsün (eskiden en üstte açılıyordu)
+  const chatFeedRef = useRef(null);
+  useLayoutEffect(() => {
+    const el = chatFeedRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [chatOpen, msgs]);
   // v151 — meslek (ticari araç): sürülen aracın belgesi + iş durumu
   const [myVeh, setMyVeh] = useState(null);
   const [jobUi, setJobUi] = useState(null);
@@ -708,12 +716,12 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   // olarak donup kalıyordu (kendi etiketimiz + diğerlerine yayınlanan profil). Gerçek ad (realName)
   // gelince hem kendi etiketimiz hem yayınlanan profil güncellenir; gerçek ad yokken profil yazılmaz.
   const realName = String(player?.displayName || user?.displayName || '').trim();
-  const myName = realName || 'Oyuncu';
+  const myName = realName || (guest ? 'Misafir' : 'Oyuncu'); // v192: misafirin etiketi
   // v159.1: diğer oyunculara giden profil SADECE oyuncu belgesi (users) geldikten sonra yazılır — eskiden
   // giriş hesabının ilk adı (Google/kayıt adı) ve varsayılan görünüm yayınlanıyordu
   const pubName = player ? String(player.displayName || '').trim() : null;
   const startRef = useRef({ avatar, myName, spawn, pubName });
-  startRef.current = { ...startRef.current, avatar: avatar || startRef.current.avatar, myName: realName ? myName : startRef.current.myName, pubName: pubName ?? startRef.current.pubName };
+  startRef.current = { ...startRef.current, avatar: avatar || startRef.current.avatar, myName: realName ? myName : guest ? 'Misafir' : startRef.current.myName, pubName: pubName ?? startRef.current.pubName };
   const uid = user?.uid || (guest ? '__guest__' : null);
   useEffect(() => {
     if (!uid) return undefined;
@@ -790,9 +798,10 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         onPlayerTap: (id) => setCard(id),
         onEvent: (e) => {
           if (e.type === 'crash') jobRef.current?.crash(e.speed);
-          if (e.type === 'crash' && e.speed > 9 && Date.now() - lastCrash > 2500) {
+          // v193: çarpınca 💥 yazısı yerine kısa bir ekran kenarı kızarması (sertliğe göre); kıvılcım / sarsıntı motorda
+          if (e.type === 'crash' && e.speed > 7 && Date.now() - lastCrash > 600) {
             lastCrash = Date.now();
-            flash('💥');
+            setHitFx({ k: lastCrash, a: Math.min(1, (e.speed - 6) / 14) });
           }
           if (e.type === 'stadiumGoal' && e.inside) flash(`⚽ GOOOL! ${e.name}${e.scorer ? ` · ${e.scorer}` : ''} · ${e.home} ${e.hs}-${e.as} ${e.away}`);
           if (e.type === 'rideLost') {
@@ -808,7 +817,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       setLiveCityEngine(eng); // v147: Sixtagram'daki şehir fotoğrafları bu motorla çizilir
       hqAreaRef.current = eng.hqArea?.() || null;
       if (import.meta.env?.DEV) window.__cityEng = eng;
-      if (isGuest) return; // misafir: ağ yok (Realtime Database girişli okunur)
+      // v192: misafir de diğer oyuncuları görür (sadece izler, hiçbir şey yazmaz) — eskiden şehir bomboştu
       // v167: diğer oyuncular (ağ) şehir çizilip oturduktan sonra gelir (açılış 1. aşama) — şehir kurulurken
       // aynı anda 15-20 oyuncunun avatarı / arabası yağıp ilk saniyeleri kastırmasın
       offNet = whenBootStage(1, () => {
@@ -820,6 +829,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       const cur = startRef.current; // v167: ağ biraz sonra başladığı için o anki (güncel) ad / görünüm
       net = createCityNet({
         uid,
+        readOnly: isGuest,
         name: cur.pubName || null,
         avatar: cur.pubName != null ? cur.avatar : null,
         onPlayer: (id, rec) => {
@@ -884,6 +894,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         engineRef.current?.removeCar(id);
       }
     });
+    netRef.current?.resync?.(); // v191: ağ katmanı sadece değişenleri gönderir → engeli kalkan da yeniden gelsin
   }, [isBlocked]);
   // uygulama arka plana geçince dur
   useEffect(() => {
@@ -1636,7 +1647,15 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
             <div className="hs-title">
               <b>{zoneName}</b>
               <span>
-                {guest ? '👀 Misafir · gezinti' : offline ? '⚠️ çevrimdışı' : `${online + 1} kişi yakında`}
+                {guest ? (
+                  // v192: misafir — yakındakiler (izleyebiliyorsa) + her an görünen giriş düğmesi
+                  <>
+                    {online > 0 ? `👀 ${online} kişi yakında · ` : '👀 Misafir · '}
+                    <button type="button" className="cs-guest-login" onClick={() => setAskSignIn(true)}>
+                      Giriş yap
+                    </button>
+                  </>
+                ) : offline ? '⚠️ çevrimdışı' : `${online + 1} kişi yakında`}
               </span>
             </div>
             )}
@@ -2056,7 +2075,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           {((!driving && chatOn) || (driving && driveChat)) && !guest && (
             <div className={`hs-chat${chatOpen ? ' expanded' : ''}${driving ? ' cs-drive-chat' : ' cs-chat-always'}`}>
               {/* v151: diğer mekânlardaki gibi — dokununca sohbet açılır (eski mesajlar); şikâyet ⚠️ ile */}
-              <div className="hs-chat-feed" onClick={() => setChatOpen((v) => !v)}>
+              <div className="hs-chat-feed" ref={chatFeedRef} onClick={() => setChatOpen((v) => !v)}>
                 {(chatOpen ? msgs : msgs.slice(-3)).map((m) => (
                   <div key={m.id} className={`hs-msg${m.me ? ' me' : ''}`}>
                     <b>{m.name}:</b> {m.text}
@@ -2303,6 +2322,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         />
       )}
       {askSignIn && <GuestSignInSheet onClose={() => setAskSignIn(false)} message="Misafir olarak şehri gezebilirsin — bunu yapmak için giriş yapmalısın." />}
+      {guest && <GuestWelcome ready={ready} />}
+      {hitFx && <div key={hitFx.k} className="cs-hitfx" style={{ '--a': hitFx.a }} onAnimationEnd={() => setHitFx((h) => (h && h.k === hitFx.k ? null : h))} />}
       {mapOpen && ready && (
         <CityBigMap
           engine={engineRef.current}
@@ -2372,6 +2393,7 @@ function CityBigMap({ engine, onClose, onPick, onSpot, pin: pin0, getPin, canTel
   const [spot, setSpot] = useState(null); // boş yere dokunuş: { x, z, sx, sy }
   const ref = useRef(null);
   const view = useRef(null);
+  const dirty = useRef(true); // v191: görünüm değişti → bir sonraki karede hemen çiz
   const [tab, setTab] = useState('sehir');
   const preset = useCallback((v) => {
     const c = ref.current;
@@ -2380,6 +2402,7 @@ function CityBigMap({ engine, onClose, onPick, onSpot, pin: pin0, getPin, canTel
     const H = c.clientHeight;
     const me = engine.mapSelf();
     setTab(v);
+    dirty.current = true;
     if (v === 'sehir') view.current = { cx: 2, cz: -22, k: Math.min(W / 380, H / 300), follow: false };
     else if (v === 'bolge') view.current = { cx: 1100, cz: -1150, k: Math.min(W / 2700, H / 2700), follow: false };
     else if (v === 'kasaba') {
@@ -2401,10 +2424,18 @@ function CityBigMap({ engine, onClose, onPick, onSpot, pin: pin0, getPin, canTel
     preset(me.mode === 'hwy' ? 'bolge' : me.mode === 'town' ? 'kasaba' : 'sehir');
     let raf = 0;
     const gm = engine.map();
+    // v191 — harita açıkken arkadaki şehir yavaş çizilir; harita da her karede değil, sürükleme /
+    // yakınlaştırma anında, yoksa ~8 kez/sn (oyuncu noktaları, kendi konumun) yeniden çizilir
+    engine.setLite?.(true);
+    let lastDraw = 0;
     const draw = () => {
       raf = requestAnimationFrame(draw);
       const v = view.current;
       if (!v) return;
+      const tnow = performance.now();
+      if (!dirty.current && tnow - lastDraw < 120) return;
+      dirty.current = false;
+      lastDraw = tnow;
       const m = engine.mapSelf();
       if (v.follow) {
         v.cx = m.x;
@@ -2429,10 +2460,15 @@ function CityBigMap({ engine, onClose, onPick, onSpot, pin: pin0, getPin, canTel
       gm.draw(c.getContext('2d'), c.width, c.height, { cx: v.cx, cz: v.cz, k: v.k, rot: 0, dpr }, { truck: { x: m.x, z: m.z, yaw: m.driving ? m.yaw : m.yaw }, target: path ? { x: path[path.length - 1][0], z: path[path.length - 1][1] } : null, path, labels: true, streets: true, parked: !m.driving && m.car ? m.car : null, walker: !m.driving, others });
     };
     draw();
-    window.addEventListener('resize', fit);
+    const onResize = () => {
+      fit();
+      dirty.current = true;
+    };
+    window.addEventListener('resize', onResize);
     return () => {
       cancelAnimationFrame(raf);
-      window.removeEventListener('resize', fit);
+      window.removeEventListener('resize', onResize);
+      engine.setLite?.(false);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [engine, preset]); // v160.5: iğne getPin ile her karede okunur (kaldırınca görünüm sıfırlanmasın)
@@ -2449,6 +2485,7 @@ function CityBigMap({ engine, onClose, onPick, onSpot, pin: pin0, getPin, canTel
     const wx = v.cx + (sx - W / 2) / v.k;
     const wz = v.cz + (sy - H / 2) / v.k;
     v.k = Math.max(0.12, Math.min(8, v.k * f));
+    dirty.current = true;
     v.cx = wx - (sx - W / 2) / v.k;
     v.cz = wz - (sy - H / 2) / v.k;
   };
@@ -2476,6 +2513,7 @@ function CityBigMap({ engine, onClose, onPick, onSpot, pin: pin0, getPin, canTel
     }
     view.current.cx -= (e.clientX - px) / view.current.k;
     view.current.cz -= (e.clientY - py) / view.current.k;
+    dirty.current = true;
   };
   const onUp = (e) => {
     pts.current.delete(e.pointerId);
