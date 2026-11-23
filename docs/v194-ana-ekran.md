@@ -17,7 +17,7 @@ Test: tests/ui/city-hud.test.mjs
 
 ## Borsa ekranı
 - "‹ Borsa / ‹ mekân" şeridi yana kaydırma yapmıyor, Parara Bank çizgisine yapışık (boşluk yok).
-- "Senin hissen" kısa: 28,806693 / 14,31741 → 28,8 / 14,3 (10 ve üstü 1, altı 2 küsurat).
+- Borsadaki bütün hisse sayıları kısa (listede satılmış hisse, detay, Hisselerim, satış yazıları): 28,806693 → 28,8 (10 ve üstü 1, altı 2 küsurat).
 - Sınıra kadar alırken miktar 0,01 hisseye yuvarlanır (yeni uzun küsuratlar oluşmaz).
 
 ## Kontrol listesi

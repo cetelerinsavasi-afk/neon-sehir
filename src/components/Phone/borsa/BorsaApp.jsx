@@ -22,7 +22,6 @@ import {
   sortCos,
   sellAllValue,
   marketGainAll,
-  fmtShares,
   priceNow,
   chartPrice,
   tradeButtons,
@@ -270,7 +269,7 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
       const r = await call({ op: p.op, co: p.co, x: p.x, ...(expect != null ? { expect } : {}) });
       setLiveU(p.co, r.coU);
       setPend({ ...sent, phase: 'ack', ackU: r.u });
-      show(p.op === 'al' ? `${fmtShares(r.x)} hisse alındı · −${fmt(r.price)}` : `${fmtShares(r.x)} hisse satıldı · +${fmt(r.price)}`);
+      show(p.op === 'al' ? `${fmtSharesShort(r.x)} hisse alındı · −${fmt(r.price)}` : `${fmtSharesShort(r.x)} hisse satıldı · +${fmt(r.price)}`);
     } catch (err) {
       setPend(null);
       show(errText(err), true);
@@ -301,7 +300,7 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
       (r) => {
         setLiveU(coSell.co, r.coU);
         setCoSell(null);
-        return `${fmtShares(r.x)} hisse satıldı · +${fmt(r.price)}`;
+        return `${fmtSharesShort(r.x)} hisse satıldı · +${fmt(r.price)}`;
       },
       (err) => {
         const np = newPrice(err);
@@ -334,7 +333,7 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
       const poor = b.x > 0 && goldNow < b.total;
       return (
         <button key={`al-${k}`} className="borsa-btn gr" disabled={!b.x || poor || otherBusy || blockedOp} onClick={() => press(sel, 'al', b.x, b.total)}>
-          {full ? 'Alım sınırı' : `${fmtShares(b.x)} hisse al`}
+          {full ? 'Alım sınırı' : `${fmtSharesShort(b.x)} hisse al`}
           <small>{full ? '—' : fmt(b.total)}</small>
         </button>
       );
@@ -344,7 +343,7 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
       const blockedOp = queued && queued.op !== 'sat';
       return (
         <button key={`sat-${k}`} className="borsa-btn rd" disabled={!s.x || otherBusy || blockedOp} onClick={() => press(sel, 'sat', s.x, s.net)}>
-          {s.x ? `${fmtShares(s.x)} hisse sat` : 'Hissen yok'}
+          {s.x ? `${fmtSharesShort(s.x)} hisse sat` : 'Hissen yok'}
           <small>{s.x ? `+${fmt(s.net)}` : '—'}</small>
         </button>
       );
@@ -366,7 +365,7 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
             </div>
             <div className="sat">
               <small>Satılmış hisse</small>
-              <b>{fmtShares(co.u)}</b>
+              <b>{fmtSharesShort(co.u)}</b>
             </div>
           </div>
           <Change pct={change24h(co.ch, chartPrice(co.u))} />
@@ -442,7 +441,7 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
         {tab === 'mine' && worth.units > 0 && (
           <div className="borsa-worth">
             <div>
-              <small>{`${fmtShares(worth.units)} hisse · şu anki değeri`}</small>
+              <small>{`${fmtSharesShort(worth.units)} hisse · şu anki değeri`}</small>
               <b>
                 <span className="borsa-coin" />
                 {fmt(worth.total)}
@@ -476,7 +475,7 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
                     </span>
                     {/* v189: satılmış toplam hisse + hisse başına son 10 günlük ortalama gelir */}
                     <span className="borsa-sub borsa-sub2">
-                      <span>{`${fmtShares(co.u)} hisse`}</span>
+                      <span>{`${fmtSharesShort(co.u)} hisse`}</span>
                       <span>{`ort. gelir: ${co.ps.length ? fmt(Math.floor(avg)) : '—'}`}</span>
                     </span>
                   </span>
@@ -500,7 +499,7 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
   const sellAllNow = () =>
     run('satHepsi', { op: 'satHepsi', expect: worth.total }, (r) => {
       setSellAsk(false);
-      return `${fmtShares(r.units)} hisse satıldı · +${fmt(r.total)}`;
+      return `${fmtSharesShort(r.units)} hisse satıldı · +${fmt(r.total)}`;
     });
   const coSellMeta = coSell ? BORSA_CO_BY_ID[coSell.co] : null;
   return (
@@ -516,7 +515,7 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
             <div className="borsa-ln">
               <span className="borsa-ln-n">
                 <VendorAvatar id={coSell.co} size={30} />
-                {`${fmtShares(realHoldU(coSell.co))} hisse`}
+                {`${fmtSharesShort(realHoldU(coSell.co))} hisse`}
               </span>
             </div>
             <div className="borsa-ln tot">
@@ -543,7 +542,7 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
               <div key={w.id} className="borsa-ln">
                 <span className="borsa-ln-n">
                   <VendorAvatar id={w.id} size={30} />
-                  {`${w.name} · ${fmtShares(w.u)}`}
+                  {`${w.name} · ${fmtSharesShort(w.u)}`}
                 </span>
                 <span>{fmt(w.value)}</span>
               </div>
