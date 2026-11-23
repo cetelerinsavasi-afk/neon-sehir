@@ -55,10 +55,13 @@ export const BORSA_PRICE_STEP = 1000; // eski BORSA_UNIT: 1 basamak = 1.000 alt�
 export const BORSA_CAP_MIN = 10 * BORSA_UNITS;
 export const capOf = (coU) => Math.max(BORSA_CAP_MIN, Math.floor(Math.max(0, Math.floor(Number(coU) || 0)) / 10));
 // bu kadar birim daha alınabilir (aldıkça toplam da artar): max(10 − h, (S − 10h) / 9), en az 0
+// Sınıra kadar alırken miktar 0,01 hisseye yuvarlanır (elde 28,806693 gibi uzun küsuratlar oluşmasın).
+export const BORSA_ROOM_GRAIN = BORSA_UNITS / 100;
 export function buyRoom(holdU, coU) {
   const h = Math.max(0, Math.floor(Number(holdU) || 0));
   const S = Math.max(0, Math.floor(Number(coU) || 0));
-  return Math.max(0, BORSA_CAP_MIN - h, Math.floor((S - 10 * h) / 9));
+  const r = Math.max(0, BORSA_CAP_MIN - h, Math.floor((S - 10 * h) / 9));
+  return Math.floor(r / BORSA_ROOM_GRAIN) * BORSA_ROOM_GRAIN;
 }
 export const BORSA_COMMISSION_PCT = 1n;
 export const BORSA_IDLE_DAYS = 20;
@@ -125,6 +128,15 @@ export function fmtShares(units) {
   return `${whole.toLocaleString('tr-TR')}${frac ? `,${frac}` : ''}`;
 }
 export const sharesOf = (units) => int(units) / BORSA_UNITS;
+// v193: kısa gösterim (kutulara sığsın): 10 ve üstü 1 küsurat, altı 2 küsurat, aşağı yuvarlanır, sıfırlar atılır
+// 28,806693 → "28,8" · 14,31741 → "14,3" · 0,0372 → "0,03" · 0,004 → "0,004" (çok küçükse 3 hane)
+export function fmtSharesShort(units) {
+  const v = int(units) / BORSA_UNITS;
+  const d = v >= 10 ? 1 : v >= 0.01 || v === 0 ? 2 : 3;
+  const k = 10 ** d;
+  const t = Math.floor(v * k + 1e-9) / k;
+  return t.toLocaleString('tr-TR', { minimumFractionDigits: 0, maximumFractionDigits: d });
+}
 
 // ---- fiyatlar (S = satılmış toplam BİRİM, x = birim) ------------------------------------
 // S'den x birim almanın / satmanın temel tutarı (komisyonsuz). Alış yukarı, satış aşağı yuvarlanır.

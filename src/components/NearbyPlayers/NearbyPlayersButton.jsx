@@ -14,7 +14,8 @@ import './NearbyPlayersButton.css';
 //        className (ekranın düğme stili: 'pw' | 'ws')
 //        v64: giftVenue ('park' | 'gazino') + myHolding (elindeki ürün) → "🎁 Ismarla"
 // v150: buttonClassName verilirse düğme ekranın kendi düğme sütununa (ör. şehir) oturur
-export default function NearbyPlayersButton({ others = [], collectionName, variant = 'ws', giftVenue = null, myHolding = null, buttonClassName = null }) {
+// v194: renderTrigger(open) verilirse 👥 düğmesi yerine o çizilir (şehirde üst çubuktaki "N kişi yakında")
+export default function NearbyPlayersButton({ others = [], collectionName, variant = 'ws', giftVenue = null, myHolding = null, buttonClassName = null, renderTrigger = null }) {
   const [open, setOpen] = useState(false);
   const [target, setTarget] = useState(null);
   const [giftBusy, setGiftBusy] = useState(null);
@@ -37,9 +38,13 @@ export default function NearbyPlayersButton({ others = [], collectionName, varia
 
   return (
     <>
-      <button className={buttonClassName || `nearby-btn nearby-btn-${variant}`} style={buttonClassName ? { position: 'relative' } : undefined} onClick={() => setOpen(true)} title="Yakındakiler" aria-label="Yakındaki oyuncular">
-        👥{others.length > 0 && <span className="nearby-count">{others.length}</span>}
-      </button>
+      {renderTrigger ? (
+        renderTrigger(() => setOpen(true))
+      ) : (
+        <button className={buttonClassName || `nearby-btn nearby-btn-${variant}`} style={buttonClassName ? { position: 'relative' } : undefined} onClick={() => setOpen(true)} title="Yakındakiler" aria-label="Yakındaki oyuncular">
+          👥{others.length > 0 && <span className="nearby-count">{others.length}</span>}
+        </button>
+      )}
 
       {open && !target &&
         createPortal(

@@ -559,5 +559,7 @@
   background: var(--bk-card);
   border-color: transparent;
 }
-/* v193: geri düğmesi (‹ Borsa / ‹ mekân) aşağı kaydırınca da üstte kalsın */
-.bank-back-btn { position: sticky; top: 0; z-index: 8; align-self: stretch; justify-content: flex-start; margin: 0 -14px; padding: 0 18px; min-height: 46px; border-radius: 0; background: rgba(10, 14, 24, 0.97); box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35); backdrop-filter: blur(6px); }
+/* v193: geri şeridi (‹ Borsa / ‹ mekân) aşağı kaydırınca da üstte kalır. Kaydırma kabı (.phone-app-body)
+   12px iç boşluklu: şerit tam o kadar taşar (yana kaydırma olmaz) ve başlık çizgisine yapışır (boşluk kalmaz). */
+.bank-back-btn { position: sticky; top: -12px; z-index: 8; align-self: stretch; justify-content: flex-start; box-sizing: border-box; width: auto; margin: -12px -12px 0; padding: 0 16px; min-height: 46px; border-radius: 0; background: rgba(10, 14, 24, 0.97); box-shadow: 0 6px 14px rgba(0, 0, 0, 0.35); backdrop-filter: blur(6px); }
+.phone-app-body:has(.bank-screen) { overflow-x: hidden; } /* v193: bankada sağa sola kayma olmasın */

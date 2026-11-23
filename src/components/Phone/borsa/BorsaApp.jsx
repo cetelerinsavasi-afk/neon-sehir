@@ -11,6 +11,7 @@ import {
   BORSA_CO_BY_ID,
   capOf,
   buyRoom,
+  fmtSharesShort,
   BORSA_TAX_RATE_ID,
   coState,
   holdState,
@@ -390,7 +391,7 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
           </div>
           <div>
             <small>Senin hissen</small>
-            <b>{`${fmtShares(myU)} / ${fmtShares(capOf(co.u))}`}</b>
+            <b className="borsa-mine">{`${fmtSharesShort(myU)} / ${fmtSharesShort(capOf(co.u))}`}</b>
           </div>
           <div>
             <small>Hepsini satarsan</small>
@@ -471,7 +472,7 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
                   <span className="borsa-it-mid">
                     <span className="borsa-it-name">
                       {c.name}
-                      {my > 0 && <span className="borsa-own">{fmtShares(my)}</span>}
+                      {my > 0 && <span className="borsa-own">{fmtSharesShort(my)}</span>}
                     </span>
                     {/* v189: satılmış toplam hisse + hisse başına son 10 günlük ortalama gelir */}
                     <span className="borsa-sub borsa-sub2">

@@ -1355,6 +1355,20 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const gold = player?.gold ?? 0;
   const sus = Math.round(Number(player?.suspicion || 0));
   const susCls = sus >= 60 ? 'hi' : sus >= 30 ? 'mid' : '';
+  // v194: yakındakiler listesi (üst çubuktaki "N kişi yakında" açar) — son mesaj + bildir
+  const nearbyOthers = nearby.map((id) => {
+    // v159: mesajların yanındaki ⚠️ kalktı — oyuncunun şehirdeki son mesajı burada görünür ve
+    // Oyuncu Kartı'ndan bu mesajla birlikte bildirilir (moderasyon mesaj metnini yine görür)
+    const last = [...msgs].reverse().find((m) => m.uid === id && !m.me);
+    const text = last?.text || null;
+    return {
+      uid: id,
+      displayName: namesRef.current.get(id)?.n || 'Oyuncu',
+      avatar: namesRef.current.get(id)?.a || null,
+      chatText: text,
+      reportItem: text ? { label: 'Son mesajını bildir', targetType: 'user', targetPath: `users/${id}`, preview: text } : null,
+    };
+  });
   // v161.2 — günlük iş hakkı bittiyse "hakkın doldu" kutusu araca binince 5 sn görünür, sonra kaybolur
   const jobExhausted = (() => {
     const J = myVeh ? JOBS[myVeh.job] : null;
@@ -1648,18 +1662,33 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
               <b>{zoneName}</b>
               <span>
                 {guest ? (
-                  // v192: misafir — yakındakiler (izleyebiliyorsa) + her an görünen giriş düğmesi
-                  <>
-                    {online > 0 ? `👀 ${online} kişi yakında · ` : '👀 Misafir · '}
-                    <button type="button" className="cs-guest-login" onClick={() => setAskSignIn(true)}>
-                      Giriş yap
+                  // v194: misafir — yakındakiler (izleyebiliyorsa); giriş düğmesi sol üstteki hapta
+                  online > 0 ? (
+                    <button type="button" className="cs-nearby-link" onClick={() => setAskSignIn(true)}>
+                      👥 {online} kişi yakında ›
                     </button>
-                  </>
-                ) : offline ? '⚠️ çevrimdışı' : `${online + 1} kişi yakında`}
+                  ) : (
+                    '👀 Misafir · gezinti'
+                  )
+                ) : offline ? (
+                  '⚠️ çevrimdışı'
+                ) : bootWorld ? (
+                  // v194: "N kişi yakında" tıklanır → Yakındakiler (sağ sütundaki 👥 düğmesi kalktı)
+                  <NearbyPlayersButton
+                    collectionName="city"
+                    others={nearbyOthers}
+                    renderTrigger={(open) => (
+                      <button type="button" className="cs-nearby-link" onClick={open}>
+                        👥 {online + 1} kişi yakında ›
+                      </button>
+                    )}
+                  />
+                ) : (
+                  `${online + 1} kişi yakında`
+                )}
               </span>
             </div>
             )}
-            <button className="hs-view-btn" onClick={toggleView} title="Görünüm">{view === '3d' ? '3D' : '2D'}</button>
             {inStadium && (
               <button className="hs-view-btn cs-futbol-btn" onClick={() => setPanel({ kind: 'futbol' })} title="Futbol">
                 ⚽ Futbol
@@ -1745,10 +1774,20 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
             </button>
           )}
           <canvas className="cs-mini" ref={miniRef} width={260} height={260} onClick={() => setMapOpen(true)} />
+          {/* v194: 3D / 2D üst çubuktan mini haritanın alt kenarına (küçük çip) */}
+          <button type="button" className="cs-mini-view" onClick={toggleView} title="Görünüm">{view === '3d' ? '3D' : '2D'}</button>
           {/* v157 — sol sütun: araba · hızlı koş · hareketler (v157.1: yatay mod kalktı) */}
           {!driving && !riding && (
             <div className="cs-left">
-              <button className="hs-side-btn cs-carbtn" onClick={() => (guest ? setAskSignIn(true) : setPanel({ kind: 'garage' }))} title="Arabalarım">🚗</button>
+              <button className="hs-side-btn cs-carbtn" onClick={() => (guest ? setAskSignIn(true) : setPanel({ kind: 'garage' }))} title="Arabalarım" aria-label="Arabalarım">
+                {/* v194: çizim araba ikonu (düğmenin turkuaz rengini alır) */}
+                <svg className="cs-car-ico" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M5 19.5v-3.2c0-.9.5-1.7 1.3-2.1l2.2-1.1 2.7-4.3c.5-.8 1.3-1.3 2.3-1.3h5.4c.9 0 1.8.5 2.3 1.2l2.9 4.3 2.4 1.1c.8.4 1.4 1.2 1.4 2.1v3.3c0 .8-.6 1.5-1.5 1.5H6.5c-.8 0-1.5-.7-1.5-1.5z" />
+                  <path d="M10.2 12.8h11.7M15.9 7.5v5.3" />
+                  <circle cx="10" cy="21" r="2.6" fill="currentColor" stroke="none" />
+                  <circle cx="22" cy="21" r="2.6" fill="currentColor" stroke="none" />
+                </svg>
+              </button>
               <button className={`hs-side-btn${run ? ' on' : ''}`} onClick={() => { setRun(!run); engineRef.current.setRun(!run); }} title="Hızlı koş">{run ? '🏃' : '🚶'}</button>
               <button className={`hs-side-btn${panel?.kind === 'emotes' ? ' on' : ''}`} onClick={() => setPanel(panel?.kind === 'emotes' ? null : { kind: 'emotes' })} title="Hareketler">😀</button>
               {panel?.kind === 'emotes' && (
@@ -1801,25 +1840,6 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
               </button>
             )}
             <button className="hs-side-btn" onClick={() => (guest ? setAskSignIn(true) : openCamera())} title="Fotoğraf çek">📷</button>
-            {!guest && !driving && bootWorld && (
-              <NearbyPlayersButton
-                buttonClassName="hs-side-btn"
-                collectionName="city"
-                others={nearby.map((id) => {
-                  // v159: mesajların yanındaki ⚠️ kalktı — oyuncunun şehirdeki son mesajı burada görünür ve
-                  // Oyuncu Kartı'ndan bu mesajla birlikte bildirilir (moderasyon mesaj metnini yine görür)
-                  const last = [...msgs].reverse().find((m) => m.uid === id && !m.me);
-                  const text = last?.text || null;
-                  return {
-                    uid: id,
-                    displayName: namesRef.current.get(id)?.n || 'Oyuncu',
-                    avatar: namesRef.current.get(id)?.a || null,
-                    chatText: text,
-                    reportItem: text ? { label: 'Son mesajını bildir', targetType: 'user', targetPath: `users/${id}`, preview: text } : null,
-                  };
-                })}
-              />
-            )}
             {driving && (
               <button className={`hs-side-btn${driveChat ? ' on' : ''}`} onClick={() => setDriveChat((v) => !v)} title="Sohbet">
                 🗨️
@@ -1828,10 +1848,24 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           </div>
           {/* v157.8 — sol üst: şüphe · altın, hemen altında mekân düğmeleri (Evler / galeriler… + soygun);
               liste düğmeleri açılıp kapanır, liste açıkken sağ üstünde "al / aç" düğmesi */}
-          {!driving && (!guest || vui || hqVenue || fleetJob || animalNear || bikeShopNear) && (
+          {!driving && (
             <div className="v3-menu cs-lmenu" ref={lmenuRef}>
-              {!guest && bootWorld && <div className={`v3-badge v3-sus ${susCls}`}>🕵️ Şüphe <b>%{sus}</b></div>}
-              {!guest && bootWorld && <div className="v3-badge cs-gold"><span className="gold-coin-icon" style={{ width: 13, height: 13 }} /> <b>{fmt(gold)}</b></div>}
+              {/* v194: şüphe + altın tek hap — dokununca telefonda Zümrüt Mağazası */}
+              {!guest && bootWorld && (
+                <button type="button" className={`cs-stat-pill ${susCls}`} onClick={() => setPanel({ kind: 'phone', app: 'altin-magazasi' })} title="Zümrüt Mağazası">
+                  <span className="cs-pill-sus">🕵️ %{sus}</span>
+                  <i className="cs-pill-sep" aria-hidden="true" />
+                  <span className="cs-pill-gold">
+                    <span className="gold-coin-icon" style={{ width: 13, height: 13 }} /> {fmt(gold)}
+                  </span>
+                </button>
+              )}
+              {/* v194: misafir — aynı yerde giriş hapı */}
+              {guest && (
+                <button type="button" className="cs-stat-pill guest" onClick={() => setAskSignIn(true)}>
+                  🔓 Giriş yap
+                </button>
+              )}
               {/* v157.9 — karargahların içinde: kendi çetende Çetem + Düzenle, başka çetede o çetenin profili */}
               {hqVenue && (
                 <div className="cs-venue-bar">
@@ -2076,7 +2110,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
             <div className={`hs-chat${chatOpen ? ' expanded' : ''}${driving ? ' cs-drive-chat' : ' cs-chat-always'}`}>
               {/* v151: diğer mekânlardaki gibi — dokununca sohbet açılır (eski mesajlar); şikâyet ⚠️ ile */}
               <div className="hs-chat-feed" ref={chatFeedRef} onClick={() => setChatOpen((v) => !v)}>
-                {(chatOpen ? msgs : msgs.slice(-3)).map((m) => (
+                {(chatOpen ? msgs : msgs.slice(-2)).map((m) => (
                   <div key={m.id} className={`hs-msg${m.me ? ' me' : ''}`}>
                     <b>{m.name}:</b> {m.text}
                     {/* v159: mesaj yanındaki ⚠️ kaldırıldı — şikâyet 👥 Yakındakiler'den (son mesajı ekli) */}
