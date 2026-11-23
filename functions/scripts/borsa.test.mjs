@@ -1,5 +1,5 @@
 // Neon Borsa testleri — v176 kuralları + v189 (sınırsız hisse, küsuratlı birimler, BigInt fiyat,
-// alım birimi, v192 günlük ±10 bant, gece temettü avı engeli, tembel geçiş, 20 gün oyuna girmeyen).
+// alım birimi, v193 alım sınırı (10 hisse / satılmışın 10'da 1'i), gece temettü avı engeli, tembel geçiş, 20 gün oyuna girmeyen).
 // Çalıştır: node --test functions/scripts/borsa.test.mjs
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -28,10 +28,8 @@ import {
   coState,
   pendingAll,
   BORSA_UNITS as U,
-  BORSA_DAY_UNITS,
-  dayRoom,
-  borsaDayKey,
-  dayLimitUnits,
+  capOf,
+  buyRoom,
 } from '../borsa.js';
 import { stateWrite, stateDayKey } from '../stateTreasury.js';
 import { addDayKey } from '../belediyeRates.js';
@@ -142,22 +140,25 @@ test('hisse gösterimi: gereksiz sıfırlar olmadan', () => {
   assert.equal(fmtShares(0), '0');
 });
 
-test('butonlar: v192 günlük bant ve "elindekinin hepsi"', () => {
-  const near = tradeButtons(5 * U, 40 * U, { buy: 0.3 * U, sell: 10 * U });
-  assert.equal(near.small.buy.x, 0.3 * U); // birim 1 hisse ama bugünkü hakka 0,3 kaldı
+test('v193 alım sınırı: 100 satılana kadar 10, sonra satılmışın 10da 1i (aldıkça artar)', () => {
+  assert.equal(capOf(0), 10 * U);
+  assert.equal(capOf(100 * U), 10 * U);
+  assert.equal(capOf(200 * U), 20 * U);
+  assert.equal(buyRoom(0, 50 * U), 10 * U);
+  const r = buyRoom(0, 200 * U); // ~22,2 (kendi alımı toplamı da artırır)
+  assert.ok(r > 22.2 * U && r < 22.3 * U, String(r / U));
+  assert.ok(r <= capOf(200 * U + r), 'aldıktan sonra sınırın içinde');
+  assert.equal(buyRoom(30 * U, 200 * U), 0, 'sınırın üstündeyse alamaz');
+  assert.equal(buyRoom(7 * U, 20 * U), 3 * U);
+});
+
+test('butonlar: alım sınırı ve "elindekinin hepsi"', () => {
+  const near = tradeButtons(5 * U, 9.7 * U);
+  assert.equal(near.small.buy.x, 0.3 * U); // birim 1 hisse ama sınıra 0,3 kaldı
   assert.equal(near.big.buy.x, 0.3 * U);
-  assert.equal(near.big.sell.x, 10 * U); // 40 hissesi var ama bugün 10 satabilir
-  const full = tradeButtons(5 * U, 40 * U, { buy: 0, sell: 0 });
+  const full = tradeButtons(5 * U, 10 * U);
   assert.equal(full.small.buy.x, 0); // pasif
-  assert.equal(full.small.sell.x, 0);
-  assert.equal(tradeButtons(5 * U, 500 * U).small.buy.x, U); // bant verilmezse sınırsız
-  const today = '2026-12-01';
-  assert.deepEqual(dayRoom({ u: 10 * U }, today), { base: 10 * U, lim: 10 * U, buy: 10 * U, sell: 10 * U });
-  assert.deepEqual(dayRoom({ u: 3 * U, dk: today, d0: 10 * U }, today), { base: 10 * U, lim: 10 * U, buy: 17 * U, sell: 3 * U });
-  assert.deepEqual(dayRoom({ u: 25 * U, dk: '2026-11-30', d0: 0 }, today), { base: 25 * U, lim: 10 * U, buy: 10 * U, sell: 10 * U }); // dünkü esas geçersiz
-  assert.equal(borsaDayKey(Date.parse('2026-12-01T23:59:00+03:00')), '2026-12-01');
-  assert.equal(borsaDayKey(Date.parse('2026-12-02T00:00:00+03:00')), '2026-12-02');
-  assert.equal(BORSA_DAY_UNITS, 10 * U);
+  assert.equal(full.small.sell.x, U); // satış serbest
   const few = tradeButtons(200 * U, 0.004 * U); // birim 0,01, elinde 0,004
   assert.equal(few.small.sell.x, 0.004 * U);
   assert.equal(few.big.sell.x, 0.004 * U);
@@ -218,20 +219,20 @@ test('al / sat (1 hisse, eski istemci isteği): altın, hissedar sayısı, ilk i
   await assert.rejects(al('a', 'yok'), /Geçersiz/);
 });
 
-test('küsuratlı alım / satım, günlük bant (0 → en fazla 10) sınıra kadar alır', async () => {
+test('küsuratlı alım / satım, alım sınırına kadar alır, satış serbest', async () => {
   const { user, u, market, al, sat } = setup();
   await user('a', 100_000_000);
   const r = await al('a', 'simitci', 0.5 * U);
   assert.equal(r.x, 0.5 * U);
   assert.equal(r.price, buyQuote(0, 0.5 * U).total);
   await al('a', 'simitci', 9 * U);
-  const r3 = await al('a', 'simitci', 5 * U); // bugün 0,5 kaldı → sadece 0,5 alınır
+  const r3 = await al('a', 'simitci', 5 * U); // 0,5 kaldı → sadece 0,5 alınır
   assert.equal(r3.x, 0.5 * U);
   assert.equal((await u('a')).borsa.simitci.u, 10 * U);
-  await assert.rejects(al('a', 'simitci', 1), /alım hakkın doldu/);
+  await assert.rejects(al('a', 'simitci', 1), /Alım sınırı/);
   const s = await sat('a', 'simitci', 0.25 * U);
   assert.equal(s.x, 0.25 * U);
-  const all = await sat('a', 'simitci', 1000 * U); // elindekinden fazla → hepsi (esas 0, alt sınır 0)
+  const all = await sat('a', 'simitci', 1000 * U); // elindekinden fazla → hepsi
   assert.equal(all.x, 9.75 * U);
   assert.equal((await market()).co.simitci.u, 0);
   await assert.rejects(al('a', 'simitci', -5), /Geçersiz miktar/);
@@ -740,58 +741,19 @@ test('geçiş: eski oyuncu belgesi + eski piyasa saatlik işte de doğru çevril
   assert.equal(pendingAll(await u('a'), m).total, before + 10_000);
 });
 
-// ---------------------------------------------------------------------------
-// v192 — günlük bant: 00:00'daki hissenin ±10'u; gün içi al-sat serbest; her gün yenilenir
-// ---------------------------------------------------------------------------
-test('v192 günlük bant: 10 → gün içinde 0–20, ertesi gün 30a kadar, satış da ±10', async () => {
-  const { user, u, al, sat, set, b, tick } = setup();
-  await user('a', 1e12);
-  await al('a', 'kofteci', 10 * U); // 01.12: 0 → 10
-  set(Date.parse('2026-12-02T09:00:00+03:00')); // yeni gün: esas 10 → 0–20
-  await al('a', 'kofteci', 10 * U); // 20
-  await assert.rejects(al('a', 'kofteci', 1), /alım hakkın doldu/);
-  await sat('a', 'kofteci', 20 * U); // 20 → 0 (gün içi serbest)
-  assert.equal((await u('a')).borsa.kofteci.u, 0);
-  assert.equal((await u('a')).borsa.kofteci.d0, 10 * U, 'sıfırlayınca günün esası tutulur');
-  const r = await al('a', 'kofteci', 50 * U); // 0 → 20'ye kadar
-  assert.equal(r.x, 20 * U);
-  set(Date.parse('2026-12-03T09:00:00+03:00')); // esas 20 → 10–30
-  assert.equal((await al('a', 'kofteci', 50 * U)).x, 10 * U); // 30
-  set(Date.parse('2026-12-04T09:00:00+03:00')); // esas 30 → 20–40
-  const s1 = await sat('a', 'kofteci', 100 * U); // ancak 10 satılır
-  assert.equal(s1.x, 10 * U);
-  await assert.rejects(sat('a', 'kofteci', 1), /satış hakkın doldu/);
-  // tümünü sat da banda uyar
-  await al('a', 'simitci', 4 * U);
-  tick();
-  const all = await b.sellAll('a', {});
-  assert.equal(all.units, 4 * U, 'köftecide satış hakkı bitti, sadece simitçi satılır');
-  assert.equal((await u('a')).borsa.kofteci.u, 20 * U);
-});
-
-test('v193 günlük bant: 10 hisse ya da 1.000.000 altınlık (hangisi azsa), gün içinde fiyat değişse de sabit', async () => {
-  // fiyat 18.500 → 10 hisse = 185.000 altın < 1 milyon → 10 hisse
-  assert.equal(dayLimitUnits(18 * U), 10 * U);
-  // fiyat 250.500 → 1.000.000 / 250.500 ≈ 3,99 hisse
-  const lim = dayLimitUnits(250 * U);
-  assert.ok(lim > 3.9 * U && lim < 4 * U, String(lim / U));
-  const { user, u, al, sat, set, market } = setup();
+test('v193: 200 satılmışken ~22 alınır; başkaları satınca sınırın üstünde kalan alamaz ama satar', async () => {
+  const { user, u, al, sat, market } = setup();
   await user('a', 1e13);
-  // 40 oyuncu köfteci alır, fiyat ~250.000'e çıkar (her biri kendi günlük bandı kadar)
-  for (let i = 0; i < 60 && ((await market())?.co?.kofteci?.u ?? 0) < 250 * U; i++) {
+  for (let i = 0; i < 20; i++) {
     await user(`b${i}`, 1e13);
     await al(`b${i}`, 'kofteci', 10 * U);
   }
-  const S = (await market()).co.kofteci.u;
-  assert.ok(S > 200 * U, `S ${S / U}`);
-  set(Date.parse('2026-12-27T09:00:00+03:00'));
-  const r = await al('a', 'kofteci', 10 * U);
-  assert.equal(r.x, dayLimitUnits(S), `alınan ${r.x / U}`);
-  assert.ok(r.x < 5 * U, 'pahalı hissede 10 değil ~1 milyonluk');
-  const dl = (await u('a')).borsa.kofteci.dl;
-  assert.equal(dl, r.x, 'genişlik günün ilk işleminde sabitlendi');
-  // fiyat düşse de (b satarsa) bugünkü genişlik değişmez
-  await sat('b0', 'kofteci', 10 * U);
-  await assert.rejects(al('a', 'kofteci', U), /alım hakkın doldu/);
-  assert.equal((await u('a')).borsa.kofteci.dl, dl);
+  assert.equal((await market()).co.kofteci.u, 200 * U);
+  const r = await al('a', 'kofteci', 100 * U);
+  assert.ok(r.x > 22.2 * U && r.x < 22.3 * U, `alınan ${r.x / U}`);
+  await assert.rejects(al('a', 'kofteci', U), /Alım sınırı/);
+  for (let i = 0; i < 10; i++) await sat(`b${i}`, 'kofteci', 10 * U); // toplam düşer → a sınırın üstünde
+  await assert.rejects(al('a', 'kofteci', U), /Alım sınırı/);
+  await sat('a', 'kofteci', 1000 * U);
+  assert.ok(!((await u('a')).borsa?.kofteci?.u > 0), 'hepsini sattı');
 });

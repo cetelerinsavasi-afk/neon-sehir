@@ -10,6 +10,7 @@ import { webViewStoreOpen } from '../../lib/playBilling';
 import { useBackClose } from '../../lib/backStack';
 import { useAuth } from '../../contexts/AuthContext';
 import { retryImport } from '../../lib/lazyRetry';
+import { useGoldPreview } from '../../lib/goldPreview'; // v193: borsada basar basmaz altın
 import CappstoreScreen from './CappstoreScreen';
 import { STORE_BY_ID, usePhoneApps } from './cappstoreApps';
 import { PhoneSvgIcon } from './phoneIcons';
@@ -305,6 +306,7 @@ function HomeGrid({ items, edit, setEdit, onOpen, onReorder, onAskDelete }) {
 export default function PhoneScreen({ onClose, initialApp = null, onAppChange = null }) {
   const { user } = useAuth();
   const { player } = usePlayer();
+  const goldPreview = useGoldPreview();
   // v161 — Cappstore: kurulu uygulamalar (Belediye sadece görevliye; görevden çıkınca silinir)
   const staff = Boolean(player?.belediyeSeat);
   const apps = usePhoneApps(user?.uid || null, { staff, playerReady: Boolean(player) });
@@ -460,7 +462,7 @@ export default function PhoneScreen({ onClose, initialApp = null, onAppChange = 
             {openApp === 'parara' && (
               <span className="phone-header-gold">
                 <span className="phone-header-gold-coin" />
-                {(player?.gold ?? 0).toLocaleString('tr-TR')}
+                {((player?.gold ?? 0) + goldPreview).toLocaleString('tr-TR')}
               </span>
             )}
           </span>

@@ -1,4 +1,4 @@
-# v193 — Gerçekçi çarpma + havada süzülme, sohbet, tır fotoğrafı, borsa 1 milyon sınırı
+# v193 — Gerçekçi çarpma + havada süzülme, sohbet, tır fotoğrafı, sade borsa kuralı
 
 v191 ve v192'yi de İÇERİR (ayrıca yükleme). Ayrıntılar: docs/v191-akicilik.md, docs/v192-guncelleme.md.
 Firebase'e yüklenen: `borsaAction`, `cronTick` (borsa) ve `cityAction` (şehir fotoğrafı — dorse açısı).
@@ -32,9 +32,16 @@ Sol alttaki sohbete dokunup büyütünce (ve yeni mesaj gelince) en yeni mesajla
 Fotoğrafta dorse hep düz çiziliyordu (tır tek parça kamyon gibi görünüyordu). Artık dorsenin açısı da
 fotoğrafa girer (`th`, sadece görüntü). Sunucu: `functions/cityPhoto.js` (cityAction yeniden yüklenir).
 
-## 5. Borsa: günlük bant = 10 hisse YA DA 1.000.000 altınlık hisse (hangisi azsa)
-Günün ilk işlemindeki fiyatla bir kez hesaplanır, gün boyu sabit kalır (fiyat oynadıkça hak değişmez).
-Örnek: hisse 250.000 altınsa o gün ±~4 hisse. Bugünkü fiyatlarda (≤ 100.000) fark yok: 10 hisse.
+## 5. Borsa — sade kural (v192'deki günlük bant YAYINA ÇIKMADAN kaldırıldı)
+- **Satış her zaman serbest.**
+- **Alım sınırı** (kişi başı, mekân başı): toplam satılmış hisse 100'e kadar 10 hisse; sonra satılmış
+  hissenin 10'da 1'i. Kendi alımın da toplamı artırır (200 satılmışken boştan ~22 alınır). Günlük sınır yok.
+- Başkaları satınca sınırın üstünde kalırsan yeni alım yapamazsın, satabilirsin.
+- "Senin hissen": `12,5 / 22,2` (elindeki / sınırın). Sınır dolunca düğmede sadece "Alım sınırı".
+- Uzun notlar kalktı; hata yazıları kısa ("Alım sınırı", "Yetersiz altın", "Fiyat değişti", "Çok hızlı").
+- Düğmeye bastıkça telefonun üstündeki altın hemen azalır / artar (sunucu cevabı beklenmez).
+- "‹ Borsa / ‹ mekân" geri şeridi aşağı kaydırınca da üstte kalır.
+- Sunucu: `functions/borsa.js` (capOf, buyRoom). Test: `functions/scripts/borsa.test.mjs`.
 
 ## Kontrol listesi (yayından sonra)
 - [ ] Duvara önden çarp: araba geri sekiyor, burun dalıp toparlanıyor, kıvılcım, ekran kenarı kızarıyor.
@@ -44,6 +51,8 @@ Günün ilk işlemindeki fiyatla bir kez hesaplanır, gün boyu sabit kalır (fi
 - [ ] Havada gaz bırak-bas → burun iniyor; fren → kalkıyor; direksiyon → yatıyor.
 - [ ] Sohbete dokun: en yeni mesajlar görünüyor.
 - [ ] Tırla dönerken fotoğraf çek: dorse açılı.
-- [ ] Borsa detayında "günde 10 hisse ya da 1.000.000 altınlık hisse" notu.
+- [ ] Borsa: 10 hisse al → "Alım sınırı"; "Senin hissen 10 / 10"; satış serbest.
+- [ ] Düğmeye art arda bas: üstteki altın hemen düşüyor.
+- [ ] Borsa detayında aşağı kaydır: "‹ mekân" şeridi üstte kalıyor.
 
 Geri dönüş: `_v193\geri-al-v193.bat`.

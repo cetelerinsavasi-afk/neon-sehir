@@ -4,7 +4,7 @@ v191'i (kalabalıkta kasma, harita açıkken atma, takılma kaydı) de İÇERİR
 Firebase'e yüklenen: `borsaAction` + `cronTick` fonksiyonları (borsa). Realtime Database / Firestore
 kuralları DEĞİŞMEDİ. Oyuncu verisi bozulmaz (borsa belgesine iki yeni alan eklenir: dk, d0).
 
-## 1. Neon Borsa — sınırsız hisse, günlük ±10
+## 1. Neon Borsa — sınırsız hisse, günlük ±10  (⚠️ v193'te KALDIRILDI — yerine sade kural: docs/v193-guncelleme.md §5)
 - Kişi başı 20 hisse sınırı kalktı.
 - Her mekânda günün ilk işlemindeki (= 00:00'daki) hisse sayısı esastır; gün içinde hissen esas ±10
   arasında serbestçe alınıp satılır. Örnek: 00:00'da Köfteci 10 → gün içinde 0–20 arası istediğin

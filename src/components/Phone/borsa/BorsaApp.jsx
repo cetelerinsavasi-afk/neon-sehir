@@ -9,12 +9,8 @@ import SignInPrompt from '../../SignInPrompt/SignInPrompt';
 import { VendorAvatar, VENDOR_LOOK } from './vendorArt';
 import {
   BORSA_CO_BY_ID,
-  BORSA_DAY_LIMIT,
-  borsaDayKey,
-  dayBase,
-  dayRoom,
-  dayLimit,
-  BORSA_DAY_GOLD,
+  capOf,
+  buyRoom,
   BORSA_TAX_RATE_ID,
   coState,
   holdState,
@@ -33,6 +29,7 @@ import {
   sellQuote,
 } from '../../../../functions/borsa.js';
 import { rateFrac } from '../../../../functions/belediyeRates.js';
+import { setGoldPreview } from '../../../lib/goldPreview';
 import './BorsaApp.css';
 
 // =============================================================================
@@ -132,7 +129,15 @@ function BigChart({ points, color }) {
   );
 }
 
-const errText = (err) => (String(err?.message || '').startsWith('price-changed') ? 'Fiyat değişti, tekrar bak' : err?.message || 'İşlem yapılamadı.');
+// v193: kısa, net hata yazıları
+const errText = (err) => {
+  const m = String(err?.message || '');
+  if (m.startsWith('price-changed')) return 'Fiyat değişti';
+  if (m.startsWith('Çok hızlı')) return 'Çok hızlı';
+  if (m.startsWith('Yetersiz altın')) return 'Yetersiz altın';
+  if (m.startsWith('Alım sınırı')) return 'Alım sınırı';
+  return m && m.length <= 40 ? m : 'İşlem yapılamadı';
+};
 const newPrice = (err) => {
   const m = String(err?.message || '').match(/^price-changed:(\d+)/);
   return m ? Number(m[1]) : null;
@@ -170,15 +175,6 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
 
   // ---- iyimser gösterim -------------------------------------------------------
   const realHoldU = (id) => holdState(player, id).u;
-  // v192 — günlük bant: 00:00'daki hissenin ±10'u (esas, sunucunun yazdığı ya da bugün henüz işlem
-  // yoksa elindeki). Yolda olan (iyimser) işlem de hesaba katılır.
-  const today = borsaDayKey(Date.now());
-  const roomOf = (id) => {
-    const h = holdState(player, id);
-    const coU = coState(market, id).u;
-    return dayRoom({ u: holdU(id), dk: today, d0: dayBase(h, today), dl: dayLimit(h, today, coU) }, today);
-  };
-  const sellableU = (id) => Math.min(realHoldU(id), dayRoom(holdState(player, id), today, coState(market, id).u).sell);
   // sunucu cevabı geldi ve oyuncu belgesi de ona ulaştıysa iyimser kaydı kaldır
   useEffect(() => {
     if (pend?.phase !== 'ack') return undefined;
@@ -209,23 +205,22 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
     if (!pend || g !== pend.baseGold) return g;
     return g + (pend.op === 'al' ? -pend.cost : pend.cost);
   })();
+  // v193: telefonun üstündeki altın da basar basmaz değişsin
+  const goldDelta = goldNow - (player?.gold ?? 0);
+  useEffect(() => setGoldPreview(goldDelta), [goldDelta]);
+  useEffect(() => () => setGoldPreview(0), []);
 
   const cos = useMemo(() => sortCos(view), [view]);
   const pend$ = useMemo(() => pendingAll(player, market), [player, market]);
   const worth = useMemo(() => {
     const rows = sortCos(market)
       .map((c) => {
-        const h = holdState(player, c.id);
-        if (h.u <= 0) return null;
-        const coU = coState(market, c.id).u;
-        const su = Math.min(h.u, dayRoom(h, today, coU).sell); // v192: bugün satılabilen
-        return { id: c.id, name: c.name, u: h.u, value: sellAllValue(h.u, coU), su, sv: su > 0 ? sellAllValue(su, coU) : 0 };
+        const u = holdState(player, c.id).u;
+        return u > 0 ? { id: c.id, name: c.name, u, value: sellAllValue(u, coState(market, c.id).u) } : null;
       })
       .filter(Boolean);
-    const sum = (k) => rows.reduce((a, r) => a + r[k], 0);
-    return { rows, total: sum('value'), units: sum('u'), sellTotal: sum('sv'), sellUnits: sum('su'), ...marketGainAll(player, market) };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [player, market, today]);
+    return { rows, total: rows.reduce((a, r) => a + r.value, 0), units: rows.reduce((a, r) => a + r.u, 0), ...marketGainAll(player, market) };
+  }, [player, market]);
   const [sellAsk, setSellAsk] = useState(false);
   useBackClose(sellAsk, () => setSellAsk(false));
   if (!user) return <SignInPrompt message="Neon Borsa'yı kullanmak için giriş yapmalısın." />;
@@ -294,7 +289,7 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
 
   // tek mekânda hepsini sat (iki adımlı onay; fiyat değiştiyse yeni tutarla tekrar sorar)
   const askCoSell = (co) => {
-    const u = sellableU(co); // v192: bugünkü satış hakkı kadar
+    const u = realHoldU(co);
     if (u <= 0 || pend) return;
     setCoSell({ co, net: sellAllValue(u, coState(market, co).u), changed: false });
   };
@@ -326,8 +321,7 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
     const co = coState(view, sel);
     const myU = holdU(sel);
     const pts = series(co);
-    const room = roomOf(sel);
-    const btn = tradeButtons(co.u, myU, room);
+    const btn = tradeButtons(co.u, myU);
     const n = RANGES.find((r) => r.id === range)?.n || 25;
     const lastPs = co.ps.length ? co.ps[co.ps.length - 1] : null;
     const queued = pend && pend.co === sel && pend.phase === 'queued' ? pend : null;
@@ -335,12 +329,12 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
     const buyBtn = (k) => {
       const b = btn[k].buy;
       const blockedOp = queued && queued.op !== 'al';
-      const full = room.buy <= 0; // v192: bugünkü alım hakkı doldu
+      const full = buyRoom(myU, co.u) <= 0; // v193: kişi başı alım sınırı
       const poor = b.x > 0 && goldNow < b.total;
       return (
         <button key={`al-${k}`} className="borsa-btn gr" disabled={!b.x || poor || otherBusy || blockedOp} onClick={() => press(sel, 'al', b.x, b.total)}>
-          {full ? 'Bugünkü alım hakkı doldu' : `${fmtShares(b.x)} hisse al`}
-          <small>{full ? "00:00'da yenilenir" : fmt(b.total)}</small>
+          {full ? 'Alım sınırı' : `${fmtShares(b.x)} hisse al`}
+          <small>{full ? '—' : fmt(b.total)}</small>
         </button>
       );
     };
@@ -349,8 +343,8 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
       const blockedOp = queued && queued.op !== 'sat';
       return (
         <button key={`sat-${k}`} className="borsa-btn rd" disabled={!s.x || otherBusy || blockedOp} onClick={() => press(sel, 'sat', s.x, s.net)}>
-          {s.x ? `${fmtShares(s.x)} hisse sat` : myU > 0 ? 'Bugünkü satış hakkı doldu' : 'Hissen yok'}
-          <small>{s.x ? `+${fmt(s.net)}` : myU > 0 ? "00:00'da yenilenir" : '—'}</small>
+          {s.x ? `${fmtShares(s.x)} hisse sat` : 'Hissen yok'}
+          <small>{s.x ? `+${fmt(s.net)}` : '—'}</small>
         </button>
       );
     };
@@ -377,9 +371,6 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
           <Change pct={change24h(co.ch, chartPrice(co.u))} />
           <span className="borsa-sub"> son 24 saat</span>
         </div>
-        <p className="borsa-note borsa-day">
-          {`Bugünkü hakkın: ${fmtShares(room.buy)} hisse al · ${fmtShares(room.sell)} hisse sat. Gün içinde hissen, 00:00'daki ${fmtShares(dayBase(holdState(player, sel), today))} hissenin en fazla ${fmtShares(room.lim)} üstüne çıkabilir, ${fmtShares(room.lim)} altına inebilir (günde ${BORSA_DAY_LIMIT} hisse ya da ${fmt(BORSA_DAY_GOLD)} altınlık hisse, hangisi azsa). Gece 00:00'da yenilenir.`}
-        </p>
         <BigChart points={pts.slice(-n)} color={VENDOR_LOOK[sel]?.c || '#19e8ff'} />
         <div className="borsa-rng" role="group" aria-label="Grafik aralığı">
           {RANGES.map((r) => (
@@ -399,7 +390,7 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
           </div>
           <div>
             <small>Senin hissen</small>
-            <b>{fmtShares(myU)}</b>
+            <b>{`${fmtShares(myU)} / ${fmtShares(capOf(co.u))}`}</b>
           </div>
           <div>
             <small>Hepsini satarsan</small>
@@ -414,8 +405,8 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
         {sellBtn('small')}
         {buyBtn('big')}
         {sellBtn('big')}
-        <button className="borsa-btn rd-gh wide" disabled={!sellableU(sel) || Boolean(busy) || Boolean(pend)} onClick={() => askCoSell(sel)}>
-          {pend && pend.co === sel && pend.phase !== 'ack' ? '…' : sellableU(sel) < realHoldU(sel) ? `Bugün satabildiğin kadar sat (${fmtShares(sellableU(sel))})` : 'Hepsini sat'}
+        <button className="borsa-btn rd-gh wide" disabled={!realHoldU(sel) || Boolean(busy) || Boolean(pend)} onClick={() => askCoSell(sel)}>
+          {pend && pend.co === sel && pend.phase !== 'ack' ? '…' : 'Hepsini sat'}
         </button>
       </div>
     );
@@ -457,8 +448,8 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
               </b>
               <Gain gain={worth.gain} pct={worth.pct} />
             </div>
-            <button className="borsa-btn rd-gh" disabled={Boolean(busy) || worth.sellUnits <= 0} onClick={() => setSellAsk(true)}>
-              {worth.sellUnits < worth.units ? 'Satabildiğin kadar sat' : 'Hepsini sat'}
+            <button className="borsa-btn rd-gh" disabled={Boolean(busy)} onClick={() => setSellAsk(true)}>
+              Hepsini sat
             </button>
           </div>
         )}
@@ -506,7 +497,7 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
 
   const split = splitCollect(pend$.total, taxFrac, player?.debtToState);
   const sellAllNow = () =>
-    run('satHepsi', { op: 'satHepsi', expect: worth.sellTotal }, (r) => {
+    run('satHepsi', { op: 'satHepsi', expect: worth.total }, (r) => {
       setSellAsk(false);
       return `${fmtShares(r.units)} hisse satıldı · +${fmt(r.total)}`;
     });
@@ -519,19 +510,18 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
         <div className="borsa-shade" onClick={(e) => e.target === e.currentTarget && !busy && setCoSell(null)}>
           <div className="borsa-sheet" role="dialog" aria-label="Hepsini sat">
             <div className="borsa-grab" />
-            <h3>{sellableU(coSell.co) < realHoldU(coSell.co) ? `${coSellMeta.name}: bugün satabileceğin ${fmtShares(sellableU(coSell.co))} hisse satılsın mı?` : `${coSellMeta.name} hisselerinin hepsi satılsın mı?`}</h3>
-            {coSell.changed && <p className="borsa-note bad">Fiyat bu arada değişti. Yeni tutara bak.</p>}
+            <h3>{`${coSellMeta.name} hisselerinin hepsi satılsın mı?`}</h3>
+            {coSell.changed && <p className="borsa-note bad">Fiyat değişti</p>}
             <div className="borsa-ln">
               <span className="borsa-ln-n">
                 <VendorAvatar id={coSell.co} size={30} />
-                {`${fmtShares(sellableU(coSell.co))} hisse`}
+                {`${fmtShares(realHoldU(coSell.co))} hisse`}
               </span>
             </div>
             <div className="borsa-ln tot">
               <span>Hesabına geçecek</span>
               <span className="borsa-gold">{`+${fmt(coSell.net)}`}</span>
             </div>
-            {pend$.by[coSell.co] > 0 && <p className="borsa-note">Biriken gelirin silinmez, sonra toplayabilirsin.</p>}
             <div className="borsa-row">
               <button className="borsa-btn gh" disabled={Boolean(busy)} onClick={() => setCoSell(null)}>
                 Vazgeç
@@ -543,34 +533,30 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
           </div>
         </div>
       )}
-      {sellAsk && worth.sellUnits > 0 && (
+      {sellAsk && worth.units > 0 && (
         <div className="borsa-shade" onClick={(e) => e.target === e.currentTarget && !busy && setSellAsk(false)}>
           <div className="borsa-sheet" role="dialog" aria-label="Hepsini sat">
             <div className="borsa-grab" />
-            <h3>{worth.sellUnits < worth.units ? 'Bugün satabileceğin hisseler satılsın mı?' : 'Tüm hisseler satılsın mı?'}</h3>
-            {worth.sellUnits < worth.units && <p className="borsa-note">{`Günlük sınır: her mekânda 00:00'daki hissenin en fazla ${BORSA_DAY_LIMIT} hisse (ya da ${fmt(BORSA_DAY_GOLD)} altınlık hisse, hangisi azsa) eksiğine kadar satılır.`}</p>}
-            {worth.rows
-              .filter((w) => w.su > 0)
-              .map((w) => (
-                <div key={w.id} className="borsa-ln">
-                  <span className="borsa-ln-n">
-                    <VendorAvatar id={w.id} size={30} />
-                    {`${w.name} · ${fmtShares(w.su)}${w.su < w.u ? ` (elinde ${fmtShares(w.u)})` : ''}`}
-                  </span>
-                  <span>{fmt(w.sv)}</span>
-                </div>
-              ))}
+            <h3>Tüm hisseler satılsın mı?</h3>
+            {worth.rows.map((w) => (
+              <div key={w.id} className="borsa-ln">
+                <span className="borsa-ln-n">
+                  <VendorAvatar id={w.id} size={30} />
+                  {`${w.name} · ${fmtShares(w.u)}`}
+                </span>
+                <span>{fmt(w.value)}</span>
+              </div>
+            ))}
             <div className="borsa-ln tot">
               <span>Hesabına geçecek</span>
-              <span className="borsa-gold">{fmt(worth.sellTotal)}</span>
+              <span className="borsa-gold">{fmt(worth.total)}</span>
             </div>
-            {pend$.total > 0 && <p className="borsa-note">Biriken gelirin silinmez, sonra toplayabilirsin.</p>}
             <div className="borsa-row">
               <button className="borsa-btn gh" disabled={Boolean(busy)} onClick={() => setSellAsk(false)}>
                 Vazgeç
               </button>
               <button className="borsa-btn rd" disabled={Boolean(busy)} onClick={sellAllNow}>
-                {busy === 'satHepsi' ? '…' : worth.sellUnits < worth.units ? 'Sat' : 'Hepsini sat'}
+                {busy === 'satHepsi' ? '…' : 'Hepsini sat'}
               </button>
             </div>
           </div>
