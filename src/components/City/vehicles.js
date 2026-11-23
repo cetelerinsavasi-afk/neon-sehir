@@ -11,6 +11,7 @@
 // =============================================================================
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { applyVehicleMods, sanitizeMods, modProfile, MOTO_KEY, TAXI_TYPES } from '../../../functions/vehicleMods.js';
 import { CATALOG_MAP } from '../HouseScreen/houseCatalog.js';
 import { VEHICLE_CATALOG } from '../../../functions/catalogData.js';
@@ -24,6 +25,11 @@ function mat(n, t = 0.6, e = 0, i) {
 let CHROME = () => mat('#e2e2e6', 0.1, 1),
   PI = Math.PI,
   texCache = new Map();
+// v187: kapı numarası çizilecek mi (oyuncunun numarası ya da yarış şeridinin varsayılan 77'si).
+// Kendi fabrika numarası olan araçlar (GT Yarış'ın 77'si) bu durumda kendininkini çizmez — iki
+// numara üst üste binmesin; oyuncu numarayı kaldırınca fabrika numarası geri gelir.
+const NO_SIDE_NO_LIVERY = ['polis', 'ambulans', 'taksi', 'kurye', 'yolyardim'];
+const sideNoText = (cfg) => (cfg && !NO_SIDE_NO_LIVERY.includes(cfg.livery) ? cfg.sideNo || (cfg.livery === 'yaris' ? '77' : '') : '');
 function canvasTex(n, t, e, i) {
   if (texCache.has(n)) return texCache.get(n);
   let s = document.createElement('canvas');
@@ -553,7 +559,7 @@ let RUBBER = () => mat('#121212', 0.92, 0),
         seat: [-0.3, 0.65],
         kidney: true,
         dualExhaust: true,
-        extra: (n) => {
+        extra: (n, _paint, _dark, cfg) => {
           let t = mat('#0e0e10', 0.3, 0.5);
           (box(n, 0.45, 0.04, 2.05, -2.1, 1.25, 0, t),
             [-0.6, 0.6].forEach((s) => box(n, 0.14, 0.33, 0.03, -2.05, 1.06, s, t)),
@@ -562,6 +568,7 @@ let RUBBER = () => mat('#121212', 0.92, 0),
               (box(n, 1.5, 0.006, 0.12, 1.55, 0.76, -0.18 + r * 0.13, mat(s, 0.4)),
                 [-1, 1].forEach((a) => box(n, 2.6, 0.09, 0.006, -0.3, 0.62 - r * 0.1, a * 1.012, mat(s, 0.4))));
             }));
+          if (sideNoText(cfg)) return; // v187: oyuncunun numarası (ya da yarış şeridi 77'si) çizilecek
           let i = canvasTex('no77', 128, 128, (s, r) => {
             ((s.fillStyle = '#fff'),
               s.beginPath(),
@@ -926,7 +933,7 @@ function buildCarModel(n, t = defaultCarConfig(n)) {
         j = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.16, 14), CHROME());
       ((j.rotation.z = PI / 2), j.position.set(-m / 2 - v + 0.02, p + 0.02, gt * (y / 2 - 0.35) + (Math.abs(J) - 1) * 0.5 * gt), u.add(j));
     }),
-    i.extra && i.extra(u, s, r));
+    i.extra && i.extra(u, s, r, t));
   let st = t.acc || {},
     Q = mat('#0e0e10', 0.35, 0.5),
     ht = -m / 2 - v,
@@ -1065,21 +1072,42 @@ function buildCarModel(n, t = defaultCarConfig(n)) {
     [-1, 1].forEach((gt) => decal(u, textTex(`lv${B}`, J, { fg: '#fff', font: '900 70px Arial', stroke: '#111' }), M, 0.24, vt, A, gt * (y / 2 + 0.012), gt));
   }
   if (B === 'yaris') {
-    let J = mat(t.paint.toLowerCase() === '#f4f4f2' || t.paint.toLowerCase() === '#f2f2ef' ? '#c8141e' : '#f4f4f2', 0.4),
-      gt = 26;
+    // v187: şeridin yüksekliği SADECE gövdenin üst çizgisinden (spec.top) hesaplanır. Eskiden b()
+    // tüm kesit şeklini tarıyordu; çamurluk kemerinin tepesi kaputtan yüksek olan araçlarda (Spor
+    // Coupe, GT Coupe, Süper Spor, GT Yarış, Cabrio) şerit kemer hizasında havada kalıyordu.
+    // Daha kısa parçalar (40) kavisli kaput/bagajda gövdeye daha sıkı oturur; hepsi TEK örgüde
+    // birleştirilir (eskiden 52 ayrı parça = 52 çizim çağrısı, şimdi 1).
+    let sb0 = roofLineFn(pathShape([['M', m / 2 - 0.12, p], ...i.top]), 0),
+      // pah (bevel) yüzeye dik büyür: eğimli yerde dikey kalınlığı v'den fazladır
+      sb = (x) => sb0(x) + v * Math.hypot(1, (sb0(x + 0.02) - sb0(x - 0.02)) / 0.04),
+      J = mat(t.paint.toLowerCase() === '#f4f4f2' || t.paint.toLowerCase() === '#f2f2ef' ? '#c8141e' : '#f4f4f2', 0.4),
+      gt = 40,
+      sg = [],
+      sm = new THREE.Matrix4(),
+      sq = new THREE.Quaternion(),
+      sz = new THREE.Vector3(0, 0, 1),
+      s1 = new THREE.Vector3(1, 1, 1);
     for (let j = 0; j < gt; j++) {
       let mt = -m / 2 + 0.15 + ((m - 0.3) * j) / gt,
         Pt = -m / 2 + 0.15 + ((m - 0.3) * (j + 1)) / gt,
         Ut = (mt + Pt) / 2;
       if (Ut < G[0] + 0.05 && Ut > yt - 0.05) continue;
-      let Tt = b(mt),
-        Qt = b(Pt),
+      let Tt = sb(mt),
+        Qt = sb(Pt),
         $t = Math.hypot(Pt - mt, Qt - Tt);
-      [-0.16, 0.16].forEach((be) => box(u, $t + 0.01, 0.006, 0.18, Ut, (Tt + Qt) / 2 + 0.004, be, J, Math.atan2(Qt - Tt, Pt - mt)));
+      sq.setFromAxisAngle(sz, Math.atan2(Qt - Tt, Pt - mt));
+      [-0.16, 0.16].forEach((be) => {
+        let bg = new THREE.BoxGeometry($t + 0.01, 0.006, 0.18);
+        (bg.applyMatrix4(sm.compose(new THREE.Vector3(Ut, (Tt + Qt) / 2 + 0.004, be), sq, s1)), sg.push(bg));
+      });
+    }
+    if (sg.length) {
+      let sMesh = new THREE.Mesh(mergeGeometries(sg, false), J);
+      (sg.forEach((g) => g.dispose()), (sMesh.userData.raceStripe = true), u.add(shade(sMesh)));
     }
   }
-  let tt = t.sideNo || (B === 'yaris' ? '77' : '');
-  if (tt && !['polis', 'ambulans', 'taksi', 'kurye', 'yolyardim'].includes(B)) {
+  let tt = sideNoText(t);
+  if (tt) {
     let J = canvasTex(`no|${tt}`, 128, 128, (gt, j) => {
       ((gt.fillStyle = '#fff'),
         gt.beginPath(),

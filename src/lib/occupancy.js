@@ -15,7 +15,7 @@
 //   yer: 'park' · 'i~{mekân}' (banka, karakol…) · 'h~{evId}'
 // Her kategoride (park / iç mekân / ev) oyuncunun en fazla 1 kaydı olur — Firestore'daki
 // parkPresence / interiorPresence / housePresence belgeleriyle birebir aynı anlam.
-// RTDB'ye ulaşılamazsa hiçbir şey bozulmaz: sayımlar eski yola (stats/presence) döner.
+// RTDB'ye ulaşılamazsa hiçbir şey bozulmaz: sayılar görünmez (v188: Firestore yedeği yok).
 // Kurallar: database.rules.json › occ
 // =============================================================================
 import { useEffect, useMemo, useState } from 'react';
@@ -268,12 +268,12 @@ export function useOccCounts(enabled = true) {
       if (s.state !== 'loading') got = true;
       setCounts(s.state === 'ok' ? s.counts || {} : s.state === 'off' ? null : undefined);
     });
-    // RTDB 6 sn'de cevap vermezse eski yola (stats/presence) düş
+    // RTDB 6 sn'de cevap vermezse "yok" say (v188: Firestore yedeği yok; sonra gelirse sayılar görünür)
     const t = setTimeout(() => !got && setCounts(null), 6000);
     return () => {
       clearTimeout(t);
       off();
     };
   }, [enabled]);
-  return counts; // undefined: yükleniyor · null: RTDB yok (eski yol) · {}: sayılar
+  return counts; // undefined: yükleniyor · null: RTDB yok · {}: sayılar
 }

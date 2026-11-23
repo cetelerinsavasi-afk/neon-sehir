@@ -9,6 +9,8 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 import { startServerClockSync } from './lib/serverClockSync.js'
+import { installTapGuard } from './lib/tapGuard.js'
+import { installForceUpdate } from './lib/forceUpdate.js'
 
 startServerClockSync()
 
@@ -83,6 +85,12 @@ if (typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').ma
     if (!textOk(e.target)) e.preventDefault();
   });
 }
+
+// v187 — dokunup vazgeçme: parmak arayüz butonunun dışına kayıp kalkarsa tıklama sayılmaz
+// (oyun içi kontroller hariç, bkz. src/lib/tapGuard.js)
+installTapGuard()
+// v188 — zorunlu güncelleme: neon-flags.json minBuild > BUILD ise oyuncu boştayken yenile
+installForceUpdate()
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

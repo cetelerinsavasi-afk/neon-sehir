@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useMessages } from '../../hooks/useMessages';
-import { useGlobalChat } from '../../hooks/useGlobalChat';
+import { useBadges } from '../../lib/badgeFeed'; // v188: son sohbet mesajı RTDB'den
 import { useBlocks } from '../../contexts/BlocksContext';
 import { useSocial } from '../../contexts/SocialContext';
 import { isDmOpen, openDmWith } from '../../lib/chatsappNav';
@@ -16,7 +16,7 @@ import './TopNotificationBanner.css';
 export default function TopNotificationBanner({ onOpenPhone }) {
   const { user } = useAuth();
   const { messages } = useMessages({ max: 1 }); // v90.1: şerit sadece en yeni SMS'e bakar
-  const { messages: chatMessages } = useGlobalChat({ max: 1 });
+  const badges = useBadges(Boolean(user)); // v188: eskiden globalChat (limit 1) Firestore dinleyicisi
   const { isBlocked } = useBlocks();
   const [toast, setRawToast] = useState(null);
   // v160.7: soygun videosu oynarken gelen bildirim bekletilir, video bitince gösterilir
@@ -78,20 +78,24 @@ export default function TopNotificationBanner({ onOpenPhone }) {
     setToast({ type: 'sms', text: latest.text || 'Yeni bir mesajın var.' });
   }, [messages, user]);
 
+  const badgeReady = badges.state === 'ok';
+  const chatSinceRef = useRef(Date.now());
+  const latestChat = badges.chat;
   useEffect(() => {
-    const latest = chatMessages[chatMessages.length - 1];
+    if (!badgeReady) return; // ilk gerçek değer gelmeden "yeni" sayma (mevcut son mesaj şerit çıkarmaz)
+    const latest = latestChat;
     if (lastChatIdRef.current === undefined) {
       lastChatIdRef.current = latest?.id ?? null;
       return;
     }
     if (latest && latest.id !== lastChatIdRef.current) {
       lastChatIdRef.current = latest.id;
-      // UGC D2: engellenen/gizlenen mesaj için şerit gösterilmez
-      if (latest.uid !== user?.uid && !latest.hidden && !isBlocked(latest.uid)) {
-        setToast({ type: 'chat', text: `${latest.displayName}: ${latest.text}` });
+      // UGC D2: engellenen oyuncunun mesajı için şerit gösterilmez
+      if (latest.uid !== user?.uid && !isBlocked(latest.uid) && latest.at > chatSinceRef.current - 5000) {
+        setToast({ type: 'chat', text: `${latest.name}: ${latest.text}` });
       }
     }
-  }, [chatMessages, user, isBlocked]);
+  }, [badgeReady, latestChat, user, isBlocked]);
 
   // v146 — özel mesajlar (ChatsApp DM) da üstten bildirim olarak gelir. Mevcut
   // dinleyici (SocialContext dmChats) kullanılır; ilk görüntü "yeni" sayılmaz.

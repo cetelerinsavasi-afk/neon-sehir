@@ -39,7 +39,7 @@ if (meter) {
     if (!Object.keys(s.b).length) return;
     sending = true;
     seq += 1;
-    const payload = { v: 165, sid, seq, ms: s.ms, vis: s.vis, rate: READ_STATS_RATE, app, b: s.b };
+    const payload = { v: 187, sid, seq, ms: s.ms, vis: s.vis, rate: READ_STATS_RATE, app, b: s.b };
     Promise.all([import('firebase/functions'), import('../../firebase')])
       .then(([f, fb]) => f.httpsCallable(fb.functions, 'clientReadStats')(payload))
       .catch(() => {})
@@ -48,6 +48,11 @@ if (meter) {
       });
   };
   setInterval(send, REPORT_MS);
+  // v187: kısa oturumlar da sayılsın — ilk özet 3 dk sonra (sonra 10 dk'da bir). Sadece log fonksiyonu
+  // çağrılır; Firestore okuması/yazması yok. Tarayıcı dışı testlerde süreç beklemesin diye unref.
+  const first = setTimeout(send, 3 * 60 * 1000);
+  first?.unref?.();
+  window.addEventListener?.('pagehide', send);
   document.addEventListener('visibilitychange', () => {
     const vis = document.visibilityState !== 'hidden';
     meter.visibility(vis);

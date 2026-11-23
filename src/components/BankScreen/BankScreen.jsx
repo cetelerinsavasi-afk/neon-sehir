@@ -557,7 +557,7 @@ const CARDS = [
   { id: 'cezalar', label: 'Cezalar', desc: 'Devlete borcunu gör ve öde' },
 ];
 const TAB_TITLE = { yatirimlar: 'Yatırımlar', borsa: 'Borsa', krediler: 'Krediler', cezalar: 'Cezalar' };
-const hasBorsa = (p) => BORSA_CO_IDS.some((id) => { const h = holdState(p, id); return h.n > 0 || h.p > 0; });
+const hasBorsa = (p) => BORSA_CO_IDS.some((id) => { const h = holdState(p, id); return h.u > 0 || h.pq > 0n; }); // v189: birimler
 
 // kart numarası: oyuncuya sabit 4 hane (süs)
 const cardNo = (id) => String([...String(id || 'neon')].reduce((a, ch) => (a * 31 + ch.charCodeAt(0)) % 10000, 7)).padStart(4, '0');
@@ -571,8 +571,8 @@ function BankHome({ player, prices, onOpen }) {
     if (!own || !market) return { value: 0, pend: 0 };
     let value = 0;
     for (const id of BORSA_CO_IDS) {
-      const n = holdState(player, id).n;
-      if (n > 0) value += sellAllValue(n, coState(market, id).n);
+      const u = holdState(player, id).u; // v189: birim (1 hisse = 1.000.000)
+      if (u > 0) value += sellAllValue(u, coState(market, id).u);
     }
     return { value, pend: pendingAll(player, market).total };
   }, [own, player, market]);

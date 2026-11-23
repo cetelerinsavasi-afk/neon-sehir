@@ -8,7 +8,7 @@
 // Not: enforceReadOnly Firestore prototiplerini geçici olarak kilitler — yalnızca
 // tek başına çalışan yerel betikte kullanılır, Cloud Functions içinde ÇAĞRILMAZ.
 // =============================================================================
-import { BORSA_CO_IDS, BORSA_DOC, coState, holdState } from './borsa.js'; // v176 Neon Borsa
+import { BORSA_CO_IDS, BORSA_DOC, holdState, releaseMarket, coDoc, marketMigrationPatch, fmtShares, BORSA_MARKET_V } from './borsa.js'; // v176 Neon Borsa · v189 birimler
 export const TOMBSTONE_NAME = 'Silinmiş Oyuncu';
 export const TOMBSTONE_STAFF = 'Silinmiş Yetkili';
 export const REDACTED_TEXT = '[hesap silindi]';
@@ -454,12 +454,12 @@ export async function buildDeletionPlan({ db, auth, uid, email, FieldPath, now =
   }
 
   // v176 — Neon Borsa: hisseler havuza döner (satış parası silinen hesaba yazılmaz)
-  const borsaShares = BORSA_CO_IDS.reduce((a, id) => a + holdState(user, id).n, 0);
+  const borsaUnits = BORSA_CO_IDS.reduce((a, id) => a + holdState(user, id).u, 0);
   if (user?.borsa)
     add('flow', {
       what: 'Neon Borsa hisseleri',
       paths: [userRef.path, BORSA_DOC],
-      detail: `${borsaShares} hisse mekânların havuzuna geri döner (ön temizlik).`,
+      detail: `${fmtShares(borsaUnits)} hisse mekânların havuzuna geri döner (ön temizlik).`,
       ops: [{ phase: PHASES.PRECLEAN, type: 'borsaRelease' }],
     });
 
@@ -856,17 +856,12 @@ export async function applyPlan({ db, auth, FieldValue, callables, plan, log = (
         const user = u.data();
         if (!user?.borsa) return;
         const market = m.data() || {};
-        const patch = { co: {}, updatedAtMs: Date.now() };
-        let any = false;
-        for (const id of BORSA_CO_IDS) {
-          const h = holdState(user, id);
-          if (!h.n) continue;
-          const co = coState(market, id);
-          patch.co[id] = { n: Math.max(0, co.n - h.n), h: Math.max(0, co.h - 1) };
-          any = true;
-        }
+        // v189: birimler (küsuratlı hisse) + bu dönem alınanlar sayacı (functions/borsa.js releaseMarket)
+        const { cos, units } = releaseMarket(user, market);
+        const patch = Number(market.v) >= BORSA_MARKET_V ? { co: {} } : marketMigrationPatch(market, FieldValue);
+        for (const [id, co] of Object.entries(cos)) patch.co[id] = { ...(patch.co[id] || {}), ...coDoc(co) };
         tx.update(uRef, { borsa: FieldValue.delete(), borsaSon: FieldValue.delete() });
-        if (any) tx.set(mRef, patch, { merge: true });
+        if (units) tx.set(mRef, { ...patch, updatedAtMs: Date.now() }, { merge: true });
       });
     },
     async clearHandover(op) {

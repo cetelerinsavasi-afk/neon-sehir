@@ -1,0 +1,47 @@
+NEON ŞEHİR v189 — TÜM GÜNCELLEMELER (Faz 1 + Faz 2 + Faz 3) TEK PAKET
+=====================================================================
+
+KURULUM
+  1. _v189 klasörünü neon-sehir klasörünün İÇİNE koy.
+  2. _v189\yukle-v189.bat'a çift tıkla. Kendisi yapar:
+     yedek → derleme → testler → Firebase (11 fonksiyon + Realtime Database kuralları)
+     → git commit + push → Cloudflare. Bir adım hata verirse sonrakiler YAPILMAZ.
+  Ara sürümleri (v187, v188) ayrıca yükleme; hepsi bunun içinde.
+
+GERİ ALMA — DİKKAT
+  _v189\geri-al-v189.bat sadece BİLGİSAYARINDAKİ dosyaları eski haline koyar.
+  YAYINDAN SONRA borsayı eski koda döndürme: ilk borsa işleminden itibaren piyasa ve oyuncu
+  belgeleri yeni biçimde yazılıyor; eski kod bunları okuyamaz (hisseleri 0 görür, işlem yapınca
+  bozar). Yayında bir sorun çıkarsa geri alma yerine düzeltme sürümü yapılmalı (Claude'a yaz).
+  Diğer değişiklikler (rozetler, sayılar, modifiye, dokunma) güvenle geri alınabilir.
+
+FAZ 1
+  1a Silahçı soygun ödülü 40.000 (yakalanma cezası da ödüle bağlı: 40.000 / polisle 80.000)
+  1b Yarış şeridi 10 aracın hepsinde gövdeye oturuyor (tek parça çizim)
+  1c Oyuncu kapı numarası ekleyince GT Yarış'ın fabrika numarası (77) gizlenir
+  1d Parmak arayüz butonundan dışarı kayıp kalkarsa tıklama sayılmaz (oyun kontrolleri hariç)
+  1e Firestore okuma ölçümü 27 Kasım 00:00'a kadar açık (%10); okuma-raporu.bat ile rapor
+
+FAZ 2
+  2a "Kaç kişi var" sadece RTDB; istemcinin Firestore yedekleri yok; presenceSummary hiçbir
+     belge okumuyor (sadece atMs — v189'dan eski açık oyunlar pahalı okumaya düşmesin)
+  2b ChatsApp / Sixtagram rozetleri ve üst şerit RTDB badge'den
+  +  Zorunlu güncelleme: neon-flags.json "minBuild": 189 → eski sürüm, oyuncu boştayken yenilenir
+
+FAZ 3 — NEON BORSA (ayrıntı: docs/v189-borsa.md)
+  Sınırsız, küsuratlı hisse (1 hisse = 1.000.000 birim) · BigInt fiyat · 4 miktarlı buton +
+  Hepsini sat · 20 hisse sınırı · gece temettü avı engeli · tembel geçiş (toplu yazma yok) ·
+  20 gün oyuna girmeyen satılır (uyarı SMS'i yok) · canlı fiyat RTDB · hızlı basışlar birleşir ·
+  saniyede 1 istek · liste "134,5 hisse · ort. gelir" ve hisse başına gelire göre sıralı.
+
+YAKLAŞIK 8 ARALIK'TA YAPILACAK (küçük sürüm)
+  presenceSummary işi silinecek, createSixtagramPost'taki stats/sixtagram yazımı kalkacak.
+
+FIRESTORE ETKİSİ (sadece azalır)
+  - Her sohbet mesajı / Sixtagram gönderisi: çevrimiçi oyuncu sayısı kadar okuma → 0
+  - RTDB'ye bağlanamayan oyuncunun 30 sn'de 400'e kadar okuması → 0
+  - presenceSummary: tüm aktif presence kayıtları → 1 yazma / 10 dk
+  - Borsa: her işlemde ekranı açık her oyuncuya 1 okuma → 0 (canlı fiyat RTDB); piyasa belgesi
+    açılışta 1 + saat başı 1; hızlı basışlar tek yazma
+  - 20 gün kuralı: uyarı SMS'i (2 yazma) yerine oynayan hissedar için ~20 günde 1 okuma + 1 yazma
+  Yeni: neon-flags.json 5 dk'da bir (statik dosya). RTDB: mesaj / işlem başına birkaç yüz bayt.

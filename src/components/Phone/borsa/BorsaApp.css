@@ -489,3 +489,12 @@
 .borsa.embed .borsa-toast { position: fixed; z-index: 3001; }
 /* v186 — listede doluluk + ortalama günlük gelir */
 .borsa-sub2 { display: flex; gap: 12px; white-space: nowrap; }
+
+/* v189 — 4 buton (küçük / büyük al-sat) + hepsini sat; liste satırında "Hepsini sat · +x" */
+.borsa-act.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.borsa-act.grid .borsa-btn { min-height: 52px; font-size: 14px; }
+.borsa-act.grid .borsa-btn.wide { grid-column: 1 / -1; min-height: 40px; width: auto; margin-top: 0; }
+.borsa-scroll.has-act { padding-bottom: 200px; }
+.borsa-it-wrap { display: flex; flex-direction: column; }
+.borsa-it-sell { align-self: flex-end; margin: -4px 4px 10px; font-size: 13px; padding: 7px 12px; }
+.borsa-note.bad { color: #ff8a9c; }

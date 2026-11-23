@@ -1,79 +1,27 @@
 // =============================================================================
-// v79 — Presence özeti (maliyet)
-// "Mekânda/evde kaç kişi var" sayıları için istemciler eskiden 30 sn'de bir
-// park/iç mekân/ev presence koleksiyonlarının TÜM aktif kayıtlarını okuyordu
-// (her izleyici ayrı ayrı → izleyici × oyuncu okuma). Artık sunucu 2 dakikada
-// bir sayar ve tek bir belgeye yazar; istemciler sadece bu belgeyi dinler.
-// Sayılar değişmediyse yazmaz (izleyicilere boşuna okuma yazdırmaz); 10 dakikada
-// bir yine de yazar ki istemci özetin canlı olduğunu bilsin.
-//   stats/presence = { park: n, int: { locationId: n }, house: { houseId: n }, atMs }
+// Presence özeti — v188: GEÇİŞ MODU (sayım YOK)
+//
+// v79–v137: sunucu park/iç mekân/ev presence koleksiyonlarının tüm aktif kayıtlarını okuyup
+// "kaç kişi var" sayılarını stats/presence belgesine yazıyordu. v138'den beri istemciler bu
+// sayıları Realtime Database'ten (occ) alıyor; v188 istemcilerinde Firestore yedeği de yok.
+//
+// v188'den ESKİ istemcilerin kodunda şu kural var: stats/presence 15 dakikadan eskiyse "yok"
+// sayılır ve istemci 30 sn'de bir 400 belgeye kadar okumaya geçer. Bu yüzden belge kapatılmaz,
+// donmaz: iş 10 dakikada bir SADECE atMs alanını tazeler (1 yazma; hiçbir belge okunmaz).
+// Eski istemciler belgeyi taze sanır, pahalı yola düşmez; gördükleri sayılar son halinde kalır.
+//
+// KALDIRMA: v188 yayından ~2 hafta sonra (PRESENCE_KEEPALIVE_REMOVE_AFTER) iş tamamen silinir.
+// index.html önbelleğe alınmadığı için uygulamayı yeniden açan herkes yeni sürüme geçer; o
+// tarihe kadar açık kalan eski oturum kalmaz. v188 istemcileri bu belgeyi hiç okumaz.
 // =============================================================================
-// v81: aktiflik penceresi 90 → 60 sn (istemci presence'ı ~15–20 sn'de bir tazeler)
-export const PRESENCE_SUMMARY_ACTIVE_MS = 90_000; // v130: istemci Firestore nabzı 30–40 sn
-// v81 — ANINDA GÜNCELLEME: biri mekâna girince (presence belgesi oluşur) ya da
-// çıkınca (silinir) özet hemen yeniden sayılır; art arda girişlerde en fazla
-// PRESENCE_NUDGE_GAP_MS'de bir sayılır (maliyet sınırlı). Zamanlanmış iş (2 dk)
-// sadece uygulaması kapanıp nabzı kesilenleri düşürmek için kalır.
-export const PRESENCE_NUDGE_GAP_MS = 15_000; // v130 maliyet: 8 → 15 sn (her sayım tüm aktif kayıtları okur)
-export const PRESENCE_SUMMARY_KEEPALIVE_MS = 8 * 60 * 1000; // v130: iş 10 dk'da bir → her turda canlılık yazılır (istemci 15 dk'yı bayat sayar)
+export const PRESENCE_KEEPALIVE_REMOVE_AFTER = '2026-12-08';
 
-const sorted = (o) => Object.fromEntries(Object.entries(o).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
-
-export function createPresenceSummary({ db, Timestamp, now = () => Date.now() }) {
-  const lockRef = () => db.collection('stats').doc('presenceRun');
+export function createPresenceSummary({ db, now = () => Date.now() }) {
+  // Sadece canlılık: { atMs } birleştirilerek yazılır, diğer alanlar (eski sayılar) olduğu gibi kalır.
   async function run() {
     const t = now();
-    await lockRef().set({ lastRunMs: t }, { merge: true }).catch(() => {});
-    const since = Timestamp.fromMillis(t - PRESENCE_SUMMARY_ACTIVE_MS);
-    const q = (name) => db.collection(name).where('updatedAt', '>', since).limit(3000).get();
-    const [park, inter, house] = await Promise.all([q('parkPresence'), q('interiorPresence'), q('housePresence')]);
-    const int = {};
-    inter.forEach((d) => {
-      const l = d.data().locationId;
-      if (typeof l === 'string' && l) int[l] = (int[l] || 0) + 1;
-    });
-    const hs = {};
-    house.forEach((d) => {
-      const h = d.data().houseId;
-      if (typeof h === 'string' && h) hs[h] = (hs[h] || 0) + 1;
-    });
-    const out = { park: park.size, int: sorted(int), house: sorted(hs) };
-    const ref = db.collection('stats').doc('presence');
-    const cur = (await ref.get()).data() || null;
-    const same = cur && JSON.stringify({ park: cur.park, int: sorted(cur.int || {}), house: sorted(cur.house || {}) }) === JSON.stringify(out);
-    if (same && t - Number(cur.atMs || 0) < PRESENCE_SUMMARY_KEEPALIVE_MS) return { written: false, ...out };
-    await ref.set({ ...out, atMs: t });
-    return { written: true, ...out };
+    await db.collection('stats').doc('presence').set({ atMs: t }, { merge: true });
+    return { written: true, atMs: t };
   }
-  // v137 MALİYET: Eskiden tetikleyici, sayım zamanı gelene kadar (en fazla 15 sn)
-  // fonksiyonun içinde UYUYARAK bekliyordu — bu bekleme Cloud Run'da saniye saniye
-  // faturalanıyordu (Ekim 2026: CPU faturasının ~yarısı). Artık beklenmez:
-  //  - son sayımın üstünden GAP geçtiyse sayım hemen yapılır;
-  //  - geçmediyse olay "kirli" (dirtyMs) işaretlenir ve hemen dönülür. Kirli olay
-  //    bir sonraki giriş/çıkışta ya da 5 dakikalık süpürmede (flushIfDirty) sayılır.
-  async function nudge(eventMs = now()) {
-    let go = false;
-    await db.runTransaction(async (tx) => {
-      go = false;
-      const d = (await tx.get(lockRef())).data() || {};
-      const last = Number(d.lastRunMs || 0);
-      if (last >= eventMs) return; // bu olayı kapsayan sayım zaten yapıldı
-      const t = now();
-      if (t - last >= PRESENCE_NUDGE_GAP_MS) {
-        go = true;
-        tx.set(lockRef(), { lastRunMs: t }, { merge: true });
-      } else if (Number(d.dirtyMs || 0) < eventMs) {
-        tx.set(lockRef(), { dirtyMs: eventMs }, { merge: true });
-      }
-    });
-    if (!go) return { deferred: true };
-    return run();
-  }
-  // Ertelenmiş (kirli) olay varsa sayımı yap. 5 dk'lık süpürmeden çağrılır.
-  async function flushIfDirty() {
-    const d = (await lockRef().get()).data() || {};
-    if (Number(d.dirtyMs || 0) <= Number(d.lastRunMs || 0)) return { skipped: true };
-    return run();
-  }
-  return { run, nudge, flushIfDirty };
+  return { run };
 }

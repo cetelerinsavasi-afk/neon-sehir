@@ -1,8 +1,6 @@
 import { useEffect, useState } from 'react';
-import { collection, doc, getDocs, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
-import { db } from '../firebase';
 import { useUnreadSmsCount } from './useMessages';
-import { useGlobalChat } from './useGlobalChat';
+import { useBadges } from '../lib/badgeFeed';
 import { useSixtagramNotifications } from './useSixtagramNotifications';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -38,7 +36,8 @@ export function markSixtagramSeen() {
  */
 export function useUnreadNotifications() {
   const { user } = useAuth();
-  const { messages: chatMessages } = useGlobalChat({ max: 1 });
+  // v188: son sohbet mesajı / son gönderi RTDB'den (badge) — Firestore okuması yok
+  const badges = useBadges(Boolean(user));
   const { unreadCount: sixtagramUnreadNotifCount } = useSixtagramNotifications({ unreadOnly: true });
   const [chatsAppHasNew, setChatsAppHasNew] = useState(false);
   const [sixtagramNewPost, setSixtagramNewPost] = useState(false);
@@ -51,78 +50,33 @@ export function useUnreadNotifications() {
     window.addEventListener('neon-chatsapp-seen', on);
     return () => window.removeEventListener('neon-chatsapp-seen', on);
   }, []);
+  const lastChat = badges.chat;
   useEffect(() => {
-    if (!user || chatMessages.length === 0) {
+    if (!user || !lastChat) {
       setChatsAppHasNew(false);
       return;
     }
-    const lastSeen = getLastSeenChatsApp();
-    const latest = chatMessages[chatMessages.length - 1];
-    const latestMs = latest?.createdAt?.toMillis?.() ?? 0;
     // Kendi gönderdiğin mesajlar "yeni bildirim" saydırmasın.
-    setChatsAppHasNew(latestMs > lastSeen && latest?.uid !== user.uid);
-  }, [chatMessages, user, seenTick]);
+    setChatsAppHasNew(lastChat.at > getLastSeenChatsApp() && lastChat.uid !== user.uid);
+  }, [lastChat, user, seenTick]);
 
-  // Sixtagram'da "yeni post var mı" — en son postun zamanını, Sixtagram'ın son
-  // açılış zamanıyla karşılaştırır.
-  // v90.1 maliyet: sunucu her yeni gönderide stats/sixtagram belgesine
-  // { latestMs, latestUid } yazar; burada sadece o TEK belge dinlenir (yeni
-  // gönderi olunca 1 okuma). Belge henüz yoksa (eski sunucu) eski yönteme
-  // döner: 60 sn'de bir en yeni gönderiyi okur.
+  // Sixtagram'da "yeni post var mı" — en son postun zamanını, Sixtagram'ın son açılış
+  // zamanıyla karşılaştırır. v188: sunucunun RTDB'ye yazdığı badge/six (eskiden Firestore
+  // stats/sixtagram dinleyicisi + belge yoksa 60 sn'de bir sorgu).
+  const lastSix = badges.six;
+  const [sixSeenTick, setSixSeenTick] = useState(0);
   useEffect(() => {
-    if (!user) {
+    const on = () => setSixSeenTick((n) => n + 1);
+    window.addEventListener('neon-sixtagram-seen', on);
+    return () => window.removeEventListener('neon-sixtagram-seen', on);
+  }, []);
+  useEffect(() => {
+    if (!user || !lastSix) {
       setSixtagramNewPost(false);
-      return undefined;
+      return;
     }
-    let alive = true;
-    let latest = null; // { ms, uid }
-    const apply = () => alive && latest && setSixtagramNewPost(latest.ms > getLastSeenSixtagram() && latest.uid !== user.uid);
-    let iv = null;
-    const poll = async () => {
-      if (document.hidden) return;
-      try {
-        const snap = await getDocs(query(collection(db, 'sixtagramPosts'), orderBy('createdAtMs', 'desc'), limit(1)));
-        if (!alive) return;
-        if (snap.empty) {
-          setSixtagramNewPost(false);
-          return;
-        }
-        const d = snap.docs[0].data();
-        latest = { ms: d.createdAtMs || 0, uid: d.uid };
-        apply();
-      } catch (err) {
-        console.warn('useUnreadNotifications (sixtagram):', err?.code || err);
-      }
-    };
-    const startPoll = () => {
-      if (iv) return;
-      poll();
-      iv = setInterval(poll, 60_000);
-    };
-    const stopPoll = () => {
-      if (iv) clearInterval(iv);
-      iv = null;
-    };
-    const unsub = onSnapshot(
-      doc(db, 'stats', 'sixtagram'),
-      (s) => {
-        if (s.exists()) {
-          stopPoll();
-          latest = { ms: Number(s.data().latestMs || 0), uid: s.data().latestUid || null };
-          apply();
-        } else startPoll();
-      },
-      () => startPoll()
-    );
-    const onSeen = () => setSixtagramNewPost(false);
-    window.addEventListener('neon-sixtagram-seen', onSeen);
-    return () => {
-      alive = false;
-      unsub();
-      stopPoll();
-      window.removeEventListener('neon-sixtagram-seen', onSeen);
-    };
-  }, [user]);
+    setSixtagramNewPost(lastSix.at > getLastSeenSixtagram() && lastSix.uid !== user.uid);
+  }, [lastSix, user, sixSeenTick]);
 
   const sixtagramHasNew = sixtagramNewPost || sixtagramUnreadNotifCount > 0;
 

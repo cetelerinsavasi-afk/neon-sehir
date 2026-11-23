@@ -21,7 +21,8 @@
 //             + ağ 30 dk'dan uzun kapalı kalıp açıldığında açık dinleyicilerin belge sayısı
 // =============================================================================
 export const READ_STATS_RATE = 0.1;
-export const READ_STATS_END = Date.parse('2026-11-21T00:00:00+03:00');
+// v187: 3 günlük ikinci ölçüm (v165'teki 21 Kasım'da bitmişti)
+export const READ_STATS_END = Date.parse('2026-11-27T00:00:00+03:00');
 export const REPORT_MS = 10 * 60 * 1000;
 export const RESUME_REBILL_MS = 30 * 60 * 1000;
 const MAX_BUCKETS = 80;

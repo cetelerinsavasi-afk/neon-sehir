@@ -1994,7 +1994,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
             </div>
           )}
           {riding && (
-            <div className="hs-actions">
+            <div className="hs-actions ns-busy">
               <button className="hs-act" onClick={toggleCarCam}>{carCam === 'in' ? '🚗 Dış kamera' : '🎥 İç kamera'}</button>
               <button className="hs-act" onClick={rideOut}>🚪 İn</button>
             </div>

@@ -1,67 +1,68 @@
-// v79 — presence özeti
+// v188 — presence özeti GEÇİŞ MODU: hiçbir presence belgesi okunmaz, sadece atMs tazelenir
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { FakeFirestore, Timestamp } from '../gang/test/fakeFirestore.js';
-import { createPresenceSummary } from '../presenceSummary.js';
+import { createPresenceSummary, PRESENCE_KEEPALIVE_REMOVE_AFTER } from '../presenceSummary.js';
 
-test('presence özeti: aktifleri sayar, değişmediyse yazmaz, 8 dk sonra canlılık için yazar', async () => {
+function spyDb() {
   const db = new FakeFirestore({ yieldEvery: false });
+  const reads = [];
+  const origCol = db.collection.bind(db);
+  db.collection = (name) => {
+    const c = origCol(name);
+    for (const k of ['get', 'where', 'orderBy', 'limit']) {
+      if (typeof c[k] === 'function') {
+        const f = c[k].bind(c);
+        c[k] = (...a) => (reads.push(`${name}.${k}`), f(...a));
+      }
+    }
+    const origDoc = c.doc.bind(c);
+    c.doc = (id) => {
+      const d = origDoc(id);
+      const g = d.get.bind(d);
+      d.get = (...a) => (reads.push(`${name}/${id}.get`), g(...a));
+      return d;
+    };
+    return c;
+  };
+  return { db, reads };
+}
+
+test('sayım yok: presence koleksiyonları ve stats belgeleri hiç okunmaz', async () => {
+  const { db, reads } = spyDb();
   const S = (p, d) => db._store.set(p, { data: d, version: 1 });
-  const G = (p) => db._store.get(p)?.data;
-  const clock = { t: 1_800_000_000_000 };
-  const ts = (ago) => Timestamp.fromMillis(clock.t - ago);
-  S('parkPresence/a', { updatedAt: ts(5_000) });
-  S('parkPresence/b', { updatedAt: ts(200_000) }); // bayat
-  S('interiorPresence/c', { locationId: 'banka', updatedAt: ts(1_000) });
-  S('interiorPresence/d', { locationId: 'banka', updatedAt: ts(1_000) });
-  S('housePresence/e', { houseId: 'h1', updatedAt: ts(1_000) });
-  S('housePresence/f', { houseId: 'h2', updatedAt: ts(50_000) }); // v82: aktiflik penceresi 60 sn
-  S('housePresence/g', { houseId: 'h3', updatedAt: ts(100_000) }); // v130: aktiflik penceresi 90 sn'yi aştı → sayılmaz
-  const job = createPresenceSummary({ db, Timestamp, now: () => clock.t });
-  let r = await job.run();
-  assert.equal(r.written, true);
-  assert.deepEqual(G('stats/presence'), { park: 1, int: { banka: 2 }, house: { h1: 1, h2: 1 }, atMs: clock.t });
-  clock.t += 120_000;
-  S('housePresence/e', { houseId: 'h1', updatedAt: ts(1_000) });
-  S('housePresence/f', { houseId: 'h2', updatedAt: ts(1_000) });
-  S('interiorPresence/c', { locationId: 'banka', updatedAt: ts(1_000) });
-  S('interiorPresence/d', { locationId: 'banka', updatedAt: ts(1_000) });
-  S('parkPresence/a', { updatedAt: ts(1_000) });
-  r = await job.run();
-  assert.equal(r.written, false, 'aynı sayılar → yazma yok');
-  clock.t += 10 * 60_000;
-  ['parkPresence/a', 'interiorPresence/c', 'interiorPresence/d', 'housePresence/e', 'housePresence/f'].forEach((p) => S(p, { ...G(p), updatedAt: ts(1_000) }));
-  r = await job.run();
-  assert.equal(r.written, true, 'canlılık yazımı');
+  S('parkPresence/a', { updatedAt: Timestamp.fromMillis(1) });
+  S('interiorPresence/c', { locationId: 'banka', updatedAt: Timestamp.fromMillis(1) });
+  const job = createPresenceSummary({ db, now: () => 1_800_000_000_000 });
+  await job.run();
+  assert.deepEqual(reads, [], `okuma yapıldı: ${reads.join(', ')}`);
 });
 
-test('v137: giriş/çıkış tetikleyicisi beklemez; aralık dolmadıysa erteler, flushIfDirty sayar', async () => {
-  const db = new FakeFirestore({ yieldEvery: false });
-  const S = (p, d) => db._store.set(p, { data: d, version: 1 });
-  const G = (p) => db._store.get(p)?.data;
+test('sadece atMs tazelenir; eski sayılar olduğu gibi kalır (eski istemciler belgeyi taze görür)', async () => {
+  const { db } = spyDb();
   const clock = { t: 1_800_000_000_000 };
-  const ts = (ago) => Timestamp.fromMillis(clock.t - ago);
-  const job = createPresenceSummary({ db, Timestamp, now: () => clock.t });
-  S('parkPresence/a', { updatedAt: ts(1_000) });
-  let r = await job.nudge(clock.t);
-  assert.equal(r.written, true, 'ilk olay hemen sayılır');
-  assert.equal(G('stats/presence').park, 1);
-  clock.t += 3_000;
-  S('parkPresence/b', { updatedAt: ts(500) });
-  r = await job.nudge(clock.t);
-  assert.deepEqual(r, { deferred: true }, '15 sn dolmadı → ertelenir, uyumaz');
-  assert.equal(G('stats/presence').park, 1);
-  r = await job.nudge(clock.t - 10_000);
-  assert.deepEqual(r, { deferred: true }, 'kapsanmış eski olay → işlem yok');
-  clock.t += 60_000;
-  S('parkPresence/a', { updatedAt: ts(1_000) });
-  S('parkPresence/b', { updatedAt: ts(1_000) });
-  r = await job.flushIfDirty();
-  assert.equal(r.written, true, 'kirli olay süpürmede sayılır');
-  assert.equal(G('stats/presence').park, 2);
-  r = await job.flushIfDirty();
-  assert.deepEqual(r, { skipped: true }, 'kirli olay kalmadı');
-  clock.t += 20_000;
-  r = await job.nudge(clock.t);
-  assert.ok(!r.deferred, 'aralık dolunca yeni olay hemen sayılır');
+  db._store.set('stats/presence', { data: { park: 3, int: { banka: 2 }, house: { h1: 1 }, atMs: 1 }, version: 1 });
+  const job = createPresenceSummary({ db, now: () => clock.t });
+  const r = await job.run();
+  assert.equal(r.written, true);
+  assert.deepEqual(db._store.get('stats/presence').data, { park: 3, int: { banka: 2 }, house: { h1: 1 }, atMs: clock.t });
+  clock.t += 10 * 60_000;
+  await job.run();
+  assert.equal(db._store.get('stats/presence').data.atMs, clock.t);
+  // eski istemcinin tazelik kuralı: 15 dk
+  assert.ok(clock.t - db._store.get('stats/presence').data.atMs < 15 * 60_000);
+});
+
+test('belge yoksa da yazılır (eski istemci "yok" sanmasın)', async () => {
+  const { db } = spyDb();
+  await createPresenceSummary({ db, now: () => 5 }).run();
+  assert.deepEqual(db._store.get('stats/presence').data, { atMs: 5 });
+});
+
+test('index.js: 10 dk iş + süpürmede flushIfDirty/nudge çağrısı yok', () => {
+  const src = readFileSync(new URL('../index.js', import.meta.url), 'utf8');
+  assert.match(src, /export const presenceSummary = onSchedule\(\{ schedule: 'every 10 minutes' \}/);
+  assert.doesNotMatch(src, /flushIfDirty\(|\.nudge\(/);
+  assert.equal(PRESENCE_KEEPALIVE_REMOVE_AFTER, '2026-12-08');
 });

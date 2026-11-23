@@ -33,6 +33,7 @@ import { stockUnitCost } from './shopStockRules.js'; // v130
 import { createVenue } from './venue.js';
 import { createOffice } from './office.js';
 import { createPresenceSummary } from './presenceSummary.js';
+import { createBadgeFeed } from './badgeFeed.js'; // v188 rozetler RTDB'den
 import { createCron } from './cron.js';
 import { createReadStats } from './readStats.js'; // v165 geçici ölçüm
 import { createGym, gymPriceOf, withBonus, botGymPool } from './gym.js';
@@ -375,6 +376,8 @@ export const houseAction = houses.houseAction;
 // v147 — Gezilebilir şehir: fotoğraf (çekim anı RTDB ile doğrulanıp imzalanır; Firestore'a yazılmaz)
 let cityDbP = null;
 const cityDb = () => (cityDbP ||= import('firebase-admin/database').then(({ getDatabase }) => getDatabase(admin.app(), cityRtdbUrl())));
+// v188 — bildirim rozetleri: son sohbet mesajı / son gönderi özeti RTDB'ye (functions/badgeFeed.js)
+const badgeFeed = createBadgeFeed({ rtdb: cityDb });
 const cityPhoto = createCityPhoto({
   db,
   rtdb: cityDb,
@@ -404,7 +407,9 @@ const borsa = createBorsa({
   taxFrac: (day) => rateFrac(ratesFor(day), BORSA_TAX_RATE_ID),
   dayKey: (ms) => stateDayKey(ms),
   addDayKey: (k, n) => rateAddDayKey(k, n),
+  rtdb: cityDb, // v189: her işlemden sonra canlı fiyat (S) → RTDB borsaFiyat
 });
+// v189: op 'al' / 'sat' { co, x (birim), all?, expect? } · 'topla' · 'satHepsi' { expect }
 export const borsaAction = onCall(async (request) => {
   const uid = requireAuth(request);
   const p = request.data || {};
@@ -6251,7 +6256,7 @@ const HEIST_CONFIG = {
   banka: { suspicionCost: 50, reward: 500000, requiredPower: 100000 },
   casino: { suspicionCost: 40, reward: 250000, requiredPower: 80000 },
   araba_galerisi: { suspicionCost: 30, reward: 125000, requiredPower: 60000 },
-  silah_magazasi: { suspicionCost: 20, reward: 50000, requiredPower: 40000 },
+  silah_magazasi: { suspicionCost: 20, reward: 40000, requiredPower: 40000 },
   fabrika: { suspicionCost: 15, reward: 25000, requiredPower: 20000 },
   internet_kafe: { suspicionCost: 10, reward: 10000, requiredPower: 10000 },
   seyyar_satici_6: { suspicionCost: 5, reward: 7000, requiredPower: 7500 }, // Dondurmacı
@@ -6782,18 +6787,17 @@ export const expireInteriorPresence = onSchedule({ schedule: 'every 5 minutes' }
   }
   // v65: 3D Ev canlı kayıtları da aynı süpürmeyle temizlenir.
   await houses.expirePresence(TWO_MIN, admin.firestore.Timestamp).catch((err) => console.error('housePresence süpürme:', err));
-  // v137 maliyet: giriş/çıkış tetikleyicileri artık beklemiyor; ertelenen sayım burada yapılır.
-  await presenceSummaryJob.flushIfDirty().catch((err) => console.error('presence flush:', err));
+  // v188: presence sayımı kaldırıldı (flushIfDirty yok — her 5 dk'daki stats/presenceRun okuması da gitti).
   // v80: nabzı kesilen yayınlar kapatılır, bağışları ödenir
   await stream.sweep().catch((err) => console.error('yayın süpürme:', err));
   // v92 — eski günlerin maç sohbeti (Stadyum › Maçlar)
   if (new Date().getMinutes() < 10) await stream.cleanupMatchChat().catch((err) => console.error('maç sohbeti temizliği:', err));
 });
 
-// v79 maliyet: "kaç kişi var" sayıları tek belgede (bkz. functions/presenceSummary.js)
-const presenceSummaryJob = createPresenceSummary({ db, Timestamp: admin.firestore.Timestamp });
-// v130 maliyet: 2 → 10 dk. Giriş/çıkış zaten anında sayılır (tetikleyiciler); bayat kayıtlar
-// 5 dk'lık süpürmede silinince yine tetiklenir. Bu iş sadece canlılık (keepalive) için.
+// v188 GEÇİŞ: "kaç kişi var" artık sadece RTDB'den (occ). Bu iş hiçbir presence belgesini OKUMAZ;
+// 10 dk'da bir yalnızca stats/presence.atMs'i tazeler ki v188'den eski açık istemciler 400'lük
+// yedek okumaya düşmesin (bkz. functions/presenceSummary.js). ~8 Aralık'tan sonra silinecek.
+const presenceSummaryJob = createPresenceSummary({ db });
 export const presenceSummary = onSchedule({ schedule: 'every 10 minutes' }, async () => {
   await presenceSummaryJob.run();
 });
@@ -8719,7 +8723,7 @@ export const sendChatMessage = onCall(async (request) => {
   const displayName = userSnap.data()?.displayName || 'Oyuncu';
   const avatar = userSnap.data()?.avatar || null;
 
-  await db.collection('globalChat').add({
+  const msgRef = await db.collection('globalChat').add({
     uid,
     displayName,
     avatar,
@@ -8727,6 +8731,8 @@ export const sendChatMessage = onCall(async (request) => {
     ...(replyTo ? { replyTo } : {}),
     createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
+  // v188: rozet + üst bildirim şeridi RTDB'den beslenir (çevrimiçi herkese Firestore okuması yok)
+  await badgeFeed.chat({ id: msgRef.id, uid, displayName, text, at: Date.now() });
 
   // Onboarding görev 17 — "ChatsApp'ten bi mesaj gönder".
   await advanceOnboardingStep(uid, 17);
@@ -22654,11 +22660,13 @@ export const createSixtagramPost = onCall(async (request) => {
   );
   // v90.1 maliyet: "yeni gönderi var" rozeti için istemciler bu TEK belgeyi dinler
   // (eskiden çevrimiçi herkes 60 sn'de bir en yeni gönderiyi okuyordu)
+  // v188: eski (v188 öncesi) istemciler için geçiş süresince yazılmaya devam eder; v188 istemcileri RTDB badge/six'i dinler
   batch.set(db.collection('stats').doc('sixtagram'), { latestMs: nowMs, latestUid: uid });
   // v99: paylaşılan şarkının projesi de gider (aynı yazımda)
   const songProjectId = builtAttachment && typeof builtAttachment === 'object' ? songProjectToDelete.get(builtAttachment) : null;
   if (songProjectId) batch.delete(db.collection('songProjects').doc(songProjectId));
   await batch.commit();
+  await badgeFeed.six({ uid, at: nowMs }); // v188
 
   return { ok: true, postId: postRef.id, ...(songProjectId ? { projectDeleted: true } : {}) };
 });
@@ -23041,6 +23049,7 @@ async function postBelediyeSixtagram(text) {
   batch.set(db.collection('sixtagramProfiles').doc(BELEDIYE_SIX_UID), { displayName: 'Neon Şehir Belediyesi', avatar: null, official: 'belediye', updatedAt: admin.firestore.FieldValue.serverTimestamp() }, { merge: true });
   batch.set(db.collection('stats').doc('sixtagram'), { latestMs: nowMs, latestUid: BELEDIYE_SIX_UID });
   await batch.commit();
+  await badgeFeed.six({ uid: BELEDIYE_SIX_UID, at: nowMs }); // v188
 }
 const belediye = createBelediye({
   db,

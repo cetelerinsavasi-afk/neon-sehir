@@ -2,6 +2,14 @@
   "rules": {
     ".read": false,
     ".write": false,
+    "borsaFiyat": {
+      ".read": "auth != null",
+      ".write": false
+    },
+    "badge": {
+      ".read": "auth != null",
+      ".write": false
+    },
     "sixImg": {
       ".indexOn": ["e"],
       "$postId": {

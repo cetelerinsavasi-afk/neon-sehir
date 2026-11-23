@@ -38,7 +38,7 @@ export const HEIST_LABELS = {
   banka: { title: 'Banka Soygunu', emoji: regionEmojis.banka, requiredPower: 100000, reward: 500000, suspicionCost: 50 },
   casino: { title: 'Casino Soygunu', emoji: regionEmojis.casino, requiredPower: 80000, reward: 250000, suspicionCost: 40 },
   araba_galerisi: { title: 'Galeri Soygunu', emoji: regionEmojis.araba_galerisi, requiredPower: 60000, reward: 125000, suspicionCost: 30 },
-  silah_magazasi: { title: 'Silahçı Soygunu', emoji: regionEmojis.silah_magazasi, requiredPower: 40000, reward: 50000, suspicionCost: 20 },
+  silah_magazasi: { title: 'Silahçı Soygunu', emoji: regionEmojis.silah_magazasi, requiredPower: 40000, reward: 40000, suspicionCost: 20 },
   fabrika: { title: 'Fabrika Soygunu', emoji: regionEmojis.fabrika, requiredPower: 20000, reward: 25000, suspicionCost: 15 },
   internet_kafe: { title: 'İnternet Kafe Soygunu', emoji: regionEmojis.internet_kafe, requiredPower: 10000, reward: 10000, suspicionCost: 10 },
   seyyar_satici_6: { title: 'Dondurmacıya Haraç', emoji: regionEmojis.seyyar_satici_6, requiredPower: 7500, reward: 7000, suspicionCost: 5 },
