@@ -2,6 +2,7 @@ import SimpleActionScreen from '../SimpleActionScreen/SimpleActionScreen';
 import PoliceApplicationSection from '../PoliceApplicationSection/PoliceApplicationSection';
 import { bribePolice } from '../../services/gameActions';
 import { useTaskPass } from '../../hooks/useTaskPass'; // v168.1
+import '../RolePanels/RolePanels.css'; // v197: yeni tasarım
 
 // mode — KarakolWorldScreen (girilebilir karakol) artık girişteki polis
 // memuru NPC'si için SADECE rüşvet bölümünü, içerideki komiser NPC'si için
@@ -15,12 +16,17 @@ export default function PoliceStationScreen({ mode = 'full' }) {
   const showApplication = mode === 'full' || mode === 'application';
   const taskPass = useTaskPass(); // v168.1: rüşvet görevinde tek seferlik hak
   return (
-    <div>
+    <div className="role-panel">
       {showBribe && (
         <SimpleActionScreen
+          icon="🤝"
+          title="Memura rüşvet"
+          tone="gold"
+          showStats
+          chips={[{ label: '−3.000 altın', tone: 'gold' }, { label: 'Şüphe −20', tone: 'good' }, { label: 'Günde 1 kez', tone: 'info' }]}
           signInMessage="Rüşvet vermek için giriş yapmalısın."
-          description="Günde bir kez, 3000 altın karşılığında şüphe puanını azaltabilirsin. Verdiğin rüşvet, o günün polis maaş havuzuna eklenir."
-          buttonLabel="Rüşvet Ver (3000 altın, Şüphe -20)"
+          description="Masanın altından uzat, memur görmezden gelsin. Verdiğin rüşvet o günün polis maaş havuzuna eklenir."
+          buttonLabel="🤝 Rüşvet Ver"
           doneLabel="Bugün zaten rüşvet verdin"
           isDone={(a) => Boolean(a.bribed) && !taskPass.rusvet}
           goldCost={3000}

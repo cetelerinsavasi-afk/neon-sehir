@@ -115,9 +115,11 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
     const t = now();
     let out = null;
     let car;
+    let favG; // v197: users.favGarage (herkes garajda kendi aracını görür — istemci bunu okur)
     if (own) {
       const [cur, us] = await Promise.all([ref(id).get(), userRef(uid).get()]);
       car = await resolveCar(uid, cur.exists ? cur.data() : null, us.data()?.favVehicleId || null);
+      favG = us.data()?.favGarage;
     }
     await db.runTransaction(async (tx) => {
       const s = await tx.get(ref(id));
@@ -126,6 +128,7 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
         const us = await tx.get(userRef(uid));
         const h = { ...fresh(uid, us.data()), garage: car || null, garageCar: car?.cid || 0 };
         tx.set(ref(id), h);
+        if (JSON.stringify(favG ?? null) !== JSON.stringify(car || null) || favG === undefined) tx.update(userRef(uid), { favGarage: car || null });
         out = { id, ...h, created: true };
         return;
       }
@@ -140,6 +143,7 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
           h.garageCar = patch.garageCar = car?.cid || 0;
         }
         if (Object.keys(patch).length) tx.update(ref(id), patch);
+        if (favG === undefined || JSON.stringify(favG ?? null) !== JSON.stringify(car || null)) tx.update(userRef(uid), { favGarage: car || null });
       } else {
         const d = dayKeyOf(t);
         tx.update(ref(id), h.popDay === d ? { popN: FieldValue.increment(1) } : { popDay: d, popN: 1 });
@@ -253,7 +257,7 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
       if (gold || gem) tx.update(userRef(uid), { ...(gold ? { gold: FieldValue.increment(-gold), goldTag: goldTag('mobilya') } : {}), ...(gem ? { emerald: FieldValue.increment(-gem) } : {}) });
       const itemCount = items.filter((x) => x.p === 1).length;
       tx.update(ref(id), { items, inv, surf, itemCount, listable: homeListable({ locked: h.locked, itemCount }), updatedAtMs: now() });
-      out = { ok: true, gold, gem, count: n };
+      out = { ok: true, gold, gem, count: n, inv }; // v197: istemci sahip olunan kaplamaları hemen bilsin (tekrar sepete girmesin)
     });
     return out;
   }
@@ -320,9 +324,9 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
       car = usable(uid, vs.data()) ? carOf(vs.id, vs.data()) : null;
     }
     const hs = await ref(homeIdOf(uid)).get();
-    if (!car && hs.exists) car = await resolveCar(uid, { garage: null }, null);
+    if (!car) car = await resolveCar(uid, { garage: null }, null); // v197: favori yoksa en pahalı araç (garajda)
     const batch = db.batch();
-    batch.update(userRef(uid), { favVehicleId: vid || FieldValue.delete() });
+    batch.update(userRef(uid), { favVehicleId: vid || FieldValue.delete(), favGarage: car || null });
     if (hs.exists) batch.update(ref(homeIdOf(uid)), { garage: car || null, garageCar: car?.cid || 0 });
     await batch.commit();
     return { ok: true, favVehicleId: vid, garage: car || null };

@@ -610,6 +610,7 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
 
   // mobilya: kat başına ayrı canlı grup
   let items = [];
+  let realLook = false; // v197 göz: tasarımda deneme eşyalar gerçek haliyle
   const furn = [0, 1, 2].map((f) => {
     const k = new Kit(`ev_mobilya_${f}`);
     root.add(k.group);
@@ -630,7 +631,7 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
         o.userData.evF = f;
         objByIdx[idx] = o;
         // v196: satın alınmamış (deneme / sepetteki) eşya yarı saydam — eski evdeki gibi neyin yeni olduğu belli
-        if (it.p !== 1) ghostify(o);
+        if (it.p !== 1 && !realLook) ghostify(o);
       }
     });
   };
@@ -754,6 +755,13 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
     door: { x: doorX, z: TF - 1.2 },
     blocked,
     furnKit: (f) => furn[f],
+    isCeil: (idx) => Boolean(CATALOG_MAP[items[idx]?.k]?.ceil),
+    isSeatKey: (k) => Boolean(CATALOG_MAP[k]?.seats?.length),
+    setRealLook(on) {
+      if (realLook === on) return;
+      realLook = on;
+      [0, 1, 2].forEach((f) => furnish(furn[f], f));
+    },
     get items() {
       return items;
     },

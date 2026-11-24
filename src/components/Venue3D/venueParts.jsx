@@ -32,6 +32,7 @@ import HeldIcon from '../HouseScreen/HeldIcon';
 import { camiiDynamicNpcs, VENDORS, VENDOR_COST } from '../../../functions/venueLayouts.js';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import '../../styles/bizui.css';
+import '../RolePanels/RolePanels.css'; // v197: polis / imam panelleri yeni tasarım
 import { useTaskPass, vendorDayState } from '../../hooks/useTaskPass'; // v168.1
 
 // =============================================================================
@@ -40,10 +41,10 @@ import { useTaskPass, vendorDayState } from '../../hooks/useTaskPass'; // v168.1
 // işlemleri); sadece kabuk 3D ev ekranının alt sayfası.
 // =============================================================================
 
-function Sheet({ title, onClose, children, closeLabel = 'Uzaklaş' }) {
+function Sheet({ title, onClose, children, closeLabel = 'Uzaklaş', className = '' }) {
   return (
     <div className="wk-sheet-bg" onClick={onClose}>
-      <div className="wk-sheet v3-sheet" onClick={(e) => e.stopPropagation()}>
+      <div className={`wk-sheet v3-sheet ${className}`} onClick={(e) => e.stopPropagation()}>
         <div className="v3-sheet-head">
           <b>{title}</b>
           <button className="bz-x" onClick={onClose} aria-label="Kapat">
@@ -144,11 +145,15 @@ export function CamiiPart({ panel, setPanel, setDynNpcs, walk }) {
       </Menu>
       {booklet && <ImamBooklet onClose={() => setBooklet(false)} />}
       {panel === 'imam' && (
-        <Sheet title="🕌 Mihrap — İbadet ve İmam" onClose={() => setPanel(null)}>
+        <Sheet title="🕌 Mihrap — İbadet ve İmam" onClose={() => setPanel(null)} className="role-panel">
           <SimpleActionScreen
+            icon="🤲"
+            title={`${win}. vakit ibadeti`}
+            tone="green"
+            chips={[{ label: 'Ücretsiz', tone: 'good' }, { label: 'Şüphe −5', tone: 'good' }, { label: 'Saygınlık +', tone: 'info' }]}
             signInMessage="İbadet etmek için giriş yapmalısın."
-            description={`Günde 5 vakit (${WINDOW_HOURS[win]} şu an ${win}. vakit) ibadet ederek her seferinde şüpheni 5 azaltıp saygınlık kazanabilirsin. Ücretsiz.`}
-            buttonLabel="İbadet Et (Şüphe -5, Saygınlık +)"
+            description={`Günde 5 vakit ibadet edebilirsin (${WINDOW_HOURS[win]}). Her vakit şüphen düşer, saygınlığın artar.`}
+            buttonLabel="🤲 İbadet Et"
             doneLabel="Bu vakitte zaten ibadet ettin"
             isDone={(a) => Boolean(a.prayedWindows?.[win]) && !pass.pray}
             actionFn={prayAtMosque}
@@ -357,6 +362,7 @@ export function KarakolPart({ panel, setPanel, walk }) {
       {booklet && <PoliceBooklet onClose={() => setBooklet(false)} />}
       {(panel === 'bribe' || panel === 'application') && (
         <Sheet
+          className="role-panel"
           title={panel === 'bribe' ? '👮 Karakol Girişi — Memur' : '🎖️ Komiser Ofisi — Polis Teşkilatı'}
           onClose={() => setPanel(null)}
           closeLabel={panel === 'bribe' ? 'Memurdan Uzaklaş' : 'Ofisten Çık'}

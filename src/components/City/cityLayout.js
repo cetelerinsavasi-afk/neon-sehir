@@ -28,9 +28,9 @@ export const BOUNDS = { x0: KORDON_X + 1.4, x1: OUTER.x1 - 0.6, z0: OUTER.z0 + 0
 
 // [tür, i0, j0, i1, j1, yön]
 export const LOTS = [
-  ['karakol', 1, 0], ['banka', 2, 0], ['spor', 4, 0], ['belediye', 5, 0],
+  ['karakol', 1, 0], ['banka', 2, 0], ['camii', 4, 0], ['belediye', 5, 0], // v197: spor salonu ile camii yer değiştirdi
   // v196: camii barın eski yerine, taksi durağı cafenin eski yerine; camiinin eski yeri (0,1) sıradan bina
-  ['galeri', 1, 1], ['fabrika', 2, 1], ['netkafe', 3, 1], ['camii', 4, 1], ['taksi_duragi', 5, 1, 5, 1, 's'],
+  ['galeri', 1, 1], ['fabrika', 2, 1], ['netkafe', 3, 1], ['spor', 4, 1], ['taksi_duragi', 5, 1, 5, 1, 's'],
   ['silah', 0, 2], ['modifiye', 1, 2], ['park', 2, 2, 3, 2],
   ['casino', 0, 3, 0, 3, 'e'], ['pist', 1, 3, 2, 3], ['ev', 3, 3],
   ['liman', 0, 4, 1, 4],

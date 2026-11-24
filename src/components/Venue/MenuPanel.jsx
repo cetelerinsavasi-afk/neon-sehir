@@ -5,6 +5,13 @@ import { shopAction } from '../../services/gameActions';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import HeldIcon from '../HouseScreen/HeldIcon';
 import { menuOf, menuPriceOf } from '../../../functions/venue.js';
+import { MENU_PRICES } from '../../../functions/v196Shared.js';
+
+// v197: oyunun cafe / bar'ı sabit menülü (sunucu: MENU_PRICES) — eskiden eşya listesinden aranıyordu → "menü boş"
+const GAME_MENU = {
+  cafe: ['cay', 'kahve', 'espresso', 'latte', 'su', 'ayran', 'meyveSuyu', 'kola', 'simit', 'kurabiye', 'tost', 'pasta'],
+  bar: ['kokteyl', 'viski', 'kola', 'su', 'enerji', 'meyveSuyu', 'sosisli', 'pizza', 'kebap'],
+};
 import '../../styles/bizui.css';
 import './Venue.css';
 
@@ -15,15 +22,19 @@ const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 export default function MenuPanel({ houseId, houseDoc, onClose, onBought }) {
   const { user } = useAuth();
   const { player } = usePlayer();
-  const isOwner = houseDoc?.ownerUid === user?.uid;
+  const isOwner = !houseDoc?.bizGame && houseDoc?.ownerUid === user?.uid;
   const [busy, setBusy] = useState(null);
   const [cue, setCue] = useState(null);
   const [stale, setStale] = useState({});
   const gold = Number(player?.gold || 0);
-  const menu = Object.keys(menuOf(houseDoc?.items));
+  const game = Boolean(houseDoc?.bizGame);
+  const menu = game
+    ? (GAME_MENU[houseDoc?.biz?.type] || Object.keys(MENU_PRICES)).filter((k) => MENU_PRICES[k] != null && HOUSE_PRODUCTS[k])
+    : Object.keys(menuOf(houseDoc?.items));
+  const priceOf = (k) => (game ? MENU_PRICES[k] : isOwner ? 0 : menuPriceOf(houseDoc, k));
 
   const buy = async (k) => {
-    const price = isOwner ? 0 : menuPriceOf(houseDoc, k);
+    const price = priceOf(k);
     if (!isOwner && gold < price) return setCue({ k, kind: 'gold', n: Date.now() });
     setBusy(k);
     try {
@@ -63,7 +74,7 @@ export default function MenuPanel({ houseId, houseDoc, onClose, onBought }) {
       <div className="vn-menu">
         {menu.map((k) => {
           const p = HOUSE_PRODUCTS[k];
-          const price = isOwner ? 0 : menuPriceOf(houseDoc, k);
+          const price = priceOf(k);
           const poor = !isOwner && gold < price;
           const hit = cue?.k === k;
           return (

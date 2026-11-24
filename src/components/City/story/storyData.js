@@ -12,7 +12,7 @@ export const PLACES = {
   fabrika: { at: { x: -23, z: -35 }, park: { x: -19, z: -20 }, name: 'Fabrika' },
   liman: { at: { x: -102, z: 86 }, park: { x: -96, z: 100 }, name: 'Liman & Depo' },
   park: { at: { x: 13, z: 8 }, park: { x: 10, z: 20 }, name: 'Park' },
-  camii: { at: { x: -100, z: -35 }, park: { x: -96, z: -20 }, name: 'Camii' },
+  camii: { at: { x: 60, z: -75 }, park: { x: 64, z: -60 }, name: 'Camii' }, // v197: camii (4,0) — eski konum v196'dan beri yanlıştı
   silah: { at: { x: -100, z: 5 }, park: { x: -96, z: 20 }, name: 'Silahçı' },
   kofteci: { at: { x: -56, z: 58 }, park: { x: -52, z: 60 }, name: 'Köfteci' },
   kokorec: { at: { x: -90, z: 51 }, park: { x: -86, z: 60 }, name: 'Kokoreççi' },

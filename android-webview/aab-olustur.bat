@@ -4,17 +4,32 @@ REM Neon Sehir (WebView) - Play Store icin imzali AAB uretir.
 REM Cift tiklayin ya da bu klasorde komut satirindan calistirin.
 cd /d "%~dp0"
 
-REM ---- 1) Java 17 -------------------------------------------------------
-if not defined JAVA_HOME (
-  for /d %%J in ("%USERPROFILE%\.bubblewrap\jdk\jdk-17*") do set "JAVA_HOME=%%~fJ"
+REM ---- 1) Java 17 (64-bit) ----------------------------------------------
+REM Bubblewrap'in kurdugu JDK 32-bit (x86) olabilir; yeni proje 64-bit ister
+REM ("Unknown hardware platform: x86" hatasi). Sadece 64-bit (x86_64) bir
+REM JDK 17 secilir. JAVA_HOME tanimliysa o da 64-bit mi diye kontrol edilir.
+set "JDK64="
+if defined JAVA_HOME (
+  findstr /c:"OS_ARCH=\"x86_64\"" "%JAVA_HOME%\release" >nul 2>nul && set "JDK64=%JAVA_HOME%"
 )
-if not defined JAVA_HOME (
-  for /d %%J in ("C:\Program Files\Android\Android Studio\jbr") do set "JAVA_HOME=%%~fJ"
+for %%B in ("%USERPROFILE%\Downloads" "%USERPROFILE%\.bubblewrap\jdk" "C:\Program Files\Eclipse Adoptium" "C:\Program Files\Java") do (
+  if not defined JDK64 (
+    for /d %%J in ("%%~B\jdk-17*") do (
+      if not defined JDK64 (
+        findstr /c:"OS_ARCH=\"x86_64\"" "%%~fJ\release" >nul 2>nul && set "JDK64=%%~fJ"
+      )
+    )
+  )
 )
-if not defined JAVA_HOME (
-  echo [HATA] Java 17 bulunamadi. README.md - "1. Gerekenler" bolumune bakin.
+if not defined JDK64 if exist "C:\Program Files\Android\Android Studio\jbr\release" (
+  findstr /c:"OS_ARCH=\"x86_64\"" "C:\Program Files\Android\Android Studio\jbr\release" >nul 2>nul && set "JDK64=C:\Program Files\Android\Android Studio\jbr"
+)
+if not defined JDK64 (
+  echo [HATA] 64-bit Java 17 bulunamadi. README.md - "1. Gerekenler" bolumune bakin.
   pause & exit /b 1
 )
+set "JAVA_HOME=%JDK64%"
+set "PATH=%JAVA_HOME%\bin;%PATH%"
 echo  Java      : %JAVA_HOME%
 
 REM ---- 2) Android SDK (local.properties) ----------------------------------

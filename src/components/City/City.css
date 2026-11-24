@@ -667,3 +667,10 @@ body.ns-city-open .ta-root { z-index: 96; }
 .cs-root .cs-home-floors button:active { transform: scale(0.96); }
 /* v196: evde tasarım modunda sadece tasarım arayüzü (joystick, düğmeler, başlık gizli) */
 .cs-root.cs-designing > *:not(.hs-stage):not(.hm-design):not(.wk-sheet-bg):not(.hs-toast):not(.hs-overlay) { display: none !important; }
+
+/* v197: Arabalarım — favori (garaj) kalbi kartın sağ üstünde */
+.cs-car-wrap { position: relative; display: flex; }
+.cs-car-wrap > .cs-car { flex: 1 1 auto; min-width: 0; }
+.cs-car-fav { position: absolute; top: 10px; right: 10px; width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.25); background: rgba(10,12,18,0.72); font-size: 16px; line-height: 1; display: grid; place-items: center; padding: 0; z-index: 2; }
+.cs-car-fav.on { border-color: #ff4d6d; box-shadow: 0 0 10px rgba(255,77,109,0.45); }
+.cs-car-fav:disabled { opacity: 0.6; }

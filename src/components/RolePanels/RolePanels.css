@@ -1,0 +1,279 @@
+/* =============================================================================
+   v197 — Karakol (rüşvet · teşkilata katıl) ve Camii (imam) panelleri: oyunun yeni
+   cam-panel tasarımı. Eski sınıflar (.police-app-*, .imam-*, .mosque-*) yalnız
+   .role-panel içinde yeniden çizilir; başka ekranlardaki eski görünüm bozulmaz.
+   ============================================================================= */
+.v3-sheet.role-panel {
+  background:
+    radial-gradient(130% 60% at 0% 0%, rgba(25, 232, 255, 0.1), transparent 60%),
+    linear-gradient(180deg, rgba(20, 26, 42, 0.98), rgba(10, 13, 22, 0.99));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.v3-sheet.role-panel .v3-sheet-head {
+  margin-bottom: 0;
+  padding-bottom: 10px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.v3-sheet.role-panel .v3-sheet-head b {
+  font-size: 17px;
+  color: #fff;
+  letter-spacing: 0.01em;
+}
+.v3-sheet.role-panel > .ws-panel-btn {
+  margin-top: 2px;
+  min-height: 44px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(232, 237, 246, 0.85);
+  font-weight: 700;
+}
+.role-panel .role-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* --- ortak kart ------------------------------------------------------------- */
+.role-panel .police-app-section,
+.role-panel .mosque-imam-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: radial-gradient(120% 90% at 0% 0%, rgba(58, 123, 255, 0.16), transparent 65%), rgba(255, 255, 255, 0.03);
+  color: #e8edf6;
+  margin: 0;
+}
+.role-panel .mosque-imam-panel {
+  background: radial-gradient(120% 90% at 0% 0%, rgba(47, 224, 138, 0.14), transparent 65%), rgba(255, 255, 255, 0.03);
+}
+.role-panel .police-app-header,
+.role-panel .mosque-imam-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin: 0;
+}
+.role-panel .police-app-title,
+.role-panel .mosque-imam-header .mosque-congregation-title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 800;
+  color: #fff;
+}
+.role-panel .police-app-title::before {
+  content: '🚓';
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  font-size: 21px;
+  background: rgba(58, 123, 255, 0.2);
+  border: 1px solid rgba(58, 123, 255, 0.45);
+}
+.role-panel .mosque-imam-header .mosque-congregation-title::before {
+  content: '🕌';
+  width: 40px;
+  height: 40px;
+  flex: none;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  font-size: 21px;
+  background: rgba(47, 224, 138, 0.18);
+  border: 1px solid rgba(47, 224, 138, 0.42);
+}
+.role-panel .police-app-booklet-btn,
+.role-panel .imam-booklet-btn {
+  flex: none;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.05);
+  color: #e8edf6;
+  font-size: 12.5px;
+  font-weight: 800;
+}
+.role-panel .police-app-hint,
+.role-panel .mosque-hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: rgba(232, 237, 246, 0.72);
+}
+.role-panel .police-app-hint strong {
+  color: #fff;
+}
+.role-panel .police-app-error,
+.role-panel .beggar-error {
+  margin: 0;
+  font-size: 12px;
+  color: #ff8a9a;
+}
+.role-panel .police-salary-success {
+  margin: 0;
+  font-size: 13px;
+  color: #5cf0a6;
+}
+
+/* --- polis: maaş kutusu + düğmeler ------------------------------------------ */
+.role-panel .police-salary-box {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 210, 63, 0.08);
+  border: 1px solid rgba(255, 210, 63, 0.28);
+}
+.role-panel .police-salary-emoji {
+  font-size: 20px;
+}
+.role-panel .police-salary-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.role-panel .police-salary-title {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #ffd23f;
+}
+.role-panel .police-salary-share {
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(232, 237, 246, 0.7);
+}
+.role-panel .police-app-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.role-panel .police-app-btn,
+.role-panel .imam-apply-btn,
+.role-panel .beggar-btn {
+  min-height: 46px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: #e8edf6;
+  font-size: 14px;
+  font-weight: 800;
+  width: 100%;
+}
+.role-panel .police-app-btn.primary {
+  border-color: transparent;
+  background: linear-gradient(135deg, #3a7bff, #19e8ff);
+  color: #07101a;
+  box-shadow: 0 6px 18px rgba(58, 123, 255, 0.25);
+}
+.role-panel .imam-apply-btn,
+.role-panel .beggar-btn.primary {
+  border-color: transparent;
+  background: linear-gradient(135deg, #2fe08a, #19c2a0);
+  color: #07140d;
+  box-shadow: 0 6px 18px rgba(47, 224, 138, 0.22);
+}
+.role-panel .police-app-btn:disabled,
+.role-panel .imam-apply-btn:disabled,
+.role-panel .beggar-btn:disabled {
+  opacity: 0.5;
+  box-shadow: none;
+}
+.role-panel .imam-resign-btn {
+  color: #ff8a9a;
+  border-color: rgba(255, 77, 109, 0.35);
+  background: rgba(255, 77, 109, 0.08);
+}
+
+/* --- imam: kart, nasihat ------------------------------------------------------ */
+.role-panel .imam-apply-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.role-panel .imam-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.role-panel .imam-card:not(.imam-card-self) {
+  flex-direction: row;
+  align-items: center;
+}
+.role-panel .imam-card-top {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.role-panel .imam-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.role-panel .imam-card-name {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: #fff;
+}
+.role-panel .imam-card-nasihat {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  font-style: italic;
+  color: #c9f7de;
+}
+.role-panel .imam-card-nasihat.muted {
+  color: rgba(232, 237, 246, 0.5);
+  font-style: normal;
+}
+.role-panel .beggar-note-input {
+  width: 100%;
+  min-height: 84px;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.25);
+  color: #fff;
+  font: inherit;
+  font-size: 13.5px;
+  resize: vertical;
+}
+.role-panel .beggar-note-input:focus {
+  outline: none;
+  border-color: rgba(47, 224, 138, 0.6);
+}
+.role-panel .imam-resign-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: rgba(255, 77, 109, 0.06);
+  border: 1px solid rgba(255, 77, 109, 0.25);
+}
+.role-panel .imam-resign-actions {
+  display: flex;
+  gap: 8px;
+}

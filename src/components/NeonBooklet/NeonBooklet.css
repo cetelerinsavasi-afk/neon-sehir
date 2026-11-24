@@ -1,0 +1,179 @@
+/* v197 — Polis / İmam kitapçığı (yeni tasarım) */
+.nb-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: rgba(4, 6, 12, 0.66);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  animation: nb-fade 0.16s ease-out;
+}
+.nb {
+  --nb-acc: #19e8ff;
+  --nb-acc2: #3a7bff;
+  --nb-soft: rgba(25, 232, 255, 0.22);
+  --nb-mid: rgba(25, 232, 255, 0.45);
+  --nb-soft2: rgba(58, 123, 255, 0.3);
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  max-height: calc(100vh - 36px);
+  overflow-y: auto;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    radial-gradient(120% 70% at 0% 0%, var(--nb-soft), transparent 60%),
+    linear-gradient(180deg, rgba(20, 26, 42, 0.97), rgba(10, 13, 22, 0.98));
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: #e8edf6;
+  padding: 16px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: nb-pop 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.nb-imam {
+  --nb-acc: #2fe08a;
+  --nb-acc2: #ffd23f;
+  --nb-soft: rgba(47, 224, 138, 0.22);
+  --nb-mid: rgba(47, 224, 138, 0.45);
+  --nb-soft2: rgba(255, 210, 63, 0.3);
+}
+.nb-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.nb-badge {
+  flex: none;
+  width: 48px;
+  height: 48px;
+  border-radius: 15px;
+  display: grid;
+  place-items: center;
+  font-size: 26px;
+  background: linear-gradient(135deg, var(--nb-mid), var(--nb-soft2));
+  border: 1px solid var(--nb-mid);
+  box-shadow: 0 0 18px var(--nb-soft);
+}
+.nb-head-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.nb-head-main small {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--nb-acc);
+}
+.nb-head-main b {
+  font-size: 19px;
+  line-height: 1.15;
+}
+.nb-x {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  font-size: 15px;
+}
+.nb-dots {
+  display: flex;
+  gap: 6px;
+}
+.nb-dots button {
+  flex: 1;
+  height: 5px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+}
+.nb-dots button.seen {
+  background: var(--nb-mid);
+}
+.nb-dots button.on {
+  background: var(--nb-acc);
+  box-shadow: 0 0 10px var(--nb-acc);
+}
+.nb-body {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 150px;
+}
+.nb-body li {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  font-size: 13.5px;
+  line-height: 1.45;
+  animation: nb-in 0.22s ease-out both;
+}
+.nb-body li i {
+  flex: none;
+  font-style: normal;
+  font-size: 15px;
+  line-height: 1.35;
+}
+.nb-nav {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nb-count {
+  flex: none;
+  min-width: 46px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 800;
+  opacity: 0.6;
+}
+.nb-btn {
+  flex: 1;
+  min-height: 44px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 800;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+  color: inherit;
+}
+.nb-btn.go {
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--nb-acc), var(--nb-acc2));
+  color: #07101a;
+}
+.nb-btn:disabled {
+  opacity: 0.35;
+}
+@keyframes nb-fade {
+  from { opacity: 0; }
+}
+@keyframes nb-pop {
+  from { opacity: 0; transform: translateY(10px) scale(0.97); }
+}
+@keyframes nb-in {
+  from { opacity: 0; transform: translateX(-6px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nb-bg, .nb, .nb-body li { animation: none; }
+}

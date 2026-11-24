@@ -904,7 +904,14 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       const it = v.venue.items.find((q) => q.i === iid);
       if (!it) return;
       const p = fromRoom(v, it.x, it.z);
-      zones.push({ kind: 'station', id: `st_${v.type}_${iid}`, station: iid, acts, venue: v.type, gameVenue: gk || null, title: `${v.venue.icon || ''} ${v.venue.name}`, x: p.x, z: p.z, r: 2.0 });
+      // v197: internet kafede ayakta oynanmaz / yayın açılmaz — cihazın koltuğuna oturunca düğme çıkar
+      let chair = null;
+      if (v.type === 'netkafe') {
+        const ck = iid.startsWith('npc') ? `nkc${iid.slice(3)}` : iid.startsWith('nps') ? `nss${iid.slice(3)}` : iid;
+        const ci = v.venue.items.find((q) => q.i === ck);
+        if (ci) chair = { ...fromRoom(v, ci.x, ci.z), r: ci.k === 'sofa2' ? 1.3 : 0.7 };
+      }
+      zones.push({ kind: 'station', id: `st_${v.type}_${iid}`, station: iid, acts, venue: v.type, gameVenue: gk || null, title: `${v.venue.icon || ''} ${v.venue.name}`, x: p.x, z: p.z, r: 2.0, ...(chair ? { seatOnly: true, chairPos: chair } : {}) });
     });
   });
 
@@ -969,9 +976,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     zones.push({ kind: 'terrace', id: `teras_${v.type}`, venue: v.type, title: v.type === 'bar' ? '🍸 Bar bahçesi' : '☕ Cafe bahçesi', x: p.x, z: p.z, r: 9 });
   });
   // v196 — Müstakil evler bloğunun ön kaldırımı: "🏘️ Evler" (başkalarının evlerini gez)
-  // bloğun tamamı + çevresindeki kaldırımlar (dikdörtgen: hw / hd)
+  // v197: sadece evlerin bahçe çitlerinin İÇİNDE (yolda / kaldırımda çıkmaz): bloğun kendisi, çit hattının içi
   city.lots.filter((l) => l.type === 'mustakil').forEach((l) => {
-    zones.push({ kind: 'evler', id: `evler_${l.i0}_${l.j0}`, title: '🏘️ Müstakil Evler', x: l.mx, z: l.mz, hw: l.bw / 2 + 5, hd: l.bd / 2 + 5, r: 0 });
+    zones.push({ kind: 'evler', id: `evler_${l.i0}_${l.j0}`, title: '🏘️ Müstakil Evler', x: l.mx, z: l.mz, hw: (l.lot?.w ?? l.bw - 6) / 2, hd: (l.lot?.d ?? l.bd - 6) / 2 - 0.45, r: 0 });
   });
   // statik geometriyi malzemeye + bölgeye göre birleştir (çizim çağrısı az olsun)
   mergeStatic(scene);
@@ -1233,16 +1240,25 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   let evDesign = null; // tasarımda: { f, sel, add } | null
   // v196 tasarım kamerası: katın ortasına bakan yörünge (avatar gizli); sürükle = döndür, iki parmak = yakınlaştır
   const dCam = { yaw: 0, pitch: 0.95, dist: 17, x: 0, z: 0 };
-  let dDrag = null; // eşya sürükleme { idx, it, moved }
+  let dDrag = null; // eşya sürükleme { idx, it, moved, off }
+  // v197: karargah tasarımıyla aynı mekanik — önce dokunarak seç, seçiliyi sürükle; seçili olmayan
+  // eşyanın üstünden sürüklemek kamerayı çevirir. Tavan modu: sadece tavan eşyaları seçilir.
+  let evSel = null; // seçili eşya sırası (React'tan homeSelect)
+  let evCeil = false; // tavan modu
   // garajdaki araç: ev sahibinin favorisi (yoksa en pahalısı) — oyunun araç modeli (buildVehicle)
+  // v197: herkes garajda KENDİ favori aracını görür (kimin evinde olursa olsun, dışarıdan da);
+  // araç yoksa garaj boş. Garajdaki araca binilip gezilir (garageDrive).
   let evCar = null;
-  function evSetGarageCar(key, mods = null) {
+  function evSetGarageCar(key, mods = null, id = null) {
     if (!EV?.garageSpot) return;
     const sig = `${key}|${JSON.stringify(mods || null)}`;
-    if (evCar?.sig === sig) return;
+    if (evCar?.sig === sig) {
+      evCar.id = id || evCar.id;
+      return;
+    }
     if (evCar?.obj) evCar.obj.removeFromParent();
-    if (EV.garageCar) EV.garageCar.visible = !key;
-    evCar = { key, sig, obj: null };
+    if (EV.garageCar) EV.garageCar.visible = false;
+    evCar = { key, sig, obj: null, id, mods: mods || null, out: false };
     if (!key) return;
     try {
       const car = buildVehicle(key, mods);
@@ -1254,7 +1270,24 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       evCar.obj = g;
       if (EV.garageCar) EV.garageCar.visible = false;
     } catch {
-      if (EV.garageCar) EV.garageCar.visible = true;
+      /* araç modeli kurulamadı: garaj boş */
+    }
+  }
+  // garajdaki aracın dünya konumu + burun yönü (garaj ağzı)
+  function garageWorld() {
+    if (!EV?.garageSpot) return null;
+    EV.root.updateMatrixWorld(true);
+    const p = EV.root.localToWorld(new V(EV.garageSpot.x, 0, EV.garageSpot.z));
+    const q = new THREE.Quaternion();
+    EV.root.getWorldQuaternion(q);
+    const fwd = new V(0, 0, 1).applyQuaternion(q);
+    return { x: p.x, z: p.z, yaw: Math.atan2(fwd.x, fwd.z) };
+  }
+  // garajdaki araç sürülürken garaj boş görünür; araç kaldırılınca / başka araç çağrılınca geri gelir
+  function garageBack() {
+    if (evCar?.out) {
+      evCar.out = false;
+      if (evCar.obj) evCar.obj.visible = true;
     }
   }
   // evdeki koltuklar (satın alınmış oturulabilir eşyalar) şehrin oturma listesine eklenir / çıkarılır
@@ -1271,7 +1304,22 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       (evHome.items || []).forEach((it) => {
         if (it.p !== 1 || !HOME_PLAY_KEYS.has(it.k)) return;
         const p = fromRoom(EV, it.x, it.z);
-        zones.push({ kind: 'homePlay', id: `hp_${it.i}`, title: it.k === 'gamer' ? '🎮 Oyun · 🔴 Yayın' : '🎮 Oyun', chair: it.k === 'gamer' ? it.i : null, x: p.x, z: p.z, y: EV.ml.floors[it.f] ?? 0, r: 1.7, ev: true });
+        // v197: ayakta oynanmaz — oyuncu koltuğunun kendisi ya da cihazın 1,8 m yakınındaki koltuk (aynı kat)
+        let ch = it.k === 'gamer' ? it : null;
+        if (!ch) {
+          let bd = 1.8;
+          (evHome.items || []).forEach((q) => {
+            if (q.p !== 1 || q.f !== it.f || !EV.ml.isSeatKey(q.k)) return;
+            const d = Math.hypot(q.x - it.x, q.z - it.z);
+            if (d < bd) {
+              bd = d;
+              ch = q;
+            }
+          });
+        }
+        const chair = ch ? { ...fromRoom(EV, ch.x, ch.z), r: 1.3 } : null;
+        // arcade makinesi ayakta oynanır; diğerleri sadece koltuktan (koltuk yoksa düğme çıkmaz)
+        zones.push({ kind: 'homePlay', id: `hp_${it.i}`, title: it.k === 'gamer' ? '🎮 Oyun · 🔴 Yayın' : '🎮 Oyun', chair: it.k === 'gamer' ? it.i : null, x: p.x, z: p.z, y: EV.ml.floors[it.f] ?? 0, r: 1.7, ev: true, ...(it.k !== 'arcade' ? { seatOnly: true, chairPos: chair } : {}) });
       });
     }
   }
@@ -2758,7 +2806,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     return null;
   }
   // v150: mods — aracın kayıtlı modifiyesi (şehirde modifiyeli hali görünür, diğer oyunculara da gider)
-  function callCar(id, mods = null) {
+  function callCar(id, mods = null, at = null) {
     if (driving || self.ride) return { ok: false, reason: 'Önce arabadan in' };
     if (!hasVehicle(id)) return { ok: false, reason: 'Araba bulunamadı' };
     const v = buildVehicle(id, mods);
@@ -2766,7 +2814,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const mk = mods && typeof mods === 'object' && Object.keys(mods).length ? JSON.stringify(mods).slice(0, 700) : '';
     const old = myCar;
     myCar = { v };
-    const spot = laneSpot(self.x, self.z);
+    const spot = at || laneSpot(self.x, self.z); // v197: garajdan binince araç garajdaki yerinde
+    garageBack();
     if (!spot) {
       myCar = old;
       return { ok: false, reason: 'Yakında boş şerit yok' };
@@ -3266,7 +3315,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       [0, 1, 2].forEach((f) => {
         if (f <= evDesign.f) objs.push(ml.furnKit(f).group);
       });
-      const hit = ray.intersectObjects(objs, true).find((h) => h.object.userData.evIdx != null && ml.items[h.object.userData.evIdx]?.f === evDesign.f);
+      const hit = ray.intersectObjects(objs, true).find((h) => evPickable(h.object.userData.evIdx));
       const g = ml.pick(o, d);
       // pencereye dokunuş (eşya seçilmediyse): zeminden önce değiyorsa pencere
       if (!hit) {
@@ -3368,19 +3417,91 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (pointers.size === 2) {
       const [a, b] = [...pointers.values()];
-      pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), a: Math.atan2(b.y - a.y, b.x - a.x) };
+      pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), a: Math.atan2(b.y - a.y, b.x - a.x), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+      if (dDrag && dDrag.moved > 8 && evDesign) onEvent?.({ type: 'homeDrop', idx: dDrag.idx, x: dDrag.it.x, z: dDrag.it.z, r: dDrag.it.r });
+      dDrag = null;
       drag = null;
       return;
     }
-    drag = { moved: 0 };
-    // v196 tasarım: bu kattaki bir eşyaya basıldıysa sürüklenir (kamera dönmez)
-    if (evDesign && curVenue?.ml) {
+    drag = { moved: 0, pan: e.button === 2 };
+    // v197 tasarım (karargah gibi): SEÇİLİ eşyanın üstünden başlayan sürükleme onu taşır (önünde başka
+    // eşya olsa bile); seçili olmayan eşyanın / boş yerin üstünden sürükleme kamerayı çevirir
+    dDrag = null;
+    if (evDesign && curVenue?.ml && evSel != null && !drag.pan) {
       setNdc(e);
       ray.setFromCamera(ndc, camera);
       const ml = curVenue.ml;
-      const hit = ray.intersectObject(ml.furnKit(evDesign.f).group, true).find((h) => h.object.userData.evIdx != null && ml.items[h.object.userData.evIdx]?.f === evDesign.f);
-      dDrag = hit ? { idx: hit.object.userData.evIdx, it: { ...ml.items[hit.object.userData.evIdx] }, moved: 0 } : null;
+      const hit = ray.intersectObject(ml.furnKit(evDesign.f).group, true).find((h) => h.object.userData.evIdx === evSel && evPickable(evSel));
+      if (hit) {
+        const it = ml.items[evSel];
+        const fp = evFloorLocal(e);
+        dDrag = { idx: evSel, it: { ...it }, moved: 0, off: fp ? { x: it.x - fp.x, z: it.z - fp.z } : { x: 0, z: 0 } };
+      }
     }
+  }
+  // v197: tasarımda dokunulabilir eşya — bu kattaki; tavan modunda sadece tavan eşyaları, değilken tavan eşyaları hariç
+  function evPickable(idx) {
+    if (idx == null || !curVenue?.ml || !evDesign) return false;
+    const it = curVenue.ml.items[idx];
+    if (!it || it.f !== evDesign.f) return false;
+    return curVenue.ml.isCeil(idx) === evCeil;
+  }
+  // ekran noktasının altındaki kat zemini (ev modelinin yereli; ml.place ile aynı)
+  function evFloorLocal(e) {
+    const ml = curVenue.ml;
+    setNdc(e);
+    ray.setFromCamera(ndc, camera);
+    const root = ml.groups[0].parent;
+    root.updateMatrixWorld(true);
+    evInv.copy(root.matrixWorld).invert();
+    const o = ray.ray.origin.clone().applyMatrix4(evInv);
+    const d = ray.ray.direction.clone().transformDirection(evInv);
+    const fy = ml.floors[evDesign.f];
+    if (Math.abs(d.y) < 1e-4) return null;
+    const t = (fy - o.y) / d.y;
+    if (t <= 0) return null;
+    return { x: o.x + d.x * t, z: o.z + d.z * t };
+  }
+  // ekran noktasının altındaki kat zemini (oda yereli — dCam ile aynı çerçeve)
+  function evFloorRoom(sx, sy) {
+    const v = curVenue;
+    setNdc({ clientX: sx, clientY: sy });
+    ray.setFromCamera(ndc, camera);
+    const fy = v.ml.floors[evDesign.f];
+    const dy = ray.ray.direction.y;
+    if (Math.abs(dy) < 1e-4) return null;
+    const t = (fy - ray.ray.origin.y) / dy;
+    if (t <= 0) return null;
+    return toRoom(v, ray.ray.origin.x + ray.ray.direction.x * t, ray.ray.origin.z + ray.ray.direction.z * t);
+  }
+  const DCAM_LIM = { x: 16, z: 14 };
+  // v197: iki parmakla kaydır — parmakların altındaki zemin parmakla birlikte gider
+  function dCamPan(ax, ay, bx, by) {
+    const p0 = evFloorRoom(ax, ay);
+    const p1 = evFloorRoom(bx, by);
+    if (!p0 || !p1) return;
+    dCam.x = clamp(dCam.x + (p0.x - p1.x), -DCAM_LIM.x, DCAM_LIM.x);
+    dCam.z = clamp(dCam.z + (p0.z - p1.z), -DCAM_LIM.z, DCAM_LIM.z);
+  }
+  // v197: ekrandaki (sx, sy) noktasına doğru yakınlaş / uzaklaş (eskiden sadece ortaya)
+  function dCamZoomAt(sx, sy, ratio) {
+    const nd = clamp(dCam.dist * ratio, 4, 34);
+    if (nd === dCam.dist) return;
+    const P = evFloorRoom(sx, sy);
+    const f = nd / dCam.dist;
+    dCam.dist = nd;
+    if (!P) return;
+    // bakış noktası c = dCam + lift·yön; c' = P + (c − P)·f  →  dCam' = P + (dCam − P)·f + lift·yön·(f − 1)
+    const v = curVenue;
+    const yaw = v.ry + dCam.yaw;
+    const wx = Math.sin(yaw);
+    const wz = Math.cos(yaw);
+    const c = Math.cos(v.ry);
+    const s = Math.sin(v.ry);
+    const lx = (wx * c - wz * s) * (dCam.lift || 0);
+    const lz = (wx * s + wz * c) * (dCam.lift || 0);
+    dCam.x = clamp(P.x + (dCam.x - P.x) * f + lx * (f - 1), -DCAM_LIM.x, DCAM_LIM.x);
+    dCam.z = clamp(P.z + (dCam.z - P.z) * f + lz * (f - 1), -DCAM_LIM.z, DCAM_LIM.z);
   }
   function designDragMove(e) {
     const ml = curVenue.ml;
@@ -3399,7 +3520,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const x = o.x + d.x * t;
     const z = o.z + d.z * t;
     const it2 = { ...dDrag.it };
-    if (!ml.place(it2, x, z)) return;
+    if (!ml.place(it2, x + (dDrag.off?.x || 0), z + (dDrag.off?.z || 0))) return;
     dDrag.it = it2;
     ml.dragTo(dDrag.idx, it2);
   }
@@ -3423,8 +3544,15 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         if (da < -Math.PI) da += Math.PI * 2;
         if (Math.abs(da) < 0.5) top.az -= da;
         pinch.a = ang;
-      } else if (evDesign && curVenue?.ml) dCam.dist = clamp(dCam.dist * ratio, 7, 30);
-      else self.camDist = clamp(self.camDist * ratio, 1.8, 16);
+      } else if (evDesign && curVenue?.ml) {
+        // v197 (karargah gibi): parmakların ortasına yakınlaş + iki parmakla kaydır
+        const mx = (a.x + b.x) / 2;
+        const my = (a.y + b.y) / 2;
+        dCamZoomAt(mx, my, ratio);
+        if (pinch.mx != null) dCamPan(pinch.mx, pinch.my, mx, my);
+        pinch.mx = mx;
+        pinch.my = my;
+      } else self.camDist = clamp(self.camDist * ratio, 1.8, 16);
       pinch.d = d;
       return;
     }
@@ -3435,6 +3563,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       if (dDrag) {
         dDrag.moved = drag.moved;
         designDragMove(e);
+      } else if (drag.pan) {
+        dCamPan(e.clientX - dx, e.clientY - dy, e.clientX, e.clientY);
       } else {
         dCam.yaw -= dx * 0.006;
         dCam.pitch = clamp(dCam.pitch + dy * 0.004, 0.35, 1.45);
@@ -3475,7 +3605,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     if (paused) return; // v157.9: ortak tuval başka ekrandayken (karargah düzenleme) şehir dokunuş almaz
     e.preventDefault();
     if (view === '2d') top.dist = clamp(top.dist * (1 + clamp(e.deltaY, -200, 200) * 0.0012), 14, 110);
-    else if (evDesign && curVenue?.ml) dCam.dist = clamp(dCam.dist + e.deltaY * 0.02, 7, 30);
+    else if (evDesign && curVenue?.ml) dCamZoomAt(e.clientX, e.clientY, 1 + clamp(e.deltaY, -200, 200) * 0.0012);
     else self.camDist = clamp(self.camDist + e.deltaY * 0.006, 1.8, 16);
   }
   const onKeyDown = (e) => {
@@ -4505,6 +4635,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       if (z.kind === 'hqOut' && (!curVenue || curVenue.hqSlot !== z.slot)) return; // içerideyken
       if (z.y != null && Math.abs(me.y - z.y) > 1.6) return; // v196: evde başka kattaki cihaz
       if (z.kind === 'evler') return; // aşağıda: başka bir bölgedeyken de (durak, seyyar) düğmesi çıkar
+      if (z.seatOnly) return; // v197: oturunca (aşağıda)
       const d = Math.hypot(z.x - self.x, z.z - self.z);
       if (d < z.r && d < bd) {
         best = z;
@@ -4515,6 +4646,15 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     if (!curVenue && !driving) {
       const ez = zones.find((z) => z.kind === 'evler' && Math.abs(self.x - z.x) < z.hw && Math.abs(self.z - z.z) < z.hd);
       if (ez) best = best ? { ...best, id: `${best.id}+evler`, evlerNear: true } : ez;
+    }
+    // v197: garajdaki kendi aracım — yanına gelince "🚗 Bin"
+    if (!driving && !self.seat && !self.ride && evCar?.key && !evCar.out && !evDesign) {
+      const gw = garageWorld();
+      const d = gw ? Math.hypot(gw.x - self.x, gw.z - self.z) : Infinity;
+      if (d < 3.4 && Math.abs(me.y - 0.16) < 1.2 && (!best || d < bd)) {
+        best = { id: `garage_${evCar.key}`, kind: 'garage', title: '🚗 Garajdaki aracın', x: gw.x, z: gw.z };
+        bd = d;
+      }
     }
     if (!driving && myCar && !self.seat) {
       const d = Math.hypot(myCar.x - self.x, myCar.z - self.z);
@@ -4546,7 +4686,14 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       if (sb && !best) best = { id: sid, kind: 'seat', title: sb.tier ? '🪑 Koltuk' : '🪑 Oturak', seat: sb.tier ? 'near' : sb };
       else if (sb) best = { ...best, id: `${best.id}+${sid}`, seatNear: sb.tier ? 'near' : sb };
     }
-    if (self.seat) best = { id: 'seated', kind: 'seated', title: '🪑 Oturuyorsun' };
+    if (self.seat) {
+      best = { id: 'seated', kind: 'seated', title: '🪑 Oturuyorsun' };
+      // v197: oyun / yayın koltuğundayken o cihazın düğmeleri (+ Kalk)
+      const st = self.seat;
+      const cands = zones.filter((z) => z.seatOnly && z.chairPos && Math.hypot(z.chairPos.x - st.x, z.chairPos.z - st.z) < z.chairPos.r && (z.y == null || Math.abs(st.y - z.y) < 1.6));
+      const sz = cands.find((z) => z.chair) || cands[0]; // yayın koltuğu (oyuncu koltuğu) önce
+      if (sz) best = { ...sz, id: `${sz.id}+seated`, seatedAt: true };
+    }
     if (!best && !driving && !self.ride && !self.seat) {
       let rb = null;
       let rd = Infinity;
@@ -5651,7 +5798,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       EV.ml.setWindows(home?.win || {});
       evSeats();
       this.homeDoor?.(home?.door?.t || 'ahsap');
-      evSetGarageCar(home?.garage?.cid || home?.garageCar || null, home?.garage?.mods || null);
+      // v197: garajda her zaman benim aracım — kendi evime girince sunucudaki güncel hali gelir
+      if (home?.mine && (home.garage?.cid || home.garageCar)) evSetGarageCar(home.garage?.cid || home.garageCar, home.garage?.mods || null, home.garage?.id || null);
+      else if (home?.mine) evSetGarageCar(null);
     },
     homeSetItems(items) {
       if (!EV) return;
@@ -5747,9 +5896,37 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       } else if (n.userData.ctl?.tick) ticks.push({ obj: n, ctl: n.userData.ctl });
       EV.doors[0] = n;
     },
-    homeGarage: (key, mods) => evSetGarageCar(key || null, mods || null),
+    homeGarage: (key, mods, id) => evSetGarageCar(key || null, mods || null, id || null),
+    // v197: garajdaki araç { cid, mods, id } (yoksa null) + garajdan bin
+    garageCarInfo: () => (evCar?.key ? { cid: Number(evCar.key) || evCar.key, mods: evCar.mods || null, id: evCar.id || null } : null),
+    garageDrive() {
+      if (!evCar?.key || evCar.out) return { ok: false, reason: 'Garaj boş' };
+      if (self.seat) standUp();
+      const at = garageWorld();
+      if (!at) return { ok: false, reason: 'Garaj bulunamadı' };
+      const r = callCar(evCar.key, evCar.mods || null, { x: at.x, z: at.z, yaw: at.yaw });
+      if (!r.ok) return r;
+      evCar.out = true;
+      if (evCar.obj) evCar.obj.visible = false;
+      if (myCar) {
+        myCar.v.root.scale.setScalar(1);
+        myCar.spawnT = 1;
+      }
+      enterCar();
+      return r;
+    },
     homePlace: (it, x, z) => (EV ? EV.ml.place(it, x, z) : false),
-    homeSelect: (idx) => EV?.ml.select(idx),
+    homeSelect: (idx) => {
+      evSel = idx == null ? null : idx;
+      EV?.ml.select(idx);
+    },
+    // v197: göz — deneme (satın alınmamış) eşyaları gerçek haliyle göster (sadece tasarımda, sadece sen)
+    homeRealLook: (on) => EV?.ml.setRealLook(Boolean(on)),
+    // v197: tavan modu — sadece tavan eşyaları seçilir / taşınır
+    homeCeilMode(on) {
+      evCeil = Boolean(on);
+      dDrag = null;
+    },
     homeDesign(f) {
       const was = evDesign;
       evDesign = f == null ? null : { f: Math.max(0, Math.min(2, f | 0)) };
@@ -5764,7 +5941,12 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         dCam.x = 0;
         dCam.z = 0;
       }
-      if (!evDesign && EV) EV.ml.select(null);
+      if (!evDesign && EV) {
+        EV.ml.select(null);
+        EV.ml.setRealLook(false);
+        evSel = null;
+        evCeil = false;
+      }
       dDrag = null;
     },
     // tasarım: ekranın ortasının denk geldiği zemin noktası (yeni eşya oraya konur) — oda yereli
@@ -6186,6 +6368,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     },
     removeMyCar() {
       if (driving) exitCar();
+      garageBack();
       if (!myCar) return;
       scene.remove(myCar.v.root);
       myCar.v.root.traverse((o) => o.isMesh && o.geometry.dispose());

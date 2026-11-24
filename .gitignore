@@ -52,3 +52,7 @@ android/manifest-checksum.txt
 android/*.aab
 android/*.apk
 android/*.idsig
+
+# v197: Wrangler / Kotlin geçici dosyaları
+.wrangler/
+.kotlin/

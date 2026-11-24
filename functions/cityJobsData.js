@@ -38,7 +38,7 @@ const S = (n, name, x, z, fx, fz) => ({ n, key: `durak${n}`, name, x, z, fx, fz,
 export const BUS_STOPS = [
   S(1, 'Kuzey Kapısı', -60, -138, 0, 1), // üst dış yol, doğuya
   S(2, 'Karakol', -42, -80, -1, 0), // x = -40, güneye
-  S(3, 'Camii', 60, -58, 0, 1), // z = -60, doğuya (v196: camii barın eski yerinde)
+  S(3, 'Spor Salonu', 60, -58, 0, 1), // z = -60, doğuya (v197: camii ile spor salonu yer değiştirdi — durak spor salonunun önünde)
   S(4, 'Hastane', 158, -40, -1, 0), // doğu dış yol, güneye
   S(5, 'Stadyum', 118, 80, -1, 0), // v196: stadyum güneydoğu köşesine taşındı — x = 120, güneye (stadyumun batısı; ön kaldırımı otopark + giriş)
   S(6, 'Yarış Pisti', -40, 58, 0, -1), // v196: evin önünden yarış pistinin kaldırımına taşındı (z = 60, batıya)
@@ -136,9 +136,9 @@ const cxw = (i) => -100 + P_ * i;
 const czw = (j) => -80 + P_ * j;
 const FACE_ = { s: 0, e: Math.PI / 2, n: Math.PI, w: -Math.PI / 2 };
 export const KURYE_LOTS = {
-  camii: [4, 1, 4, 1, 's', 'Camii'], banka: [2, 0, 2, 0, 's', 'Banka'], karakol: [1, 0, 1, 0, 's', 'Karakol'], belediye: [5, 0, 5, 0, 's', 'Belediye'],
+  camii: [4, 0, 4, 0, 's', 'Camii'], banka: [2, 0, 2, 0, 's', 'Banka'], karakol: [1, 0, 1, 0, 's', 'Karakol'], belediye: [5, 0, 5, 0, 's', 'Belediye'],
   galeri: [1, 1, 1, 1, 's', 'Araba Galerisi'], silah: [0, 2, 0, 2, 's', 'Silah Mağazası'], modifiye: [1, 2, 1, 2, 's', 'Modifiye Garajı'],
-  casino: [0, 3, 0, 3, 'e', 'Casino'], spor: [4, 0, 4, 0, 's', 'Spor Salonu'], fabrika: [2, 1, 2, 1, 's', 'Fabrika'], netkafe: [3, 1, 3, 1, 's', 'İnternet Kafe'],
+  casino: [0, 3, 0, 3, 'e', 'Casino'], spor: [4, 1, 4, 1, 's', 'Spor Salonu'], fabrika: [2, 1, 2, 1, 's', 'Fabrika'], netkafe: [3, 1, 3, 1, 's', 'İnternet Kafe'],
   bar: [4, 4, 4, 4, 's', 'Bar'], cafe: [5, 4, 5, 4, 's', 'Cafe'], ev: [3, 3, 3, 3, 's', 'Evler'], stadyum: [6, 3, 7, 4, 's', 'Stadyum'],
   park: [2, 2, 3, 2, 's', 'Park'], pist: [1, 3, 2, 3, 's', 'Yarış Pisti'], liman: [0, 4, 1, 4, 's', 'Liman'], hastane: [6, 1, 6, 1, 'w', 'Hastane'],
   benzinlik: [3, 0, 3, 0, 's', 'Benzinlik'], taksi_duragi: [5, 1, 5, 1, 's', 'Taksi Durağı'], plaza: [2, 4, 2, 4, 's', 'Plaza'],

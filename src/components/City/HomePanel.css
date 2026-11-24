@@ -103,3 +103,13 @@
 .hm-old .hs-selbar { bottom: calc(210px + var(--hs-safe-b)); }
 .hm-old .hs-shelf.closed ~ .hs-selbar, .hm-old:has(.hs-shelf.closed) .hs-selbar { bottom: calc(64px + var(--hs-safe-b)); }
 .hm-old .hs-selbar-actions .hm-on { background: #ffd23f; color: #141414; border-color: #ffd23f; }
+
+/* v197: karargahtaki göz / tavan modu düğmeleri ve değişkenler (ev tasarımı şehir ekranında açılır) */
+.hm-old {
+  --hs-glass: rgba(12, 16, 28, 0.78);
+  --hs-line: rgba(255, 255, 255, 0.1);
+  --hs-safe-b: env(safe-area-inset-bottom, 0px);
+  --hs-safe-t: env(safe-area-inset-top, 0px);
+}
+.hm-old .hs-cartbar { right: 58px; }
+.hm-old .hm-eye { right: 10px; }

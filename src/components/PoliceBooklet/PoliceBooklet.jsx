@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { usePoliceSalaryStats } from '../../hooks/usePoliceSalaryStats';
-import './PoliceBooklet.css';
+import NeonBooklet from '../NeonBooklet/NeonBooklet';
 
 // Polis kitapçığı — v109: İstihbarat ile Polis birleşti (Polis Teşkilatı).
 // KULLANICI İSTEĞİ: RP'ye uygun, basit, detaya boğmadan havalı anlatım.
@@ -9,6 +8,7 @@ import './PoliceBooklet.css';
 const PAGES_BEFORE_SALARY = [
   {
     title: 'Rozeti Takmak',
+    icon: '🛡️',
     body: [
       'Şehrin karanlığına karşı duran tek güç: Polis Teşkilatı.',
       'Aranan: 10 saygınlık, temiz bir sicil (%0 şüphe), en az 1 silah ve 📋 temel görevlerin tamamı.',
@@ -19,6 +19,7 @@ const PAGES_BEFORE_SALARY = [
   },
   {
     title: 'Gölgedeki Teşkilat',
+    icon: '🕶️',
     body: [
       'Teşkilatta herkes kod adıyla tanınır. Gerçek kimliğin gizli kalır.',
       'Çeteden ayrılmak zorunda değilsin — içeriden çalışan bir köstebek olabilirsin.',
@@ -32,6 +33,7 @@ const PAGES_BEFORE_SALARY = [
 const PAGES_AFTER_SALARY = [
   {
     title: 'Soygun Durdurmak',
+    icon: '🚨',
     body: [
       'Bir soygun ekibine sız ya da kendi ekibini kurup tuzak hazırla.',
       'Ekipte sivil varsa soygun patlar: suçlular yakalanır, cezası anında kesilir.',
@@ -43,6 +45,7 @@ const PAGES_AFTER_SALARY = [
   },
   {
     title: 'Kirli Rozet',
+    icon: '⚠️',
     body: [
       'Rozetin olması suç işleyemeyeceğin anlamına gelmez.',
       'Yasaklı madde satabilir, soygun yapabilirsin. Sadece ekipte hiç sivil yoksa soygun gerçek soygundur.',
@@ -51,6 +54,7 @@ const PAGES_AFTER_SALARY = [
   },
   {
     title: 'Rozeti Bırakmak',
+    icon: '🚪',
     body: [
       'İstediğin an istifa edebilirsin.',
       'İstifa edersen ya da teşkilattan atılırsan prestijin, rütben ve sicilin silinir; 24 saat yeniden başvuramazsın.',
@@ -60,49 +64,13 @@ const PAGES_AFTER_SALARY = [
 ];
 
 export default function PoliceBooklet({ onClose }) {
-  const [page, setPage] = useState(0);
   const { avgDailyPayout } = usePoliceSalaryStats();
-
   const salaryBody = [
     'Maaşını devlet öder, her gece 00:00\'da hesabına yatar.',
     'Polis Memuru 5.000 · Komiser 10.000 · Başkomiser 15.000 · Emniyet Amiri 20.000 · Emniyet Genel Müdürü 25.000.',
     'Gün boyu Karakol\'a bırakılan rüşvetler o gece teşkilattaki polislere eşit bölünür ve maaşınla birlikte gelir.',
     ...(avgDailyPayout != null ? [`Son 10 günde rüşvet payı günlük ortalama ${avgDailyPayout.toLocaleString('tr-TR')} altın.`] : []),
   ];
-
-  const pages = [...PAGES_BEFORE_SALARY, { title: 'Maaş ve Rüşvet', body: salaryBody }, ...PAGES_AFTER_SALARY];
-  const current = pages[page];
-
-  return (
-    <div className="police-booklet-backdrop" onClick={onClose}>
-      <div className="police-booklet" onClick={(e) => e.stopPropagation()}>
-        <div className="police-booklet-header">
-          <span className="police-booklet-page-num">
-            {page + 1}/{pages.length}
-          </span>
-          <button className="police-booklet-close" onClick={onClose}>
-            ✕
-          </button>
-        </div>
-        <h3 className="police-booklet-title">{current.title}</h3>
-        <ul className="police-booklet-body">
-          {current.body.map((line, i) => (
-            <li key={i}>{line}</li>
-          ))}
-        </ul>
-        <div className="police-booklet-nav">
-          <button className="police-booklet-nav-btn" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>
-            ← Önceki
-          </button>
-          <button
-            className="police-booklet-nav-btn"
-            disabled={page === pages.length - 1}
-            onClick={() => setPage((p) => p + 1)}
-          >
-            Sonraki →
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  const pages = [...PAGES_BEFORE_SALARY, { title: 'Maaş ve Rüşvet', icon: '💰', body: salaryBody }, ...PAGES_AFTER_SALARY];
+  return <NeonBooklet pages={pages} onClose={onClose} theme="police" badge="🚓" title="Polis Kitapçığı" />;
 }

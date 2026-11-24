@@ -15,6 +15,7 @@ import { useBelediyeRates } from '../../hooks/useBelediyeRates';
 import { policeSalary } from '../../../functions/belediyeRates.js';
 import '../Gangs/Gangs.css';
 import './PoliceApplicationSection.css';
+import '../RolePanels/RolePanels.css'; // v197: yeni tasarım
 
 // Karakol › Komiser Ofisi — POLİSLİK BAŞVURUSU (v109).
 // İstihbarat ile Polis birleşti: polis olmak = Polis Teşkilatına girmek.

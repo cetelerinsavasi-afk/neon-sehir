@@ -20,7 +20,7 @@ import FactoryLogoDesigner from './FactoryLogoDesigner';
 import FactorySponsorModal from './FactorySponsorModal';
 import NotificationBell from '../NotificationBell/NotificationBell';
 import { factoryDisplayName } from './factoryHelpers';
-import { withMachineTax } from '../../../functions/tax.js';
+import { withMachineTax, machineTax } from '../../../functions/tax.js';
 import { diamondMachinePriceOf, diamondFleetValueOf, FACTORY_STARTER_V196 } from '../../../functions/v196Shared.js';
 import './FactoryScreen.css';
 
@@ -47,6 +47,9 @@ function CreateCard({ gold }) {
   const cost = starterCost(prices, rates);
   const minCost = withMachineTax(miningPriceOf(0, prices.cryptoPrice), 'mining', rates) + withMachineTax(miningPriceOf(1, prices.cryptoPrice), 'mining', rates);
   const dmCost = withMachineTax(diamondMachinePriceOf(0, prices.diamondPrice), 'elmas', rates) + withMachineTax(diamondMachinePriceOf(1, prices.diamondPrice), 'elmas', rates);
+  // v197: makine fiyatlarındaki belediye vergisi ayrıca yazılır
+  const minTax = machineTax(miningPriceOf(0, prices.cryptoPrice), 'mining', rates) + machineTax(miningPriceOf(1, prices.cryptoPrice), 'mining', rates);
+  const dmTax = machineTax(diamondMachinePriceOf(0, prices.diamondPrice), 'elmas', rates) + machineTax(diamondMachinePriceOf(1, prices.diamondPrice), 'elmas', rates);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   return (
@@ -58,8 +61,9 @@ function CreateCard({ gold }) {
       </div>
       <div className="fx-kit">
         <div><i>🏗️</i><b>Kuruluş</b><span>{fmt(FACTORY_CREATE_COST)}</span></div>
-        <div><i>⛏️</i><b>2 kripto makinesi</b><span>{fmt(minCost)}</span></div>
-        <div><i>💎</i><b>2 elmas makinesi</b><span>{fmt(dmCost)}</span></div>
+        <div><i>⛏️</i><b>2 kripto makinesi</b><span>{fmt(minCost)}<small className="fx-tax">vergi dahil · vergi {fmt(minTax)}</small></span></div>
+        <div><i>💎</i><b>2 elmas makinesi</b><span>{fmt(dmCost)}<small className="fx-tax">vergi dahil · vergi {fmt(dmTax)}</small></span></div>
+        <div className="fx-kit-tax"><i>🏛️</i><b>Toplam vergi (belediye)</b><span>{fmt(minTax + dmTax)}</span></div>
       </div>
       <button
         className="fx-cta"
@@ -98,6 +102,9 @@ function OwnerView({ factory, machines, gold }) {
   const ranToday = (mining.length === 0 || mining.every((m) => m.miningTriggeredDateKey === day)) && (dm === 0 || factory.dm?.trig === day);
   const minPrice = withMachineTax(miningPriceOf(mining.length, prices.cryptoPrice), 'mining', rates);
   const dmPrice = withMachineTax(diamondMachinePriceOf(dm, prices.diamondPrice), 'elmas', rates);
+  const minTaxV = machineTax(miningPriceOf(mining.length, prices.cryptoPrice), 'mining', rates);
+  const dmTaxV = machineTax(diamondMachinePriceOf(dm, prices.diamondPrice), 'elmas', rates);
+  const gross = factory.dailyGrossIncome != null ? Number(factory.dailyGrossIncome) || 0 : (factory.dailyIncome || 0) + (factory.dailyElectricityExpense || 0) + (factory.dailyTaxExpense || 0);
   const value = FACTORY_CREATE_COST + miningFleetValue(mining.length, prices.cryptoPrice) + diamondFleetValueOf(dm, prices.diamondPrice);
   const run = async (key, fn) => {
     setBusy(key);
@@ -117,7 +124,7 @@ function OwnerView({ factory, machines, gold }) {
       <div className="factory-top-row">
         <button className="factory-btn small" onClick={() => setLogo(true)} title="Logo"><FactoryBadge logo={factory.logo} name={factoryDisplayName(factory)} size={44} /></button>
         <b className="fx-name">{factoryDisplayName(factory)}</b>
-        <button className="factory-btn small" onClick={() => setRename(factory.name || '')}>✏️</button>
+        <button className={`factory-btn small${rename != null ? ' primary' : ''}`} onClick={() => setRename((r) => (r == null ? factory.name || '' : null))}>✏️</button>
         <NotificationBell kind="factory" id={factory.id} unread={Boolean(factory.notifUnread)} />
       </div>
       {rename != null && (
@@ -138,6 +145,7 @@ function OwnerView({ factory, machines, gold }) {
           <button className="factory-btn primary small" disabled={busy || gold < minPrice} onClick={() => run('min', async () => { await buyFactoryMachine('mining', minPrice); return '⛏️ Kripto makinesi alındı.'; })}>
             + {fmt(minPrice)}
           </button>
+          <div className="fx-tax">vergi dahil · vergi {fmt(minTaxV)}</div>
         </div>
         <div className="fv-machine">
           <div className="em">💎</div>
@@ -146,6 +154,7 @@ function OwnerView({ factory, machines, gold }) {
           <button className="factory-btn primary small" disabled={busy || gold < dmPrice} onClick={() => run('dm', async () => { await buyFactoryMachine('elmas', dmPrice); return '💎 Elmas makinesi alındı.'; })}>
             + {fmt(dmPrice)}
           </button>
+          <div className="fx-tax">vergi dahil · vergi {fmt(dmTaxV)}</div>
         </div>
       </div>
       <button className="factory-btn primary" style={{ width: '100%', marginTop: 12 }} disabled={busy || ranToday} onClick={() => run('run', async () => { await runFactoryMachines(); return '⚙️ Makineler çalışıyor. Üretim 00:00\'da bankada.'; })}>
@@ -159,6 +168,7 @@ function OwnerView({ factory, machines, gold }) {
         </button>
         {report && (
           <div className="fx-rep-body">
+            <div className="fv-row"><span>Toplam ciro</span><b>{fmt(gross)}</b></div>
             <div className="fv-row"><span>Net kâr</span><b>{fmt(factory.dailyIncome || 0)}</b></div>
             <div className="fv-row"><span>Elektrik</span><b>−{fmt(factory.dailyElectricityExpense || 0)}</b></div>
             <div className="fv-row"><span>Vergi</span><b>−{fmt(factory.dailyTaxExpense || 0)}</b></div>

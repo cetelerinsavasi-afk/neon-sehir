@@ -110,17 +110,25 @@ export const NEW_VENUES = {
     wall: 'boya_lacivert',
     floor: 'epoksi_siyah',
     // v196: 8 bilgisayar (koltuklu), 2 yayın seti, 2 PlayStation + karşılarında 2'li koltuk. Kimlikler sunucuyla
-    // aynı (functions/v196Shared.js GAME_VENUE_HOUSES.internet). Bilgisayara yaklaşınca "Oyun oyna", yayın
-    // setinin koltuğunda "Yayın aç" (panel listesi yok)
+    // aynı (functions/v196Shared.js GAME_VENUE_HOUSES.internet).
+    // v197: ayakta oynanmaz / yayın açılmaz — bilgisayarın karşısındaki koltuğa (konsolda kanepeye) oturunca
+    // "🎮 Oyun oyna", yayın setinin koltuğuna oturunca "🔴 Yayın aç" (cityEngine: seatOnly istasyonlar)
     items: [
       ...[-7.6, -5.6, -3.6, -1.6].flatMap((x, n) => [it(`npc${n + 1}`, 'pcstation', x, -6.1), it(`nkc${n + 1}`, 'gamer', x, -5.15, 4), it(`npc${n + 5}`, 'pcstation', x, -2.6), it(`nkc${n + 5}`, 'gamer', x, -1.65, 4)]),
-      it('nspc', 'pc', 3.6, -6.1), it('nsch', 'gamer', 3.6, -5.15, 4), it('nsrl', 'ringlight', 2.5, -5.9), it('nscm', 'streamcam', 3.6, -4.1, 4),
-      it('nspc2', 'pc', 7.0, -6.1), it('nsch2', 'gamer', 7.0, -5.15, 4), it('nsrl2', 'ringlight', 8.1, -5.9), it('nscm2', 'streamcam', 7.0, -4.1, 4),
+      // v197: yayın masalarının arkasındaki kameralar kalktı (yayın koltuğa oturunca açılır); yayın köşesi
+      // arka duvarda neon tabelalı, konsol köşesi halılı, girişte bekleme köşesi
+      it('nspc', 'pc', 3.6, -6.1), it('nsch', 'gamer', 3.6, -5.15, 4), it('nsrl', 'ringlight', 2.5, -5.9),
+      it('nspc2', 'pc', 7.0, -6.1), it('nsch2', 'gamer', 7.0, -5.15, 4), it('nsrl2', 'ringlight', 8.1, -5.9),
+      it('nk_neon', 'neon3', 5.3, -7, 0),
+      it('nk_rug', 'ruggeo', 5.3, -0.3),
       it('nps1', 'console', 3.6, -1.6), it('nss1', 'sofa2', 3.6, 1.0, 4), it('nps2', 'console', 7.0, -1.6), it('nss2', 'sofa2', 7.0, 1.0, 4),
       it('nk_ck', 'checkout', -5.4, 4.8),
       it('nk_df', 'drinkfridge', 8.5, 4.6, 6),
       it('nk_gr', 'graffiti', -9, 0.4, 2),
+      it('nk_neon2', 'neon4', -9, -4.2, 2),
       it('nk_sp', 'speaker', -8.4, 6.2),
+      it('nk_bb1', 'beanbag', 2.4, 5.2, 4), it('nk_bb2', 'beanbag', 4.2, 5.6, 4), it('nk_ts', 'tside', 3.3, 6.2),
+      it('nk_lp', 'lamp', -8.2, 3.6),
       it('nk_pl', 'plantb', 8.3, 6.3),
     ],
     stations: {

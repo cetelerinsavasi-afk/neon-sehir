@@ -273,7 +273,7 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
     let result = null;
     await db.runTransaction(async (tx) => {
       const h = await txGym(tx, gymId);
-      if (isGameGym(h)) fail('failed-precondition', 'gym-closed'); // v132: oyunun salonu kapalı
+      // v197: oyunun salonu (v196'dan beri tek salon) açık — eski 'gym-closed' engeli kaldırıldı
       business?.assertBizOpen?.(h); // v195: pasif salon üyelik satamaz
       if (!isGameGym(h) && !(await txPresent(tx, uid, gymId))) fail('failed-precondition', 'not-present');
       const openSnaps = await Promise.all(open.docs.map((d) => tx.get(d.ref)));

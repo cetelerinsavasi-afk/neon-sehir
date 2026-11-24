@@ -8,6 +8,11 @@ import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { shopAction } from '../../services/gameActions';
 import MenuPanel from '../Venue/MenuPanel';
 import GymPanel from '../Gym/GymPanel';
+import GymMiniGame from '../Gym/GymMiniGame';
+import GymResult from '../Gym/GymResult';
+import TaskTree from '../Gym/TaskTree';
+import { EQUIP } from '../Gym/gymMeta';
+import { useMyGymMembership } from '../../hooks/useGym';
 import { DepoTradeSheet } from '../Depo/DepoPanels';
 import { NET_MINUTE_PRICE, GAME_VENUE_HOUSES } from '../../../functions/v196Shared.js';
 import '../../styles/bizui.css';
@@ -171,15 +176,46 @@ export function NetKafePart({ panel, setPanel, flash, engineRef }) {
 }
 
 // ── SPOR SALONU ────────────────────────────────────────────────────────────────
+// v197: üyelik alınınca antrenman şehirdeki salonda yapılır (3 görev: sağ üstte görev ağacı,
+// sıradaki alet düğmesi → mini oyun). Eskiden üyelik sonrası antrenman açılmıyordu.
 export function SporPart({ panel, setPanel, walk }) {
+  const { active } = useMyGymMembership();
+  const gym = active && active.gymId === 'game_spor' && active.step < 3 ? active : null;
+  const cur = gym ? gym.tasks[gym.step] : null;
+  const [game, setGame] = useState(null);
+  const [result, setResult] = useState(null);
+  const items = gym && cur ? [{ panel: 'train', label: `${EQUIP[cur]?.icon || '💪'} ${EQUIP[cur]?.name || 'Antrenman'} (${gym.step + 1}/3)` }] : [{ panel: 'gym', label: '🏋️ Günlük üyelik' }];
+  useEffect(() => {
+    if (panel === 'train' && cur) {
+      setGame(cur);
+      setPanel(null);
+    }
+  }, [panel, cur, setPanel]);
   return (
     <>
-      <TopBtns show={walk && !panel} setPanel={setPanel} items={[{ panel: 'gym', label: '🏋️ Günlük üyelik' }]} />
+      <TopBtns show={walk && !panel && !game} setPanel={setPanel} items={items} />
+      {gym && walk && !game && <TaskTree membership={gym} onTapCurrent={(k) => setGame(k)} />}
       {panel === 'gym' && (
         <Layer onClose={() => setPanel(null)}>
-          <GymPanel houseId="game_spor" houseDoc={gameDoc('game_spor', 'spor')} onClose={() => setPanel(null)} />
+          <GymPanel houseId="game_spor" houseDoc={gameDoc('game_spor', 'spor')} onClose={() => setPanel(null)} onStarted={() => setPanel(null)} />
         </Layer>
       )}
+      {game && (
+        <Layer onClose={() => setGame(null)}>
+          <div className="wk-sheet">
+            <GymMiniGame
+              key={game}
+              equipment={game}
+              onDone={(r) => {
+                setGame(null);
+                if (r?.done) setResult(r);
+              }}
+              onClose={() => setGame(null)}
+            />
+          </div>
+        </Layer>
+      )}
+      {result && <GymResult result={result} onClose={() => setResult(null)} />}
     </>
   );
 }

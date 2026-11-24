@@ -19,6 +19,7 @@ import {
   giveNasihat,
 } from '../../services/gameActions';
 import './MosqueScreen.css';
+import '../RolePanels/RolePanels.css'; // v197: yeni tasarım
 import { useTaskPass } from '../../hooks/useTaskPass'; // v168.1
 
 // WINDOW_HOURS/ImamPanel/BeggarsSection export edildi — MosqueWorldScreen

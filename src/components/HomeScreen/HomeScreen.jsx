@@ -4,7 +4,7 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { useVehicles } from '../../hooks/useVehicles';
 import { useWeapons } from '../../hooks/useWeapons';
 import { useInventory } from '../../hooks/useInventory';
-import { setDisplayName, houseAction } from '../../services/gameActions';
+import { setDisplayName } from '../../services/gameActions';
 import { weaponCatalog } from '../../data/weaponCatalog';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { VehicleKindTabs, kindOfCar } from '../VehicleGalleryScreen/VehicleGalleryScreen'; // v169: galerideki 3 sekme
@@ -215,8 +215,6 @@ function WeaponCard({ weapon, locked = false }) {
 export default function HomeScreen() {
   const { user } = useAuth();
   const { player } = usePlayer();
-  const [favBusy, setFavBusy] = useState(false); // v196: favori araç (❤️)
-  const [favLocal, setFavLocal] = useState(undefined);
   const { vehicles } = useVehicles();
   const { weapons } = useWeapons();
   const { inventory } = useInventory();
@@ -259,23 +257,6 @@ export default function HomeScreen() {
 
   // v77: vitrindeki (dükkândaki) ürünler kilitli — soluk ve 🔒 ile gösterilir
   const myVehicles = vehicles.filter((v) => !v.listed || v.shopHouseId);
-  // v196: favori araç (❤️) — evinin garajında durur; tek araç. Tekrar dokununca kaldırılır.
-  const favId = favLocal !== undefined ? favLocal : player?.favVehicleId || null;
-  const toggleFav = async (v) => {
-    if (favBusy) return;
-    const next = favId === v.id ? null : v.id;
-    setFavBusy(true);
-    setFavLocal(next);
-    try {
-      const r = await houseAction({ op: 'homeFav', vehicleId: next });
-      window.dispatchEvent(new CustomEvent('neon-home-garage', { detail: { garage: r.data?.garage || null } }));
-    } catch (e) {
-      setFavLocal(undefined);
-      console.warn('favori araç', e?.message);
-    } finally {
-      setFavBusy(false);
-    }
-  };
   const myWeapons = weapons.filter((w) => !w.listed || w.shopHouseId);
 
   return (
@@ -316,7 +297,7 @@ export default function HomeScreen() {
               (() => {
                 const list = myVehicles.filter((v) => vehicleKind(v) === vehTab);
                 if (!list.length) return <p className="home-hint">Bu sekmede aracın yok.</p>;
-                return list.map((v) => <VehicleCard key={v.id} vehicle={v} locked={Boolean(v.shopHouseId)} fav={favId === v.id} onFav={toggleFav} />);
+                return list.map((v) => <VehicleCard key={v.id} vehicle={v} locked={Boolean(v.shopHouseId)} />); // v197: favori kalbi Arabalarım'da
               })()
             )}
           </>

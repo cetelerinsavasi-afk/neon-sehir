@@ -341,8 +341,28 @@ function Speedo({ kmh, gear, ratio }) {
 }
 
 // "Arabalarım" — sadece açılınca okunur (Firestore okuması yalnız burada)
-function GarageSheet({ onPick, onClose, onGallery }) {
+function GarageSheet({ onPick, onClose, onGallery, favId: favId0 = null, flash }) {
   const { vehicles, loading } = useVehicles();
+  // v197: favori araç (❤️, kartın sağ üstünde) — evinin garajında durur, garajdan binilir. Tek araç; tekrar dokununca kalkar.
+  const [favLocal, setFavLocal] = useState(undefined);
+  const [favBusy, setFavBusy] = useState(false);
+  const favId = favLocal !== undefined ? favLocal : favId0;
+  const toggleFav = async (v) => {
+    if (favBusy) return;
+    const next = favId === v.id ? null : v.id;
+    setFavBusy(true);
+    setFavLocal(next);
+    try {
+      const r = await houseAction({ op: 'homeFav', vehicleId: next });
+      window.dispatchEvent(new CustomEvent('neon-home-garage', { detail: { garage: r.data?.garage || null } }));
+      flash?.(next ? '❤️ Favori araç: evinin garajında duruyor.' : 'Favori kaldırıldı.');
+    } catch (e) {
+      setFavLocal(undefined);
+      flash?.(e?.message || 'Olmadı, tekrar dene.');
+    } finally {
+      setFavBusy(false);
+    }
+  };
   const [tab, setTab] = useState('araba'); // v152: Araba / Ticari / Motor (galerideki gibi)
   const all = vehicles.filter((v) => !v.listed && !v.seizedByBank);
   const usable = all.filter((v) => vehicleKindOfId(v.catalogId) === tab);
@@ -374,12 +394,18 @@ function GarageSheet({ onPick, onClose, onGallery }) {
           if (!c) return null;
           // v147.3: ömrü bitmiş araba sürülemez
           const dead = v.lifeDays != null && Number(v.lifeDays) <= 0;
+          const fav = favId === v.id;
           return (
-            <button key={v.id} className={`cs-car${dead ? ' dead' : ''}`} disabled={dead} onClick={() => !dead && onPick(c, v)}>
-              <CarImg catalogId={c.id} mods={v.mods || null} />
-              <b>{v.customName || c.name}</b>
-              <span>{dead ? '⛔ Ömrü bitti' : c.job && c.kind !== 'motor' ? `💼 ${JOBS[c.job]?.name || 'Meslek'}` : `👥 ${c.seats || ({ 1: 4, 2: 4, 3: 4, 4: 2, 5: 4, 6: 2, 7: 2, 8: 2, 9: 1, 10: 2 })[c.id] || 2}`}</span>
-            </button>
+            <div key={v.id} className="cs-car-wrap">
+              <button className={`cs-car${dead ? ' dead' : ''}`} disabled={dead} onClick={() => !dead && onPick(c, v)}>
+                <CarImg catalogId={c.id} mods={v.mods || null} />
+                <b>{v.customName || c.name}</b>
+                <span>{dead ? '⛔ Ömrü bitti' : c.job && c.kind !== 'motor' ? `💼 ${JOBS[c.job]?.name || 'Meslek'}` : `👥 ${c.seats || ({ 1: 4, 2: 4, 3: 4, 4: 2, 5: 4, 6: 2, 7: 2, 8: 2, 9: 1, 10: 2 })[c.id] || 2}`}</span>
+              </button>
+              <button type="button" className={`cs-car-fav${fav ? ' on' : ''}`} disabled={favBusy} aria-pressed={fav} title={fav ? 'Favori araç (garajında) — kaldırmak için dokun' : 'Favori yap: evinin garajında dursun'} onClick={() => toggleFav(v)}>
+                {fav ? '❤️' : '🤍'}
+              </button>
+            </div>
           );
         })}
       </div>
@@ -678,6 +704,13 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   }, [chatOpen, msgs]);
   // v151 — meslek (ticari araç): sürülen aracın belgesi + iş durumu
   const [myVeh, setMyVeh] = useState(null);
+  // v197: garajda her oyuncu KENDİ favori aracını görür (users.favGarage — sunucu ❤️ ve eve girişte yazar)
+  const favGarageSig = player?.favGarage === undefined ? '' : JSON.stringify(player.favGarage || null);
+  useEffect(() => {
+    if (!ready || !favGarageSig) return;
+    const g = JSON.parse(favGarageSig);
+    engineRef.current?.homeGarage?.(g?.cid || null, g?.mods || null, g?.id || null);
+  }, [ready, favGarageSig]);
   const [jobUi, setJobUi] = useState(null);
   const [jobPaid, setJobPaid] = useState(null);
   const jobRef = useRef(null);
@@ -1462,6 +1495,27 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         },
       });
     }
+    // v197: garajdaki kendi aracım (Profil / Arabalarım'daki ❤️) — binip gezilir
+    if (zone.kind === 'garage') {
+      list.push({
+        label: '🚗 Bin',
+        cls: 'take',
+        on: () => {
+          const e = engineRef.current;
+          const g = e?.garageCarInfo?.();
+          const c = g ? vehicleCatalog.find((x) => x.id === Number(g.cid)) : null;
+          if (!c) return flash('Garaj boş');
+          const r = e.garageDrive();
+          if (!r.ok) return flash(r.reason);
+          if (rentRef.current) setRent(null);
+          rememberHeistCar(uid, c.id, g.mods || null);
+          const v = g.id && c.job ? { id: g.id, catalogId: c.id, job: c.job } : null;
+          setMyVeh(v);
+          jobRef.current?.setVehicle(v);
+          return flash(`🚗 ${c.name}`);
+        },
+      });
+    }
     if (zone.kind === 'car') {
       list.push({ label: '🚗 Bin', cls: 'take', on: () => engineRef.current.enterCar() });
       list.push({ label: '🔁 Başka araba', on: () => setPanel({ kind: 'garage' }) });
@@ -1471,7 +1525,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     if (zone.kind === 'ride' && (!isStoryNpcId(zone.owner) || zone.owner === AMCA_ID)) list.push({ label: zone.owner === AMCA_ID ? '🚗 Amca\'nın arabasına bin' : '🚗 Yolcu ol', cls: 'take', on: () => rideIn(zone) });
     if (zone.kind === 'seat') list.push({ label: '🪑 Otur', cls: 'take', free: true, on: () => engineRef.current.sit(zone.seat) });
     if (zone.seatNear) list.push({ label: '🪑 Otur', cls: '', free: true, on: () => engineRef.current.sit(zone.seatNear) });
-    if (zone.kind === 'seated') list.push({ label: '🧍 Kalk', free: true, on: () => engineRef.current.stand() });
+    if (zone.kind === 'seated' || zone.seatedAt) list.push({ label: '🧍 Kalk', free: true, on: () => engineRef.current.stand() });
     // misafir: gezmek serbest, işlem yapmak giriş ister
     if (guest) list.forEach((a) => !a.free && (a.on = () => setAskSignIn(true)));
     const hqName = zone.kind === 'hqIn' || zone.kind === 'hqOut' ? hqRef.current.bySlot[zone.slot]?.name : null;
@@ -2113,6 +2167,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       {panel?.kind === 'fleet' && user && <FleetSheet job={panel.job} uid={user.uid} gold={gold} onClose={() => setPanel(null)} />}
       {panel?.kind === 'garage' && (
         <GarageSheet
+          favId={player?.favVehicleId || null}
+          flash={flash}
           onClose={() => setPanel(null)}
           onPick={(c, v) => callCar(c, v)}
           onGallery={() => {

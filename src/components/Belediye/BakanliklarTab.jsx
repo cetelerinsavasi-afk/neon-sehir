@@ -12,7 +12,7 @@ import { useBelediye } from './BelediyeContext';
 import { Kpis, Ledger, Person, RateEditor, Table, dayLabel, hoursLeft, nf, useTick } from './belediyeUi';
 
 const RANK_LABEL = { baskan: 'Emniyet Genel Müdürü', sef: 'Emniyet Amiri', uzman: 'Başkomiser', ajan: 'Komiser', muhbir: 'Polis Memuru' };
-const MACHINE_LABEL = { mining: 'Kripto', tamirMalzemesi: 'Tamir Malz.', arabaGelistirme: 'Araba Gel.', silahUpgrade: 'Silah Gel.' };
+const MACHINE_LABEL = { mining: 'Kripto', elmas: 'Elmas', tamirMalzemesi: 'Tamir Malz.', arabaGelistirme: 'Araba Gel.', silahUpgrade: 'Silah Gel.' };
 // v132 — soygun hedefleri (functions/policeRules.js heistTargetKey)
 // v154: yeni soygun listesi + haraç satıcı satıcı (eski raporlardaki 'seyyar' / 'modifiye' satırları da görünür)
 const HEIST_LABEL = {
@@ -39,7 +39,7 @@ function catsOf(report) {
   for (const m of Object.values(report?.ministries || {})) for (const l of m.lines || []) out[l.kind][l.cat] = (out[l.kind][l.cat] || 0) + Number(l.amount || 0);
   return out;
 }
-const pctOf = (rates, id) => fmtRate(rates[id], RATE_BY_ID[id].unit);
+const pctOf = (rates, id) => (RATE_BY_ID[id] ? fmtRate(rates[id], RATE_BY_ID[id].unit) : '—'); // v197: bilinmeyen oran çökertmesin
 
 function Sanayi({ r, c, rates }) {
   const st = r.stat || {};
@@ -55,7 +55,8 @@ function Sanayi({ r, c, rates }) {
         items={[
           { label: 'Fabrika vergisi', value: nf(c.in.vergi_fabrika), sub: f?.count ? `${f.count} fabrika` : null },
           { label: 'Makine vergisi', value: nf(c.in.vergi_makine) },
-          { label: 'İşçi maaş vergisi', value: nf(c.in.vergi_maasIsci), sub: st.isci_n ? `${nf(st.isci_n)} maaş · brüt ${nf(st.isci_brut)}` : null },
+          // v197: fabrika işçisi (maaş) vergisi kalktı — eski kayıt varsa görünür
+          ...(c.in.vergi_maasIsci ? [{ label: 'İşçi maaş vergisi (eski)', value: nf(c.in.vergi_maasIsci) }] : []),
         ]}
       />
       {fRows.length === 0 && <p className="dim bd-note">Fabrika listesi gece 00:00'da tahsil edilen fabrika vergisiyle birlikte hazırlanır.</p>}
@@ -93,7 +94,9 @@ function Ticaret({ r, c, rates }) {
   const st = r.stat || {};
   const counts = r.analysis?.bizCounts || {};
   const taxOfType = (t) => (c.in[`vergi_isl_${t}`] || 0) + (t === 'ofis' ? c.in.vergi_ofis || 0 : 0) + (t === 'gazino' ? (c.in.vergi_gazino || 0) + (c.in.vergi_gazinoCekim || 0) : 0);
-  const types = Object.keys(BIZ_RATE_KEY);
+  // v197: oranı olmayan (null: gazino / depo / ofis…) türler ayrı satır değil — RATE_BY_ID[null] ekranı çökertiyordu
+  const types = Object.keys(BIZ_RATE_KEY).filter((t) => BIZ_RATE_KEY[t] && RATE_BY_ID[BIZ_RATE_KEY[t]]);
+  const otherTax = Object.keys(BIZ_RATE_KEY).filter((t) => !types.includes(t)).reduce((a, t) => a + taxOfType(t), 0);
   // v127: aynı orana bağlı türler (ör. sinema / stüdyo / mescit → Ofis) tek satırda
   const byKey = {};
   for (const t of types) {
@@ -109,7 +112,8 @@ function Ticaret({ r, c, rates }) {
   // güncelleme öncesi türe ayrılmamış işletme vergisi + oyunun kendi mekânları
   if (c.in.vergi_isletme) rows.push({ key: 'eski', name: 'Tür ayrımı öncesi', n: '—', ciro: '—', rate: '', tax: nf(c.in.vergi_isletme) });
   if (c.in.vergi_oyun) rows.push({ key: 'oyun', name: 'Oyunun mekânları', n: '—', ciro: '—', rate: '', tax: nf(c.in.vergi_oyun) });
-  const bizTax = types.reduce((a, t) => a + taxOfType(t), 0) + (c.in.vergi_isletme || 0) + (c.in.vergi_oyun || 0);
+  if (otherTax) rows.push({ key: 'diger', name: 'Eski işletmeler (ofis / gazino / depo)', n: '—', ciro: '—', rate: '', tax: nf(otherTax) });
+  const bizTax = types.reduce((a, t) => a + taxOfType(t), 0) + otherTax + (c.in.vergi_isletme || 0) + (c.in.vergi_oyun || 0);
   const gz = [
     ['gazino_slot', 'Slot'],
     ['gazino_piyango', 'Piyango biletleri'],
@@ -132,7 +136,7 @@ function Ticaret({ r, c, rates }) {
         items={[
           { label: 'İşletme vergisi', value: nf(bizTax) },
           { label: 'Oyunun gazinosu', value: nf(gzTotal), sub: 'kârın tamamı devlete' },
-          { label: 'Sıfır satış vergisi', value: nf(sfTax), sub: 'kârdan' },
+          ...(sfTax ? [{ label: 'Sıfır satış vergisi', value: nf(sfTax), sub: 'kârdan (eski)' }] : []),
           { label: 'Piyango vergisi', value: nf(c.in.vergi_piyango), sub: st.pi_bilet ? `${nf(st.pi_bilet)} bilet · ödül ${nf(st.pi_odul)}` : null },
           // v176: seyyar satıcı gelirleri artık Neon Borsa hissedarlarına → yerine hisse gelir vergisi
           { label: 'Hisse senedi vergisi', value: nf(c.in.vergi_hisse), sub: `%${rates.hisse ?? 10} · gelir toplanırken${c.in.seyyar_sahipsiz ? ` · hissedarsız mekân geliri ${nf(c.in.seyyar_sahipsiz)}` : ''}` },
@@ -163,8 +167,8 @@ function Ticaret({ r, c, rates }) {
         rows={gz}
         foot={{ name: 'Toplam', v: nf(gzTotal) }}
       />
-      <h4 className="bd-h">Sıfır satışlar</h4>
-      <Table
+      {sfTax > 0 && <h4 className="bd-h">Sıfır satışlar</h4>}
+      {sfTax > 0 && <Table
         cols={[
           { k: 'name', label: 'Dükkân' },
           { k: 'n', label: 'Satış', num: true },
@@ -174,7 +178,7 @@ function Ticaret({ r, c, rates }) {
           { k: 'tax', label: 'Vergi', num: true },
         ]}
         rows={sf}
-      />
+      />}
       {/* v136: 2. el satışlar vergisiz — Ticaret Bakanlığında 2. el paneli gösterilmez */}
     </>
   );

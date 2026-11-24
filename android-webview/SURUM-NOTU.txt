@@ -1,6 +1,6 @@
 <tr-TR>
-Neon Şehir 1.2.0
-• Zümrüt Mağazası geri geldi: zümrüt paketleri Google Play ile satın alınabiliyor.
-• Ödeme onay bekliyorsa (ör. yavaş kart) onaylanınca zümrütlerin kendiliğinden yükleniyor.
-• Ödeme sonrası internet kesilse ya da uygulama kapansa bile zümrütlerin bir sonraki açılışta yükleniyor.
+Neon Şehir 1.3.0
+• Yeni: Hikâye modu eklendi.
+• Kasma ve donma sorunları büyük ölçüde giderildi; oyun daha akıcı çalışıyor.
+• Araç sürüşü iyileştirildi.
 </tr-TR>

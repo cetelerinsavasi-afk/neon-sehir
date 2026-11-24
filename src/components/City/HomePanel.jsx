@@ -115,7 +115,7 @@ export default function HomePanel({ eng, uid, inside, flash, evtRef, Sheet, list
   useEffect(() => {
     const on = (e) => {
       const g = e.detail?.garage || null;
-      eng?.homeGarage(g?.cid || null, g?.mods || null);
+      eng?.homeGarage(g?.cid || null, g?.mods || null, g?.id || null);
       setHome((h) => (h && h.id === own ? { ...h, garage: g, garageCar: g?.cid || 0 } : h));
     };
     window.addEventListener('neon-home-garage', on);
@@ -151,7 +151,7 @@ export default function HomePanel({ eng, uid, inside, flash, evtRef, Sheet, list
             if (h) {
               setHome((old) => ({ ...h, mine: true, items: old?.items || h.items }));
               eng?.homeDoor(h.door?.t || 'ahsap');
-              eng?.homeGarage(h.garage?.cid || h.garageCar || null, h.garage?.mods || null);
+              eng?.homeGarage(h.garage?.cid || h.garageCar || null, h.garage?.mods || null, h.garage?.id || null);
             }
             close();
           } catch (e) {
@@ -221,7 +221,7 @@ function HomeSettings({ Sheet, home, busy, onClose, onSave }) {
       <div className="hm-field">Ana kapı
         <div className="hm-chips">{HOME_DOORS.map(([k, n]) => <button key={k} className={door === k ? 'on' : ''} onClick={() => setDoor(k)}>{n}</button>)}</div>
       </div>
-      <p className="hm-note">❤️ Garajdaki araç: Profil › Araçlar'da aracın kartındaki kalple seçilir.</p>
+      <p className="hm-note">❤️ Garajdaki araç: soldaki 🚗 Arabalarım listesinde aracın sağ üstündeki kalple seçilir; garajdan binip gezebilirsin.</p>
       <p className="hm-note">10+ eşyalı ve açık evler Evler listesinde görünür. 20 gün girmezsen listeden düşer.</p>
       <button className="ws-panel-btn hm-save" disabled={busy || !Object.keys(patch()).length} onClick={() => onSave(patch())}>Kaydet</button>
     </Sheet>
@@ -275,6 +275,21 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
   const [winSel, setWinSel] = useState(null);
   const [sInv, setSInv] = useState(() => home.inv || null);
   const best = useFurnBest(tab === 'pazar');
+  // v197 — karargah tasarımındaki gibi: 👁️ göz (deneme eşyaları gerçek gör), tavan modu, ↶ geri al
+  const [realLook, setRealLook] = useState(false);
+  const [ceilMode, setCeilMode] = useState(false);
+  const undoRef = useRef([]);
+  const savedRef = useRef(false); // v197: bu oturumda kaydedildi / satın alındı → çıkışta ev yeniden yüklenir (bayat sepet olmasın)
+  useEffect(() => {
+    eng.homeRealLook?.(realLook);
+  }, [eng, realLook]);
+  useEffect(() => {
+    eng.homeCeilMode?.(ceilMode);
+  }, [eng, ceilMode]);
+  useEffect(() => () => {
+    eng.homeRealLook?.(false);
+    eng.homeCeilMode?.(false);
+  }, [eng]);
   const st = useRef({});
   st.current = { items, inv, f, sel };
   useEffect(() => () => setTimeout(releaseThumbRenderer, 1500), []); // tasarım kapanınca ikinci WebGL bağlamı bırakılır
@@ -282,6 +297,11 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
     eng.homeDesign(f);
   }, [eng, f]);
   const apply = useCallback((next, keepSel = true) => {
+    const prev = st.current.items;
+    if (prev && prev !== next) {
+      undoRef.current.push({ items: prev, inv: st.current.inv });
+      if (undoRef.current.length > 40) undoRef.current.shift();
+    }
     setItems(next);
     setDirty(true);
     eng.homeSetItems(next);
@@ -315,19 +335,11 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
         return;
       }
       setWinSel(null);
-      if (e.idx != null) {
-        setSel(e.idx);
-        return;
-      }
-      if (e.x == null || e.f !== fl) {
-        setSel(null);
-        return;
-      }
-      if (s != null && cur[s]) {
-        const it = { ...cur[s] };
-        if (!eng.homePlace(it, e.x, e.z) || !placeOk(it)) return flash('Buraya konmaz.');
-        apply(cur.map((x, i) => (i === s ? it : x)));
-      }
+      // v197 (karargah gibi): eşyaya dokun = seç · boş yere dokun = seçimi bırak (eşya ışınlanmaz;
+      // taşımak için seçili eşyayı parmakla sürükle)
+      void s;
+      void fl;
+      setSel(e.idx != null ? e.idx : null);
     };
     return () => {
       evtRef.current = null;
@@ -432,6 +444,7 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
       const r = await houseAction(payload(list));
       if (r.data?.inv) setSInv(r.data.inv);
       setDirty(false);
+      savedRef.current = true;
       return true;
     } catch (e) {
       flash(errText(e));
@@ -445,6 +458,16 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
     setBusy(true);
     try {
       const r = await houseAction({ op: 'homeCheckout', expect: { gold: cart.gold, gem: cart.gem } });
+      // v197: alınan duvar / zemin kaplamaları artık senin — bütün katlarda ücretsiz (tekrar zümrüt istenmez)
+      setSInv((old) => {
+        if (r.data?.inv) return r.data.inv;
+        const nx = { ...(old || {}), walls: [...(old?.walls || [])], floors: [...(old?.floors || [])] };
+        Object.values(surf).forEach((v) => {
+          if (v?.wall && !nx.walls.includes(v.wall)) nx.walls.push(v.wall);
+          if (v?.floor && !nx.floors.includes(v.floor)) nx.floors.push(v.floor);
+        });
+        return nx;
+      });
       const owned = items.map((it) => ({ ...it, p: 1 }));
       setItems(owned);
       eng.homeSetItems(owned);
@@ -478,7 +501,7 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
       return;
     }
     if (dirty && !(await save())) return;
-    onDone(dirty);
+    onDone(dirty || savedRef.current);
   };
   const leaveEmpty = async () => {
     const next = cancelCart();
@@ -519,6 +542,15 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
       setBusy(false);
     }
   };
+  const undo = () => {
+    const last = undoRef.current.pop();
+    if (!last) return flash('Geri alınacak bir şey yok.');
+    setItems(last.items);
+    setInv(last.inv);
+    setDirty(true);
+    setSel(null);
+    eng.homeSetItems(last.items);
+  };
   const invList = Object.entries(inv)
     .filter(([k, n]) => n > 0 && CATALOG_MAP[k])
     .map(([k, n]) => ({ def: CATALOG_MAP[k], n }));
@@ -536,6 +568,38 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
         <button className="hs-btn gold hm-old-done" disabled={busy} onClick={finish}>✓ Bitti</button>
       </div>
       {setOpen && settings(() => setSetOpen(false))}
+
+      {/* v197 — karargahtaki gibi: GÖZ (deneme eşyaları gerçek haliyle) + TAVAN MODU */}
+      <button
+        className={`hs-eye-btn hm-eye${realLook ? ' on' : ''}`}
+        onClick={() => {
+          setRealLook((v) => !v);
+          flash(realLook ? '👁️ Deneme eşyalar yine saydam.' : '👁️ Deneme eşyaları gerçek haliyle görüyorsun.');
+        }}
+        title="Satın alınmamış eşyaları gerçek haliyle gör"
+        aria-pressed={realLook}
+      >
+        <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+          <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+          <circle cx="12" cy="12" r="3.2" fill={realLook ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" />
+          {!realLook && <path d="M4 20 20 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />}
+        </svg>
+      </button>
+      <button
+        className={`hs-eye-btn hs-ceil-btn hm-eye${ceilMode ? ' on' : ''}`}
+        onClick={() => {
+          setCeilMode((v) => !v);
+          setSel(null);
+          flash(ceilMode ? 'Tavan modu kapandı.' : '💡 Tavan modu: sadece tavan eşyaları (avize, pervane) seçilir.');
+        }}
+        title="Tavan modu: tavan eşyalarını düzenle"
+        aria-pressed={ceilMode}
+      >
+        <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true">
+          <path d="M12 2.8 20.5 7.4v9.2L12 21.2 3.5 16.6V7.4z" fill="currentColor" fillOpacity={ceilMode ? 0.22 : 0.08} stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+          <path d="M3.5 7.4 12 12l8.5-4.6M12 12v9.2" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+        </svg>
+      </button>
 
       {/* bakiye + sepet */}
       <div className="hs-cartbar">
@@ -607,6 +671,7 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
             📦 Envanter{invList.length > 0 && <i>{invList.reduce((a, x) => a + x.n, 0)}</i>}
           </button>
           <button className={tab === 'pazar' ? 'on' : ''} onClick={() => { setTab('pazar'); setShelfOpen(true); }}>🛒 Pazar</button>
+          <button className="hs-undo" onClick={undo} title="Geri al">↶</button>
           <button className="hs-shelf-toggle" onClick={() => setShelfOpen((v) => !v)}>{shelfOpen ? '▾' : '▴'}</button>
         </div>
         {shelfOpen && tab === 'magaza' && (
