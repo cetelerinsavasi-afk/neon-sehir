@@ -25,7 +25,7 @@ function freeObj(o) {
     }
   });
 }
-import { FLOOR_Y as UP, SLAB, WALL_H, HALF_W as EF, HALF_D as TF, ROOF_HALF_W as QP, ROOF_RISE as KP, ROOF_SPAN as CF, RAMPS as RAMP_DEFS, HOLE_1 as XP, HOLE_2 as ZP, WALL_GAP } from '../../../../functions/homeGeometry.js';
+import { FLOOR_Y as UP, SLAB, WALL_H, HALF_W as EF, HALF_D as TF, ROOF_HALF_W as QP, ROOF_RISE as KP, ROOF_SPAN as CF, RAMPS as RAMP_DEFS, HOLE_1 as XP, HOLE_2 as ZP, WALL_GAP, DIVIDER_SEGS, DIV_FACE, divLocal, divWorld } from '../../../../functions/homeGeometry.js';
 
 const PI = Math.PI;
 const GP = UP[2]; // saçak (çatı katı zemini) yüksekliği
@@ -176,39 +176,176 @@ function stairGoal(g, y) {
   }
   return null;
 }
-function hubFix(x, z, f) {
+// v199 — KAT İÇİ YOL BULMA: eskiden rota merdiven düğümleri arasında düz çizgiydi, mobilyayı hesaba
+// katmıyordu → merdiven başına / yoluna konan bir koltuk, masa avatarı takıyordu ("3. kata çıkamıyorum",
+// "merdivene yakın yerlerde düzgün yürümüyor"). Artık her kat içi ayak 0,2 m ızgarada A* ile dolaşılır.
+const PATH_R = 0.3;
+const CELL = 0.2;
+function floorFree(x, z, f) {
+  const y = UP[f];
+  if (blocked(x, z, PATH_R, y)) return false;
+  const g = groundAt(x, z, y);
+  return g != null && Math.abs(g - y) < 0.05;
+}
+function lineFree(a, b, f) {
+  const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const n = Math.max(1, Math.ceil(d / 0.12));
+  for (let i = 1; i < n; i++) {
+    const t = i / n;
+    if (!floorFree(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, f)) return false;
+  }
+  return true;
+}
+function gridPath(a, b, f) {
+  const hx = f === 2 ? QP : EF;
+  const NX = Math.floor((hx * 2) / CELL);
+  const NZ = Math.floor((TF * 2) / CELL);
+  const ix = (x) => Math.max(0, Math.min(NX - 1, Math.floor((x + hx) / CELL)));
+  const iz = (z) => Math.max(0, Math.min(NZ - 1, Math.floor((z + TF) / CELL)));
+  const cx = (i) => -hx + (i + 0.5) * CELL;
+  const cz = (j) => -TF + (j + 0.5) * CELL;
+  const free = new Int8Array(NX * NZ).fill(-1); // -1 bilinmiyor
+  const ok = (i, j) => {
+    const k = j * NX + i;
+    if (free[k] < 0) free[k] = floorFree(cx(i), cz(j), f) ? 1 : 0;
+    return free[k] === 1;
+  };
+  // başlangıç / hedef dolu hücredeyse en yakın boş hücre
+  const near = (x, z) => {
+    const i0 = ix(x);
+    const j0 = iz(z);
+    for (let r = 0; r < 8; r++) {
+      let best = null;
+      for (let di = -r; di <= r; di++) {
+        for (let dj = -r; dj <= r; dj++) {
+          if (Math.max(Math.abs(di), Math.abs(dj)) !== r) continue;
+          const i = i0 + di;
+          const j = j0 + dj;
+          if (i < 0 || j < 0 || i >= NX || j >= NZ || !ok(i, j)) continue;
+          const d = Math.hypot(cx(i) - x, cz(j) - z);
+          if (!best || d < best.d) best = { i, j, d };
+        }
+      }
+      if (best) return best;
+    }
+    return null;
+  };
+  const s = near(a[0], a[1]);
+  const t = near(b[0], b[1]);
+  if (!s || !t) return null;
+  const S = s.j * NX + s.i;
+  const T = t.j * NX + t.i;
+  const g = new Float32Array(NX * NZ).fill(Infinity);
+  const from = new Int32Array(NX * NZ).fill(-1);
+  const done = new Uint8Array(NX * NZ);
+  const open = [S];
+  g[S] = 0;
+  const h = (k) => {
+    const dx = Math.abs((k % NX) - t.i);
+    const dz = Math.abs(((k / NX) | 0) - t.j);
+    return Math.max(dx, dz) + 0.414 * Math.min(dx, dz);
+  };
+  let found = false;
+  let guard = 0;
+  while (open.length && guard++ < 20000) {
+    let bi = 0;
+    for (let q = 1; q < open.length; q++) if (g[open[q]] + h(open[q]) < g[open[bi]] + h(open[bi])) bi = q;
+    const k = open[bi];
+    open[bi] = open[open.length - 1];
+    open.pop();
+    if (done[k]) continue;
+    done[k] = 1;
+    if (k === T) {
+      found = true;
+      break;
+    }
+    const i = k % NX;
+    const j = (k / NX) | 0;
+    for (let di = -1; di <= 1; di++) {
+      for (let dj = -1; dj <= 1; dj++) {
+        if (!di && !dj) continue;
+        const ni = i + di;
+        const nj = j + dj;
+        if (ni < 0 || nj < 0 || ni >= NX || nj >= NZ || !ok(ni, nj)) continue;
+        if (di && dj && (!ok(i + di, j) || !ok(i, j + dj))) continue; // köşeden kesme
+        const nk = nj * NX + ni;
+        const ng = g[k] + (di && dj ? 1.414 : 1);
+        if (ng < g[nk]) {
+          g[nk] = ng;
+          from[nk] = k;
+          open.push(nk);
+        }
+      }
+    }
+  }
+  if (!found) return null;
+  const cells = [];
+  for (let k = T; k !== -1; k = from[k]) cells.push([cx(k % NX), cz((k / NX) | 0)]);
+  cells.reverse();
+  cells[cells.length - 1] = [b[0], b[1]];
+  // görüş hattıyla sadeleştir
   const out = [];
-  if (f <= 1 && x < -7.4) out.push([-7, z]);
-  if (f >= 1 && z < -5.5) out.push([Math.max(-5.2, Math.min(5.2, out.length ? out[0][0] : x)), -5.2]);
+  let cur = [a[0], a[1]];
+  let q = 0;
+  while (q < cells.length) {
+    let far = q;
+    for (let r = cells.length - 1; r > q; r--) {
+      if (lineFree(cur, cells[r], f)) {
+        far = r;
+        break;
+      }
+    }
+    out.push(cells[far]);
+    cur = cells[far];
+    q = far + 1;
+  }
   return out;
 }
-// kat değiştiren yürüme rotası (merdiven düğümleri üzerinden)
+// bir kat içinde a → b: engel yoksa düz, varsa mobilyanın etrafından
+function leg(a, b, f) {
+  if (lineFree(a, b, f)) return [b];
+  return gridPath(a, b, f) || [b];
+}
+// kat değiştiren yürüme rotası (merdiven düğümleri üzerinden; kat içi ayaklar mobilyayı dolaşır)
 function route(a, b) {
   let fa = floorOfY(a.y);
   const fb = floorOfY(b.y);
   const pts = [];
-  let cur = a;
+  let cur = [a.x, a.z];
+  const walk = (to, f) => {
+    pts.push(...leg(cur, to, f));
+    cur = to;
+  };
+  const climb = (to) => {
+    pts.push(to);
+    cur = to;
+  };
   for (const r of YP) {
-    if (!rampAt(r, cur.x, cur.z).inside || cur.y < r.base + 0.3 || cur.y > r.top - 0.3) continue;
+    if (!rampAt(r, a.x, a.z).inside || a.y < r.base + 0.3 || a.y > r.top - 0.3) continue;
     const i = YP.indexOf(r);
     const goingUp = fb > RF[i].lo;
-    pts.push(goingUp ? RF[i].top : RF[i].bot, goingUp ? RF[i].up : RF[i].hub);
+    climb(goingUp ? RF[i].top : RF[i].bot);
     fa = goingUp ? RF[i].lo + 1 : RF[i].lo;
-    cur = { x: pts.at(-1)[0], z: pts.at(-1)[1] };
+    walk(goingUp ? RF[i].up : RF[i].hub, fa);
   }
-  pts.push(...hubFix(cur.x, cur.z, fa));
   while (fa !== fb) {
     if (fb > fa) {
       const r = RF[fa];
-      pts.push(r.hub, r.bot, r.top, r.up);
+      walk(r.hub, fa);
+      walk(r.bot, fa);
+      climb(r.top);
       fa += 1;
+      walk(r.up, fa);
     } else {
       const r = RF[fa - 1];
-      pts.push(r.up, r.top, r.bot, r.hub);
+      walk(r.up, fa);
+      walk(r.top, fa);
+      climb(r.bot);
       fa -= 1;
+      walk(r.hub, fa);
     }
   }
-  pts.push(...hubFix(b.x, b.z, fb).reverse(), [b.x, b.z]);
+  walk([b.x, b.z], fb);
   return pts;
 }
 
@@ -942,7 +1079,31 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
       const f = it.f;
       const lim = f === 2 ? QP - 0.4 : EF - 0.35;
       if (def?.wall) {
-        const cands = f === 2 ? [[x, -TF, 0], [x, TF, 4], [QP, z, 6], [-QP, z, 2]] : [[x, -TF, 0], [x, TF, 4], [EF, z, 6], [-EF, z, 2]];
+        // v199: sonradan konan bölme duvarlarının iki yüzüne de takılır (eski ev motoru v77 gibi) —
+        // oda duvarından daha yakın bir bölme yüzü varsa oraya oturur
+        const half = def.wallW || 0.45;
+        let bestDiv = null;
+        items.forEach((d) => {
+          const segs = DIVIDER_SEGS[d.k];
+          if (!segs || d.f !== f || d.i === it.i) return;
+          const { lx, lz } = divLocal(d, x, z);
+          segs.forEach(([a0, a1]) => {
+            if (a1 - a0 < half * 2 - 0.01) return; // eşya bu parçaya sığmıyor
+            const cx = Math.max(a0 + half, Math.min(a1 - half, lx));
+            const side = lz >= 0 ? 1 : -1;
+            const dd = Math.hypot(lx - cx, lz - side * DIV_FACE);
+            if (dd < 1.2 && (!bestDiv || dd < bestDiv.d)) bestDiv = { d: dd, div: d, cx, side };
+          });
+        });
+        const outerD = Math.min(Math.abs(z + TF), Math.abs(TF - z), Math.abs((f === 2 ? QP : EF) - x), Math.abs(x + (f === 2 ? QP : EF)));
+        if (bestDiv && bestDiv.d < outerD) {
+          const w = divWorld(bestDiv.div, bestDiv.cx, bestDiv.side * (DIV_FACE + 0.005));
+          it.x = Math.round(w.x * 100) / 100;
+          it.z = Math.round(w.z * 100) / 100;
+          it.r = ((((bestDiv.div.r || 0) + (bestDiv.side > 0 ? 0 : 4)) % 8) + 8) % 8;
+          return true;
+        }
+        const cands =f === 2 ? [[x, -TF, 0], [x, TF, 4], [QP, z, 6], [-QP, z, 2]] : [[x, -TF, 0], [x, TF, 4], [EF, z, 6], [-EF, z, 2]];
         let best = null;
         let bd = 1e9;
         cands.forEach(([cx, cz, r]) => {

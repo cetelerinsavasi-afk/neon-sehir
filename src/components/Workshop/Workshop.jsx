@@ -83,15 +83,20 @@ export default function Workshop({ shop, onClose }) {
 
   // v177: bisiklet / at / deve atölyeye girmez (tamir, geliştirme, modifiye yok)
   const items = useMemo(() => (isWeapon ? weapons : vehicles.filter((v) => canModify(v.catalogId))).filter((x) => !x.listed), [isWeapon, weapons, vehicles]);
+  // v199: sekmeye göre liste — Geliştir'de sadece geliştirilebilen, Tamir'de sadece tamir edilebilen araçlar
+  const tabItems = useMemo(
+    () => (isWeapon ? items : items.filter((v) => (tab === 'upgrade' ? canUpgradeVehicle(v.catalogId) : tab === 'repair' ? canRepairVehicle(v.catalogId) : true))),
+    [isWeapon, items, tab]
+  );
   // v124: birden çok silah varsa varsayılan seçim EN GÜÇLÜ silah (araçta ilk sıradaki)
   const defaultItem = useMemo(
-    () => (isWeapon ? items.reduce((best, w) => (!best || Number(w.power || 0) > Number(best.power || 0) ? w : best), null) : items[0] || null),
-    [isWeapon, items]
+    () => (isWeapon ? tabItems.reduce((best, w) => (!best || Number(w.power || 0) > Number(best.power || 0) ? w : best), null) : tabItems[0] || null),
+    [isWeapon, tabItems]
   );
-  const item = items.find((x) => x.id === itemId) || defaultItem || null;
+  const item = tabItems.find((x) => x.id === itemId) || defaultItem || null;
   useEffect(() => {
-    if (!itemId && defaultItem) setItemId(defaultItem.id);
-  }, [itemId, defaultItem]);
+    if (defaultItem && !tabItems.some((x) => x.id === itemId)) setItemId(defaultItem.id);
+  }, [itemId, defaultItem, tabItems]);
 
   const isMod = tab === 'mod'; // v150: modifiye (sadece araba atölyesi)
   const job = item && !isMod ? workshopJob({ itemType, item, action: tab, upgradeType: isWeapon ? undefined : 'level' }) : null;
@@ -112,15 +117,7 @@ export default function Workshop({ shop, onClose }) {
     setMsg(null);
   }, [item?.id, tab]);
   // v151: motor seçilince doğrudan Modifiye sekmesi · v195: ticari tamir olur (geliştirme yok)
-  const repairable = isWeapon || canRepairVehicle(item?.catalogId);
-  const upgradable = isWeapon || canUpgradeVehicle(item?.catalogId);
-  useEffect(() => {
-    if (!item) return;
-    // v198: sadece bu dükkânın sekmeleri arasında geçilir (tamirci: tamir · modifiye: geliştirme + modifiye)
-    const ok = (t) => tabs.includes(t) && (t === 'mod' || (t === 'repair' ? repairable : upgradable));
-    if (!ok(tab)) setTab(['upgrade', 'repair', 'mod'].find(ok) || tabs[0]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [item?.id]);
+  const upgradable = isWeapon || canUpgradeVehicle(item?.catalogId); // seviye sadece geliştirilebilen araçta gösterilir
   // ürün/sekme değişince o anki fiyat "görülmüş" sayılır; panel açıkken
   // dükkân sahibi fiyatı değiştirirse buton bir kez onay ister.
   useEffect(() => {
@@ -135,7 +132,7 @@ export default function Workshop({ shop, onClose }) {
 
   // ---- ürün bilgileri ---------------------------------------------------------------
   const cap = item ? lifeCapOf(itemType, item) : 0;
-  const life = item ? Math.max(0, item.lifeDays ?? cap) : 0;
+  const life = item ? Math.max(0, Math.min(cap, item.lifeDays ?? cap)) : 0;
   const repairsLeft = VEHICLE_WEAPON_MAX_REPAIRS - (item?.repairsUsed || 0);
   const level = isWeapon ? item?.level || 1 : vehicleRaceLevel(item);
   const maxLevel = isWeapon ? WEAPON_MAX_LEVEL : VEHICLE_MAX_LEVEL;
@@ -160,7 +157,7 @@ export default function Workshop({ shop, onClose }) {
     block = {
       ok: true,
       text: isRepair
-        ? `Motorlarda tamir yok (ömrü ${MOTOR_LIFE_DAYS} gün). Görünümünü ${modWhere} değiştirebilirsin.`
+        ? `Bu araç tamir edilemez (ömrü ${MOTOR_LIFE_DAYS} gün). Görünümünü ${modWhere} değiştirebilirsin.`
         : `Ticari araç ve motorlar geliştirilemez. Görünümünü ${modWhere} değiştirebilirsin.`,
     };
   else if (job?.block === 'listed') block = { text: 'Bu ürün ilanda/vitrinde. Önce ilandan kaldır.' };
@@ -266,11 +263,13 @@ export default function Workshop({ shop, onClose }) {
 
       {items.length === 0 ? (
         <p className="bz-note">Hiç {kindName}n yok.</p>
+      ) : tabItems.length === 0 || !item ? (
+        <p className="bz-note">{tab === 'upgrade' ? 'Geliştirilebilecek aracın yok.' : 'Tamir edilebilecek aracın yok.'}</p>
       ) : (
         <>
-          {items.length > 1 && (
+          {tabItems.length > 1 && (
             <div className="wk-picker">
-              {items.map((x) => {
+              {tabItems.map((x) => {
                 const xi = isWeapon ? weaponImage(x.catalogId) : null;
                 return (
                   <button key={x.id} className={x.id === item?.id ? 'on' : ''} onClick={() => setItemId(x.id)}>
@@ -292,11 +291,11 @@ export default function Workshop({ shop, onClose }) {
                   <small>
                     Seviye {level}/{maxLevel} · Güç {fmt(item.power)}
                   </small>
-                ) : (
+                ) : upgradable ? (
                   <small>
                     <LevelPips level={level} />
                   </small>
-                )}
+                ) : null}
               </div>
             </div>
 

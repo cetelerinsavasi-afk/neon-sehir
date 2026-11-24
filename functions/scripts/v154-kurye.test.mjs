@@ -32,7 +32,7 @@ test('kurye: 6 satıcı, teslim en az 70 m uzakta, ücret çarpanı mesafeyle ar
   assert.ok(kuryeMul(400) > kuryeMul(100));
 });
 
-test('kurye: ortalama kazanç ≈ 500 (normal sürüşte)', () => {
+test('kurye: ortalama brüt kazanç ≈ 1.000 (v199: 2 katı)', () => {
   let s = 0;
   const N = 3000;
   for (let k = 0; k < N; k++) {
@@ -40,7 +40,7 @@ test('kurye: ortalama kazanç ≈ 500 (normal sürüşte)', () => {
     s += jobReward(JOBS.kurye.avg, p.mul, jobPerf(p.par, p.par, 0));
   }
   const avg = s / N;
-  assert.ok(avg > 420 && avg < 580, `ortalama ${avg}`);
+  assert.ok(avg > 840 && avg < 1160, `ortalama ${avg}`);
 });
 
 test('kurye: her motorla başlar, çarpma ve gecikme kazancı düşürür, günde 10', async () => {

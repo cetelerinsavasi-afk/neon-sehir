@@ -49,6 +49,7 @@ export const ITEM_PRICES = {
   rugkilim: g(30000), rugshag: g(25000), rugrunner: g(15000), ruggeo: g(35000),
   diningset: g(30000), // v198: modern yemek takımı (masa + 4 sandalye)
   rugplain: g(12000), runplain: g(6000), // v198: desensiz halı / yolluk (12 renk)
+  rugplainl: g(20000), rugplainxl: g(30000), // v199: büyük desensiz halılar
   painting2: g(12000), painting3: g(10000), triptych: z(1), cityframe: g(18000), graffiti: z(1), goldrecords: z(2),
   clock: g(12000), wallshelf: g(10000), curtain: g(20000), vase: g(9000), trash: g(3000), extinguisher: g(5000),
   planter: g(15000),

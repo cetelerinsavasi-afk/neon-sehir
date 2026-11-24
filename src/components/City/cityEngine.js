@@ -824,7 +824,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   const HOME_PLAY_KEYS = new Set(['pc', 'pcstation', 'console', 'arcade', 'gamer']); // v196: evde oyun
   // v198: haritada simgesi olan zemin kat dükkânları (motor galerisi, oto tamirci)
   const SHOP_POI = { motogaleri: { glyph: 'moto', icon: '🏍️', name: 'Motor Galerisi', color: '#e9651c' }, tamirci: { glyph: 'wrench', icon: '🔧', name: 'Oto Tamirci', color: '#c99a06' } };
-  const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' }; // v198
+const HOME_GYM_FREE = new Set(['bag', 'treadmill', 'bench', 'dumbbells']); // v199
+const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' }; // v198
   const HOME_INSTR = { piano: '🎹 Piyano', drums: '🥁 Davul' }; // v198: oturunca çal
   let waters = [];
   const labels = [];
@@ -1259,6 +1260,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   // v196 tasarım kamerası: katın ortasına bakan yörünge (avatar gizli); sürükle = döndür, iki parmak = yakınlaştır
   const dCam = { yaw: 0, pitch: 0.95, dist: 17, x: 0, z: 0 };
   let dDrag = null; // eşya sürükleme { idx, it, moved, off }
+  let streamCam = null; // v199: yayın açıkken ana kamera (oda koordinatlı poz)
   // v197: karargah tasarımıyla aynı mekanik — önce dokunarak seç, seçiliyi sürükle; seçili olmayan
   // eşyanın üstünden sürüklemek kamerayı çevirir. Tavan modu: sadece tavan eşyaları seçilir.
   let evSel = null; // seçili eşya sırası (React'tan homeSelect)
@@ -1340,12 +1342,23 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     });
     evFigs = [];
   }
+  // v199: hayvan / bot platformu (eşyanın kendisi) sadece Tasarla'da görünür; normalde sadece hayvan / bot
+  function evPadsVis() {
+    if (!EV || !evHome) return;
+    (evHome.items || []).forEach((it, idx) => {
+      if (!ANIMAL_BY_KEY[it.k] && it.k !== 'bot') return;
+      const o = EV.ml.objAt(idx);
+      if (o) o.visible = Boolean(evDesign);
+    });
+  }
   function evFigsBuild() {
     evFigsClear();
-    if (!EV || !evHome || evDesign) return;
+    if (!EV || !evHome) return;
+    evPadsVis();
     EV.root.updateMatrixWorld(true);
     (evHome.items || []).forEach((it) => {
-      if (it.p !== 1) return;
+      // v199: Tasarla'da hayvan / bot da platformuyla birlikte görünür (deneme eşyası dahil)
+      if (it.p !== 1 && !evDesign) return;
       const a = ANIMAL_BY_KEY[it.k];
       if (!a && it.k !== 'bot') return;
       const p = fromRoom(EV, it.x, it.z);
@@ -1400,6 +1413,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         const pr = HOUSE_PRODUCTS[product];
         if (pr) acts.push({ kind: 'take', product, label: `${pr.emoji} ${pr.label} al` });
       });
+      // v199: spor aletinde üyeliksiz serbest çalışma (eski ev ekranındaki gibi; güç kazandırmaz)
+      if (HOME_GYM_FREE.has(it.k)) acts.push({ kind: 'gymfree', equipment: it.k, label: '💪 Serbest çalış' });
       if (!acts.length) return;
       const p = fromRoom(EV, it.x, it.z);
       zones.push({ kind: 'homeItem', id: `hi_${it.i}`, idx, acts, title: `${def.icon || ''} ${def.name}`, x: p.x, z: p.z, y: EV.ml.floors[it.f] ?? 0, r: 1.5, ev: true });
@@ -4288,6 +4303,24 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   function placeCamera(dt) {
     camera.userData.billboardYaw = null;
     if (heist?.active && heist.cam(dt)) return; // v154
+    // v199 — YAYINDA: ana ekran yayın kamerasından (izleyicinin gördüğü açı; eski evdeki setFixedCamera gibi)
+    if (streamCam && !evDesign) {
+      const v = W.venues.find((q) => q.type === (streamCam.room || 'ev'));
+      if (v) {
+        const base = v.ml ? v.ml.floors[streamCam.f || 0] : 0.16;
+        const p = fromRoom(v, streamCam.px, streamCam.pz);
+        const t = fromRoom(v, streamCam.tx, streamCam.tz);
+        camera.position.set(p.x, base + streamCam.py, p.z);
+        camPos.copy(camera.position);
+        camera.lookAt(t.x, base + streamCam.ty, t.z);
+        const fv = streamCam.fov || 64;
+        if (camera.fov !== fv) {
+          camera.fov = fv;
+          camera.updateProjectionMatrix();
+        }
+        return;
+      }
+    }
     if (evDesign && curVenue?.ml) {
       const v = curVenue;
       const fy = v.ml.floors[evDesign.f];
@@ -5891,6 +5924,16 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     say(text) {
       me.say(text);
     },
+    // v199: yayındayken başının üstünde "🔴 CANLI · 👁 n" (eski evdeki setLiveBadge)
+    setLiveBadge(text) {
+      if (!me.liveEl) {
+        me.liveEl = document.createElement('div');
+        me.liveEl.className = 'hs-live';
+        me.label.insertBefore(me.liveEl, me.nameEl);
+      }
+      me.liveEl.textContent = text || '';
+      me.liveEl.style.display = text ? '' : 'none';
+    },
     setHolding(p) {
       me.setHolding(p);
     },
@@ -6044,8 +6087,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     homeSetItems(items) {
       if (!EV) return;
       EV.ml.setItems(items);
+      if (evHome) evHome.items = items; // v199: önce güncellenir (hayvan / bot yeni konumda kurulsun)
       evSeats();
-      if (evHome) evHome.items = items;
     },
     // v196: kat başına duvar / zemin kaplaması (önizleme + kayıttan sonra)
     homeWindows(win) {
@@ -6069,6 +6112,16 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     },
     // v196 — şehirdeki yayın (oyunun internet kafesi / kişisel ev): yayın kamerasından küçük kare
     // pose: oda koordinatları (streamShared.streamPose) + room ('ev' | mekân türü) + f (evde kat)
+    // v199: yayındayken ana ekran yayın kamerasından (null = normal kamera)
+    setStreamCam(pose) {
+      const was = streamCam;
+      streamCam = pose && Number.isFinite(pose.px) ? { ...pose } : null;
+      if (was && !streamCam) {
+        camera.fov = 60;
+        camera.updateProjectionMatrix();
+        first = true;
+      }
+    },
     renderStreamView(pose, target) {
       if (!pose || !target) return false;
       const v = W.venues.find((q) => q.type === (pose.room || 'ev'));
@@ -6160,12 +6213,15 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       EV?.ml.select(idx);
     },
     // v197: göz — deneme (satın alınmamış) eşyaları gerçek haliyle göster (sadece tasarımda, sadece sen)
-    homeRealLook: (on) => EV?.ml.setRealLook(Boolean(on)),
+    homeRealLook: (on) => {
+      EV?.ml.setRealLook(Boolean(on));
+      evPadsVis(); // eşyalar yeniden kuruldu
+    },
     homeDesign(f) {
       const was = evDesign;
       evDesign = f == null ? null : { f: Math.max(0, Math.min(2, f | 0)) };
       try {
-        evFigsBuild(); // v198: tasarımda hayvan / bot gizli (platform görünür), çıkınca geri
+        evFigsBuild(); // v199: tasarımda hayvan / bot + platform, normalde sadece hayvan / bot
       } catch {
         /* yoksay */
       }
@@ -6183,6 +6239,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       if (!evDesign && EV) {
         EV.ml.select(null);
         EV.ml.setRealLook(false);
+        evPadsVis();
         evSel = null;
       }
       dDrag = null;
@@ -6659,6 +6716,21 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       return { m, b, why: W.dbgWhy };
     },
     dbgWalkTo: (x, z) => (import.meta.env?.DEV ? walkTo(x, z) : false),
+    // DEV: ev odası noktası → ekran pikseli (önizlemede dokunma testi)
+    dbgEvScreen(x, y, z) {
+      if (!import.meta.env?.DEV || !EV) return null;
+      const w = EV.ml.groups[0].parent.localToWorld(new THREE.Vector3(x, y, z)).project(camera);
+      const r = canvas.getBoundingClientRect();
+      return { x: r.left + ((w.x + 1) / 2) * r.width, y: r.top + ((1 - w.y) / 2) * r.height, vis: w.z < 1 };
+    },
+    dbgCam(yaw) {
+      if (import.meta.env?.DEV) self.camYaw = yaw;
+    },
+    dbgEvLocal() {
+      if (!EV) return null;
+      const p = toRoom(EV, self.x, self.z);
+      return { x: +p.x.toFixed(2), z: +p.z.toFixed(2), y: +me.y.toFixed(2) };
+    },
     dbgPath: (x, z) => (import.meta.env?.DEV ? findPath(self.x, self.z, x, z) : null),
     dbgBlocked: (x, z, r) => (import.meta.env?.DEV ? blockedAt(x, z, r) : null),
     dbgCars: () => (import.meta.env?.DEV ? [...rcars].map(([u, c]) => ({ u, x: c.x, z: c.z })) : []),

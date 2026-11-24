@@ -93,89 +93,19 @@
   cursor: default;
 }
 
-/* --- Browse (fabrika listesi) --- */
 
-.factory-browse-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  max-height: 60vh;
-  overflow-y: auto;
-}
 
-.factory-browse-card {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: 12px;
-  border-radius: 10px;
-  border: 1px solid var(--panel-border);
-  background: #05070c;
-}
 
-.factory-browse-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
 
-.factory-browse-owner-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
 
-.factory-browse-owner {
-  font-size: 13px;
-  font-weight: 700;
-}
 
-.factory-browse-salary {
-  font-size: 11px;
-  color: #ffd23f;
-}
 
-.factory-browse-value {
-  margin: 0;
-  font-size: 11px;
-  color: var(--text-dim);
-}
 
-.factory-browse-value strong {
-  color: #ffd23f;
-}
 
-.factory-browse-meta {
-  margin: 0;
-  font-size: 11px;
-  color: var(--text-dim);
-}
 
-.factory-browse-open {
-  color: #3ddc84;
-}
 
-.factory-browse-machines {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
 
-.factory-browse-machine-chip {
-  font-size: 10px;
-  padding: 3px 6px;
-  border-radius: 6px;
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
-}
 
-.factory-browse-join-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 4px;
-}
 
 /* --- Modal --- */
 
@@ -1421,3 +1351,23 @@
 .fx-tax { display: block; font-size: 10px; font-weight: 700; color: #ff9f6b; opacity: 0.95; white-space: nowrap; margin-top: 3px; }
 .fx-kit > .fx-kit-tax { grid-column: 1 / -1; flex-direction: row; justify-content: space-between; padding: 8px 12px; }
 .fx-kit > .fx-kit-tax span { color: #ff9f6b; }
+
+/* v199: Fabrikalar sıralaması */
+.fx-lb { display: flex; flex-direction: column; gap: 8px; }
+.fx-lb-head { display: flex; align-items: baseline; justify-content: space-between; padding: 2px 4px 4px; }
+.fx-lb-head span { font-weight: 900; font-size: 16px; }
+.fx-lb-head small { font-size: 11px; opacity: 0.6; }
+.fx-lb-row { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 14px; background: linear-gradient(180deg, #ffffff10, #ffffff06); border: 1px solid #ffffff14; }
+.fx-lb-row.top1 { background: linear-gradient(135deg, rgba(255, 210, 63, 0.22), rgba(255, 210, 63, 0.05)); border-color: rgba(255, 210, 63, 0.45); }
+.fx-lb-row.top2 { background: linear-gradient(135deg, rgba(200, 210, 225, 0.18), rgba(200, 210, 225, 0.04)); border-color: rgba(200, 210, 225, 0.35); }
+.fx-lb-row.top3 { background: linear-gradient(135deg, rgba(214, 140, 80, 0.2), rgba(214, 140, 80, 0.04)); border-color: rgba(214, 140, 80, 0.4); }
+.fx-lb-rank { width: 26px; text-align: center; font-weight: 900; font-size: 14px; opacity: 0.75; flex: none; }
+.fx-lb-row.top .fx-lb-rank { font-size: 22px; opacity: 1; }
+.fx-lb-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.fx-lb-name b { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fx-lb-name span { font-size: 11px; opacity: 0.65; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fx-lb-bar { display: block; height: 4px; border-radius: 4px; background: #ffffff12; margin-top: 4px; overflow: hidden; }
+.fx-lb-bar em { display: block; height: 100%; border-radius: 4px; background: linear-gradient(90deg, #2fd47a, #ffd23f); }
+.fx-lb-inc { display: flex; flex-direction: column; align-items: flex-end; flex: none; }
+.fx-lb-inc b { font-size: 15px; font-weight: 900; color: #ffd23f; }
+.fx-lb-inc small { font-size: 10px; opacity: 0.6; }

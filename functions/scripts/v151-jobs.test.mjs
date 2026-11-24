@@ -74,7 +74,10 @@ test('ticari / motor: v195 ticari tamir olur ama geliştirilmez; motorda ikisi d
   assert.equal(workshopJob({ itemType: 'vehicle', item: { catalogId: 12 }, action: 'repair' }).block, 'full');
   assert.equal(workshopJob({ itemType: 'vehicle', item: { catalogId: 12, lifeDays: 6 }, action: 'repair' }).block, null);
   assert.equal(workshopJob({ itemType: 'vehicle', item: { catalogId: 12 }, action: 'upgrade', upgradeType: 'level' }).block, 'noWork');
-  assert.equal(workshopJob({ itemType: 'vehicle', item: { catalogId: 21 }, action: 'repair' }).block, 'noWork');
+  // v199: motor da 10 gün + 10 tamir (tamir fiyata oranlı), geliştirilmez; bisiklet / at / deve tamir edilmez
+  assert.equal(workshopJob({ itemType: 'vehicle', item: { catalogId: 21 }, action: 'repair' }).block, 'full');
+  assert.equal(workshopJob({ itemType: 'vehicle', item: { catalogId: 21, lifeDays: 4 }, action: 'repair' }).block, null);
+  assert.equal(workshopJob({ itemType: 'vehicle', item: { catalogId: 25, lifeDays: 4 }, action: 'repair' }).block, 'noWork');
   assert.equal(workshopJob({ itemType: 'vehicle', item: { catalogId: 21 }, action: 'upgrade', upgradeType: 'level' }).block, 'noWork');
   // tır 500.000: ömür 10/10, tamir 10/10 → tam değer; 5 gün + 10 hak → (5+10)/20
   assert.equal(itemListingBand('vehicle', { catalogId: 11, lifeDays: 10 }).max, 500_000);

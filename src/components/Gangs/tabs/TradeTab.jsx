@@ -14,7 +14,7 @@ import CarImg from '../../VehicleCard/CarImg'; // v150: araç görseli = 3D mode
 import { limit, where } from 'firebase/firestore';
 import { fmtClock, istDateKey, istHour, istMidnight, nextWindowStart, truckAttackAt, useDocData, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
 import { AmountInput, Bar, Btn, Card, Chips, Confirm, Deadline, Empty, Logo, Sheet } from '../ui';
-import { DIST_GROUPS, GANG_RULES, LEADERS, PRODUCTS, atLeast, fmt, productOf, unitsOf } from '../gangConstants';
+import { DIST_GROUPS, GANG_RULES, LEADERS, PRODUCTS, atLeast, fmt, productOf } from '../gangConstants';
 import { itemInfo, itemsFor } from '../itemInfo';
 import { nextTradeSunday } from '../tradeSchedule';
 import { useAdPrice } from '../GangMarketSection';
@@ -143,7 +143,7 @@ function Routes({ routes, gangId, state, today, memberCount }) {
 // ---------------------------------------------------------------------------
 // Sipariş ver: tır → yol → ürünler
 // ---------------------------------------------------------------------------
-function OrderSheet({ trucks, routes, state, depot, gangId, memberCount, orders, onClose }) {
+function OrderSheet({ trucks, routes, state, gangId, memberCount, orders, onClose }) {
   const { run, busy } = useGangAction();
   const now = useNow(60_000);
   const today = istDateKey(now);
@@ -179,24 +179,21 @@ function OrderSheet({ trucks, routes, state, depot, gangId, memberCount, orders,
   const items = product ? itemsFor(product) : [];
   const half = (key) => Math.floor(itemInfo(key).storePrice / 2);
   const count = Object.values(qty).reduce((a, b) => a + b, 0);
-  const units = Object.entries(qty).reduce((a, [k, q]) => a + unitsOf(k, q), 0);
   const cost = Object.entries(qty).reduce((a, [k, q]) => a + q * half(k), 0);
   const cap = GANG_RULES.TRUCK_CAPACITY[product] || 0;
   const spent = state?.orderSpent?.dateKey === today ? Number(state.orderSpent.byProduct?.[product] || 0) : 0;
   const limitLeft = Math.max(0, Number(route?.dailyOrderLimit || 0) + (product === 'yasakliMadde' ? right : 0) - spent);
-  const free = Math.max(0, Number(depot?.capacity || 0) - Number(depot?.usedUnits || 0) - Number(depot?.reservedUnits || 0));
+  // v199: depo kapasitesi kalktı (v196) — sipariş depoya bağlı değil
   const kasa = Number(state?.kasa || 0);
-  const over = count > cap || cost > limitLeft || cost > kasa || units > free;
+  const over = count > cap || cost > limitLeft || cost > kasa;
 
   // Bir ürün için en fazla adet ve bunu sınırlayan kısıt(lar) (diğer seçimler sabitken)
   const maxFor = (key) => {
     const p = Math.max(1, half(key));
-    const u = Math.max(1, unitsOf(key, 1));
-    const others = { count: count - (qty[key] || 0), cost: cost - (qty[key] || 0) * half(key), units: units - unitsOf(key, qty[key] || 0) };
+    const others = { count: count - (qty[key] || 0), cost: cost - (qty[key] || 0) * half(key) };
     const lims = {
       cap: cap - others.count,
       limit: Math.floor((limitLeft - others.cost) / p),
-      depot: Math.floor((free - others.units) / u),
       kasa: Math.floor((kasa - others.cost) / p),
     };
     const m = Math.max(0, Math.min(...Object.values(lims)));
@@ -298,7 +295,6 @@ function OrderSheet({ trucks, routes, state, depot, gangId, memberCount, orders,
       <div className="gx-limits" key={flash.n}>
         <Bar blocked={hot('cap')} value={count} max={cap} label={`🚛 ${count} / ${cap}`} color="var(--neon-cyan)" />
         <Bar blocked={hot('limit')} value={cost} max={Math.max(1, limitLeft)} label={`📅 ${fmt(cost)} / ${fmt(limitLeft)}`} color="var(--neon-yellow)" />
-        <Bar blocked={hot('depot')} value={units} max={Math.max(1, free)} label={`🏚️ ${fmt(units)} / ${fmt(free)}`} color="#7cff6b" />
         <Bar blocked={hot('kasa')} value={cost} max={Math.max(1, kasa)} label={`💰 ${fmt(cost)} / ${fmt(kasa)}`} color="#ffb347" />
       </div>
       <Btn
@@ -562,15 +558,13 @@ export function RoadTrucks({ gangId, rank, alliances, wars }) {
               ? ['Hesaplanıyor…']
               : quote.error
                 ? ['Teklif alınamadı.']
-                : quote.canReceive === false
-                  ? ['🏚️ Depoda yer yok']
-                  : [`💸 ${fmt(quote.price)} çete kasasından`, `⚔️ Saldırı ${fmtClock(truckAttackAt(target))}–24:00`, `🤑 Tır sahibi haracı ${GANG_RULES_HARAC_HOUR_LABEL}'e kadar ödeyebilir`]
+                : [`💸 ${fmt(quote.price)} çete kasasından`, `⚔️ Saldırı ${fmtClock(truckAttackAt(target))}–24:00`, `🤑 Tır sahibi haracı ${GANG_RULES_HARAC_HOUR_LABEL}'e kadar ödeyebilir`]
           }
           confirmLabel="Başlat"
           busy={busy === 'startSabotage'}
           onCancel={() => setTarget(null)}
           onConfirm={async () => {
-            if (!quote || quote.error || quote.canReceive === false) return setTarget(null);
+            if (!quote || quote.error) return setTarget(null);
             const r = await run('startSabotage', { truckId: target.id, harac }, { success: '💣 Sabotaj başlatıldı', withRequestId: true });
             if (r) setTarget(null);
             return r;
@@ -579,7 +573,7 @@ export function RoadTrucks({ gangId, rank, alliances, wars }) {
           <div className="gx-confirm-deadline">
             <Deadline untilMs={truckAttackAt(target)} label="içinde başlat" />
           </div>
-          {quote && !quote.error && quote.canReceive !== false && (
+          {quote && !quote.error && (
             <div className="gx-field">
               <span>
                 🤑 Haraç
@@ -611,38 +605,16 @@ export default function TradeTab({ d }) {
   const [ask, setAsk] = useState(null);
   const trucks = useMemo(() => trucksAll.filter((t) => t.status !== 'retired').sort((a, b) => (a.code < b.code ? -1 : 1)), [trucksAll]);
   const listings = listingsAll.filter((l) => l.status === 'open');
-  const cap = Number(depot?.capacity || 0);
-  const used = Number(depot?.usedUnits || 0);
-  const reserved = Number(depot?.reservedUnits || 0);
   const weekday = new Date(`${today}T12:00:00Z`).getUTCDay();
   const orderDay = GANG_RULES.ORDER_WEEKDAYS.includes(weekday) && istHour(now) < GANG_RULES.ORDER_DEADLINE_HOUR;
   // v39: çete günde 1 tır + 1 depo alabilir
   const truckBoughtToday = d.state?.truckBuyDateKey === today;
-  const depotBoughtToday = d.state?.depotBuyDateKey === today;
   const nextMidnightMs = istMidnight(today) + 24 * 3600_000;
   const orderOf = (t) => orders.find((o) => o.truckId === t.id && ['pending', 'in_transit'].includes(o.status) && (o.status === 'pending' || o.departedDateKey === t.departDateKey));
 
   return (
     <div className="gx-stack">
       <Routes routes={routes} gangId={gangId} state={d.state} today={today} memberCount={d.gang?.memberCount} />
-
-      <div className="gx-section-head">
-        <span>🏚️ Depo</span>
-      </div>
-      {cap > 0 && <Bar value={used + reserved} max={cap} label={`${fmt(used + reserved)} / ${fmt(cap)}`} />}
-      {lead && (
-        <Btn small kind="ghost" disabled={depotBoughtToday} onClick={() => setAsk('depot')}>
-          {depotBoughtToday ? (
-            <>
-              🔒 🏚️ <Deadline untilMs={nextMidnightMs} />
-            </>
-          ) : (
-            <>
-              🏚️ {cap === 0 ? 'Depo al' : 'Depoyu genişlet'} (+{GANG_RULES.DEPOT_STEP}) · {fmt(GANG_RULES.DEPOT_PRICE)}
-            </>
-          )}
-        </Btn>
-      )}
 
       <div className="gx-section-head">
         <span>🚚 Tırlar ({trucks.length})</span>
@@ -712,7 +684,7 @@ export default function TradeTab({ d }) {
 
       <DepotItems depot={depot} lead={lead} listings={listings} />
 
-      {orderOpen && <OrderSheet trucks={trucks} routes={routes} state={d.state} depot={depot} gangId={gangId} memberCount={d.gang?.memberCount} orders={orders} onClose={() => setOrderOpen(false)} />}
+      {orderOpen && <OrderSheet trucks={trucks} routes={routes} state={d.state} gangId={gangId} memberCount={d.gang?.memberCount} orders={orders} onClose={() => setOrderOpen(false)} />}
       {ask && (
         <Confirm
           icon={ask === 'truck' ? '🚚' : '🏚️'}

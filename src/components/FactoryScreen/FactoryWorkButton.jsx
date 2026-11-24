@@ -18,6 +18,7 @@ export default function FactoryWorkButton({ flash }) {
   const [done, setDone] = useState(null); // null: bilinmiyor
   const [game, setGame] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [hide, setHide] = useState(false); // v199: "Bugünkü mesai bitti" basınca kaybolur
   useEffect(() => {
     if (!user) return undefined;
     let alive = true;
@@ -28,7 +29,7 @@ export default function FactoryWorkButton({ flash }) {
       alive = false;
     };
   }, [user]);
-  if (!user) return null;
+  if (!user || (done && hide)) return null;
   const finish = async () => {
     setGame(false);
     setBusy(true);
@@ -46,7 +47,7 @@ export default function FactoryWorkButton({ flash }) {
   return (
     <>
       <div className="fw-work-wrap">
-        <button className={`fw-work-btn${done ? ' done' : ''}`} disabled={busy || done !== false} onClick={() => setGame(true)}>
+        <button className={`fw-work-btn${done ? ' done' : ''}`} disabled={busy || done == null} onClick={() => (done ? setHide(true) : setGame(true))}>
           {done ? '✅ Bugünkü mesai bitti' : busy ? '…' : '⚒️ Çalış · 5.000 altın'}
         </button>
       </div>

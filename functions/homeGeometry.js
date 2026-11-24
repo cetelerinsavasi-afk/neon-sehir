@@ -73,9 +73,38 @@ export function groundsAt(x, z) {
 export const roofCeilY = (x) => FLOOR_Y[2] + ROOF_RISE * (1 - Math.abs(x) / ROOF_SPAN) - 0.25;
 export const floorOfY = (y) => (y > FLOOR_Y[2] - 0.5 ? 2 : y > FLOOR_Y[1] - 0.5 ? 1 : 0);
 
+// v199 — BÖLME DUVARLARINA DUVAR EŞYASI (eski ev motorundaki v77 kuralı): TV, tablo, raf… odanın
+// 4 duvarının yanında sonradan konan bölme duvarlarının iki yüzüne de takılır. Bölmenin yerel ekseni:
+// lx boyunca (parçalar), lz kalınlık (yüz = ±DIV_FACE). Kapılı bölmede kapı boşluğu hariç iki parça.
+export const DIV_FACE = 0.075;
+export const DIVIDER_SEGS = Object.freeze({ wall2: [[-1, 1]], wall4: [[-2, 2]], walldoor: [[-1.2, -0.42], [0.42, 1.2]] });
+export function divLocal(div, x, z) {
+  const th = ((div.r || 0) * Math.PI) / 4;
+  const c = Math.cos(th);
+  const s = Math.sin(th);
+  const dx = x - div.x;
+  const dz = z - div.z;
+  return { lx: dx * c - dz * s, lz: dx * s + dz * c };
+}
+export function divWorld(div, lx, lz) {
+  const th = ((div.r || 0) * Math.PI) / 4;
+  const c = Math.cos(th);
+  const s = Math.sin(th);
+  return { x: div.x + lx * c + lz * s, z: div.z - lx * s + lz * c };
+}
+// eşya (x, z) bu bölmenin bir yüzünde mi
+export function onDivider(div, x, z) {
+  const segs = DIVIDER_SEGS[div?.k];
+  if (!segs) return false;
+  const { lx, lz } = divLocal(div, x, z);
+  if (Math.abs(Math.abs(lz) - (DIV_FACE + 0.005)) > 0.03) return false;
+  return segs.some(([a0, a1]) => lx >= a0 - 0.05 && lx <= a1 + 0.05);
+}
+
 // Eşya yerleştirme doğrulaması (sunucu + istemci). it = { k, x, z, r, f }, def = { wall?, ceil? }
+// items: aynı evdeki diğer eşyalar (duvar eşyası bir bölmenin yüzüne takılı olabilir)
 // Dönüş: null (geçerli) ya da hata kodu.
-export function checkPlacement(it, def = {}) {
+export function checkPlacement(it, def = {}, items = null) {
   const f = it?.f;
   if (!Number.isInteger(f) || f < 0 || f > 2) return 'floor';
   const x = Number(it.x);
@@ -87,7 +116,10 @@ export function checkPlacement(it, def = {}) {
     // duvar eşyası tam duvarda: ön / arka (z = ±7) ya da yan (x = ±9; çatı katında ±5,8)
     const onZ = Math.abs(Math.abs(z) - HALF_D) < 0.06 && Math.abs(x) <= halfX - 0.25;
     const onX = Math.abs(Math.abs(x) - halfX) < 0.06 && Math.abs(z) <= HALF_D - 0.35;
-    if (!onZ && !onX) return 'wall';
+    if (!onZ && !onX) {
+      const onDiv = Array.isArray(items) && items.some((d) => d && d !== it && d.i !== it.i && d.f === f && onDivider(d, x, z));
+      if (!onDiv) return 'wall';
+    }
     return null;
   }
   // v197: eşya duvara sıfır oturabilir (istemci kutuya göre hizalar; burada sadece en az WALL_GAP pay)

@@ -114,13 +114,6 @@ function Ticaret({ r, c, rates }) {
   if (c.in.vergi_oyun) rows.push({ key: 'oyun', name: 'Oyunun mekânları', n: '—', ciro: '—', rate: '', tax: nf(c.in.vergi_oyun) });
   if (otherTax) rows.push({ key: 'diger', name: 'Eski işletmeler (ofis / gazino / depo)', n: '—', ciro: '—', rate: '', tax: nf(otherTax) });
   const bizTax = types.reduce((a, t) => a + taxOfType(t), 0) + otherTax + (c.in.vergi_isletme || 0) + (c.in.vergi_oyun || 0);
-  const gz = [
-    ['gazino_slot', 'Slot'],
-    ['gazino_piyango', 'Piyango biletleri'],
-    ['gazino_rulet', 'Rulet'],
-    ['gazino_onNumara', '10 Numara'],
-  ].map(([k, name]) => ({ key: k, name, v: nf(c.in[k]) }));
-  const gzTotal = ['gazino_slot', 'gazino_piyango', 'gazino_rulet', 'gazino_onNumara'].reduce((a, k) => a + (c.in[k] || 0), 0);
   // v130 — sıfır (stoktan) satışlar: sadece kârdan vergi (oyuncu dükkânları + oyunun mağazaları)
   const sf = [
     ['sf_silah', 'Silahçılar', 'sfSilah'],
@@ -135,7 +128,6 @@ function Ticaret({ r, c, rates }) {
       <Kpis
         items={[
           { label: 'İşletme vergisi', value: nf(bizTax) },
-          { label: 'Oyunun gazinosu', value: nf(gzTotal), sub: 'kârın tamamı devlete' },
           ...(sfTax ? [{ label: 'Sıfır satış vergisi', value: nf(sfTax), sub: 'kârdan (eski)' }] : []),
           { label: 'Piyango vergisi', value: nf(c.in.vergi_piyango), sub: st.pi_bilet ? `${nf(st.pi_bilet)} bilet · ödül ${nf(st.pi_odul)}` : null },
           // v176: seyyar satıcı gelirleri artık Neon Borsa hissedarlarına → yerine hisse gelir vergisi
@@ -158,15 +150,6 @@ function Ticaret({ r, c, rates }) {
           />
         </>
       )}
-      <h4 className="bd-h">Oyunun gazinosu</h4>
-      <Table
-        cols={[
-          { k: 'name', label: 'Oyun' },
-          { k: 'v', label: 'Devlete giden', num: true },
-        ]}
-        rows={gz}
-        foot={{ name: 'Toplam', v: nf(gzTotal) }}
-      />
       {sfTax > 0 && <h4 className="bd-h">Sıfır satışlar</h4>}
       {sfTax > 0 && <Table
         cols={[

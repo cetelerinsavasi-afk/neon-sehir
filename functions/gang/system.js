@@ -76,21 +76,17 @@ export function createGangSystem(deps) {
     if (!truck || truck.status !== 'in_transit') fail('failed-precondition', 'Bu tır şu an yolda değil.');
     const day = (await ctx.ref.sabotageDay(ctx.dateKey).get()).data();
     const price = wars.sabotagePrice(day, data.org === 'intel' ? 'intel' : 'gang').price;
-    let canReceive = true;
+    const canReceive = true;
     let allied = false;
     if (data.org === 'intel') {
       core.requireIntel(m);
     } else {
       const gangId = core.requireGangMember(m);
-      const [depot, al, bi, cargo] = await Promise.all([
-        ctx.ref.depot(gangId).get(),
+      // v199: depo kapasitesi kalktı (v196 — ele geçirilen yük otomatik satılır) → depo okunmaz
+      const [al, bi] = await Promise.all([
         ctx.ref.alliance([gangId, truck.gangId].sort().join('__')).get(),
         ctx.ref.alliance(`${[gangId, truck.gangId].sort().join('__')}__biat`).get(),
-        ctx.ref.cargo(truckId).get(),
       ]);
-      // Depo kontrolü tırın GERÇEK yüküyle (ör. 1 araba olan 100'lük depoya
-      // 100 yasaklı madde sığmaz → sabotaj butonu gizlenir).
-      canReceive = core.depotFree(depot.data()) >= Number(cargo.data()?.units || 0);
       allied = ['accepted', 'active', 'ending'].includes(al.data()?.status) || ['accepted', 'active', 'ending'].includes(bi.data()?.status);
     }
     const { attackAtMs } = truckTimes(truck);

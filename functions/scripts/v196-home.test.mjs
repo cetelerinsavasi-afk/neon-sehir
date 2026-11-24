@@ -258,3 +258,18 @@ test('ev: kayıp eşya kurtarma — geçişten sonraki eski envanter eve taşın
   await w.home.enter('veli', {});
   assert.equal(w.G(`houses/${homeIdOf('veli')}`).inv?.items?.sofa3, undefined);
 });
+
+// v199 — bölme duvarının yüzüne duvar eşyası (TV, tablo) takılabilir
+test('v199: duvar eşyası bölme duvarının yüzünde geçerli, havada değil', async () => {
+  const { placementOf: pl } = await import('../home.js');
+  const div = { i: 'd1', k: 'wall4', x: 2, z: 1, r: 0, f: 1 };
+  const tv = { i: 't1', k: 'tvwall', x: 2.5, z: 1 + 0.08, r: 0, f: 1 };
+  assert.equal(pl(tv, [div, tv]), null, 'ön yüz');
+  assert.equal(pl({ ...tv, z: 1 - 0.08, r: 4 }, [div, tv]), null, 'arka yüz');
+  assert.equal(pl(tv, [tv]), 'wall', 'bölme yoksa olmaz');
+  assert.equal(pl(tv, [{ ...div, f: 0 }, tv]), 'wall', 'başka kattaki bölme sayılmaz');
+  assert.equal(pl({ ...tv, x: 5 }, [div, tv]), 'wall', 'bölmenin dışında');
+  // döndürülmüş bölme (r = 2 → 90°)
+  const d2 = { i: 'd2', k: 'wall2', x: -3, z: 0, r: 2, f: 0 };
+  assert.equal(pl({ i: 'p', k: 'painting', x: -3 + 0.08, z: 0.3, r: 2, f: 0 }, [d2]), null);
+});

@@ -94,6 +94,7 @@ const GangPanel = lazy(() => import('../Gangs/GangPanel')); // v160.3: 5 sekmeli
 const MekanlarScreen = lazy(() => import('../MekanlarScreen/MekanlarScreen'));
 const ArcadeHub = lazy(() => import('../Arcade/ArcadeHub')); // v196: evdeki oyun cihazları
 const CityStreamHost = lazy(() => import('../Stream/CityStreamHost')); // v196: evden canlı yayın
+const HomeGym = lazy(() => import('./HomeGym')); // v199: evde serbest çalışma
 const ProfileFullScreen = lazy(() => import('../ProfileFullScreen/ProfileFullScreen'));
 const StreamViewer = lazy(() => import('../Stream/StreamViewer'));
 // v154 — fabrika ve yarış pisti sayfaları şehrin İÇİNDE açılır (şehir kapanmaz)
@@ -458,6 +459,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const homeEvtRef = useRef(null);
   const [evlerOpen, setEvlerOpen] = useState(false); // v196: Müstakil › Evler listesi
   const [homeArcade, setHomeArcade] = useState(false); // v196: kendi evinde oyun
+  const [homeGym, setHomeGym] = useState(null); // v199: evde serbest çalışma (spor aleti)
   const [homeStream, setHomeStream] = useState(null); // v196: evden yayın { chairId, houseId, items }
   const homeInstrRef = useRef(null); // v198
   const [homeInfo, setHomeInfo] = useState(null); // v196: { name, owner, floor, mine }
@@ -1483,6 +1485,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           cls: 'take',
           on: () => {
             if (a.kind === 'toggle') engineRef.current?.homeToggle?.(zone.idx);
+            else if (a.kind === 'gymfree') setHomeGym(a.equipment);
             else if (a.kind === 'take') {
               holdFor(a.product);
               flash(`${HOUSE_PRODUCTS[a.product]?.emoji || ''} ${HOUSE_PRODUCTS[a.product]?.label || 'Ürün'} elinde (2 dk)`);
@@ -1871,7 +1874,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
               <small>
                 ⏱️ hız ×{jobPaid.perf?.speed} · 💥 hasar ×{jobPaid.perf?.dmg}
                 {jobPaid.tax > 0 ? ` · 🏛️ −${fmt(jobPaid.tax)}` : ''}
-                {jobPaid.share > 0 ? ` · 🏢 −${fmt(jobPaid.share)}` : ''}
+                {jobPaid.share > 0 ? ` · ${jobPaid.job === 'kurye' ? '🛒 satıcıya' : '🏢'} −${fmt(jobPaid.share)}` : ''}
                 {jobPaid.toDebt > 0 ? ` · ${fmt(jobPaid.toDebt)} borca` : ''}
               </small>
             </div>
@@ -2065,6 +2068,18 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           {homeArcade && (
             <Suspense fallback={null}>
               <ArcadeHub onClose={() => setHomeArcade(false)} />
+            </Suspense>
+          )}
+          {homeGym && (
+            <Suspense fallback={null}>
+              <HomeGym
+                equipment={homeGym}
+                onDone={() => {
+                  setHomeGym(null);
+                  flash('💪 Güzel çalıştın!');
+                }}
+                onClose={() => setHomeGym(null)}
+              />
             </Suspense>
           )}
           {!guest && uid && <HomeInstruments apiRef={homeInstrRef} homeId={homeInside ? engineRef.current?.homeId?.() : null} items={homeInside ? engineRef.current?.homeItems?.() : null} inside={homeInside} user={user} name={myName} flash={flash} />}

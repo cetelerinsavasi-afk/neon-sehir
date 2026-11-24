@@ -46,7 +46,7 @@ export function cleanHomeItem(raw) {
   if (raw.p === 1) it.p = 1;
   return it;
 }
-export const placementOf = (it) => checkPlacement(it, { wall: WALL_ITEM_KEYS.has(it.k), ceil: CEIL_ITEM_KEYS.has(it.k) });
+export const placementOf = (it, items = null) => checkPlacement(it, { wall: WALL_ITEM_KEYS.has(it.k), ceil: CEIL_ITEM_KEYS.has(it.k) }, items);
 const countBy = (items, pred) => {
   const m = {};
   for (const it of items) if (pred(it)) m[it.k] = (m[it.k] || 0) + 1;
@@ -201,9 +201,12 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
       if (!it) fail('invalid-argument', 'Geçersiz eşya.');
       if (seen.has(it.i)) fail('invalid-argument', 'Aynı eşya iki kez.');
       seen.add(it.i);
-      const bad = placementOf(it);
-      if (bad) fail('failed-precondition', `place-${bad}`);
       items.push(it);
+    }
+    // v199: duvar eşyası bölme duvarının yüzünde olabilir → tüm liste ile doğrulanır
+    for (const it of items) {
+      const bad = placementOf(it, items);
+      if (bad) fail('failed-precondition', `place-${bad}`);
     }
     const surf = cleanSurf(p.surf);
     const win = p.win != null ? cleanWin(p.win) : null; // pencere modeli / rengi (ücretsiz)

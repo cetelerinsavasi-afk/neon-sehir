@@ -3275,7 +3275,9 @@ async function runDailyResetBody(dateKey, dr) {
           // v115: 2. elde satılıktayken (oyuncu ilanı ya da anında satış sonrası
           // sistem ilanı) ömür azalmaz — ilan kalkınca kaldığı yerden devam eder.
           if (item.listed) return;
-          const currentLife = item.lifeDays ?? lifeCapOf(collName === 'weapons' ? 'weapon' : 'vehicle', item);
+          // v199: tavanın üstündeki ömür tavana çekilir (motorlar 20 → 10; 10 ve altı aynı kalır) — ek okuma yok
+          const capNow = lifeCapOf(collName === 'weapons' ? 'weapon' : 'vehicle', item);
+          const currentLife = Math.min(capNow, item.lifeDays ?? capNow);
           const newLife = Math.max(0, currentLife - 1);
           const repairsUsed = item.repairsUsed || 0;
           if (newLife <= 0 && repairsUsed >= VEHICLE_WEAPON_MAX_REPAIRS) {

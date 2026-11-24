@@ -9,7 +9,7 @@
 
 import { VEHICLE_CATALOG, WEAPON_CATALOG } from './catalogData.js';
 import { vehicleRaceLevel, VEHICLE_MAX_LEVEL } from './raceSim.js';
-import { canRepairVehicle, canUpgradeVehicle, isMotorId } from './vehicleKinds.js';
+import { canRepairVehicle, canUpgradeVehicle, isRideId } from './vehicleKinds.js';
 
 // --- Ömür + tamir ------------------------------------------------------------------
 // v195: araba (1-10) + ticari (11-15) → 10 gün ömür, 10 tamir, her tamir +1 gün
@@ -18,16 +18,17 @@ import { canRepairVehicle, canUpgradeVehicle, isMotorId } from './vehicleKinds.j
 export const VEHICLE_WEAPON_INITIAL_LIFE_DAYS = 10; // araba + ticari ömür tavanı (v195: 20 → 10)
 export const VEHICLE_WEAPON_MAX_REPAIRS = 10; // araç VE silah tamir hakkı
 export const REPAIR_LIFE_BONUS_DAYS = 1; // araç tamiri +1 gün (v195: 2 → 1)
-export const MOTOR_LIFE_DAYS = 20; // v195: motor / bisiklet / at / deve ömür tavanı (tamir yok)
+export const MOTOR_LIFE_DAYS = 20; // v195: bisiklet / at / deve ömür tavanı (tamir yok) · v199: motosiklet artık 10 gün + 10 tamir
 export const WEAPON_INITIAL_LIFE_DAYS = 10; // silah ömür tavanı
 export const WEAPON_REPAIR_LIFE_BONUS_DAYS = 1; // silah tamiri +1 gün
 
 // Aracın katalog numarası (sayı ya da { catalogId } belgesi)
 const cidOf = (x) => (x != null && typeof x === 'object' ? x.catalogId : x);
-// Bir aracın ömür tavanı: motor 20, araba / ticari 10. Katalog no bilinmiyorsa araba sayılır.
+// Bir aracın ömür tavanı: binek (bisiklet / at / deve) 20, araba / ticari / motor 10 (v199). Katalog no
+// bilinmiyorsa araba sayılır.
 export function vehicleLifeCap(catalogIdOrItem) {
   const cid = cidOf(catalogIdOrItem);
-  return cid != null && isMotorId(cid) ? MOTOR_LIFE_DAYS : VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
+  return cid != null && isRideId(cid) ? MOTOR_LIFE_DAYS : VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
 }
 // kind: 'weapon' | 'vehicle' · v195: araçta katalog no (ya da belge) verilirse motor 20 sayılır
 export function lifeCapOf(kind, catalogIdOrItem = null) {

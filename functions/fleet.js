@@ -13,7 +13,7 @@
 //     (hurda) ya da bankaya el konmuş araç sayılmaz; 2. elde ilanda olan sayılır.
 //   • Polis arabası oyundan kalktı (polislik mesleği değil, sadece para kazandıran araç görevi).
 //   • Şoförlük gelir vergisi (Ticaret Bakanlığı, %10, %1–%20) + gelirin %10'u şirkete.
-//     Motokurye vergi / pay ödemez.
+//     v199: motokurye de şoförlük vergisi öder; %10'u sipariş parası olarak seyyar satıcıya gider.
 //   • Tek seferlik geçiş (migrateV177): polis arabaları ve aynı türden fazla ticari araçlar
 //     (ömrü az olan) kalan ömre göre en yüksek 2. el değeri ödenerek kaldırılır; oyuncu
 //     galerilerindeki ticari araç stoğunun ödenen bedeli iade edilir. Hepsine SMS.
@@ -68,9 +68,17 @@ export const lifeValue = (v) => {
   const life = Math.max(0, Math.min(20, Number(v?.lifeDays ?? 20) || 0));
   return Math.round((price * life) / 20);
 };
-// Şoför geliri bölüşümü: brüt → vergi + şirket payı + net (kurye: kesinti yok)
+// v199 — MOTOKURYE: kazancın %10'u siparişin parası olarak malı aldığı seyyar satıcıya (o satıcının
+// hissedarlarına), belediyenin şoförlük vergisi kesilir, kalan kuryenin.
+export const KURYE_ORDER_SHARE = 0.1;
+// Şoför geliri bölüşümü: brüt → vergi + şirket payı (kuryede: satıcının sipariş parası) + net
 export function splitDriverIncome(job, gross, taxFrac) {
   const g = Math.max(0, Math.round(Number(gross) || 0));
+  if (job === 'kurye') {
+    const tax = Math.round(g * Math.max(0, Number(taxFrac) || 0));
+    const share = Math.round(g * KURYE_ORDER_SHARE);
+    return { gross: g, tax, share, net: Math.max(0, g - tax - share) };
+  }
   if (!fleetOfJob(job)) return { gross: g, tax: 0, share: 0, net: g };
   const tax = Math.round(g * Math.max(0, Number(taxFrac) || 0));
   const share = Math.round(g * FLEET_DRIVER_SHARE);

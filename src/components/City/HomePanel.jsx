@@ -10,7 +10,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { houseAction } from '../../services/gameActions';
 import { CATALOG, CATALOG_MAP, CATEGORIES, TINTS } from '../HouseScreen/houseCatalog.js';
 import { CATALOG_KEYS } from '../../../functions/v196Shared.js';
-import { checkPlacement, homeIdOf, FLOOR_NAMES, MAX_HOME_ITEMS } from '../../../functions/homeGeometry.js';
+import { checkPlacement, homeIdOf, FLOOR_NAMES, MAX_HOME_ITEMS, DIVIDER_SEGS, onDivider, divLocal, divWorld } from '../../../functions/homeGeometry.js';
 import { usePlayer } from '../../hooks/usePlayer';
 import { MarketShelf, SellSheet, useFurnBest } from '../HouseScreen/FurnMarket';
 import { furnPriceBand } from '../../../functions/furnMarket.js';
@@ -415,7 +415,23 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
   useEffect(() => {
     eng.homeSelect(sel);
   }, [eng, sel, items]);
-  const placeOk = (it) => !checkPlacement(it, { wall: Boolean(CATALOG_MAP[it.k]?.wall), ceil: Boolean(CATALOG_MAP[it.k]?.ceil) });
+  const placeErr = (it, list = st.current.items) => checkPlacement(it, { wall: Boolean(CATALOG_MAP[it.k]?.wall), ceil: Boolean(CATALOG_MAP[it.k]?.ceil) }, list);
+  const placeOk = (it, list) => !placeErr(it, list);
+  // v199: bölme duvarı taşınınca / dönünce üstündeki duvar eşyaları (TV, tablo…) onunla gider
+  const withAttached = (list, idx, next) => {
+    const old = list[idx];
+    const out = list.map((x, i) => (i === idx ? next : x));
+    if (!DIVIDER_SEGS[old.k]) return out;
+    list.forEach((w, i) => {
+      if (i === idx || w.f !== old.f || !CATALOG_MAP[w.k]?.wall || !onDivider(old, w.x, w.z)) return;
+      const { lx, lz } = divLocal(old, w.x, w.z);
+      const p = divWorld(next, lx, lz);
+      const dr = ((((w.r || 0) - (old.r || 0)) % 8) + 8) % 8;
+      out[i] = { ...w, x: Math.round(p.x * 100) / 100, z: Math.round(p.z * 100) / 100, r: ((next.r || 0) + dr) % 8 };
+    });
+    return out;
+  };
+  const allOk = (list) => list.every((x) => placeOk(x, list));
   // motor: eşyaya dokun = seç · sürükle-bırak = taşı · boş zemine dokun = seçili eşya oraya · pencere = stil
   useEffect(() => {
     evtRef.current = (e) => {
@@ -424,12 +440,13 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
         const it = cur[e.idx];
         if (!it) return;
         const next = { ...it, x: e.x, z: e.z, r: e.r };
-        if (!placeOk(next)) {
-          flash(PLACE_ERR[checkPlacement(next, { wall: Boolean(CATALOG_MAP[next.k]?.wall), ceil: Boolean(CATALOG_MAP[next.k]?.ceil) })] || 'Buraya konmaz.');
+        const list = withAttached(cur, e.idx, next);
+        if (!placeOk(next, list) || !allOk(list)) {
+          flash(PLACE_ERR[placeErr(next, list)] || 'Buraya konmaz.');
           eng.homeSetItems(cur); // eski yerine
           return;
         }
-        apply(cur.map((x, i) => (i === e.idx ? next : x)));
+        apply(list);
         setSel(e.idx);
         return;
       }
@@ -520,14 +537,23 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
   const rotate = (d) => {
     if (!cur || curDef?.wall) return;
     const it = { ...cur, r: (cur.r + d + 8) % 8 };
-    if (!placeOk(it)) return flash('Burada dönmüyor.');
-    apply(items.map((x, i) => (i === sel ? it : x)));
+    const list = withAttached(items, sel, it);
+    if (!placeOk(it, list) || !allOk(list)) return flash('Burada dönmüyor.');
+    apply(list);
   };
   const tint = (c) => cur && apply(items.map((x, i) => (i === sel ? { ...x, c } : x)));
   const remove = () => {
     if (!cur) return;
-    if (cur.p === 1) setInv({ ...inv, [cur.k]: (inv[cur.k] || 0) + 1 });
-    apply(items.filter((_, i) => i !== sel), false);
+    // v199: bölme kaldırılınca üstündeki duvar eşyaları da kalkar (satın alınmışsa envantere döner)
+    const gone = new Set([sel]);
+    if (DIVIDER_SEGS[cur.k]) items.forEach((w, i) => i !== sel && w.f === cur.f && CATALOG_MAP[w.k]?.wall && onDivider(cur, w.x, w.z) && gone.add(i));
+    const back = { ...inv };
+    gone.forEach((i) => {
+      const w = items[i];
+      if (w.p === 1) back[w.k] = (back[w.k] || 0) + 1;
+    });
+    setInv(back);
+    apply(items.filter((_, i) => !gone.has(i)), false);
   };
   const pickSurf = (type, key) => {
     const v = { ...(surf[f] || {}) };

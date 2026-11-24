@@ -674,3 +674,6 @@ body.ns-city-open .ta-root { z-index: 96; }
 .cs-car-fav { position: absolute; top: 10px; right: 10px; width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.25); background: rgba(10,12,18,0.72); font-size: 16px; line-height: 1; display: grid; place-items: center; padding: 0; z-index: 2; }
 .cs-car-fav.on { border-color: #ff4d6d; box-shadow: 0 0 10px rgba(255,77,109,0.45); }
 .cs-car-fav:disabled { opacity: 0.6; }
+
+/* v199: yayındayken başın üstünde CANLI rozeti */
+.hs-live { margin: 0 auto 2px; width: max-content; padding: 1px 7px; border-radius: 9px; background: #e0223f; color: #fff; font-size: 10px; font-weight: 900; letter-spacing: 0.3px; box-shadow: 0 0 8px #e0223f99; }

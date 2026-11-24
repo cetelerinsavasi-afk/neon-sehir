@@ -191,8 +191,10 @@ export function createJobs({ db, FieldValue, HttpsError, splitIncomeForDebt, sta
       const hits = Math.max(0, Math.min(50, Math.floor(Number(p.hits) || 0)));
       const perf = jobPerf(t, run.par, hits);
       const total = jobReward(J.avg, Number(run.mul) || 1, perf);
-      // v177: şoförlük vergisi + şirket payı (kurye hariç), kalan net gelir borç kuralına girer
-      const fl = stateWrite && taxFrac && fleetOfJob(job) ? fleetOfJob(job) : null;
+      // v177: şoförlük vergisi + şirket payı, kalan net gelir borç kuralına girer
+      // v199: kurye de vergi öder; payı (%10 sipariş parası) malı aldığı seyyar satıcının hissedarlarına
+      const vendorKey = job === 'kurye' ? KURYE_PICKUPS[Number(run.task?.from)]?.key || null : null;
+      const fl = stateWrite && taxFrac ? (fleetOfJob(job) || (vendorKey ? { co: vendorKey, vendor: true } : null)) : null;
       const cut = fl ? splitDriverIncome(job, total, taxFrac(dayKey(now()))) : { gross: total, tax: 0, share: 0, net: total };
       const { goldDelta, debtDelta } = splitIncomeForDebt(u.debtToState, cut.net);
       const nn = n + 1;
@@ -206,7 +208,8 @@ export function createJobs({ db, FieldValue, HttpsError, splitIncomeForDebt, sta
       });
       if (fl) {
         const sk = companyStatKey?.(fl.co);
-        stateWrite(tx, db, FieldValue, { kind: 'in', cat: 'vergi_sofor', amount: cut.tax, atMs: now(), dayKey: day, stat: { ...(sk && cut.share ? { [sk]: cut.share } : {}), [`sf_${job}_n`]: 1, [`sf_${job}_brut`]: total } });
+        const vsk = fl.vendor && sk ? sk.slice(3) : null; // hs_kk → kk (seyyar satıcı ciro sayacı)
+        stateWrite(tx, db, FieldValue, { kind: 'in', cat: 'vergi_sofor', amount: cut.tax, atMs: now(), dayKey: day, stat: { ...(sk && cut.share ? { [sk]: cut.share } : {}), ...(vsk && cut.share ? { [`sy_${vsk}_ciro`]: cut.share, sy_siparis_n: 1 } : {}), [`sf_${job}_n`]: 1, [`sf_${job}_brut`]: total } });
       }
       return { ok: true, total, gross: total, tax: cut.tax, share: cut.share, net: cut.net, toDebt: cut.net - goldDelta, perf: { speed: Math.round(perf.speed * 100) / 100, dmg: Math.round(perf.dmg * 100) / 100 }, t: Math.round(t), hits, left: daily - nn, daily, far };
     });

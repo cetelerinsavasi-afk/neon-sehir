@@ -31,8 +31,11 @@ export const isVehicleId = (id) => Boolean(VEHICLE_CATALOG[Number(id)]);
 export const isCarId = (id) => CAR_IDS.includes(Number(id));
 export const isMotorId = (id) => MOTOR_IDS.includes(Number(id));
 export const isTicariId = (id) => TICARI_IDS.includes(Number(id));
-// v195: TAMİR araba + ticari · GELİŞTİRME (yarış seviyesi) sadece araba
-export const canRepairVehicle = (id) => isCarId(id) || isTicariId(id);
+// v199: motosikletler (21-24) de arabalar gibi 10 gün ömür + 10 tamir (bisiklet / at / deve hariç)
+export const MOTORBIKE_IDS = [21, 22, 23, 24];
+export const isMotorbikeId = (id) => MOTORBIKE_IDS.includes(Number(id));
+// v195: TAMİR araba + ticari (v199: + motor) · GELİŞTİRME (yarış seviyesi) sadece araba
+export const canRepairVehicle = (id) => isCarId(id) || isTicariId(id) || isMotorbikeId(id);
 export const canUpgradeVehicle = (id) => isCarId(id);
 
 // --- MESLEKLER -----------------------------------------------------------------------
@@ -50,7 +53,8 @@ export const JOBS = {
   polis: { id: 14, name: 'Polis', icon: '🚓', daily: 10, avg: 4000, unit: 'görev', verb: 'Görev' },
   ambulans: { id: 15, name: 'Ambulans', icon: '🚑', daily: 10, avg: 5250, unit: 'hasta', verb: 'Hasta' },
   // v154: motokurye — HER motorla (21-24); satıcıdan al → mekâna götür. Ücret mesafeyle artar.
-  kurye: { id: 21, name: 'Motokurye', icon: '🛵', daily: 10, avg: 500, unit: 'sipariş', verb: 'Teslimat', motor: true },
+  // v199: kurye geliri 2 katı (500 → 1.000); şoförlük vergisi + %10 sipariş parası (seyyar satıcıya) kesilir
+  kurye: { id: 21, name: 'Motokurye', icon: '🛵', daily: 10, avg: 1000, unit: 'sipariş', verb: 'Teslimat', motor: true },
 };
 // v154: motorlar motokurye mesleği yapar (katalogda job: 'kurye')
 export const jobOf = (catalogId) => VEHICLE_CATALOG[Number(catalogId)]?.job || null;

@@ -169,7 +169,6 @@ function OwnerView({ factory, machines, gold }) {
         {report && (
           <div className="fx-rep-body">
             <div className="fv-row"><span>Toplam ciro</span><b>{fmt(gross)}</b></div>
-            <div className="fv-row"><span>Net kâr</span><b>{fmt(factory.dailyIncome || 0)}</b></div>
             <div className="fv-row"><span>Elektrik</span><b>−{fmt(factory.dailyElectricityExpense || 0)}</b></div>
             <div className="fv-row"><span>Vergi</span><b>−{fmt(factory.dailyTaxExpense || 0)}</b></div>
           </div>
@@ -182,25 +181,37 @@ function OwnerView({ factory, machines, gold }) {
   );
 }
 
+// v199 — Fabrikalar: sıralama tablosu (ilk 3 madalyalı, gelir sağda belirgin)
 function FactoriesList() {
   const { factories, loading } = useOpenFactories();
+  const top = Math.max(1, ...factories.map((f) => Number(f.dailyIncomeAvg10) || 0));
+  const medal = ['🥇', '🥈', '🥉'];
   return (
-    <div className="factory-browse-list">
-      <div className="factory-section-title">🏭 Fabrikalar</div>
+    <div className="fx-lb">
+      <div className="fx-lb-head">
+        <span>🏭 Fabrikalar</span>
+        <small>günlük ort. gelir</small>
+      </div>
       {loading && <p className="factory-hint">Yükleniyor…</p>}
       {!loading && !factories.length && <p className="factory-hint">Henüz kazanan fabrika yok.</p>}
-      {factories.map((f, i) => (
-        <div key={f.id} className="factory-browse-card">
-          <div className="factory-browse-top">
-            <FactoryBadge logo={f.logo} name={factoryDisplayName(f)} size={34} />
-            <div className="factory-browse-owner-row">
-              <b>{i + 1}. {factoryDisplayName(f)}</b>
-              <span className="factory-browse-owner">{f.ownerName || 'Oyuncu'}</span>
+      {factories.map((f, i) => {
+        const inc = Number(f.dailyIncomeAvg10) || 0;
+        return (
+          <div key={f.id} className={`fx-lb-row${i < 3 ? ` top top${i + 1}` : ''}`}>
+            <div className="fx-lb-rank">{i < 3 ? medal[i] : i + 1}</div>
+            <FactoryBadge logo={f.logo} name={factoryDisplayName(f)} size={i < 3 ? 42 : 36} />
+            <div className="fx-lb-name">
+              <b>{factoryDisplayName(f)}</b>
+              <span>👤 {f.ownerName || 'Oyuncu'}</span>
+              <i className="fx-lb-bar"><em style={{ width: `${Math.max(4, Math.round((inc / top) * 100))}%` }} /></i>
+            </div>
+            <div className="fx-lb-inc">
+              <b>{fmt(inc)}</b>
+              <small>🪙 / gün</small>
             </div>
           </div>
-          <div className="factory-browse-meta">Ort. gelir <b>{fmt(f.dailyIncomeAvg10)}</b> / gün</div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

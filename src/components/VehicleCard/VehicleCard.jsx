@@ -74,7 +74,7 @@ export function vehicleRequiredQty(vehicle) {
 
 export function LifeBar({ item, kind = 'vehicle' }) {
   const cap = lifeCapOf(kind, item);
-  const life = item?.lifeDays ?? cap;
+  const life = Math.min(cap, item?.lifeDays ?? cap); // v199: tavanın üstü (eski motor ömrü) 00:00'da tavana iner
   const repairsUsed = item?.repairsUsed || 0;
   const percent = Math.round(lifeRatio(item, kind) * 100);
   // v195: motorda tamir yok — tamir hakkı yazılmaz

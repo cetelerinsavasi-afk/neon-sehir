@@ -55,7 +55,7 @@ test('kurallar: galeri ticari satmaz, ömür değeri, şoför geliri bölüşüm
   assert.equal(canResell(27), false);
   assert.equal(canResell(21), true);
   assert.equal(canResell(13), true);
-  assert.deepEqual(splitDriverIncome('kurye', 500, 0.1), { gross: 500, tax: 0, share: 0, net: 500 });
+  assert.deepEqual(splitDriverIncome('kurye', 1000, 0.1), { gross: 1000, tax: 100, share: 100, net: 800 }); // v199: vergi + %10 satıcıya
   // v195: ticari ücretler ×1,5
   assert.equal(JOBS.tir.avg, 9000);
   assert.equal(JOBS.otobus.avg, 18750);
@@ -99,7 +99,7 @@ test('2. elden: aynı türden araç varken alınamaz', async () => {
   await db.runTransaction((tx) => fleet.assertCanOwn(tx, 'a', 4)); // araba kuralsız
 });
 
-test('iş kazancı: şoförlük vergisi + şirket payı, kurye kesintisiz', async () => {
+test('iş kazancı: şoförlük vergisi + şirket payı; v199 kurye: vergi + %10 seyyar satıcıya', async () => {
   const { db, user, u, veh, ledger, adv } = setup();
   const jobs = createJobs({ db, FieldValue, HttpsError, splitIncomeForDebt: (d, a) => ({ goldDelta: a, debtDelta: 0 }), stateWrite, taxFrac: () => 0.1, companyStatKey: borsaCompanyStatKey, now: () => Date.parse('2026-12-01T10:00:00+03:00') + 0 });
   await user('a', 0);
@@ -120,10 +120,14 @@ test('iş kazancı: şoförlük vergisi + şirket payı, kurye kesintisiz', asyn
   const k = await jobs.ops.jobStart('a', { vehicleId: 'mot' });
   await db.doc('vehicles/mot').update({ 'job.run.at': 0 });
   const kd = await jobs.ops.jobDone('a', { vehicleId: 'mot', runId: k.run.id, t: k.run.par, hits: 0 });
-  assert.equal(kd.tax, 0);
-  assert.equal(kd.net, kd.gross);
+  assert.equal(kd.tax, Math.round(kd.gross * 0.1));
+  assert.equal(kd.share, Math.round(kd.gross * 0.1));
+  assert.equal(kd.tax + kd.share + kd.net, kd.gross);
   L = await ledger();
-  assert.equal(L.in.vergi_sofor, d.tax);
+  assert.equal(L.in.vergi_sofor, d.tax + kd.tax);
+  // satıcının sipariş parası o seyyar satıcının hisse gelirine (hs_kk / hs_sm / …)
+  const vend = ['hs_kk', 'hs_sm', 'hs_dn', 'hs_kf', 'hs_md', 'hs_dd'].reduce((a, k) => a + (L.stat[k] || 0), 0);
+  assert.equal(vend, kd.share);
   adv(0);
   // polis arabasıyla iş yok
   await veh('pol', 'a', 14);

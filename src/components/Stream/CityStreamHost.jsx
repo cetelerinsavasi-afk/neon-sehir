@@ -49,7 +49,7 @@ export default function CityStreamHost({ eng, houseId, room, items, chairId, pri
   engineRef.current = {
     renderStreamView: (p, cv) => eng?.renderStreamView?.(p, cv) || false,
     say: (_uid, t) => eng?.say?.(t),
-    setLiveBadge: () => {},
+    setLiveBadge: (_uid, text) => eng?.setLiveBadge?.(text),
   };
 
   const endLocal = useCallback((summary, reason) => {
@@ -106,6 +106,13 @@ export default function CityStreamHost({ eng, houseId, room, items, chairId, pri
       setBusy(false);
     }
   };
+
+  // v199: yayındayken ana ekran izleyicilerin gördüğü açıdan (yayın kamerası) — eski evdeki gibi
+  useEffect(() => {
+    if (phase !== 'live' || !pose || !eng?.setStreamCam) return undefined;
+    eng.setStreamCam(pose);
+    return () => eng.setStreamCam(null);
+  }, [phase, pose, eng]);
 
   // koltuktan kalkınca / mekândan çıkınca yayın kapanır
   useEffect(() => {
