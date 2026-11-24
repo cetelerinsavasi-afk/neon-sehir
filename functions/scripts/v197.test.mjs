@@ -86,3 +86,29 @@ test('v197 kaplama: bir kez alınan duvar / zemin bütün katlarda ücretsiz; ik
   assert.equal(r2.gold + r2.gem, 0);
   assert.equal(w.G('users/ali').emerald, mid.emerald, 'ekstra zümrüt çıkmaz');
 });
+
+test('v197 para güvenliği: çift satın alma yok, deneme eşya evde kalır, envanterdeki eşya tekrar ücretlendirilmez', async () => {
+  const { ITEM_PRICES } = await import('../houseCatalogData.js');
+  const w = world();
+  const home = createHome({ db: w.db, FieldValue, HttpsError, now: () => w.clock.now });
+  await home.enter('ali', {});
+  const sofa = { i: 's1', k: 'sofa3', x: 0, z: 0, r: 0, c: 0, f: 0 };
+  // deneme olarak kaydedilir (satın almadan çık) → evde kalır, para çıkmaz
+  await home.save('ali', { items: [sofa] });
+  assert.equal(w.G('users/ali').gold, 10_000_000);
+  assert.equal(w.G(`houses/${homeIdOf('ali')}`).items[0].p, undefined, 'deneme eşya evde duruyor');
+  // iki kez üst üste "Satın al" → bir kez ödenir
+  const price = ITEM_PRICES.sofa3.v;
+  const [a, b] = await Promise.allSettled([home.checkout('ali', { expect: { gold: price, gem: 0 } }), home.checkout('ali', { expect: { gold: price, gem: 0 } })]);
+  assert.equal([a, b].filter((x) => x.status === 'fulfilled').length, 1, 'ikinci istek reddedilir');
+  assert.equal(w.G('users/ali').gold, 10_000_000 - price, 'tek kez ödendi');
+  // satın alınmış koltuk envantere kalkar, aynı koltuk deneme diye tekrar konsa da ücret yok (envanterden)
+  await home.save('ali', { items: [] });
+  assert.equal(w.G(`houses/${homeIdOf('ali')}`).inv.items.sofa3, 1);
+  await home.save('ali', { items: [{ ...sofa, i: 's2' }] });
+  const r = await home.checkout('ali', { expect: { gold: 0, gem: 0 } });
+  assert.equal(r.gold + r.gem, 0);
+  assert.equal(w.G('users/ali').gold, 10_000_000 - price);
+  assert.equal(w.G(`houses/${homeIdOf('ali')}`).inv.items.sofa3, undefined, 'envanterdeki kullanıldı');
+  assert.equal(w.G(`houses/${homeIdOf('ali')}`).items[0].p, 1);
+});

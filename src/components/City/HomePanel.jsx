@@ -383,8 +383,15 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
       if (price.t === 'gem') gem += price.v;
       else gold += price.v;
     };
+    // v197: envanterde aynısı olan deneme eşya ücretsiz (sunucu önce envanterden kullanır — iki kez satın alınmaz)
+    const left = { ...inv };
     items.forEach((it) => {
-      if (it.p !== 1) addL(it.k, CATALOG_MAP[it.k]?.name || it.k, CATALOG_MAP[it.k]?.price);
+      if (it.p === 1) return;
+      if ((left[it.k] || 0) > 0) {
+        left[it.k] -= 1;
+        return;
+      }
+      addL(it.k, CATALOG_MAP[it.k]?.name || it.k, CATALOG_MAP[it.k]?.price);
     });
     const seen = new Set();
     Object.entries(surf).forEach(([fl, v]) => {
@@ -397,7 +404,7 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
       }
     });
     return { lines: Object.values(lines), gold, gem, count: Object.values(lines).reduce((a, l) => a + l.n, 0) };
-  }, [items, surf, sInv]);
+  }, [items, surf, sInv, inv]);
   const payGold = Number(player?.gold || 0);
   const payGem = Number(player?.emerald || 0);
   const rotate = (d) => {
@@ -448,8 +455,14 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
       setBusy(false);
     }
   };
+  const payingRef = useRef(false); // v197: çift dokunuşta iki kez ödeme isteği gitmesin
   const doCheckout = async (exit = false) => {
-    if (!(await save())) return;
+    if (payingRef.current) return;
+    payingRef.current = true;
+    if (!(await save())) {
+      payingRef.current = false;
+      return;
+    }
     setBusy(true);
     try {
       const r = await houseAction({ op: 'homeCheckout', expect: { gold: cart.gold, gem: cart.gem } });
@@ -463,6 +476,7 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
         });
         return nx;
       });
+      if (r.data?.inv?.items) setInv({ ...r.data.inv.items });
       const owned = items.map((it) => ({ ...it, p: 1 }));
       setItems(owned);
       eng.homeSetItems(owned);
@@ -473,6 +487,7 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
       flash(errText(e));
     } finally {
       setBusy(false);
+      payingRef.current = false;
     }
   };
   // sepeti boşalt: deneme eşyalar kalkar, sahip olunmayan kaplamalar varsayılana döner
@@ -498,10 +513,12 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
     if (dirty && !(await save())) return;
     onDone(dirty || savedRef.current);
   };
-  const leaveEmpty = async () => {
-    const next = cancelCart();
+  // v197: satın almadan çıkınca deneme eşyalar evde yarı saydam KALIR (parası yetince sepetten alınır);
+  // sadece sepetteki "İptal" kaldırır
+  const leaveKeep = async () => {
     setPanel(null);
-    if (await save(next)) onDone(true);
+    if (dirty && !(await save())) return;
+    onDone(true);
   };
   // seçili (satın alınmış) eşyayı pazara koy: odadan envantere alınır, kaydedilir, ilan verilir
   const sell = async (v) => {
@@ -723,7 +740,7 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
               <b>{panel === 'leave' ? '🛒 Sepette ürün var' : '🛒 Alışverişi Tamamla'}</b>
               <button className="hs-x" onClick={() => setPanel(null)}>✕</button>
             </div>
-            {panel === 'leave' && <p className="hs-dim">Yarı saydam eşyalar deneme — satın almadan çıkarsan evinden kalkar.</p>}
+            {panel === 'leave' && <p className="hs-dim">Yarı saydam eşyalar deneme. Şimdi almazsan evinde yarı saydam olarak kalır; parası yetince Tasarla › 🛒 Sepet'ten alırsın (sepetteki İptal kaldırır).</p>}
             <div className="hs-receipt">
               {cart.lines.map((l) => (
                 <div key={l.name} className="hs-receipt-row">
@@ -743,7 +760,7 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
             {(payGold < cart.gold || payGem < cart.gem) && <p className="hs-err">{payGold < cart.gold ? 'Altının yetmiyor. ' : ''}{payGem < cart.gem ? 'Zümrütün yetmiyor.' : ''}</p>}
             <div className="hh-modal-row">
               {panel === 'leave' ? (
-                <button className="hs-btn ghost" disabled={busy} onClick={leaveEmpty}>Satın almadan çık</button>
+                <button className="hs-btn ghost" disabled={busy} onClick={leaveKeep}>Sonra al (evde kalsın)</button>
               ) : (
                 <button className="hs-btn ghost" disabled={busy} onClick={() => setPanel(null)}>Vazgeç</button>
               )}

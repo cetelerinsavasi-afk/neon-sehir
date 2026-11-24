@@ -227,9 +227,17 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
       let gold = 0;
       let gem = 0;
       const items = (h.items || []).map((x) => ({ ...x }));
+      const inv = { items: { ...(h.inv?.items || {}) }, walls: [...(h.inv?.walls || [])], floors: [...(h.inv?.floors || [])] };
       let n = 0;
       for (const it of items) {
         if (it.p === 1) continue;
+        // v197: envanterde aynı eşyadan varsa önce o kullanılır — aynı eşya iki kez satın alınmaz
+        if (Number(inv.items[it.k] || 0) > 0) {
+          inv.items[it.k] -= 1;
+          if (!inv.items[it.k]) delete inv.items[it.k];
+          it.p = 1;
+          continue;
+        }
         if (isRemovedKey(it.k)) fail('failed-precondition', 'Bu eşya artık satılmıyor.');
         const pr = priceOf(it.k);
         if (pr?.t === 'gem') gem += pr.v;
@@ -237,7 +245,6 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
         it.p = 1;
         n += 1;
       }
-      const inv = { items: { ...(h.inv?.items || {}) }, walls: [...(h.inv?.walls || [])], floors: [...(h.inv?.floors || [])] };
       const surf = JSON.parse(JSON.stringify(h.surf || {}));
       for (const v of Object.values(surf)) {
         for (const [type, field] of [['wall', 'walls'], ['floor', 'floors']]) {

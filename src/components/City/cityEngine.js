@@ -1272,6 +1272,20 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       /* araç modeli kurulamadı: garaj boş */
     }
   }
+  // v197: (x, z) bir garajın içinde / ağzında mı? → { g, lx, lz } (lz < 0 içeri, 0 kapı çizgisi)
+  function garageLane(x, z) {
+    for (const g of W.garages || []) {
+      if (!g.gd) continue;
+      const dx = x - g.x;
+      const dz = z - g.z;
+      const c = Math.cos(g.ry);
+      const sn = Math.sin(g.ry);
+      const lx = dx * c - dz * sn;
+      const lz = dx * sn + dz * c;
+      if (Math.abs(lx) < g.gw / 2 + 0.6 && lz > -g.gd - 0.6 && lz < 1.2) return { g, lx, lz };
+    }
+    return null;
+  }
   // garajdaki aracın dünya konumu + burun yönü (garaj ağzı)
   function garageWorld() {
     if (!EV?.garageSpot) return null;
@@ -3076,7 +3090,24 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const spd = Math.hypot(c.vx, c.vz);
     let hit = null;
     let impact = null;
-    if (!carFree(nx, nz, c.yaw)) {
+    // v197: garajdan çıkış şeridi — garajın içinde (ve ağzında) araç duvarlara çarpmış sayılmaz, garajın ortasında
+    // düz ilerler; eskiden binince "sıkıştı" sayılıp yana itiliyor, garajdan çıkamıyordu
+    const lane = c === myCar ? garageLane(nx, nz) : null;
+    if (lane) {
+      const { g, lz } = lane;
+      const cs = Math.cos(g.ry);
+      const sn = Math.sin(g.ry);
+      c.x = g.x + lz * sn;
+      c.z = g.z + lz * cs;
+      const out = g.ry;
+      const back = g.ry + Math.PI;
+      const dOut = Math.abs(Math.atan2(Math.sin(c.yaw - out), Math.cos(c.yaw - out)));
+      const dBack = Math.abs(Math.atan2(Math.sin(c.yaw - back), Math.cos(c.yaw - back)));
+      c.yaw = dOut <= dBack ? out : back;
+      const along = c.vx * sn + c.vz * cs;
+      c.vx = sn * along;
+      c.vz = cs * along;
+    } else if (!carFree(nx, nz, c.yaw)) {
       c.x = nx;
       c.z = nz;
     } else {
@@ -3109,7 +3140,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         c.vz *= -0.2;
       }
     }
-    unstick(c);
+    if (!lane) unstick(c);
     // v193: sertlik = duvara doğru kapanma hızı (sürtünerek geçmek kaza sayılmaz); kıvılcım + gövde sarsıntısı
     const hard = impact ? impact.vn : hit ? spd * 0.5 : 0;
     if (impact) carJolt(c, impact, dt);
@@ -5795,7 +5826,17 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       if (!EV) return;
       evHome = home || null;
       EV.ml.setItems(home?.items || []);
-      EV.ml.setSurfaces(home?.surf || {});
+      // v197: satın alınmamış (deneme) kaplama sadece ev sahibine görünür; ziyaretçi varsayılanı görür
+      const surf = { ...(home?.surf || {}) };
+      if (home && !home.mine) {
+        Object.keys(surf).forEach((f) => {
+          const v = { ...surf[f] };
+          if (v.wallTry) delete v.wall;
+          if (v.floorTry) delete v.floor;
+          surf[f] = v;
+        });
+      }
+      EV.ml.setSurfaces(surf);
       EV.ml.setWindows(home?.win || {});
       evSeats();
       this.homeDoor?.(home?.door?.t || 'ahsap');
