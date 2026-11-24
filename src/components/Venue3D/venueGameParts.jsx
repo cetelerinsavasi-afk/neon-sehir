@@ -54,7 +54,7 @@ function Layer({ children, onClose }) {
 // ── CAFE / BAR ─────────────────────────────────────────────────────────────────
 // Bot garson içeride ve önündeki masalarda dolaşır; sipariş panelden (içeride ya da masalı alanda).
 function menuPart(type, label) {
-  return function MenuPart({ panel, setPanel, walk, flash }) {
+  return function MenuPart({ panel, setPanel, walk, flash, engineRef }) {
     const id = `game_${type}`;
     useEffect(() => {
       ensureGameVenues();
@@ -64,7 +64,23 @@ function menuPart(type, label) {
         <TopBtns show={walk && !panel} setPanel={setPanel} items={[{ panel: 'menu', label: `🧾 ${label} menüsü` }]} />
         {panel === 'menu' && (
           <Layer onClose={() => setPanel(null)}>
-            <MenuPanel houseId={id} houseDoc={gameDoc(id, type)} onClose={() => setPanel(null)} onBought={(r) => flash?.(`${r?.label || 'Ürün'} geldi. Afiyet olsun.`)} />
+            <MenuPanel
+              houseId={id}
+              houseDoc={gameDoc(id, type)}
+              onClose={() => setPanel(null)}
+              onBought={(r) => {
+                // v198: "geldi" yazıp hiçbir şey gelmiyordu — garson ürünü getirir, gelince elinde olur
+                setPanel(null);
+                const eng = engineRef?.current;
+                if (eng?.deliver && r?.product) {
+                  eng.deliver(`npc_bot_${type}`, r.product);
+                  flash?.(`🍽️ ${r?.label || 'Sipariş'} hazırlanıyor — garson getiriyor`);
+                } else {
+                  eng?.setHolding?.(r?.product);
+                  flash?.(`${r?.label || 'Ürün'} geldi. Afiyet olsun.`);
+                }
+              }}
+            />
           </Layer>
         )}
       </>
@@ -178,18 +194,29 @@ export function NetKafePart({ panel, setPanel, flash, engineRef }) {
 // ── SPOR SALONU ────────────────────────────────────────────────────────────────
 // v197: üyelik alınınca antrenman şehirdeki salonda yapılır (3 görev: sağ üstte görev ağacı,
 // sıradaki alet düğmesi → mini oyun). Eskiden üyelik sonrası antrenman açılmıyordu.
-export function SporPart({ panel, setPanel, walk }) {
+// v198: sıradaki görevin aletine (ör. boks torbası) yaklaşınca alt ortada "⭐ Görev" düğmesi çıkar
+// (şehir istasyonu train_<alet>; diğer aletlerde düğme gizli). Sol üstteki düğme de çalışır.
+export function SporPart({ panel, setPanel, walk, hideActRef }) {
   const { active } = useMyGymMembership();
   const gym = active && active.gymId === 'game_spor' && active.step < 3 ? active : null;
   const cur = gym ? gym.tasks[gym.step] : null;
   const [game, setGame] = useState(null);
   const [result, setResult] = useState(null);
   const items = gym && cur ? [{ panel: 'train', label: `${EQUIP[cur]?.icon || '💪'} ${EQUIP[cur]?.name || 'Antrenman'} (${gym.step + 1}/3)` }] : [{ panel: 'gym', label: '🏋️ Günlük üyelik' }];
+  const curRef = useRef(cur);
+  curRef.current = game ? null : cur;
   useEffect(() => {
-    if (panel === 'train' && cur) {
+    if (!hideActRef) return undefined;
+    hideActRef.current = (act) => typeof act === 'string' && act.startsWith('train_') && act !== `train_${curRef.current}`;
+    return () => {
+      hideActRef.current = null;
+    };
+  }, [hideActRef]);
+  useEffect(() => {
+    if ((panel === 'train' || panel === `train_${cur}`) && cur) {
       setGame(cur);
       setPanel(null);
-    }
+    } else if (typeof panel === 'string' && panel.startsWith('train_')) setPanel(null);
   }, [panel, cur, setPanel]);
   return (
     <>

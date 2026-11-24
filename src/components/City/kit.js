@@ -512,10 +512,21 @@ const LOW = {
     lpMesh(g, LG('pb_pot', () => new THREE.CylinderGeometry(0.24, 0.18, 0.45, 8)), M('#e8e4dc', 0.4), 0, 0.225, 0);
     const leaf = M('#2f6b2f', 0.6);
     const leaf2 = M('#3f8a3a', 0.6);
-    const geo = LG('pb_leaf', () => new THREE.IcosahedronGeometry(0.32, 1));
-    lpMesh(g, geo, leaf, 0, 0.85, 0, null, [1, 0.9, 1]);
-    lpMesh(g, geo, leaf2, 0.12, 1.2, 0.05, null, [0.8, 0.8, 0.8]);
-    lpMesh(g, geo, leaf, -0.1, 1.45, -0.05, null, [0.6, 0.7, 0.6]);
+    // v198: gerçek modele benzer — saksıdan yükselen ince saplar ve uçlarında yassı yapraklar (top değil)
+    const geo = LG('pb_leaf2', () => new THREE.SphereGeometry(0.2, 8, 6));
+    const stem = LG('pb_stem', () => new THREE.CylinderGeometry(0.012, 0.012, 1, 4));
+    const stemM = M('#3a5a2a', 0.7);
+    for (let i = 0; i < 9; i++) {
+      const a = i * 2.4;
+      const h = 0.8 + (i % 4) * 0.25;
+      const x = Math.cos(a) * 0.3;
+      const z = Math.sin(a) * 0.3;
+      const st = lpMesh(g, stem, stemM, x * 0.4, (0.45 + h) / 2, z * 0.4, null, [1, h - 0.45, 1]);
+      st.rotation.set(Math.atan2(z * 0.8, h - 0.45), 0, -Math.atan2(x * 0.8, h - 0.45));
+      st.castShadow = false;
+      const l = lpMesh(g, geo, i % 2 ? leaf : leaf2, x, h + 0.05, z, null, [1, 0.12, 0.55]);
+      l.rotation.set(0.5 * Math.sin(a), -a, 0.4);
+    }
   },
   palm(g) {
     lpMesh(g, LG('pa_pot', () => new THREE.CylinderGeometry(0.3, 0.22, 0.5, 8)), M('#1b1b1d', 0.4), 0, 0.25, 0);
@@ -638,11 +649,14 @@ export class Kit {
     return o;
   }
   // Oyunun eşyası — katalogdan birebir
-  item(k, x, z, r = 0, ti = 0, { y = 0, solid = true, scale = 1, dyn = false } = {}) {
+  item(k, x, z, r = 0, ti = 0, { y = 0, solid = true, scale = 1, dyn = false, wallMat = null, H = null } = {}) {
     const def = CATALOG_MAP[k];
     // v147.1 performans: şehirde yüzlerce kez geçen eşyaların düşük poligonlu hali
     // (çiçeklik 7.100 → ~130 üçgen, lamba 1.800 → ~120…); şehir 1,7 M → ~0,4 M üçgen
-    const o = LOW[k] ? lowItem(k) : protoItem(k, ti, dyn);
+    // v198: oyuncunun evindeki eşyalar (dyn) GERÇEK modelle (mağazada görüldüğü gibi); düşük poligonlu
+    // hali sadece şehirde / mekânlarda çok kez geçen süs eşyaları için
+    // v198: duvar bölücüler odanın duvar kaplamasıyla aynı desende (eski ev / karargah gibi) — wallMat verilir
+    const o = wallMat ? buildItem(k, { ti, live: true, wallMat, H: H || 3.4 }) : LOW[k] && !dyn ? lowItem(k) : protoItem(k, ti, dyn);
     if (!o) {
       console.warn('eşya yok', k);
       return null;

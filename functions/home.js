@@ -24,6 +24,7 @@ const KEY_RE = /^[a-zA-Z0-9_]{1,32}$/;
 const ID_RE = /^[a-z0-9]{1,16}$/;
 const DAY = 86_400_000;
 const SEEN_EVERY_MS = 12 * 3600_000;
+const POP_U_MAX = 300; // v198: günlük ziyaretçi listesinin üst sınırı
 export const HOME_DOOR_TYPES = Object.keys(DOOR_TYPES).filter((t) => !REMOVED_DOOR_TYPES.includes(t)); // garaj kapısı ana kapı olamaz (tür listesinde yok)
 const dayKeyOf = (ms) => new Date(ms + 3 * 3600_000).toISOString().slice(0, 10);
 const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
@@ -145,10 +146,19 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
         if (Object.keys(patch).length) tx.update(ref(id), patch);
         if (favG === undefined || JSON.stringify(favG ?? null) !== JSON.stringify(car || null)) tx.update(userRef(uid), { favGarage: car || null });
       } else {
+        // v198: "👣 bugün" HESAP başına — aynı oyuncu gün içinde kaç kez girerse girsin 1 sayılır (spam yok).
+        // Bugünün ziyaretçileri ev belgesinde (popU); zaten sayıldıysa hiç yazılmaz (yazma da azalır).
         const d = dayKeyOf(t);
-        tx.update(ref(id), h.popDay === d ? { popN: FieldValue.increment(1) } : { popDay: d, popN: 1 });
+        const seen = h.popDay === d && Array.isArray(h.popU) ? h.popU : [];
+        if (!seen.includes(uid)) {
+          if (h.popDay !== d) tx.update(ref(id), { popDay: d, popN: 1, popU: [uid] });
+          else if (seen.length < POP_U_MAX) tx.update(ref(id), { popN: FieldValue.increment(1), popU: FieldValue.arrayUnion(uid) });
+          // POP_U_MAX'tan sonra yeni ziyaretçi sayılmaz (belge büyümesin) — o kadar kalabalık ev zaten listenin başında
+        }
       }
-      out = { id, ...h, inv: own ? h.inv : undefined, ...(own ? {} : { garage: null, garageCar: 0 }) }; // garajdaki araç sadece sahibine
+      const { popU: _popU, ...pub } = h; // ziyaretçi listesi istemciye gitmez
+      void _popU;
+      out = { id, ...pub, inv: own ? h.inv : undefined, ...(own ? {} : { garage: null, garageCar: 0 }) }; // garajdaki araç sadece sahibine
     });
     return { ok: true, home: out };
   }

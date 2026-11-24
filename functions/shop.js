@@ -253,8 +253,11 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
     const want = String(p.shopType || '');
     let result = null;
     await db.runTransaction(async (tx) => {
-      const itemType = want === 'modifiye' ? 'vehicle' : want === 'silahci' ? 'weapon' : p.itemType === 'vehicle' ? 'vehicle' : 'weapon';
-      const type = itemType === 'vehicle' ? 'modifiye' : 'silahci';
+      // v198: oto tamirci (hastanenin / belediyenin yanındaki binanın zemin katı) — sadece araç TAMİRİ;
+      // geliri kendi Borsa hissesine (mk_tamirci). Modifiye garajında tamir ESKİ istemciler için hâlâ kabul.
+      const itemType = want === 'modifiye' || want === 'tamirci' ? 'vehicle' : want === 'silahci' ? 'weapon' : p.itemType === 'vehicle' ? 'vehicle' : 'weapon';
+      if (want === 'tamirci' && action !== 'repair') fail('failed-precondition', 'Tamircide sadece tamir yapılır.');
+      const type = want === 'tamirci' ? 'tamirci' : itemType === 'vehicle' ? 'modifiye' : 'silahci';
       const itemRef = db.collection(coll(itemType)).doc(itemId);
       const [itemSnap, us] = await Promise.all([tx.get(itemRef), tx.get(userRef(uid))]);
       if (!itemSnap.exists || itemSnap.data().ownerId !== uid) fail('failed-precondition', 'not-owner');

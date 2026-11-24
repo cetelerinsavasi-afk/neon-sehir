@@ -146,7 +146,9 @@ export const WORKSHOP_MATERIALS = {
   silahci: ['tamirMalzemesi', 'silahUpgrade'],
   modifiye: ['tamirMalzemesi', 'arabaGelistirme'],
 };
-export const WORKSHOP_ITEM_TYPE = { silahci: 'weapon', modifiye: 'vehicle' };
+export const WORKSHOP_ITEM_TYPE = { silahci: 'weapon', modifiye: 'vehicle', tamirci: 'vehicle' }; // v198: oto tamirci (sadece araç tamiri)
+// v198: hangi dükkânda hangi iş — modifiye garajı: geliştirme + modifiye · tamirci: araç tamiri · silahçı: ikisi
+export const WORKSHOP_TABS = { silahci: ['repair', 'upgrade'], modifiye: ['upgrade', 'mod'], tamirci: ['repair'] };
 
 // Fiyat bandı (Amazor fiyatına oranla, malzeme başına):
 //   malzeme %70–%100 · işçilik %10–%30. Oyunun kendi dükkânı üst sınırda

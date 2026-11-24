@@ -215,3 +215,19 @@ test('favori araç profilden (homeFav): garaj hemen güncellenir; başkasının 
   assert.equal(w.G('users/ali').favVehicleId, undefined);
   assert.ok(r2.garage, 'favori yoksa en pahalı kullanılabilir araç');
 });
+
+// v198 — "👣 bugün" hesap başına: aynı oyuncunun tekrar girişleri sayılmaz; ertesi gün sıfırlanır
+test('ev: günlük ziyaret sayacı hesap başına (aynı hesapla spam yok)', async () => {
+  const w = world();
+  w.S('users/can', { displayName: 'Can', gold: 0 });
+  await w.home.enter('ali', {});
+  for (let i = 0; i < 5; i++) await w.home.enter('veli', { homeId: homeIdOf('ali') });
+  assert.equal(w.G(`houses/${homeIdOf('ali')}`).popN, 1, 'veli 5 kez girdi → 1');
+  const r = await w.home.enter('can', { homeId: homeIdOf('ali') });
+  assert.equal(w.G(`houses/${homeIdOf('ali')}`).popN, 2);
+  assert.equal(r.home.popU, undefined, 'ziyaretçi listesi istemciye gitmez');
+  w.clock.now += DAY;
+  await w.home.enter('veli', { homeId: homeIdOf('ali') });
+  await w.home.enter('veli', { homeId: homeIdOf('ali') });
+  assert.equal(w.G(`houses/${homeIdOf('ali')}`).popN, 1, 'yeni gün: tekrar 1');
+});

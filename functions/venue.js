@@ -41,6 +41,8 @@ const MINUTE_TAG = { mixer: 'studyo', newsdesk: 'haberStudyo', easel: 'resimAtol
 // Garson sadece cafe/bar'da.
 // v196: oyunun mekânı mı (oyuncu mekânı kalmadı)
 export const isGameHouse = (h) => Boolean(h && (h.ownerUid === '__game__' || h.bizGame));
+// v198: v196 kişisel ev (houses/home_{uid}) — şehrin içinde; housePresence kaydı yok, sahibinin stüdyosu serbest
+export const isOwnHome = (h, uid) => Boolean(h && h.kind === 'home' && uid && h.ownerUid === uid);
 export const MENU_TYPES = ['cafe', 'bar', 'sinema'];
 export const WAITER_TYPES = ['cafe', 'bar'];
 export const MENU_PRICE = { def: 100, min: 10, max: 1000 };
@@ -386,7 +388,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     const isOwner = h.ownerUid === uid;
     const key = dev.k;
     if (!isOwner && !activeOfficeKeys(h).includes(key)) fail('failed-precondition', 'mixer-private');
-    if (!isGameHouse(h) && !(await txPresence(tx, uid, houseId))) fail('failed-precondition', 'not-present');
+    if (!isGameHouse(h) && !isOwnHome(h, uid) && !(await txPresence(tx, uid, houseId))) fail('failed-precondition', 'not-present');
     const t = now();
     const occ = await tx.get(db.collection('netSessions').where('houseId', '==', houseId).where('deviceId', '==', deviceId));
     const others = occ.docs.filter((d) => d.data().uid !== uid && t - Number(d.data().lastSeenMs || 0) < NET_SEEN_MS).length;
@@ -468,7 +470,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       }
       const { h, mix } = await txNetHouse(tx, houseId, sess.deviceId);
       const t = now();
-      const present = isGameHouse(h) ? true : await txPresence(tx, uid, houseId); // v196: oyunun kafesi şehirde (housePresence yok)
+      const present = isGameHouse(h) || (mix && isOwnHome(h, uid)) ? true : await txPresence(tx, uid, houseId); // v198: şehirdeki kendi evinin mikseri (evde housePresence yok) // v196: oyunun kafesi şehirde (housePresence yok)
       if (!present) {
         tx.update(ref, { deviceId: null, updatedAtMs: t });
         result = { ok: true, stopped: 'left', creditUntilMs: Number(sess.creditUntilMs || 0) };

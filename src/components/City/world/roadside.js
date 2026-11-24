@@ -156,51 +156,6 @@ function crate(kit, x, y, z, color = '#9b7a52', s = 0.6) {
   kit.box(s, s * 0.6, s * 0.8, M(color, 0.8), x, y, z);
 }
 // --- low-poly hayvanlar / meyveler ---------------------------------------------------------
-function cow(kit, x, y, z, ry, spotted = true) {
-  const g = new THREE.Group();
-  const body = M(spotted ? '#f2f0ea' : '#7a4a2a', 0.8);
-  const dark = M('#1d1d1d', 0.8);
-  const add = (geo, m, px, py, pz) => {
-    const o = new THREE.Mesh(geo, m);
-    o.position.set(px, py, pz);
-    o.castShadow = true;
-    g.add(o);
-    return o;
-  };
-  add(new THREE.BoxGeometry(1.7, 0.85, 0.75), body, 0, 1.05, 0);
-  if (spotted) {
-    add(new THREE.BoxGeometry(0.6, 0.5, 0.77), dark, -0.3, 1.15, 0);
-    add(new THREE.BoxGeometry(0.4, 0.4, 0.77), dark, 0.45, 0.95, 0);
-  }
-  add(new THREE.BoxGeometry(0.5, 0.45, 0.42), spotted ? dark : body, 1.0, 1.25, 0);
-  add(new THREE.BoxGeometry(0.22, 0.22, 0.36), M('#e8b0a0', 0.7), 1.28, 1.12, 0);
-  for (const [lx, lz] of [[-0.62, -0.25], [-0.62, 0.25], [0.62, -0.25], [0.62, 0.25]]) add(new THREE.BoxGeometry(0.16, 0.65, 0.16), body, lx, 0.32, lz);
-  for (const s of [-1, 1]) add(new THREE.ConeGeometry(0.05, 0.2, 5), M('#e8e2d0', 0.6), 1.05, 1.55, s * 0.16);
-  g.position.set(x, y, z);
-  g.rotation.y = ry;
-  kit.add(g);
-  kit.solid(x, z, 0.9, 0.45, ry);
-}
-function sheep(kit, x, y, z, ry) {
-  const g = new THREE.Group();
-  const wool = M('#f4f1e6', 0.95);
-  const o = new THREE.Mesh(new THREE.IcosahedronGeometry(0.5, 1), wool);
-  o.scale.set(1.3, 0.85, 0.9);
-  o.position.y = 0.72;
-  o.castShadow = true;
-  g.add(o);
-  const h = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.32, 0.26), M('#2a2420', 0.8));
-  h.position.set(0.66, 0.85, 0);
-  g.add(h);
-  for (const [lx, lz] of [[-0.3, -0.18], [-0.3, 0.18], [0.3, -0.18], [0.3, 0.18]]) {
-    const l = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.45, 0.09), M('#2a2420', 0.8));
-    l.position.set(lx, 0.22, lz);
-    g.add(l);
-  }
-  g.position.set(x, y, z);
-  g.rotation.y = ry;
-  kit.add(g);
-}
 const melonGeo = new THREE.SphereGeometry(0.24, 10, 8);
 let melonMat = null;
 function melons(kit, x, y, z, n, spread = 1) {

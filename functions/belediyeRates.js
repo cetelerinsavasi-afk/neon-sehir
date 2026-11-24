@@ -84,6 +84,7 @@ export const RATE_GROUPS = [
       pct('isKafe', 'Kafe'),
       pct('isBar', 'Bar'),
       pct('isInternet', 'İnternet Kafe'),
+      pct('isTamirci', 'Oto Tamirci'), // v198
     ],
   },
   // v196: Piyango Vergisi kalktı (bilet 100, tamamı havuza, kazanç vergisiz)
@@ -143,6 +144,7 @@ export const BIZ_RATE_KEY = {
   cafe: 'isKafe',
   bar: 'isBar',
   internet: 'isInternet',
+  tamirci: 'isTamirci', // v198
   // v196: gazino / depo vergi ödemez; ofis yok (eski kayıtlar 0)
   gazino: null,
   depo: null,

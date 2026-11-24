@@ -467,15 +467,17 @@ export function SilahPart({ panel, setPanel, walk }) {
 }
 
 // ── MODİFİYE GARAJI ────────────────────────────────────────────────────────────
-export function ModifiyePart({ panel, setPanel, onOpenHeist, walk }) {
+export function ModifiyePart({ panel, setPanel, walk }) {
   return (
     <>
+      {/* v198: sol üstte "Modifiye Garajı" → araba geliştirme + modifiye (tamir oto tamircide) */}
       <Menu show={walk}>
-        <HeistBtn onOpenHeist={onOpenHeist} target="modifiye_garaji" />
+        <button className="v3-btn" onClick={() => setPanel('garage')}>
+          🔧 Modifiye Garajı
+        </button>
       </Menu>
-      <TopBtns show={walk && !panel} setPanel={setPanel} items={[{ panel: 'garage', label: '🛠️ Tamir / Geliştirme' }]} />
       {panel === 'garage' && (
-        <Sheet title="🔧 Modifiye Garajı — Tamir / Geliştirme" onClose={() => setPanel(null)} closeLabel="Ustadan Uzaklaş">
+        <Sheet title="🔧 Modifiye Garajı" onClose={() => setPanel(null)} closeLabel="Ustadan Uzaklaş">
           <GarageScreen />
         </Sheet>
       )}

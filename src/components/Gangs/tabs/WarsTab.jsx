@@ -395,24 +395,42 @@ function WarRow({ war, slotUsed, onJoin, onOpen, joinLabel = 'KATIL', children, 
   );
 }
 
-// 1v1 halat çubuğu: biz mavi, rakip kırmızı (güç oranında)
-function Tug({ us, them, usLabel, themLabel }) {
-  const total = us + them;
-  const pct = total > 0 ? (us / total) * 100 : 50;
-  return (
-    <div className="gx-tug">
-      <div className="gx-tug-labels">
-        <span className="us">
-          {usLabel} · {fmt(us)}
-        </span>
-        <span className="them">
-          {fmt(them)} · {themLabel}
-        </span>
+// v198 — İKİ TARAFLI GÜÇ ÇUBUĞU (tır sabotajı, savunma, bahisli savaş, operasyon)
+// Solda SAVUNAN (mavi), sağda SALDIRAN (kırmızı). Ortadaki çizgi güce göre kayar: kim güçlüyse çubuk
+// onun rengine dolar. Oyuncunun tarafında "SEN" etiketi — bakar bakmaz kendi tarafını ve rakibini görür.
+// def / atk: { name, logo, power, me, intel }
+function VsBar({ def, atk, extra }) {
+  const d = Math.max(0, Number(def?.power) || 0);
+  const a = Math.max(0, Number(atk?.power) || 0);
+  const pct = d + a > 0 ? (d / (d + a)) * 100 : 50;
+  const lead = d === a ? null : d > a ? 'def' : 'atk';
+  const side = (s, role) => (
+    <div className={`gx-vsb-side ${role}${s?.me ? ' me' : ''}${lead === role ? ' lead' : ''}`}>
+      <Logo logo={s?.intel ? INTEL_LOGO : s?.logo} size={30} />
+      <div className="gx-vsb-who">
+        <b>{s?.name || '—'}</b>
+        <small>
+          {role === 'def' ? '🛡️ Savunan' : '⚔️ Saldıran'}
+          {s?.me && <em className="gx-vsb-me">SEN</em>}
+        </small>
       </div>
-      <div className="gx-tug-bar">
-        <div className="gx-tug-us" style={{ width: `${pct}%` }} />
-        <div className="gx-tug-them" style={{ width: `${100 - pct}%` }} />
-        <span className="gx-tug-knot" style={{ left: `${pct}%` }} />
+    </div>
+  );
+  return (
+    <div className="gx-vsb">
+      <div className="gx-vsb-head">
+        {side(def, 'def')}
+        {side(atk, 'atk')}
+      </div>
+      <div className="gx-vsb-bar">
+        <div className="gx-vsb-def" style={{ width: `${pct}%` }} />
+        <div className="gx-vsb-atk" style={{ width: `${100 - pct}%` }} />
+        <span className="gx-vsb-knot" style={{ left: `${pct}%` }} />
+      </div>
+      <div className="gx-vsb-pw">
+        <span className="def">{fmt(d)}</span>
+        {extra ? <span className="gx-vsb-extra">{extra}</span> : <span />}
+        <span className="atk">{fmt(a)}</span>
       </div>
     </div>
   );
@@ -464,6 +482,11 @@ function AttackersSheet({ def, attackers, lead, onClose }) {
   const payUntil = istMidnight(istDateKey(now)) + GANG_RULES_HARAC_HOUR * 3600_000;
   return (
     <Sheet title={`TIR #${def.truckCode} saldırganları`} icon="⚠️" onClose={onClose}>
+      <VsBar
+        def={{ name: def.sides?.[def.defenderGangId]?.name, logo: def.sides?.[def.defenderGangId]?.logo, power: defTotal, me: true }}
+        atk={{ name: attackers[0] ? (attackers[0].type === 'intelop' ? '🚓 Polis' : attackers[0].sides?.attacker?.name) : '—', logo: attackers[0]?.sides?.attacker?.logo, intel: attackers[0]?.type === 'intelop', power: attackers[0]?.display?.attacker || 0 }}
+        extra={attackers.length > 1 ? `+${attackers.length - 1} saldırgan` : null}
+      />
       <div className="gx-vs gx-vs-deadline">
         <span>🛡️ Savunma {fmt(defTotal)}</span>
         <span className="gx-pay-deadline">
@@ -1126,7 +1149,13 @@ export default function WarsTab({ org, d }) {
             {w.sides?.intel ? (
               <ThreeWay war={w} mine={mine} />
             ) : (
-              <Tug us={w.display?.[gangId] || 0} them={w.display?.[other] || 0} usLabel={d.gang?.name} themLabel={w.sides?.[other]?.name} />
+              (() => {
+                // v198: teklif eden saldıran (kırmızı), teklifi alan savunan (mavi)
+                const atkId = w.proposerGangId && w.sides?.[w.proposerGangId] ? w.proposerGangId : other;
+                const defId = Object.keys(w.sides || {}).find((k) => k !== atkId && k !== 'intel') || gangId;
+                const sideOf = (k) => ({ name: w.sides?.[k]?.name, logo: w.sides?.[k]?.logo, power: w.display?.[k] || 0, me: k === gangId });
+                return <VsBar def={sideOf(defId)} atk={sideOf(atkId)} />;
+              })()
             )}
             <div className="gx-mini">
               <BetAmount war={w} canSee={!isIntel && BET_RANKED.includes(d.rank)} pot note={!isIntel} />
@@ -1148,19 +1177,14 @@ export default function WarsTab({ org, d }) {
         return (
           <WarRow key={w.id} war={w} tone="alert" slotUsed={slot.used} onOpen={() => setAttackersOf(w)} onJoin={viewOnly ? undefined : () => join(w, { side: 'defense' }, d.gang?.name)} joinLabel="SAVUN">
             {top ? (
-              <div className="gx-top-attacker">
-                En güçlü: <b>{top.type === 'intelop' ? '🚓 Polis' : top.sides?.attacker?.name}</b> ⚔️ {fmt(topPower)}
-                {atk.length > 1 && <span className="dim"> · +{atk.length - 1} saldırgan</span>}
-              </div>
+              <VsBar
+                def={{ name: d.gang?.name, logo: d.gang?.logo, power: defTotal, me: true }}
+                atk={{ name: top.type === 'intelop' ? '🚓 Polis' : top.sides?.attacker?.name, logo: top.sides?.attacker?.logo, intel: top.type === 'intelop', power: topPower }}
+                extra={atk.length > 1 ? `+${atk.length - 1} saldırgan` : null}
+              />
             ) : (
               <div className="gx-top-attacker good">Tüm saldırılar durdu ✓</div>
             )}
-            <div className="gx-vs">
-              <span>🛡️ {fmt(defTotal)}</span>
-              <span className="dim">vs</span>
-              <span className={defTotal < topPower ? 'bad' : 'good'}>⚔️ {fmt(topPower)}</span>
-            </div>
-            <div className="dim gx-mini">👆 Saldırganlar</div>
           </WarRow>
         );
       })}
@@ -1174,13 +1198,11 @@ export default function WarsTab({ org, d }) {
         const def = wars.all.find((x) => x.id === w.defenseWarId);
         return (
           <WarRow key={w.id} war={w} slotUsed={slot.used} onOpen={() => setTruckDetail({ defId: w.defenseWarId, attackId: w.id, side: w.id })} onJoin={viewOnly ? undefined : () => join(w, {}, d.gang?.name)} joinLabel="SALDIR">
-            <div className="dim gx-mini">🏴 {w.sides?.defender?.name}</div>
-            <div className="gx-vs">
-              <span>⚔️ {fmt(w.display?.attacker)}</span>
-              <span className="dim">vs</span>
-              <span>🛡️ {fmt(sum(def?.display))}</span>
-            </div>
-            {w.harac > 0 && <div className="gx-war-purpose">🤑 {fmt(w.harac)}</div>}
+            <VsBar
+              def={{ name: w.sides?.defender?.name, logo: w.sides?.defender?.logo, power: sum(def?.display) }}
+              atk={{ name: d.gang?.name, logo: d.gang?.logo, power: w.display?.attacker || 0, me: true }}
+              extra={w.harac > 0 ? `🤑 ${fmt(w.harac)}` : null}
+            />
           </WarRow>
         );
       })}
@@ -1201,14 +1223,10 @@ export default function WarsTab({ org, d }) {
             onJoin={viewOnly ? undefined : () => join(w, { side: 'defense' }, d.gang?.name)}
             joinLabel="SAVUN"
           >
-            <div className="dim gx-mini">
-              {biatPartners.has(w.defenderGangId) ? '⛓️' : '🤝'} {w.sides?.[w.defenderGangId]?.name}
-            </div>
-            <div className="gx-vs">
-              <span>🛡️ {fmt(sum(w.display))}</span>
-              <span className="dim">vs</span>
-              <span>⚔️ {fmt(top?.display?.attacker)}</span>
-            </div>
+            <VsBar
+              def={{ name: `${biatPartners.has(w.defenderGangId) ? '⛓️' : '🤝'} ${w.sides?.[w.defenderGangId]?.name || ''}`, logo: w.sides?.[w.defenderGangId]?.logo, power: sum(w.display), me: true }}
+              atk={{ name: top ? (top.type === 'intelop' ? '🚓 Polis' : top.sides?.attacker?.name) : '—', logo: top?.sides?.attacker?.logo, intel: top?.type === 'intelop', power: top?.display?.attacker || 0 }}
+            />
           </WarRow>
         );
       })}
@@ -1217,16 +1235,11 @@ export default function WarsTab({ org, d }) {
         const def = wars.all.find((x) => x.id === w.defenseWarId);
         return (
           <WarRow key={w.id} war={w} slotUsed={slot.used} onOpen={() => setDetail({ war: w, side: 'attacker' })} onJoin={viewOnly ? undefined : () => join(w, {}, sideName)} joinLabel="SALDIR">
-            <div className="dim gx-mini">🏴 {w.sides?.defender?.name}</div>
-            <div className="gx-vs">
-              <span>⚔️ {fmt(w.display?.attacker)}</span>
-              <span className="dim">vs</span>
-              <span>🛡️ {fmt(sum(def?.display))}</span>
-            </div>
-            <div className="dim gx-mini">
-              💰 {w.estReward != null ? fmt(w.estReward) : '?'}
-              {w.bribe > 0 ? ` · 💼 ${fmt(w.bribe)}` : ''}
-            </div>
+            <VsBar
+              def={{ name: w.sides?.defender?.name, logo: w.sides?.defender?.logo, power: sum(def?.display) }}
+              atk={{ name: sideName || 'Polis', intel: true, power: w.display?.attacker || 0, me: true }}
+              extra={`💰 ${w.estReward != null ? fmt(w.estReward) : '?'}`}
+            />
           </WarRow>
         );
       })}

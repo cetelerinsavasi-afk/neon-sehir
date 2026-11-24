@@ -415,6 +415,38 @@ function tableDining(g, ctx) {
   SP(g, 0.05, -0.03, 0.87, 0.02, M('#e0a800', 0.5));
   SP(g, 0.05, 0.04, 0.87, -0.02, M('#d23a3a', 0.5));
 }
+// v198 — MODERN YEMEK TAKIMI: masa + 4 sandalye tek parça (sandalyelere oturulur)
+function diningSetModern(g, ctx) {
+  const top = M(tintHex(ctx, '#e8e4dc'), 0.25);
+  const metal = M('#1b1b1d', 0.35, 0.6);
+  RB(g, 1.8, 0.05, 0.95, 0.02, 0, 0.75, 0, top);
+  // ince siyah metal ayaklar (iki yanda U biçimli)
+  [-1, 1].forEach((a) => {
+    B(g, 0.05, 0.73, 0.05, a * 0.78, 0.365, 0.36, metal);
+    B(g, 0.05, 0.73, 0.05, a * 0.78, 0.365, -0.36, metal);
+    B(g, 0.05, 0.05, 0.77, a * 0.78, 0.04, 0, metal);
+  });
+  // masa ortası: vazo
+  C(g, 0.07, 0.05, 0.2, 0, 0.875, 0, M('#e8e4dc', 0.15));
+  SP(g, 0.06, 0, 1.0, 0, M('#3f8a3a', 0.6), 1, 1.4, 1);
+  const shell = M('#2b2d33', 0.45);
+  const leg = M('#a3764a', 0.5);
+  DINING_SET_SEATS.forEach(([x, , z, yaw]) => {
+    const ch = new THREE.Group();
+    ch.position.set(x, 0, z - (yaw ? -0.02 : 0.02));
+    ch.rotation.y = yaw || 0;
+    RB(ch, 0.46, 0.06, 0.44, 0.03, 0, 0.46, 0, shell);
+    RB(ch, 0.46, 0.4, 0.05, 0.03, 0, 0.7, -0.21, shell, [-0.14, 0, 0]);
+    [[-1, -1], [1, -1], [-1, 1], [1, 1]].forEach(([a, b]) => TUBE(ch, [a * 0.14, 0.44, b * 0.14], [a * 0.2, 0, b * 0.2], 0.014, leg));
+    g.add(ch);
+  });
+}
+const DINING_SET_SEATS = [
+  [-0.45, 0.52, -0.82, 0],
+  [0.45, 0.52, -0.82, 0],
+  [-0.45, 0.52, 0.82, Math.PI],
+  [0.45, 0.52, 0.82, Math.PI],
+];
 function tableRound(g, ctx) {
   const w = M(tintHex(ctx, '#e8e4dc'), 0.3);
   C(g, 0.6, 0.6, 0.05, 0, 0.75, 0, M('#f4f2ee', 0.08, 0.05), null, 40);
@@ -3284,7 +3316,7 @@ function waterCooler(g) {
 function rugPattern(kind) {
   return (g, ctx) => {
     const col = tintHex(ctx, '#6b1a22');
-    const dims = { kilim: [2.6, 1.7], shag: [2.0, 2.0], runner: [3.4, 0.9], geo: [3.0, 2.0] }[kind];
+    const dims = { kilim: [2.6, 1.7], shag: [2.0, 2.0], runner: [3.4, 0.9], geo: [3.0, 2.0], plain: [3.0, 2.0], plainrun: [3.4, 0.9] }[kind];
     const tx = labelTexture(`rug${kind}_${col}`, 512, 340, (c, w, h, r) => {
       c.fillStyle = col;
       c.fillRect(0, 0, w, h);
@@ -3301,6 +3333,10 @@ function rugPattern(kind) {
         c.strokeStyle = '#e8d8b0'; c.lineWidth = 8; c.strokeRect(10, 10, w - 20, h - 20);
       } else if (kind === 'shag') {
         for (let i = 0; i < 26000; i++) { c.fillStyle = r() > 0.5 ? 'rgba(255,255,255,.12)' : 'rgba(0,0,0,.18)'; c.fillRect(r() * w, r() * h, 2, 4); }
+      } else if (kind === 'plain' || kind === 'plainrun') {
+        // v198: desen yok — sadece kumaş dokusu (hafif lif) + kenarda aynı rengin koyu tonu
+        for (let i = 0; i < 9000; i++) { c.fillStyle = r() > 0.5 ? 'rgba(255,255,255,.05)' : 'rgba(0,0,0,.07)'; c.fillRect(r() * w, r() * h, 2, 2); }
+        c.strokeStyle = 'rgba(0,0,0,.22)'; c.lineWidth = 10; c.strokeRect(5, 5, w - 10, h - 10);
       } else if (kind === 'runner') {
         c.strokeStyle = '#d4a53a'; c.lineWidth = 6; c.strokeRect(14, 14, w - 28, h - 28);
         for (let i = 0; i < 7; i++) { c.fillStyle = i % 2 ? '#1f2a48' : '#d4a53a'; c.beginPath(); c.arc(60 + i * 65, h / 2, 26, 0, 7); c.fill(); }
@@ -3479,6 +3515,8 @@ export const CATALOG = [
 
   // MASALAR
   { k: 'tdining', name: 'Yemek Masası', cat: 'masa', icon: '🍽️', price: G(8000), tints: 'wood', build: tableDining, box: [1.05, 0.5] },
+  // v198: modern yemek takımı (masa + 4 sandalye tek parça)
+  { k: 'diningset', name: 'Modern Yemek Takımı', cat: 'masa', icon: '🍽️', tints: 'wood', build: diningSetModern, box: [0.95, 1.08], seats: DINING_SET_SEATS },
   { k: 'tround', name: 'Yuvarlak Masa', cat: 'masa', icon: '⚪', price: G(5000), tints: 'wood', build: tableRound, box: [0.58, 0.58] },
   { k: 'tcoffee', name: 'Cam Sehpa', cat: 'masa', icon: '🔲', price: G(4000), tints: 'metal', build: coffeeTable, box: [0.6, 0.31] },
   { k: 'desk', name: 'Çalışma Masası', cat: 'masa', icon: '💻', price: G(7000), tints: 'wood', build: desk, box: [0.75, 0.35] },
@@ -3659,6 +3697,9 @@ export const CATALOG = [
   { k: 'rugshag', name: 'Peluş Halı', cat: 'hali', icon: '⚪', tints: 'fabric', build: rugPattern('shag'), nobox: true, flat: true },
   { k: 'rugrunner', name: 'Yolluk', cat: 'hali', icon: '➖', tints: 'fabric', build: rugPattern('runner'), nobox: true, flat: true },
   { k: 'ruggeo', name: 'Modern Halı', cat: 'hali', icon: '🔷', tints: 'fabric', build: rugPattern('geo'), nobox: true, flat: true },
+  // v198: desensiz (düz renk) halı ve yolluk — 12 renk
+  { k: 'rugplain', name: 'Desensiz Halı', cat: 'hali', icon: '🟫', tints: 'fabric', build: rugPattern('plain'), nobox: true, flat: true },
+  { k: 'runplain', name: 'Desensiz Yolluk', cat: 'hali', icon: '▬', tints: 'fabric', build: rugPattern('plainrun'), nobox: true, flat: true },
   { k: 'dumbbells', name: 'Dambıl Seti', cat: 'spor', icon: '🏋️', build: dumbbells, box: [0.72, 0.25] },
   { k: 'bike', name: 'Kondisyon Bisikleti', cat: 'spor', icon: '🚴', tints: 'fabric', build: exerciseBike, box: [0.25, 0.5], seats: [[0, 0.82, -0.15]] },
   { k: 'yogamat', name: 'Yoga Matı', cat: 'spor', icon: '🧘', tints: 'neon', build: yogaMat, nobox: true, flat: true },

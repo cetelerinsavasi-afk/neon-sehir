@@ -13,6 +13,7 @@ import CarImg from '../VehicleCard/CarImg';
 import { modCost, modDefaults } from '../../../functions/vehicleMods.js';
 import {
   WORKSHOP_ITEM_TYPE,
+  WORKSHOP_TABS,
   clampWorkshopPrice,
   workshopJob,
   workshopCost,
@@ -72,7 +73,8 @@ export default function Workshop({ shop, onClose }) {
   const itemType = WORKSHOP_ITEM_TYPE[shop.type];
   const isWeapon = itemType === 'weapon';
   const isGame = shop.kind === 'game';
-  const [tab, setTab] = useState('repair');
+  const tabs = WORKSHOP_TABS[shop.type] || ['repair', 'upgrade', 'mod'];
+  const [tab, setTab] = useState(tabs[0]);
   const [itemId, setItemId] = useState(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
@@ -114,8 +116,9 @@ export default function Workshop({ shop, onClose }) {
   const upgradable = isWeapon || canUpgradeVehicle(item?.catalogId);
   useEffect(() => {
     if (!item) return;
-    if (tab === 'repair' && !repairable) setTab('mod');
-    else if (tab === 'upgrade' && !upgradable) setTab(repairable ? 'repair' : 'mod');
+    // v198: sadece bu dükkânın sekmeleri arasında geçilir (tamirci: tamir · modifiye: geliştirme + modifiye)
+    const ok = (t) => tabs.includes(t) && (t === 'mod' || (t === 'repair' ? repairable : upgradable));
+    if (!ok(tab)) setTab(['upgrade', 'repair', 'mod'].find(ok) || tabs[0]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item?.id]);
   // ürün/sekme değişince o anki fiyat "görülmüş" sayılır; panel açıkken
@@ -146,6 +149,7 @@ export default function Workshop({ shop, onClose }) {
   const actName = isRepair ? 'Tamir et' : 'Geliştir';
 
   // ---- neden yapılamıyor? (tek cümle) --------------------------------------------------
+  const modWhere = tabs.includes('mod') ? '🎨 Modifiye sekmesinden' : 'Modifiye Garajı’nda';
   let block = null; // { text, ok }
   // v150: dükkân sahibi kendi atölyesinde iş yaptıramaz (rakibe gitmeli) — sunucu da reddeder
   if (isOwner) block = { text: `Burası senin dükkânın: kendi dükkânında ${isRepair ? 'tamir' : isMod ? 'modifiye' : 'geliştirme'} yaptıramazsın. Rakip bir ${isWeapon ? 'silahçıya' : 'modifiyeciye'} ya da oyunun dükkânına git.` };
@@ -156,8 +160,8 @@ export default function Workshop({ shop, onClose }) {
     block = {
       ok: true,
       text: isRepair
-        ? `Motorlarda tamir yok (ömrü ${MOTOR_LIFE_DAYS} gün). Görünümünü 🎨 Modifiye sekmesinden değiştirebilirsin.`
-        : 'Ticari araç ve motorlar geliştirilemez. Görünümünü 🎨 Modifiye sekmesinden değiştirebilirsin.',
+        ? `Motorlarda tamir yok (ömrü ${MOTOR_LIFE_DAYS} gün). Görünümünü ${modWhere} değiştirebilirsin.`
+        : `Ticari araç ve motorlar geliştirilemez. Görünümünü ${modWhere} değiştirebilirsin.`,
     };
   else if (job?.block === 'listed') block = { text: 'Bu ürün ilanda/vitrinde. Önce ilandan kaldır.' };
   else if (job?.block) block = { text: 'Bu işlem bu ürün için yapılamaz.' };
@@ -227,7 +231,7 @@ export default function Workshop({ shop, onClose }) {
     <div className="bz wk-root" onClick={(e) => e.stopPropagation()}>
       <div className="bz-head">
         <div className="bz-head-main">
-          <h3>🛠️ {isWeapon ? 'Silah' : 'Araba'} atölyesi</h3>
+          <h3>{shop.type === 'tamirci' ? '🔧 Oto Tamirci' : shop.type === 'modifiye' ? '🔧 Modifiye Garajı' : `🛠️ ${isWeapon ? 'Silah' : 'Araba'} atölyesi`}</h3>
           <p>{isGame ? 'Oyunun dükkânı' : `${shop.houseDoc?.name || 'Dükkân'}${isOwner ? ' · senin dükkânın' : ''}`}</p>
         </div>
         {onClose && (
@@ -237,22 +241,28 @@ export default function Workshop({ shop, onClose }) {
         )}
       </div>
 
-      <div className="bz-tabs wk-tabs">
-        <button className={isRepair ? 'on' : ''} onClick={() => setTab('repair')}>
-          🔧 Tamir
-          <small>ömrü uzat</small>
-        </button>
-        <button className={tab === 'upgrade' ? 'on' : ''} onClick={() => setTab('upgrade')}>
-          ⬆️ Geliştir
-          <small>{isWeapon ? 'gücü artır' : 'hızı artır'}</small>
-        </button>
-        {!isWeapon && (
-          <button className={isMod ? 'on' : ''} onClick={() => setTab('mod')}>
-            🎨 Modifiye
-            <small>görünümü değiştir</small>
-          </button>
-        )}
-      </div>
+      {tabs.length > 1 && (
+        <div className="bz-tabs wk-tabs">
+          {tabs.includes('repair') && (
+            <button className={isRepair ? 'on' : ''} onClick={() => setTab('repair')}>
+              🔧 Tamir
+              <small>ömrü uzat</small>
+            </button>
+          )}
+          {tabs.includes('upgrade') && (
+            <button className={tab === 'upgrade' ? 'on' : ''} onClick={() => setTab('upgrade')}>
+              ⬆️ Geliştir
+              <small>{isWeapon ? 'gücü artır' : 'hızı artır'}</small>
+            </button>
+          )}
+          {!isWeapon && tabs.includes('mod') && (
+            <button className={isMod ? 'on' : ''} onClick={() => setTab('mod')}>
+              🎨 Modifiye
+              <small>görünümü değiştir</small>
+            </button>
+          )}
+        </div>
+      )}
 
       {items.length === 0 ? (
         <p className="bz-note">Hiç {kindName}n yok.</p>

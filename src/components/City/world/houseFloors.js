@@ -11,11 +11,27 @@ import * as THREE from 'three';
 import { Kit, M, GLASS, wallMat } from '../kit.js';
 import { CATALOG_MAP, itemBoxes } from '../../HouseScreen/houseCatalog.js';
 import { floorDef, wallDef, tileBaseTexture } from '../../HouseScreen/houseTextures.js';
+
+// v198: bir nesnenin kendi (paylaşılmayan) geometri / malzeme / dokularını bırakır
+function freeObj(o) {
+  o.traverse((c) => {
+    if (c.geometry && !c.geometry.userData?.shared) c.geometry.dispose();
+    if (c.material) {
+      [].concat(c.material).forEach((m) => {
+        if (!m || m.userData?.shared) return;
+        if (m.userData?.tex) m.userData.tex.dispose?.();
+        m.dispose();
+      });
+    }
+  });
+}
 import { FLOOR_Y as UP, SLAB, WALL_H, HALF_W as EF, HALF_D as TF, ROOF_HALF_W as QP, ROOF_RISE as KP, ROOF_SPAN as CF, RAMPS as RAMP_DEFS, HOLE_1 as XP, HOLE_2 as ZP, WALL_GAP } from '../../../../functions/homeGeometry.js';
 
 const PI = Math.PI;
 const GP = UP[2]; // saçak (çatı katı zemini) yüksekliği
 const STEP = 0.75; // bir adımda çıkılabilen yükseklik
+const HEAD = 2.0; // v198: merdivenin altından geçmek için gereken boşluk
+const DIVIDER_KEYS = new Set(['wall2', 'wall4', 'walldoor']); // v198: duvar kaplamasını kullanan bölmeler
 export const HOUSE_EXT_H = 12.76; // binanın dış yüksekliği (çatı sırtı)
 const YP = RAMP_DEFS.map((r) => ({ ...r, base: UP[r.base], top: UP[r.top] }));
 const LNE = Math.atan2(KP, CF);
@@ -110,7 +126,12 @@ function blockedPoint(x, z, y) {
   for (const r of YP) {
     if (y < r.base - 0.3 || y > r.top - 0.3) continue;
     const a = rampAt(r, x, z);
-    if (a.inside && rampLerp(r, a.t, a.run) > y + STEP) return true;
+    // v198: merdivenin ALTI baş hizasından yüksekse yürünür (eskiden merdivenin altı komple duvardı;
+    // avatar altına düz giremiyor, yanlardan dolanıyordu)
+    if (a.inside) {
+      const h = rampLerp(r, a.t, a.run);
+      if (h > y + STEP && h < y + HEAD) return true;
+    }
   }
   if (y > UP[2] - 0.4 && Math.abs(x) > QP - 0.05) return true;
   const lv = levelOfY(y);
@@ -136,6 +157,22 @@ function pick(origin, dir) {
       for (const g of tmpGrounds) if (prevY >= g && y <= g) return { x, z, y: g };
     }
     prevY = y;
+  }
+  return null;
+}
+// v198 — TELEFONDA KAT DEĞİŞTİRME: merdivene dokununca merdivenin ortasında durulmaz; aşağıdaysan
+// üst kata (merdivenin çıkışı), yukarıdaysan alt kata (merdivenin dibi) yürünür.
+function stairGoal(g, y) {
+  if (!g) return null;
+  for (let i = 0; i < YP.length; i++) {
+    const r = YP[i];
+    const a = rampAt(r, g.x, g.z);
+    if (!a.inside) continue;
+    const h = rampLerp(r, a.t, a.run);
+    if (Math.abs(g.y - h) > 0.3 || h - r.base < 0.3 || r.top - h < 0.3) continue; // dokunulan yer merdivenin basamağı
+    const here = floorOfY(y);
+    if (here <= RF[i].lo) return { x: RF[i].up[0], z: RF[i].up[1], y: r.top };
+    return { x: RF[i].hub[0], z: RF[i].hub[1], y: r.base };
   }
   return null;
 }
@@ -477,6 +514,28 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
   const floorM = [0, 1, 2].map(() => ownSurf(parke, 0.5, fRep0));
   const wallMs = [0, 1, 2].map(() => ownSurf(boya, 0.9, wRep0));
   const wallM = wallMs[0];
+  // v198: duvar bölücü / kapılı bölme malzemesi — kat başına, o katın duvar kaplamasıyla aynı desen
+  // (bölücünün UV'si 4 m genişlik × duvar yüksekliği; eski ev motorundaki dividerMat ile aynı ölçek)
+  const divMs = [0, 1, 2].map(() => {
+    const m = new THREE.MeshStandardMaterial({ roughness: 0.9 });
+    m.userData.shared = true; // eşyalar silinirken bırakılmasın
+    m.userData.noDedupe = true;
+    return m;
+  });
+  const paintDiv = (m, def) => {
+    const t = tileBaseTexture(def).clone();
+    t.needsUpdate = true;
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    const rep = def.rep || 3;
+    t.repeat.set(4 / rep, WALL_H / rep);
+    const old = m.map;
+    m.map = t;
+    m.roughness = def.rough ?? 0.9;
+    m.userData.key = def.key;
+    m.needsUpdate = true;
+    if (old && old !== t) old.dispose();
+  };
+  divMs.forEach((m) => paintDiv(m, boya));
   const extM = wallMat('boya_krem');
   const ceilM = M('#f4f1ea', 0.9);
   const slabEdgeM = M('#e8e1d4', 0.8);
@@ -644,13 +703,23 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
   const objByIdx = []; // tasarımda sürükleme: eşya kimliği → 3B nesne
   const furnish = (k, f) => {
     objByIdx.forEach((o, i) => o?.userData.evF === f && (objByIdx[i] = null));
-    [...k.group.children].forEach((c) => c !== k.dynamic && k.group.remove(c));
-    [...k.dynamic.children].forEach((c) => k.dynamic.remove(c));
+    // v198: kaldırılan eşyaların GPU belleği bırakılır. Eskiden her tasarım değişikliğinde (ekle / döndür /
+    // renk / sil) ve her ev ziyaretinde 3 katın bütün eşyaları yeniden kuruluyor, eskiler hiç silinmiyordu →
+    // bellek doluyor, telefonda WebView çöküp oyundan atıyordu.
+    [...k.group.children].forEach((c) => {
+      if (c === k.dynamic) return;
+      k.group.remove(c);
+      freeObj(c);
+    });
+    [...k.dynamic.children].forEach((c) => {
+      k.dynamic.remove(c);
+      freeObj(c);
+    });
     k.ticks.length = 0;
     k.seats.length = 0;
     items.forEach((it, idx) => {
       if (it.f !== f) return;
-      const o = k.item(it.k, it.x, it.z, it.r, it.c || 0, { y: UP[f], solid: false, dyn: true });
+      const o = k.item(it.k, it.x, it.z, it.r, it.c || 0, { y: UP[f], solid: false, dyn: true, ...(DIVIDER_KEYS.has(it.k) ? { wallMat: divMs[f], H: WALL_H } : {}) });
       if (o) {
         o.traverse((q) => (q.userData.evIdx = idx));
         o.userData.evF = f;
@@ -721,6 +790,8 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
     // pencereler (v196): kimlik listesi, stil, dokunuş
     windowIds: () => [...winById.keys()],
     // kat düğmesi (telefon): o katın merdiven başı { x, z, y }
+    stairGoal,
+    objAt: (idx) => objByIdx[idx] || null, // v198: eşyanın 3B nesnesi (aç / kapat)
     floorTarget(f) {
       if (f <= 0) return { x: RF[0].hub[0], z: RF[0].hub[1], y: UP[0] };
       if (f === 1) return { x: RF[0].up[0], z: RF[0].up[1], y: UP[1] };
@@ -803,6 +874,7 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
         const wk = surf?.[f]?.wall || HOME_WALL_DEFAULT;
         if (floorM[f].userData.key !== fk) paintSurf(floorM[f], floorDef(fk), 0.5);
         if (wallMs[f].userData.key !== wk) paintSurf(wallMs[f], wallDef(wk), 0.9);
+        if (divMs[f].userData.key !== wk) paintDiv(divMs[f], wallDef(wk)); // v198: bölücüler de aynı desen
       });
     },
     camClamp(cam, toRoomFn, fromRoomFn, y) {
@@ -926,7 +998,7 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
         const a = (it.r * PI) / 4;
         const c = Math.cos(a);
         const s = Math.sin(a);
-        def.seats.forEach(([sx, sy, sz]) => out.push({ x: it.x + sx * c + sz * s, z: it.z - sx * s + sz * c, y: UP[it.f] + sy, yaw: a }));
+        def.seats.forEach(([sx, sy, sz, sw]) => out.push({ x: it.x + sx * c + sz * s, z: it.z - sx * s + sz * c, y: UP[it.f] + sy, yaw: a + (sw || 0), i: it.i, k: it.k, f: it.f })); // v198: koltuğun kendi yönü (yemek takımı) // v198: hangi eşya (piyano / davul)
       });
       return out;
     },

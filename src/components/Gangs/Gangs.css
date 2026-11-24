@@ -3841,3 +3841,101 @@ button.gx-member.gx-member-btn:active {
   gap: 6px;
   align-items: stretch;
 }
+
+/* v198 — iki taraflı güç çubuğu: savunan mavi (sol), saldıran kırmızı (sağ) */
+.gx-vsb {
+  margin: 6px 0 2px;
+}
+.gx-vsb-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.gx-vsb-side {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+  padding: 4px 6px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+}
+.gx-vsb-side.atk {
+  flex-direction: row-reverse;
+  text-align: right;
+}
+.gx-vsb-side.def { background: rgba(31, 111, 255, 0.1); }
+.gx-vsb-side.atk { background: rgba(255, 77, 94, 0.1); }
+.gx-vsb-side.me.def { border-color: #4da3ff; box-shadow: 0 0 10px rgba(77, 163, 255, 0.35); }
+.gx-vsb-side.me.atk { border-color: #ff4d5e; box-shadow: 0 0 10px rgba(255, 77, 94, 0.35); }
+.gx-vsb-who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.gx-vsb-who b {
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gx-vsb-side.def .gx-vsb-who small { color: #4da3ff; }
+.gx-vsb-side.atk .gx-vsb-who small { color: #ff6b78; }
+.gx-vsb-who small {
+  font-size: 10.5px;
+  font-weight: 800;
+}
+.gx-vsb-me {
+  font-style: normal;
+  margin: 0 4px;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: #ffd23f;
+  color: #1a1400;
+  font-size: 9.5px;
+  font-weight: 900;
+}
+.gx-vsb-bar {
+  position: relative;
+  display: flex;
+  height: 14px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #111829;
+}
+.gx-vsb-def {
+  background: linear-gradient(90deg, #1f6fff, #4da3ff);
+  transition: width 0.5s;
+}
+.gx-vsb-atk {
+  background: linear-gradient(90deg, #ff4d5e, #c2142b);
+  transition: width 0.5s;
+}
+.gx-vsb-knot {
+  position: absolute;
+  top: -2px;
+  width: 4px;
+  height: 18px;
+  margin-left: -2px;
+  background: #fff;
+  border-radius: 2px;
+  box-shadow: 0 0 8px #fff;
+  transition: left 0.5s;
+}
+.gx-vsb-pw {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 3px;
+  font-size: 13px;
+  font-weight: 900;
+}
+.gx-vsb-pw .def { color: #4da3ff; }
+.gx-vsb-pw .atk { color: #ff6b78; }
+.gx-vsb-extra {
+  font-size: 11px;
+  font-weight: 700;
+  opacity: 0.75;
+}

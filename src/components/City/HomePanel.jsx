@@ -246,14 +246,14 @@ function HomeList({ Sheet, eng, own, onPick, onClose, flash }) {
   }, [eng, flash]);
   return (
     <Sheet title="🏘️ Evler" onClose={onClose} closeLabel="Kapat">
-      <button className="hm-row hm-mine" onClick={() => onPick(own)}>🏠 <b>Evim</b></button>
+      {/* v198: Müstakil Evler listesinde "Evim" yok (kendi evine haritadaki Ev kapısından girilir) */}
       {!rows && <div className="hm-empty">…</div>}
       {rows && !rows.length && <div className="hm-empty">Şu an gezilecek ev yok.</div>}
       {rows?.filter((h) => h.id !== own).map((h) => (
         <button key={h.id} className="hm-row" onClick={() => onPick(h.id)}>
           <b>{h.name}</b>
           <span>{h.ownerName}</span>
-          <i>{h.here ? `👥 ${h.here} içeride · ` : ''}👣 {h.pop} bugün</i>
+          <i>👥 {h.here} kişi · 👣 {h.pop} bugün</i>
         </button>
       ))}
     </Sheet>

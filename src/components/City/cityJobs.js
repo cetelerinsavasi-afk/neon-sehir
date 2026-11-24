@@ -14,20 +14,21 @@
 // =============================================================================
 import { LIMAN_BAY, DEPOTS, HOSPITAL, BUS_STOPS, ROAD_SPOTS, KURYE_PICKUPS, KURYE_DROPS, FAR_DEPOT, OTOGARS, HWY_ENTRY } from '../../../functions/cityJobsData.js';
 import { JOBS, jobDailyOf } from '../../../functions/vehicleKinds.js';
-import { frameAt, LEN, LANE, TOWN, fromTown, toTown, inTownRect, nearest, R as HWY } from './world/route.js';
+import { frameAt, LEN, LANE, TOWN, fromTown, toTown, inTownRect, nearest } from './world/route.js';
 import { geo as roadsideGeo, padAt as roadsidePadAt } from './world/roadsideGeo.js';
+import { LAYOUT_LOTS, P, BLOCK, COLS, ROWS, cx, cz } from './cityLayout.js';
 
 const STOP_V = 1.4;
 
 // --- v152: YOL BULMA (yol ızgarası üzerinde en kısa yol) — yol çizgisi için --------------
-const RX = [-160, -120, -80, -40, 0, 40, 80, 120, 160];
-const RZ = [-140, -100, -60, -20, 20, 60, 100];
-const BIG = [
-  [-36, 36, -16, 16],
-  [44, 116, -16, 56],
-  [-76, -4, 24, 56],
-  [-116, -44, 64, 96],
-];
+// v198: ızgara şehrin GERÇEK yollarından (cityLayout) türetilir. Eskiden elle yazılmıştı ve v196'da
+// stadyum (6,3)–(7,4) köşesine taşınınca eski yeri (4,2)–(5,3) kapalı, yeni yeri açık kalmıştı →
+// yol tarifi stadyumun içinden geçiyordu; batıdaki x = −160 (v155'ten beri deniz) da ızgaradaydı,
+// doğu (x = 200) ve kuzey (z = −180) servis yolları eksikti.
+const RX = Array.from({ length: COLS + 3 }, (_, k) => cx(k) - P / 2); // −120 … 200
+const RZ = Array.from({ length: ROWS + 3 }, (_, k) => cz(k - 2) - P / 2); // −180 … 100
+// birden çok hücreyi kaplayan lotlar (park, pist, liman, otogar, stadyum) aradaki yolları kapatır
+const BIG = LAYOUT_LOTS.filter((l) => l.x1 - l.x0 > BLOCK + 1 || l.z1 - l.z0 > BLOCK + 1).map((l) => [l.x0, l.x1, l.z0, l.z1]);
 const coveredRoad = (x, z) => BIG.some(([x0, x1, z0, z1]) => x > x0 + 1 && x < x1 - 1 && z > z0 + 1 && z < z1 - 1);
 const NODES = [];
 RX.forEach((x, i) => RZ.forEach((z, j) => NODES.push({ i, j, x, z, id: i * RZ.length + j })));

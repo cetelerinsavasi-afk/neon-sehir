@@ -12,7 +12,7 @@ import { heldCanvas } from '../HouseScreen/heldArt';
 import { PetFollower, FireAuraFx, EMOTES } from '../HouseScreen/figureFx.js'; // v191: ev motoru (~1 MB) şehirle yüklenmesin
 import { getSharedRenderer } from '../HouseScreen/sharedRenderer.js';
 import { PET_ART } from '../../lib/cosmeticsArt';
-import { buildCity, BOUNDS, COAST_Z, cx, cz, BLOCK } from './cityPlan.js';
+import { BOUNDS, COAST_Z, cx, cz, BLOCK } from './cityPlan.js';
 import { buildVehicle, hasVehicle, seatedPerson, vehicleConfig } from './vehicles.js';
 import { buildCockpit } from './cockpit.js';
 import { createCityHeist } from './cityHeist.js'; // v154 — soygun dizisi (sinematik)
@@ -20,10 +20,12 @@ import { createJobWorld } from './jobWorld.js';
 import { EngineSound } from './sound.js';
 import { createStadiumMatch, matchAvatar } from './stadiumMatch.js';
 // v157 — genişletilmiş dünya (otoyol, Kervankent, köyler, orman, kumsal) + girilebilir mekânlar
-import { bakeGeo, canonMat, makeLod, lodTag, dropVenueInt, buildVenueInt, swapVenueInt, prepareCityWorldSync, finishCityWorld, mergeCityWorld, mergeVenue, mergeInPlace, buildAnimals, CITY_GRID, VENUE_GAME_KEY, toRoom, fromRoom, VROOM, nearest as hwyNearest, inTunnel, frameAt as hwyFrameAt } from './world/outerWorld.js';
+import { bakeGeo, canonMat, makeLod, lodTag, dropVenueInt, buildVenueInt, swapVenueInt, prepareCityWorldSync, finishCityWorld, mergeCityWorld, mergeVenue, buildAnimals, CITY_GRID, VENUE_GAME_KEY, toRoom, fromRoom, VROOM, nearest as hwyNearest, inTunnel } from './world/outerWorld.js';
 import { NEW_VENUES } from './world/layouts.js';
 import { HQ_CACHE } from './world/venues.js';
 import { Kit } from './kit.js';
+import { CATALOG_MAP } from '../HouseScreen/houseCatalog.js'; // v198: evdeki eşya eylemleri (kit.js zaten yüklüyor)
+import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import { createMap } from './world/map.js';
 import { applyImpact, findContact, impactParams, yawInertia, spring, airPitch } from './carImpact.js'; // v193 çarpma + uçuş
 import { geo as rsGeo, fromPad } from './world/roadsideGeo.js';
@@ -818,6 +820,10 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   const lights = [];
   const zones = [];
   const HOME_PLAY_KEYS = new Set(['pc', 'pcstation', 'console', 'arcade', 'gamer']); // v196: evde oyun
+  // v198: haritada simgesi olan zemin kat dükkânları (motor galerisi, oto tamirci)
+  const SHOP_POI = { motogaleri: { glyph: 'moto', icon: '🏍️', name: 'Motor Galerisi', color: '#e9651c' }, tamirci: { glyph: 'wrench', icon: '🔧', name: 'Oto Tamirci', color: '#c99a06' } };
+  const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' }; // v198
+  const HOME_INSTR = { piano: '🎹 Piyano', drums: '🥁 Davul' }; // v198: oturunca çal
   let waters = [];
   const labels = [];
   const blockers = [];
@@ -887,6 +893,15 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     zones.push({ kind: 'door', type: v.lot.type, region: v.lot.def?.region, title: `${v.lot.def?.icon || ''} ${v.lot.def?.name || v.venue.name}`, x: p.x, z: p.z, r: 0, out: v.ry, id: `vdoor_${v.lot.type}` });
   });
   // v157 — mekân içi NPC'ler (veznedar, barmen, kasiyer…) + oyunun mekân istasyonları
+  // v198: gazino da oyunun istasyonlu mekânı (slot / rulet / 10 Numara / piyango / bar). v196'da şehre
+  // taşınınca listeye eklenmemişti → kumarhanede hiçbir şeye dokunulamıyordu.
+  const STATION_GAME_KEYS = ['camii', 'banka', 'karakol', 'belediye', 'gazino'];
+  // v198: spor salonunda aletin yanına gelince alt ortada "⭐ Görev" (sadece sıradaki görevin aleti — SporPart hideAct)
+  const GYM_EQ = { bag: '🥊 Boks Torbası', treadmill: '🏃 Koşu Bandı', bench: '🏋️ Bench Press', dumbbells: '💪 Dambıl' };
+  // v198: cafe / bar tezgâhına yaklaşınca da "Sipariş ver" (menü) — sol üstteki menü düğmesine ek
+  const CITY_MENU_KEY = { cafe: 'cafe_mekan', bar: 'bar_mekan' };
+  const menuStations = (v) => Object.fromEntries(Object.entries(NEW_VENUES[v.type]?.stations || {}).filter(([, acts]) => acts.some((a) => a.act === 'cafe' || a.act === 'bar')).map(([iid]) => [iid, [{ act: 'menu', label: v.type === 'bar' ? '🍸 Sipariş ver' : '☕ Sipariş ver' }]]));
+  const gymStations = (v) => Object.fromEntries((v.venue.items || []).filter((q) => GYM_EQ[q.k]).map((q) => [q.i, [{ act: `train_${q.k}`, label: `⭐ Görev: ${GYM_EQ[q.k]}` }]]));
   const venueNpcDefs = [];
   W.venues.forEach((v) => {
     const gk = VENUE_GAME_KEY[v.type];
@@ -897,10 +912,10 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     list.forEach((n) => {
       const p = fromRoom(v, n.x, n.z);
       const route = Array.isArray(n.route) ? n.route.map(([rx, rz]) => fromRoom(v, rx, rz)) : null; // v196 bot garson
-      venueNpcDefs.push({ id: n.id, off: Boolean(n.off), name: n.name, av: n.av, x: p.x, z: p.z, y: 0.16 + (v.y0 || 0), lines: n.lines || [], left: Boolean(n.left), venue: v, route, quiet: Boolean(gk && ['camii', 'banka', 'karakol', 'belediye'].includes(gk)) });
+      venueNpcDefs.push({ id: n.id, off: Boolean(n.off), name: n.name, av: n.av, x: p.x, z: p.z, y: 0.16 + (v.y0 || 0), lines: n.lines || [], left: Boolean(n.left), venue: v, route, quiet: Boolean(gk && STATION_GAME_KEYS.includes(gk)) });
     });
     // istasyonlar: oyunun mekânlarında (camii, banka, karakol) oyunun panelleri; markette alışveriş + ATM
-    const stations = gk && ['camii', 'banka', 'karakol', 'belediye'].includes(gk) ? GAME_VENUES[gk]?.stations || {} : v.type === 'benzinlik' ? NEW_VENUES.market.stations : v.type === 'netkafe' ? NEW_VENUES.netkafe.stations : {}; // v196: internet kafe — bilgisayar / konsol / yayın seti
+    const stations = gk && STATION_GAME_KEYS.includes(gk) ? GAME_VENUES[gk]?.stations || {} : v.type === 'benzinlik' ? NEW_VENUES.market.stations : v.type === 'netkafe' ? NEW_VENUES.netkafe.stations : v.type === 'spor' ? gymStations(v) : CITY_MENU_KEY[v.type] ? menuStations(v) : {}; // v196: internet kafe — bilgisayar / konsol / yayın seti · v198: spor aletleri
     Object.entries(stations).forEach(([iid, acts]) => {
       const it = v.venue.items.find((q) => q.i === iid);
       if (!it) return;
@@ -912,7 +927,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         const ci = v.venue.items.find((q) => q.i === ck);
         if (ci) chair = { ...fromRoom(v, ci.x, ci.z), r: ci.k === 'sofa2' ? 1.3 : 0.7 };
       }
-      zones.push({ kind: 'station', id: `st_${v.type}_${iid}`, station: iid, acts, venue: v.type, gameVenue: gk || null, title: `${v.venue.icon || ''} ${v.venue.name}`, x: p.x, z: p.z, r: 2.0, ...(chair ? { seatOnly: true, chairPos: chair } : {}) });
+      zones.push({ kind: 'station', id: `st_${v.type}_${iid}`, station: iid, acts, venue: v.type, gameVenue: gk || (v.type === 'spor' ? 'spor_mekan' : CITY_MENU_KEY[v.type] || null), title: `${v.venue.icon || ''} ${v.venue.name}`, x: p.x, z: p.z, r: v.type === 'spor' ? 1.6 : 2.0, ...(chair ? { seatOnly: true, chairPos: chair } : {}) });
     });
   });
 
@@ -935,7 +950,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       // sonradan eklenen mekânların (yol üstü market) istasyonları: alışveriş + ATM
       if (late) {
         const gk = VENUE_GAME_KEY[v.type];
-        const stations = gk && ['camii', 'banka', 'karakol', 'belediye'].includes(gk) ? GAME_VENUES[gk]?.stations || {} : v.type === 'benzinlik' ? NEW_VENUES.market.stations : {};
+        const stations = gk && STATION_GAME_KEYS.includes(gk) ? GAME_VENUES[gk]?.stations || {} : v.type === 'benzinlik' ? NEW_VENUES.market.stations : {};
         Object.entries(stations).forEach(([iid, acts]) => {
           const it = v.venue.items.find((q) => q.i === iid);
           if (!it) return;
@@ -1311,8 +1326,34 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     EV.root.updateMatrixWorld(true);
     EV.ml.seatList().forEach((st) => {
       const p = fromRoom(EV, st.x, st.z);
-      seats.push({ x: p.x, y: st.y, z: p.z, yaw: EV.ry + st.yaw, taken: false, tier: false, ev: true });
+      seats.push({ x: p.x, y: st.y, z: p.z, yaw: EV.ry + st.yaw, taken: false, tier: false, ev: true, item: st.i, itemKey: st.k });
     });
+    // v198: evdeki eşyaların eski ev ekranındaki eylemleri — ışık / TV / şömine aç-kapat, buzdolabından /
+    // kahve makinesinden ürün al (elde 2 dk). Herkese açık; sadece bu cihazda (Firestore'a yazılmaz).
+    (evHome?.items || []).forEach((it, idx) => {
+      if (it.p !== 1 || HOME_PLAY_KEYS.has(it.k) || HOME_STUDIO_KEYS[it.k] || HOME_INSTR[it.k]) return;
+      const def = CATALOG_MAP[it.k];
+      if (!def) return;
+      const acts = [];
+      const ctl = EV.ml.objAt(idx)?.userData?.ctl;
+      if (!def.panel && ctl?.act && !ctl.noToggle && typeof ctl.setOn === 'function') acts.push({ kind: 'toggle', label: ctl.act });
+      (def.takes || []).forEach((product) => {
+        const pr = HOUSE_PRODUCTS[product];
+        if (pr) acts.push({ kind: 'take', product, label: `${pr.emoji} ${pr.label} al` });
+      });
+      if (!acts.length) return;
+      const p = fromRoom(EV, it.x, it.z);
+      zones.push({ kind: 'homeItem', id: `hi_${it.i}`, idx, acts, title: `${def.icon || ''} ${def.name}`, x: p.x, z: p.z, y: EV.ml.floors[it.f] ?? 0, r: 1.5, ev: true });
+    });
+    // v198: evdeki stüdyo eşyaları (mikser konsolu, tuval) — sadece sahibine; yaklaşınca düğme çıkar.
+    // Piyano / davul oturunca çalınır (aşağıda, oturma dalı) — evdeki herkes çalabilir.
+    if (evHome?.mine) {
+      (evHome.items || []).forEach((it) => {
+        if (it.p !== 1 || !HOME_STUDIO_KEYS[it.k]) return;
+        const p = fromRoom(EV, it.x, it.z);
+        zones.push({ kind: 'homeStudio', id: `hs_${it.i}`, studio: it.k, itemId: it.i, title: HOME_STUDIO_KEYS[it.k], x: p.x, z: p.z, y: EV.ml.floors[it.f] ?? 0, r: 1.8, ev: true });
+      });
+    }
     // v196: kendi evindeki oyun cihazları (satın alınmış) sadece sahibine: "🎮 Oyun oyna" (ücretsiz)
     if (evHome?.mine) {
       (evHome.items || []).forEach((it) => {
@@ -1768,6 +1809,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       key = 'park';
     }
     // v177: oyunun motor galerisi (camiinin arkası) — kapısının önü, yüz kapıya dönük
+    // v198: oto tamirci (hastane + belediyenin yanı) — kapısının önü
+    if (key === 'tamirci' || key?.region === 'tamirci') {
+      const tz = zones.find((z) => z.kind === 'shopDoor' && z.venue === 'tamirci');
+      if (tz) return { x: tz.x + Math.sin(tz.out) * 1.4, z: tz.z + Math.cos(tz.out) * 1.4, yaw: tz.out, pitch: 0.36 };
+    }
     if (key === 'motor_galerisi' || key?.region === 'motor_galerisi') {
       const mz = zones.find((z) => z.kind === 'shopDoor' && z.venue === 'motogaleri');
       if (mz) return { x: mz.x + Math.sin(mz.out) * 1.4, z: mz.z + Math.cos(mz.out) * 1.4, yaw: mz.out, pitch: 0.36 };
@@ -3365,8 +3411,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       onEvent?.({ type: 'homeTap', idx: hit ? hit.object.userData.evIdx : null, x: g?.x ?? null, z: g?.z ?? null, f: g ? ml.level(g.y + 0.2) : null });
       return true;
     }
-    const g = ml.pick(o, d);
-    if (!g) return false;
+    const g0 = ml.pick(o, d);
+    if (!g0) return false;
+    const g = ml.stairGoal?.(g0, me.y) || g0; // v198: merdivene dokununca kat değiştir
     if (self.seat) standUp();
     const pts = ml.route({ x: toRoom(curVenue, self.x, self.z).x, z: toRoom(curVenue, self.x, self.z).z, y: me.y }, g).map(([x, z]) => fromRoom(curVenue, x, z));
     self.path = pts;
@@ -4582,6 +4629,28 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       n.hideLabel = Boolean(n.venue) && n.venue !== curVenue;
       if (!near) return;
       n.moving = false;
+      // v198: sipariş getiren garson — ürün elinde müşteriye yürür, yanına gelince ürün müşterinin eline geçer
+      if (n.deliver) {
+        const dv = n.deliver;
+        dv.t += dt;
+        const dx = self.x - n.x;
+        const dz = self.z - n.z;
+        const d = Math.hypot(dx, dz);
+        if (d < 1.1 || dv.t > 25) {
+          n.deliver = null;
+          n.setHolding(null);
+          n.say(dv.line || 'Afiyet olsun! 🙂');
+          dv.done?.();
+        } else {
+          const st = Math.min(d - 1.0, dt * 1.9);
+          n.x += (dx / d) * st;
+          n.z += (dz / d) * st;
+          n.facingLeft = dx < 0;
+          n.moving = true;
+        }
+        n.update(dt, camera, now);
+        return;
+      }
       // v196: devriye yolu olan NPC (cafe / bar bot garsonu) noktadan noktaya yürür, her noktada biraz bekler
       if (n.route?.length > 1) {
         if (n.routeWait > 0) n.routeWait -= dt;
@@ -4727,6 +4796,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       const cands = zones.filter((z) => z.seatOnly && z.chairPos && Math.hypot(z.chairPos.x - st.x, z.chairPos.z - st.z) < z.chairPos.r && (z.y == null || Math.abs(st.y - z.y) < 1.6));
       const sz = cands.find((z) => z.chair) || cands[0]; // yayın koltuğu (oyuncu koltuğu) önce
       if (sz) best = { ...sz, id: `${sz.id}+seated`, seatedAt: true };
+      // v198: evde piyano / davul taburesinde → "Çal" (eskiden evdeki çalgılar şehirde çalınamıyordu)
+      else if (st.ev && HOME_INSTR[st.itemKey]) best = { id: `instr_${st.item}+seated`, kind: 'homeInstr', instr: st.itemKey, itemId: st.item, title: HOME_INSTR[st.itemKey], seatedAt: true };
     }
     if (!best && !driving && !self.ride && !self.seat) {
       let rb = null;
@@ -5737,6 +5808,25 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     setHolding(p) {
       me.setHolding(p);
     },
+    // v198: evdeki eşyayı aç / kapat (ışık, TV, şömine…) — sadece bu cihazda
+    homeToggle(idx) {
+      const ctl = EV?.ml.objAt(idx)?.userData?.ctl;
+      if (!ctl?.setOn) return false;
+      ctl.setOn(!ctl.on);
+      return true;
+    },
+    // v198: garson siparişi getirir (ürün garsonun elinde gelir, varınca done çağrılır)
+    npcDeliver(id, product, done) {
+      const n = npcs.find((q) => q.id === id);
+      if (!n || n.off) {
+        done?.();
+        return false;
+      }
+      n.setHolding(product);
+      n.say('Siparişiniz geliyor! 🍽️');
+      n.deliver = { product, t: 0, done };
+      return true;
+    },
     npcSay(id, text) {
       const n = npcs.find((q) => q.id === id);
       if (n && !n.off) n.say(text);
@@ -5833,7 +5923,6 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     hasHome: () => Boolean(EV),
     homeInside: () => Boolean(curVenue?.ml),
     homeLevel: () => (EV ? EV.ml.level(me.y) : 0),
-    homeId: () => evHome?.id || null,
     // Evler listesi: şu an hangi evde kaç kişi var (görülen oyuncuların ağ kaydından — ek okuma yok)
     homeOccupancy() {
       const out = {};
@@ -6150,7 +6239,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
           const key = k.group.name.slice(7);
           return { x: p.x, z: p.z, icon: '🛒', name: { kokorecci: 'Kokoreççi', kofteci: 'Köfteci', donerci: 'Balık Ekmekçi', simitci: 'Simitçi', midyeci: 'Midyeci', dondurmaci: 'Dondurmacı' }[key] || key, vendor: key };
         });
-        gmap = createMap({ city, cityExtraLots: [], solids: [...solids, ...W.townSolids], citySolidCount: solids.length, town: W.town, sample: W.groundAt, lotTypes: LOT_TYPES, vendors, extraBld: W.venues.filter((v) => v.lot).map((v) => ({ type: v.type, x: v.wx, z: v.wz, hw: VROOM.W / 2 + 0.3, hd: VROOM.D / 2 + 0.3, yaw: v.ry })), roadside: { ...rsGeo(), solids: W.rsSolids }, park: W.park, extraPois: zones.filter((z) => z.kind === 'shopDoor' && z.venue === 'motogaleri').map((z) => ({ x: z.x, z: z.z, type: 'motogaleri', glyph: 'moto', icon: '🏍️', name: 'Motor Galerisi', color: '#e9651c' })) });
+        gmap = createMap({ city, cityExtraLots: [], solids: [...solids, ...W.townSolids], citySolidCount: solids.length, town: W.town, sample: W.groundAt, lotTypes: LOT_TYPES, vendors, extraBld: W.venues.filter((v) => v.lot).map((v) => ({ type: v.type, x: v.wx, z: v.wz, hw: VROOM.W / 2 + 0.3, hd: VROOM.D / 2 + 0.3, yaw: v.ry })), roadside: { ...rsGeo(), solids: W.rsSolids }, park: W.park, extraPois: zones.filter((z) => z.kind === 'shopDoor' && SHOP_POI[z.venue]).map((z) => ({ x: z.x, z: z.z, type: z.venue, ...SHOP_POI[z.venue] })) });
       }
       return gmap;
     },
@@ -6158,8 +6247,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     mapGo(p) {
       if (!p) return false;
       if (p.type && W.venues.some((v) => v.type === p.type)) return api.enterVenue(p.type);
-      if (p.type === 'motogaleri') {
-        const sp = spawnPoint('motor_galerisi'); // v178: kapının önü
+      if (p.type === 'motogaleri' || p.type === 'tamirci') {
+        const sp = spawnPoint(p.type === 'tamirci' ? 'tamirci' : 'motor_galerisi'); // v178: kapının önü · v198: tamirci
         api.teleportWorld(sp.x, sp.z, sp.yaw);
         return true;
       }

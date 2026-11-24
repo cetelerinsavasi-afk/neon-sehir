@@ -5,6 +5,9 @@ import { createHouseEngine } from '../HouseScreen/houseEngine';
 import { watchLive, mergeLive } from '../../lib/liveNet';
 import { useBlocks } from '../../contexts/BlocksContext';
 import { streamPose } from './streamShared';
+// v198: şehirdeki internet kafenin gerçek düzeni — açılışta yüklenmesin (sadece yayın izlenirken)
+let layoutsP = null;
+const netkafeLayout = () => (layoutsP ||= import('../City/world/layouts.js').then((m) => m.NEW_VENUES.netkafe));
 
 // =============================================================================
 // v80 — Yayın sahnesi (izleyici): evi, bilgisayarın üstündeki kameradan canlı
@@ -56,6 +59,19 @@ export default function StreamScene({ houseId, chairId, pcId, bubble = null, cla
         const sf = h.surf?.[f] || {};
         eng.setDesign({ items, wall: sf.wall || HOME_WALL, floor: sf.floor || HOME_FLOOR }, { force: true });
         eng.setFixedCamera(streamPose(items, chairId, pcId));
+      } else if (houseId === 'game_internet') {
+        // v198: oyunun internet kafesi şehirde — belgede sadece cihazlar var; yayının arkası şehirdeki
+        // kafenin GERÇEK hâli (bütün eşyalar, duvar / zemin kaplaması) olsun
+        netkafeLayout()
+          .then((nk) => {
+            if (engRef.current !== eng) return;
+            eng.setDesign({ items: nk.items, wall: nk.wall, floor: nk.floor }, { force: true });
+            eng.setFixedCamera(streamPose(nk.items, chairId, pcId));
+          })
+          .catch(() => {
+            eng.setDesign({ items: h.items || [], wall: h.wall, floor: h.floor }, { force: true });
+            eng.setFixedCamera(streamPose(h.items, chairId, pcId));
+          });
       } else {
         eng.setDesign({ items: h.items || [], wall: h.wall, floor: h.floor }, { force: true });
         eng.setFixedCamera(streamPose(h.items, chairId, pcId));

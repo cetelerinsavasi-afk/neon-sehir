@@ -976,7 +976,7 @@ const CROWNS = [null, null, null, '#19e8ff', null, null, null, null];
 const MOTO_SHOW = ['moto_sport', 'moto_chopper', 'moto_scooter', 'moto_cross'];
 const SHOW_DEPTH = 5.4;
 const SHOW_H = 3.0;
-export function buildFiller(kit, lot, seed, { tall = 1, plaza = false, motoShop = false } = {}) {
+export function buildFiller(kit, lot, seed, { tall = 1, plaza = false, motoShop = false, tamirShop = false } = {}) {
   const { w, d } = lot;
   const r = rng(seed * 7919 + 13);
   kit.floor('kaldirim', w, d, 0, 0);
@@ -996,14 +996,22 @@ export function buildFiller(kit, lot, seed, { tall = 1, plaza = false, motoShop 
     }
     return { x, z, tw, td, h, style, crown, seed: seed + i * 5, front };
   });
+  // v198: tamirci bloğunda caddeye bakan dükkân yoksa en öndeki hücreye dükkân açılır (rng sırası değişmez)
+  if (tamirShop && !plan.some((c) => c.front?.street)) {
+    const c = plan.reduce((a, b) => (b.z + b.td / 2 > a.z + a.td / 2 ? b : a));
+    c.front = { x: c.x, z: c.z + c.td / 2 + 0.05, w: Math.min(c.tw - 1, 8), sh: SHOPS[0], street: true };
+  }
   // v177: motor galerisi = caddeye bakan ilk ECZANE (yoksa caddeye bakan ilk dükkân)
   const fronts = plan.filter((c) => c.front);
   const mc = motoShop ? fronts.find((c) => c.front.street && c.front.sh[0] === 'ECZANE') || fronts.find((c) => c.front.street) || null : null;
+  // v198: oto tamirci = caddeye bakan ilk dükkân (en geniş olanı)
+  const tc = tamirShop ? fronts.filter((c) => c.front.street).sort((a, b) => b.front.w - a.front.w)[0] || null : null;
   plan.forEach((c) => {
-    const hole = c === mc && c.td > SHOW_DEPTH + 2 ? { x0: -c.front.w / 2, x1: c.front.w / 2, h: SHOW_H, depth: SHOW_DEPTH } : null;
+    const hole = c === mc && c.td > SHOW_DEPTH + 2 ? { x0: -c.front.w / 2, x1: c.front.w / 2, h: SHOW_H, depth: SHOW_DEPTH } : c === tc && c.td > TAMIR_DEPTH + 2 ? { x0: -c.front.w / 2, x1: c.front.w / 2, h: TAMIR_H, depth: TAMIR_DEPTH } : null;
     tower(kit, { w: c.tw, d: c.td, h: c.h, x: c.x, z: c.z, style: c.style, crown: c.crown, seed: c.seed, hole });
     if (!c.front) return;
-    if (c === mc) motoShowroom(kit, { x: c.front.x, zf: c.z + c.td / 2, w: c.front.w, inside: Boolean(hole) });
+    if (c === tc) tamirGarage(kit, { x: c.front.x, zf: c.z + c.td / 2, w: c.front.w, inside: Boolean(hole) });
+    else if (c === mc) motoShowroom(kit, { x: c.front.x, zf: c.z + c.td / 2, w: c.front.w, inside: Boolean(hole) });
     else shopfront(kit, { x: c.front.x, z: c.front.z, w: c.front.w, text: c.front.sh[0], color: c.front.sh[1], awn: c.front.sh[2] });
   });
   if (!plaza) {
@@ -1070,6 +1078,65 @@ function motoShowroom(kit, { x, zf, w, inside }) {
   kit.solid(x - (hw + 0.7) / 2, zf + 0.03, (hw - 0.7) / 2, 0.08);
   kit.solid(x + (hw + 0.7) / 2, zf + 0.03, (hw - 0.7) / 2, 0.08);
   kit.zone({ kind: 'shopDoor', venue: 'motogaleri', title: '🏍️ Neon Motor Galerisi', x, z: inside ? zm + 0.6 : zf + 1.65, r: inside ? 2.6 : 2.4, inside });
+}
+
+// v198 — OTO TAMİRCİ: hastane ile belediyenin yanındaki binanın (6,0) zemin katı. Kepenkleri açık bir
+// tamir atölyesi (lift, alet panosu, tezgâh, lastikler, usta). İçine yürünür; içeride "🔧 Araba tamiri".
+const TAMIR_DEPTH = 6.2;
+const TAMIR_H = 3.4;
+function tamirGarage(kit, { x, zf, w, inside }) {
+  const hw = w / 2;
+  const zb = zf - TAMIR_DEPTH;
+  const zm = (zf + zb) / 2;
+  const YEL = '#ffc21a';
+  const FY = 0.16;
+  if (inside) {
+    // beton zemin (yağ lekeli), sarı-siyah şeritli çalışma alanı, duvarlar, tavan
+    kit.box(w, FY, TAMIR_DEPTH, M('#5d6066', 0.9), x, 0, zm, { cast: false });
+    kit.box(3.6, 0.01, 4.4, M('#4a4d52', 0.85), x, FY, zm - 0.3, { cast: false });
+    for (const sx of [-1, 1]) kit.box(0.12, 0.012, 4.4, M(YEL, 0.6), x + sx * 1.85, FY + 0.002, zm - 0.3, { cast: false });
+    kit.box(w, TAMIR_H, 0.12, M('#d9d4c8', 0.85), x, 0, zb + 0.06, { cast: false });
+    for (const sx of [-1, 1]) kit.box(0.12, TAMIR_H, TAMIR_DEPTH, M('#cfc9bc', 0.85), x + sx * (hw - 0.06), 0, zm, { cast: false });
+    kit.box(w, 0.1, TAMIR_DEPTH, M('#3a3d42', 0.8), x, TAMIR_H - 0.1, zm, { cast: false });
+    for (const lx of [-hw / 2, hw / 2]) kit.box(0.14, 0.05, TAMIR_DEPTH - 1, glowMat('#f4fbff', 2.4), x + lx, TAMIR_H - 0.16, zm, { cast: false });
+    // arka duvar: lift ortada, iki yanında alet panosu + takım dolabı; yan duvarda tezgâh ve lastikler
+    kit.item('carlift', x, zb + 1.2, 0, 0, { y: FY, solid: false });
+    kit.solid(x - 1.45, zb + 1.2, 0.2, 0.2);
+    kit.solid(x + 1.45, zb + 1.2, 0.2, 0.2);
+    kit.item('toolwall', x - hw + 1.6, zb + 0.14, 0, 0, { y: FY + 0.4, solid: false });
+    kit.item('toolwall', x + hw - 1.6, zb + 0.14, 0, 0, { y: FY + 0.4, solid: false });
+    kit.item('toolchest', x - hw + 0.6, zb + 0.5, 0, 0, { y: FY });
+    kit.item('workbench', x + hw - 0.5, zm + 0.4, 6, 0, { y: FY });
+    kit.item('tires', x - hw + 0.55, zf - 1.3, 0, 0, { y: FY });
+    kit.item('tires', x - hw + 0.55, zf - 2.0, 0, 0, { y: FY });
+    kit.item('extinguisher', x - hw + 0.14, zm, 2, 0, { y: FY, solid: false });
+    const tex = textCanvas('OTO TAMİR', YEL);
+    const sw = Math.min(w - 2, 0.55 * tex.userData.aspect);
+    kit.mesh(new THREE.PlaneGeometry(sw, 0.55), new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false, depthWrite: false }), x, TAMIR_H - 0.55, zb + 0.14, 0, { cast: false, receive: false });
+    kit.light(x, TAMIR_H - 0.6, zm, '#fff1d6', 7, 10);
+    // usta (tezgâhın önünde)
+    kit.npcs.push({
+      id: 'npc_tamirci',
+      name: 'Usta Rıfat',
+      av: { gender: 'erkek', build: 'standart', skin: '#d9a066', hairStyle: 'short', hairColor: '#2a2018', facialHair: 'mustache', clothing: 'vest', clothColor: '#2c4a7a', neckAcc: 'none', pantsColor: '#2c4a7a' },
+      x: x + hw - 1.5,
+      z: zm + 0.4,
+      lines: ['Hoş geldin usta, neyi var arabanın?', 'Yağı da kontrol edelim.', 'Bir tamirle gıcır gibi olur.', 'Lastikler de yenilenmeli bak.'],
+    });
+  }
+  // kepenk (yukarı sarılmış) + çerçeve + tabela
+  const frame = M('#2b2e34', 0.5, 0.6);
+  kit.box(w + 0.1, 0.5, 0.3, M('#8d9096', 0.5, 0.6), x, TAMIR_H - 0.5, zf + 0.08);
+  for (const fx of [-hw, hw]) kit.box(0.16, TAMIR_H, 0.16, frame, x + fx, 0, zf + 0.05);
+  kit.box(w, 0.06, 0.06, M(YEL, 0.5), x, 0.02, zf + 0.05, { cast: false });
+  kit.box(w, 0.7, 0.14, M('#1d2a44', 0.6), x, TAMIR_H + 0.05, zf + 0.12);
+  kit.box(w, 0.05, 0.05, glowMat(YEL, 2.2), x, TAMIR_H + 0.05, zf + 0.22, { cast: false });
+  const tex = textCanvas('OTO TAMİRCİ', YEL);
+  const sw = Math.min(w - 0.6, 0.6 * tex.userData.aspect);
+  kit.mesh(new THREE.PlaneGeometry(sw, 0.6), new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false, depthWrite: false }), x, TAMIR_H + 0.4, zf + 0.2, 0, { cast: false, receive: false });
+  kit.pool(x, zf + 2.0, YEL, 6, 0.17, 0.35);
+  kit.item('airpump', x + hw + 0.9, zf + 1.2, 0, 0, { y: SIDEWALK_Y });
+  kit.zone({ kind: 'shopDoor', venue: 'tamirci', title: '🔧 Oto Tamirci', x, z: inside ? zm + 0.6 : zf + 1.65, r: inside ? 3.0 : 2.4, inside });
 }
 
 // =============================================================================

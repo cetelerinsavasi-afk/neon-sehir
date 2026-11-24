@@ -122,7 +122,7 @@ export const NEW_VENUES = {
       it('nk_neon', 'neon3', 5.3, -7, 0),
       it('nk_rug', 'ruggeo', 5.3, -0.3),
       it('nps1', 'console', 3.6, -1.6), it('nss1', 'sofa2', 3.6, 1.0, 4), it('nps2', 'console', 7.0, -1.6), it('nss2', 'sofa2', 7.0, 1.0, 4),
-      it('nk_ck', 'checkout', -5.4, 4.8),
+      it('nk_ck', 'checkout', -5.4, 4.8, 4), // v198: kasa salona bakar, kasiyer arkasında (kapı tarafı)
       it('nk_df', 'drinkfridge', 8.5, 4.6, 6),
       it('nk_gr', 'graffiti', -9, 0.4, 2),
       it('nk_neon2', 'neon4', -9, -4.2, 2),
@@ -137,7 +137,7 @@ export const NEW_VENUES = {
       nsch: [{ act: 'stream:nsch', label: '🔴 Yayın aç' }],
       nsch2: [{ act: 'stream:nsch2', label: '🔴 Yayın aç' }],
     },
-    npcs: [{ id: 'npc_netci', name: 'Kasada Emre', x: -5.4, z: 4.05, av: P.netci, lines: ['Hoş geldin, boş bilgisayar var.', 'Turnuva cumartesi!', 'Kulaklık rafta.'] }],
+    npcs: [{ id: 'npc_netci', name: 'Kasada Emre', x: -5.4, z: 5.7, av: P.netci, lines: ['Hoş geldin, boş bilgisayar var.', 'Turnuva cumartesi!', 'Kulaklık rafta.'] }],
   },
   // --- SPOR SALONU -----------------------------------------------------------------------
   spor: {

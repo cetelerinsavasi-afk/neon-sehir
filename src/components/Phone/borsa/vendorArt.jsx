@@ -20,6 +20,7 @@ export const VENDOR_LOOK = {
   mk_cafe: { c: '#d9a066', bg: '#2a1a0c' },
   mk_bar: { c: '#ffab4a', bg: '#2e1a08' },
   mk_internet: { c: '#b56bff', bg: '#1c0d33' },
+  mk_tamirci: { c: '#ffc21a', bg: '#2a2206' }, // v198
 };
 
 function Art({ id }) {
@@ -220,6 +221,15 @@ function Art({ id }) {
           <path d="M22 44l10-12 8 8 10-14 8 18" fill="none" stroke="#b56bff" strokeWidth="3" strokeLinejoin="round" />
           <rect x="34" y="56" width="12" height="6" fill="#cfd6df" />
           <rect x="24" y="62" width="32" height="4" rx="2" fill="#cfd6df" />
+        </>
+      );
+    case 'mk_tamirci': // v198: lastik + anahtar
+      return (
+        <>
+          <circle cx="34" cy="44" r="20" fill="#1a1a1f" />
+          <circle cx="34" cy="44" r="11" fill="#5d6066" />
+          <circle cx="34" cy="44" r="4" fill="#cfd6df" />
+          <path d="M48 20l6-6 4 4-3 3 6 6 3-3 4 4-6 6-6-2-12 12-4-4 12-12z" fill="#ffc21a" />
         </>
       );
     default:

@@ -959,7 +959,12 @@ export function finishCityWorld(W, scene) {
         return !parkGrid.cell(px, pz);
       }
       if (px < TERRAIN.x0 + 40 || px > TERRAIN.x1 - 40 || pz < TERRAIN.z0 + 40 || pz > TERRAIN.z1 + 400) return false;
-      if (inTownRect(px, pz, 6)) return false;
+      if (inTownRect(px, pz, 6)) {
+        // v198: Kervankent'in giriş caddesi yayaya da açık. Eskiden gişelerden sonra kasabaya 4 m kala
+        // (kasaba duvarlarının payı) yaya her yerde duruyordu — yürüyerek kasabaya girilemiyordu.
+        const e = nearest(px, pz, hint);
+        return Boolean(e && e.s > LEN - 20 && Math.abs(e.d) <= ROAD_HALF + 1.5);
+      }
       return !treeHit(px, pz, 0.2);
     }
     const n = nearest(px, pz, hint);

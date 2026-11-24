@@ -180,3 +180,16 @@ test('v168.1 şehir fotoğrafı: Rıza Amca (cihazdaki karakter) yakındaysa gir
   assert.equal(r2.att.people.length, 1);
   assert.equal(r2.att.cars.length, 0);
 });
+
+// v198 — iç kamera (otobüs / araba içinden) alanları imzalı fotoğrafta kalır
+test('cleanCam: iç kamera alanları korunur, bozuk olan atılır', async () => {
+  const { cleanCam } = await import('../cityPhoto.js');
+  const base = { px: 1, py: 2, pz: 3, dx: 0, dy: 0, dz: 1, fov: 74 };
+  const c = cleanCam({ ...base, ic: 1, io: 'veli_1', ik: 3, is: 0.4 });
+  assert.equal(c.ic, 1);
+  assert.equal(c.io, 'veli_1');
+  assert.equal(c.ik, 3);
+  assert.equal(c.is, 0.4);
+  assert.equal(cleanCam({ ...base, ic: 1, io: 'bad uid!' }).ic, undefined);
+  assert.equal(cleanCam(base).ic, undefined);
+});

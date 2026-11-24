@@ -40,7 +40,6 @@ import { VehicleKindTabs } from '../VehicleGalleryScreen/VehicleGalleryScreen';
 import '../VehicleGalleryScreen/VehicleGalleryScreen.css';
 import mapImg from '../../assets/sehir-haritasi.webp';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
-import { BIZ_TYPES } from '../../../functions/businessCatalogData.js';
 import { VENUES } from '../../../functions/venueLayouts.js';
 import { VENDORS, VENDOR_COST } from '../../../functions/vendorData.js';
 import HeldIcon from '../HouseScreen/HeldIcon';
@@ -68,12 +67,13 @@ import { createCityEngine } from './cityEngine.js';
 import { prepareCityWorld } from './world/outerWorld.js';
 import FactoryWorkButton from '../FactoryScreen/FactoryWorkButton'; // v196 Çalış butonu
 import HomePanel from './HomePanel'; // v196 3 katlı ev
+import HomeInstruments from './HomeInstruments'; // v198: evde piyano / davul / mikser / tuval
 import './HomePanel.css';
 import VenueLayer from '../Venue3D/VenueLayer';
 import { IS_MOBILE_DEVICE } from '../../lib/photoCache';
 import { OPEN_DM_EVENT, setCityPhoneHost } from '../../lib/chatsappNav';
 import { createCityNet } from './cityNet.js';
-import { MAP_SIZE, buildMapping } from './cityMapMath.js';
+import { buildMapping } from './cityMapMath.js';
 import { setLiveCityEngine } from './cityPhotoHub.js';
 import { renderCityPhotoUrl } from './CityPhoto.jsx';
 import { makeShareImage } from '../../lib/sixImage';
@@ -100,6 +100,7 @@ const StreamViewer = lazy(() => import('../Stream/StreamViewer'));
 const FactoryScreen = lazy(() => import('../FactoryScreen/FactoryScreen'));
 const RaceTrackScreen = lazy(() => import('../RaceTrackScreen/RaceTrackScreen'));
 const AmcaStory = lazy(() => import('./story/AmcaStory')); // v168 — Rıza Amca senaryosu (yeni oyuncu görevleri)
+const Workshop = lazy(() => import('../Workshop/Workshop')); // v198: oto tamirci
 // kapıdan girilince şehir içinde panel olarak açılan mekânlar
 const IN_CITY_REGIONS = { fabrika: '🏭 Fabrika', yaris_pisti: '🏁 Yarış Pisti' };
 // v157 — haritadaki mekânın içindeyken çıkan düğmeler. Şehirdeki bina görünüştür: listeden
@@ -113,6 +114,7 @@ const VENUE_UI = {
   spor: { game: 'spor_mekan' },
   galeri: { game: 'araba_galerisi' }, // soygun düğmesi mekânın içinde (GaleriPart)
   motogaleri: { openBiz: 'motogaleri', label: '🏍️ Satılık motorlar' }, // v196: vitrinin içine yürünür, düğme içeride
+  tamirci: { tamir: true, label: '🔧 Araba tamiri' }, // v198: oto tamirci (hastane + belediyenin yanı, zemin kat)
   silah: { game: 'silah_magazasi', heist: 'silah_magazasi' },
   modifiye: { game: 'modifiye_garaji' },
   casino: { game: 'gazino' },
@@ -126,7 +128,7 @@ const VENUE_UI = {
 };
 // v157.4: Mekanlar › Ziyaret anahtarı → şehirdeki mekân (lot türü)
 const VISIT_LOT = { banka: 'banka', karakol: 'karakol', mosque: 'camii', casino: 'casino', dealership: 'galeri', weaponShop: 'silah', tuningGarage: 'modifiye', belediye: 'belediye', park: 'park' };
-const VENUE_TITLE = { bar: '🍸 Bar', cafe: '☕ Cafe', netkafe: '🖥️ İnternet Kafe', spor: '🏋️ Spor Salonu', galeri: '🚗 Araba Galerisi', motogaleri: '🏍️ Motor Galerisi', silah: '🔫 Silah Mağazası', modifiye: '🔧 Modifiye Garajı', casino: '🎰 Casino', liman: '⚓ Liman & Depo', fabrika: '🏭 Fabrika', ev: '🏠 Ev', banka: '🏦 Banka', camii: '🕌 Camii', karakol: '🚓 Karakol', belediye: '🏛️ Belediye', hastane: '🏥 Hastane', benzinlik: '⛽ Benzinlik Market', otogar: '🚌 Otogar', otogar_kk: '🚌 Kervankent Otogarı', taksi_duragi: '🚕 Taksi Durağı', ofis: '🏢 Ofisler' };
+const VENUE_TITLE = { bar: '🍸 Bar', cafe: '☕ Cafe', netkafe: '🖥️ İnternet Kafe', spor: '🏋️ Spor Salonu', galeri: '🚗 Araba Galerisi', motogaleri: '🏍️ Motor Galerisi', tamirci: '🔧 Oto Tamirci', silah: '🔫 Silah Mağazası', modifiye: '🔧 Modifiye Garajı', casino: '🎰 Casino', liman: '⚓ Liman & Depo', fabrika: '🏭 Fabrika', ev: '🏠 Ev', banka: '🏦 Banka', camii: '🕌 Camii', karakol: '🚓 Karakol', belediye: '🏛️ Belediye', hastane: '🏥 Hastane', benzinlik: '⛽ Benzinlik Market', otogar: '🚌 Otogar', otogar_kk: '🚌 Kervankent Otogarı', taksi_duragi: '🚕 Taksi Durağı', ofis: '🏢 Ofisler' };
 const VENDOR_BY_VENUE = Object.fromEntries(Object.entries(VENDORS).map(([id, v]) => [v.venue, { id, ...v }]));
 const BUFE_MENU = [
   { id: 'sosisli', price: 200 },
@@ -457,6 +459,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const [evlerOpen, setEvlerOpen] = useState(false); // v196: Müstakil › Evler listesi
   const [homeArcade, setHomeArcade] = useState(false); // v196: kendi evinde oyun
   const [homeStream, setHomeStream] = useState(null); // v196: evden yayın { chairId, houseId, items }
+  const homeInstrRef = useRef(null); // v198
   const [homeInfo, setHomeInfo] = useState(null); // v196: { name, owner, floor, mine }
   const [homeSetReq, setHomeSetReq] = useState(0);
   // v167 — açılış sırası: 1 = diğer oyuncular + altın / şüphe + görevler, 2 = telefon, yayın, seçim, yakındakiler
@@ -1099,6 +1102,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       setSelfTicket: () => {},
       city: true, // v160.4 — mekân katmanı şehirde (HouseScreen değil)
       setHolding: (p) => engineRef.current?.setHolding?.(p), // v160.4 — belediye çaycısı
+      // v198: cafe / bar siparişini bot garson getirir; varınca ürün elde (2 dk)
+      deliver: (npcId, product) => engineRef.current?.npcDeliver?.(npcId, product, () => holdFor(product)),
       cityEng: () => engineRef.current, // v196 — internet kafede yayın (kamera görüntüsü şehir motorundan)
     };
   }
@@ -1456,7 +1461,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       (zone.acts || []).forEach((a) => {
         if (a.act === 'market') list.push({ label: '🛒 Market', cls: 'take', on: () => setPanel({ kind: 'market' }) });
         else if (a.act === 'atm') list.push({ label: '🏧 ATM', cls: 'take', on: () => setPanel({ kind: 'phone', app: 'banka' }) });
-        else if (zone.gameVenue) list.push({ label: a.label, cls: 'take', on: () => venueApiRef.current?.open(a.act) });
+        else if (zone.gameVenue && !venueApiRef.current?.hideAct?.(a.act)) list.push({ label: a.label, cls: 'take', on: () => venueApiRef.current?.open(a.act) }); // v198: parça gizleyebilir (spor: sadece sıradaki görevin aleti)
       });
     }
     if (zone.kind === 'vendor') {
@@ -1470,6 +1475,24 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     if (zone.kind === 'homePlay' && zone.chair && !homeStream) {
       list.push({ label: '🔴 Yayın aç', cls: 'take', on: () => setHomeStream({ chairId: zone.chair, houseId: engineRef.current?.homeId?.(), items: engineRef.current?.homeItems?.() || [] }) });
     }
+    // v198: evdeki eşyaların eylemleri (eski ev ekranındaki gibi): aç / kapat, ürün al
+    if (zone.kind === 'homeItem')
+      (zone.acts || []).forEach((a) =>
+        list.push({
+          label: a.label,
+          cls: 'take',
+          on: () => {
+            if (a.kind === 'toggle') engineRef.current?.homeToggle?.(zone.idx);
+            else if (a.kind === 'take') {
+              holdFor(a.product);
+              flash(`${HOUSE_PRODUCTS[a.product]?.emoji || ''} ${HOUSE_PRODUCTS[a.product]?.label || 'Ürün'} elinde (2 dk)`);
+            }
+          },
+        })
+      );
+    // v198: evde çalgı / stüdyo (eskiden sadece eski ev ekranında vardı)
+    if (zone.kind === 'homeInstr') list.push({ label: `${zone.instr === 'drums' ? '🥁' : '🎹'} Çal`, cls: 'take', on: () => homeInstrRef.current?.open(zone) });
+    if (zone.kind === 'homeStudio') list.push({ label: zone.studio === 'easel' ? '🎨 Resim çiz' : '🎛️ Müzik yap', cls: 'take', on: () => homeInstrRef.current?.open(zone) });
     if ((zone.kind === 'evler' || zone.evlerNear) && !guest) list.push({ label: '🏘️ Evler', cls: 'take', on: () => setEvlerOpen(true) }); // v196
     if (zone.kind === 'park' && zone.act === 'bufe') list.push({ label: '🌭 Büfe', on: () => setPanel({ kind: 'bufe' }) });
     if (zone.kind === 'park' && zone.act === 'npc') list.push({ label: '🕶️ Şüpheli adam', on: () => setPanel({ kind: 'shady' }) });
@@ -1995,6 +2018,13 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                   </button>
                 </div>
               )}
+              {vui?.tamir && (
+                <div className="cs-venue-bar">
+                  <button className="cs-venue-btn" onClick={() => (guest ? setAskSignIn(true) : setPanel({ kind: 'tamir' }))}>
+                    {vui.label}
+                  </button>
+                </div>
+              )}
               {vui?.openBiz && (
                 <div className="cs-venue-bar">
                   <button className="cs-venue-btn" onClick={() => (guest ? setAskSignIn(true) : onOpenBiz?.({ type: vui.openBiz, game: true }))}>
@@ -2037,6 +2067,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
               <ArcadeHub onClose={() => setHomeArcade(false)} />
             </Suspense>
           )}
+          {!guest && uid && <HomeInstruments apiRef={homeInstrRef} homeId={homeInside ? engineRef.current?.homeId?.() : null} items={homeInside ? engineRef.current?.homeItems?.() : null} inside={homeInside} user={user} name={myName} flash={flash} />}
           {!guest && uid && <HomePanel eng={engineRef.current} uid={uid} inside={homeInside} flash={flash} evtRef={homeEvtRef} Sheet={Sheet} listOpen={evlerOpen} onListClose={() => setEvlerOpen(false)} onInfo={setHomeInfo} settingsReq={homeSetReq} />}
           {/* v157 — oyunun mekânları (camii, banka, karakol, belediye): işlemler içeride */}
           {gameVenueKey && !guest && VENUES[gameVenueKey] && (
@@ -2165,6 +2196,13 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         />
       )}
       {panel?.kind === 'animal' && user && <AnimalSheet kind={panel.animal} gold={gold} onClose={() => setPanel(null)} />}
+      {panel?.kind === 'tamir' && user && (
+        <Sheet title="🔧 Oto Tamirci" onClose={() => setPanel(null)} closeLabel="Ustadan uzaklaş">
+          <Suspense fallback={null}>
+            <Workshop shop={{ kind: 'game', type: 'tamirci' }} />
+          </Suspense>
+        </Sheet>
+      )}
       {panel?.kind === 'fleet' && user && <FleetSheet job={panel.job} uid={user.uid} gold={gold} onClose={() => setPanel(null)} />}
       {panel?.kind === 'garage' && (
         <GarageSheet

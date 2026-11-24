@@ -15,7 +15,7 @@ if not exist "package.json" goto yanlis
 if not exist ".git" goto yanlis
 
 set "MSG=%~1"
-if "%MSG%"=="" set "MSG=v197: ev tasarimi karargah gibi (goz, tavan modu, geri al, iki parmakla her yere yakinlas), garajda herkesin kendi araci + garajdan bin, Arabalarim'da kalp, makine fiyatlarinda vergi, gunluk raporda ciro, Ticaret Bakanligi ekrani duzeldi, isci vergisi kalkti, spor salonu acildi ve camii ile yer degisti, internet kafe oturunca oyna/yayin, cafe/bar menusu, polis/imam panelleri yeni tasarim, duvar/zemin bir kez alinir"
+if "%MSG%"=="" set "MSG=v198: kumarhane istasyonlari, evde piyano/davul/mikser/isik/buzdolabi, oto tamirci (+borsa hissesi), modifiye garaji gelistirme+modifiye, yol tarifi stadyumdan gecmez, Kervankent girisi yayaya acik, ev esyasi bellek sizintisi (atma), ziyaret sayaci hesap basina, Evler listesinde kisi sayisi, spor aleti gorev dugmesi, garson siparisi getirir, savas paneli guc cubugu, ic kamera fotografi, desensiz hali/yolluk, modern yemek takimi, duvar bolucu desen, merdiven"
 
 echo.
 echo ===== 1/6 gereksiz dosyalar temizleniyor =====

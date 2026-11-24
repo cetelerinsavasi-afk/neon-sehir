@@ -212,20 +212,6 @@ function shell(parts, { ext, extH, venue, doorKey, vitrine = false, ceil = '#1a1
 }
 
 // üst katlar (dükkânın üstünde apartman / ofis): oyundaki kule cephesi, zemin katı boş
-function upper(P, { style, h, extH, crown = null, seed = 1 }) {
-  const tmp = new Kit('tmp');
-  tower(tmp, { w: ROOM.W + 2 * T - 0.4, d: ROOM.D + 2 * T - 0.4, h, x: 0, z: RZ, style, crown, seed, base: { h: extH } });
-  const keep = [];
-  tmp.group.children.slice().forEach((o) => {
-    if (!o.isMesh) return;
-    o.geometry.computeBoundingBox();
-    const bottom = o.position.y + o.geometry.boundingBox.min.y * o.scale.y;
-    if (bottom < extH - 0.05) return; // zemin kata inen gövde / subasman → içeriyi doldurmasın
-    keep.push(o);
-  });
-  keep.forEach((o) => P.high.group.add(o));
-  P.high.box(ROOM.W + 2 * T - 0.6, h - extH, ROOM.D + 2 * T - 0.6, M('#b9b2a6', 0.9), 0, extH, RZ, { receive: false });
-}
 
 function newParts(name) {
   const root = new THREE.Group();

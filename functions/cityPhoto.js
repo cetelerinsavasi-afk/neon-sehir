@@ -60,7 +60,16 @@ export function cleanCam(c) {
   dx /= l;
   dy /= l;
   dz /= l;
-  return { px: r2(px), py: r2(py), pz: r2(pz), dx: r3(dx), dy: r3(dy), dz: r3(dz), fov: r2(num(c.fov, 20, 100) ?? 60), a: r3(num(c.a, 0.4, 2.5) ?? 1), cw: Math.round(num(c.cw, 200, 2000) ?? 400), ...(c.td ? { td: 1 } : {}) };
+  return { px: r2(px), py: r2(py), pz: r2(pz), dx: r3(dx), dy: r3(dy), dz: r3(dz), fov: r2(num(c.fov, 20, 100) ?? 60), a: r3(num(c.a, 0.4, 2.5) ?? 1), cw: Math.round(num(c.cw, 200, 2000) ?? 400), ...(c.td ? { td: 1 } : {}), ...interiorOf(c) };
+}
+// v198: İÇ KAMERA alanları (araç içinden çekilen fotoğraf: kokpit görünür, gövde gizli, yakın kesme küçük).
+// v159'da istemci gönderiyordu ama burada atılıyordu → otobüsün / arabanın içinden çekilen fotoğraf
+// gövdenin içinden, ekranda görülenden farklı çıkıyordu.
+//   ic: 1 · io: aracın sahibi (uid) · ik: koltuk (0 şoför) · is: direksiyon açısı
+function interiorOf(c) {
+  if (c.ic !== 1 || typeof c.io !== 'string' || !UID_RE.test(c.io)) return {};
+  const ik = Number.isInteger(c.ik) && c.ik >= 0 && c.ik <= 60 ? c.ik : 0;
+  return { ic: 1, io: c.io, ik, is: r2(num(c.is, -1.5, 1.5) ?? 0) };
 }
 
 // v154 — maç anı (sadece görüntü): futbolcu / hakem / top konumları. Kamera çevresiyle sınırlı,
