@@ -306,3 +306,26 @@ test('v92: günlük maç sohbeti — gün anahtarına yazılır, hız sınırı 
   await assert.rejects(h.act('veli', { op: 'matchChat', text: 'tekrar' }), /yavaş/);
   await assert.rejects(h.act('ali', { op: 'matchChat', text: '   ' }), /Boş/);
 });
+
+test('v196 kişisel evden yayın: sahibi (housePresence gerekmez), aynı kattaki set, izleyici sahnesi için kat + avatar; başkası açamaz', async () => {
+  const h = setup();
+  h.S('users/ali', { displayName: 'Ali', gold: 50_000, avatar: { body: 1 } });
+  h.S('houses/home_ali', {
+    kind: 'home', ownerUid: 'ali', name: 'Ali Evi',
+    items: [
+      { i: 'ch1', k: 'gamer', x: 0, z: 0, r: 0, c: 0, f: 1, p: 1 },
+      { i: 'pc0', k: 'pc', x: 1, z: 0, r: 0, c: 0, f: 0, p: 1 }, // alt katta: set sayılmaz
+      { i: 'pc1', k: 'pc', x: 1.5, z: 0.5, r: 0, c: 0, f: 1, p: 1 },
+    ],
+  });
+  await assert.rejects(h.act('veli', { op: 'start', houseId: 'home_ali', chairId: 'ch1' }), /not-owner/);
+  const r = await h.act('ali', { op: 'start', houseId: 'home_ali', chairId: 'ch1', title: 'Evden' });
+  const s = h.G(`streams/${r.streamId}`);
+  assert.equal(s.pcId, 'pc1', 'aynı kattaki bilgisayar');
+  assert.equal(s.city, true);
+  assert.equal(s.floor, 1);
+  assert.deepEqual(s.avatar, { body: 1 });
+  assert.equal(r.charged, 0, 'evden yayın ücretsiz');
+  const t = await h.act('ali', { op: 'tick', streamId: r.streamId, viewers: 2, seen: 3 });
+  assert.notEqual(t.stopped, 'left', 'şehirdeki ev: nabızda "ayrıldı" sayılmaz');
+});

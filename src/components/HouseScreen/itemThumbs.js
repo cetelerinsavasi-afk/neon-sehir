@@ -27,6 +27,18 @@ function thumbRenderer() {
   thumbCtx = { r, s, cam };
   return thumbCtx;
 }
+// v196: şehirde tasarım rafı kapanınca ikinci WebGL bağlamı bırakılır (telefonda bellek / ısınma);
+// çizilmiş resimler önbellekte kalır, yeniden açınca sadece eksikler çizilir.
+export function releaseThumbRenderer() {
+  if (!thumbCtx) return;
+  try {
+    thumbCtx.r.dispose();
+    thumbCtx.r.forceContextLoss?.();
+  } catch {
+    /* yoksay */
+  }
+  thumbCtx = null;
+}
 export function getThumb(k, ti = 0) {
   const key = `${k}|${ti}`;
   if (thumbCache.has(key)) return thumbCache.get(key);
@@ -43,7 +55,7 @@ export function getThumb(k, ti = 0) {
     cam.position.copy(center).addScaledVector(dir, radius / Math.tan((cam.fov * Math.PI) / 360));
     cam.lookAt(center);
     r.render(s, cam);
-    const url = r.domElement.toDataURL('image/png');
+    const url = r.domElement.toDataURL('image/webp', 0.85); // v196: png yerine webp (bellek ↓); desteklemeyen tarayıcı png verir
     s.remove(obj);
     disposeObject(obj);
     thumbCache.set(key, url);

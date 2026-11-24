@@ -148,3 +148,54 @@ test('ev: ana kapı türü — kalkan kapı ve garaj kapısı seçilemez', async
   await assert.rejects(() => w.home.settings('ali', { doorType: 'doner' }), /ana kapı olamaz/);
   await assert.rejects(() => w.home.settings('ali', { doorType: 'garagedoor' }), /ana kapı olamaz/);
 });
+
+test('ev: kat başına duvar / zemin kaplaması (deneme → satın al) ve pencere stili (ücretsiz, doğrulanır)', async () => {
+  const w = world();
+  await w.home.enter('ali', {});
+  await w.home.save('ali', {
+    items: [],
+    surf: { 0: { floor: 'mermer_beyaz', wall: 'boya_beyaz' }, 1: { wall: 'tugla' }, 2: { floor: 'yok_boyle' } },
+    win: { '0_0_1': { m: 3, c: 2 }, '1_2_0': { m: 9, c: 1 }, 'x': { m: 1 }, '0_1_0': { m: 0, c: 0 } },
+  });
+  let h = w.G(`houses/${homeIdOf('ali')}`);
+  assert.equal(h.surf[0].floor, 'mermer_beyaz');
+  assert.equal(h.surf[0].floorTry, true, 'ücretli zemin deneme');
+  assert.equal(h.surf[0].wallTry, undefined, 'ücretsiz duvar deneme değil');
+  assert.equal(h.surf[1].wallTry, true);
+  assert.equal(h.surf[2], undefined, 'bilinmeyen kaplama atılır');
+  assert.deepEqual(h.win, { '0_0_1': { m: 3, c: 2 }, '1_2_0': { m: 0, c: 1 } }, 'geçersiz kimlik / model elenir, varsayılan yazılmaz');
+  const r = await w.home.checkout('ali', {});
+  assert.equal(r.gold + r.gem > 0, true);
+  h = w.G(`houses/${homeIdOf('ali')}`);
+  assert.equal(h.surf[0].floorTry, undefined);
+  assert.ok(h.inv.floors.includes('mermer_beyaz'));
+  assert.ok(h.inv.walls.includes('tugla'));
+  // pencere gönderilmeyen kayıt stili silmez
+  await w.home.save('ali', { items: [], surf: h.surf });
+  assert.deepEqual(w.G(`houses/${homeIdOf('ali')}`).win, { '0_0_1': { m: 3, c: 2 }, '1_2_0': { m: 0, c: 1 } });
+});
+
+test('mobilya pazarı (v196): envanter kişisel evde — ilan ver, iptal, başkası alır (para satıcıya, eşya alıcının ev envanterine)', async () => {
+  const { createFurnMarket, furnPriceBand } = await import('../furnMarket.js');
+  const w = world();
+  const furn = createFurnMarket({ db: w.db, FieldValue, HttpsError, now: () => w.clock.now });
+  await w.home.enter('ali', {});
+  // ali'nin evinde 2 koltuk envanterde
+  const hid = homeIdOf('ali');
+  const h = w.G(`houses/${hid}`);
+  w.S(`houses/${hid}`, { ...h, inv: { items: { sofa3: 2 }, walls: [], floors: [] } });
+  const band = furnPriceBand('sofa3');
+  await assert.rejects(() => furn.list('veli', { k: 'sofa3', v: band.min }), /Önce evine/);
+  const r = await furn.list('ali', { k: 'sofa3', v: band.min });
+  assert.equal(w.G(`houses/${hid}`).inv.items.sofa3, 1);
+  await furn.cancel('ali', { id: r.id });
+  assert.equal(w.G(`houses/${hid}`).inv.items.sofa3, 2);
+  const r2 = await furn.list('ali', { k: 'sofa3', v: band.min });
+  await w.home.enter('veli', {});
+  w.S('users/veli', { ...w.G('users/veli'), gold: 10_000_000, emerald: 100 });
+  await furn.buyToInventory('veli', { id: r2.id, expect: { t: band.t, v: band.min } });
+  assert.equal(w.G(`houses/${homeIdOf('veli')}`).inv.items.sofa3, 1);
+  assert.equal(w.G(`houses/${hid}`).inv.items.sofa3, 1);
+  const paid = band.t === 'gem' ? w.G('users/ali').emerald - 100 : w.G('users/ali').gold - 10_000_000;
+  assert.equal(paid, band.min, 'para satıcıya (vergisiz)');
+});

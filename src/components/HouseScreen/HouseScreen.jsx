@@ -33,7 +33,7 @@ import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import { BizListPanel, BizSettings, BizRemovePanel } from './HouseBusiness';
 import { removalBreaksBiz, parseBizError } from './houseBusinessLogic';
 import { BIZ_TYPES, BIZ_TYPE_KEYS, isHomeOffice, checkBizRequirements } from '../../../functions/businessCatalogData.js';
-import { houseKind, officePriceOf, ownedOfficeKeys, isOfficeFurn } from '../../../functions/officeData.js';
+import { houseKind, officePriceOf } from '../../../functions/officeData.js';
 import OfficePanel from '../HomeOffice/OfficePanel';
 import { bizErrText, materialBlockText } from '../../lib/bizErrors';
 import Workshop from '../Workshop/Workshop';
@@ -1385,7 +1385,6 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
     // önce mekân kapansın, sonra şehir açılsın (App tüm üst ekranları kapatır)
     setTimeout(() => window.dispatchEvent(new CustomEvent('neon-city-exit', { detail: { region } })), 0);
   };
-  const officeOwnedKeys = ownedOfficeKeys(houseDoc);
   const paidPriceOf = (product) => (!isOwner && !venue && houseDoc ? officePriceOf(houseDoc, product) : 0);
   // v92 — garson (cafe/bar)
   const menuVenue = Boolean(bizType && MENU_TYPES.includes(bizType));
@@ -1906,7 +1905,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
             {isOwner && (
               <button className={`hs-icon-btn${intentReady ? ' cue-pulse' : ''}${houseDoc?.bizShortagePending ? ' hb-dot' : ''}`} onClick={openSettings} title="Ayarlar">⚙️</button>
             )}
-            {hqManager && (
+            {false && hqManager && ( /* v196: karargah fiyatları (ücretli ürünler) kalktı */
               <button className="hs-icon-btn" onClick={() => setPanel('office')} title="Karargah ayarları">⚙️</button>
             )}
           </div>
@@ -2225,7 +2224,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
                           }}
                         >
                           <ItemThumb k={d.k} icon={d.icon} />
-                          <span className={`hs-card-name${isOfficeFurn(d.k) ? ' paid' : ''}`} title={isOfficeFurn(d.k) ? 'Para kazandırabilir: ⚙️ Ayarlar › Ücretli Ürünler' : undefined}>{d.name}</span>
+                          <span className="hs-card-name">{d.name}</span>
                           <PriceTag price={d.price} small />
                           {d.tints && <span className="hs-card-tints">{TINTS[d.tints].length} renk</span>}
                           {invView[d.k] > 0 && <span className="hs-card-own">📦 {invView[d.k]}</span>}
@@ -2272,7 +2271,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
                       }}
                     >
                       <ItemThumb k={def.k} icon={def.icon} />
-                      <span className={`hs-card-name${isOfficeFurn(def.k) ? ' paid' : ''}`}>{def.name}</span>
+                      <span className="hs-card-name">{def.name}</span>
                       <span className="hs-card-own big">× {n}</span>
                     </button>
                   ))}
@@ -2569,12 +2568,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
                 <button className={`hs-btn ghost wide hb-open-list${intentReady && !isHomeOffice(bizIntent) ? ' cue-pulse' : ''}`} disabled={busy} onClick={() => setPanel('biz')}>
                   🏪 İşletmeler{bizIntent && !isHomeOffice(bizIntent) ? ` · ${BIZ_TYPES[bizIntent].icon}` : ''}
                 </button>
-                {/* v100 — Ücretli Ürünler (eski Home Ofisler): odada ücretli yapılabilir mobilya varsa */}
-                {isOwner && officeOwnedKeys.length > 0 && (
-                  <button className="hs-btn ghost wide hb-open-list hs-paid-btn" disabled={busy} onClick={() => setPanel('office')}>
-                    💰 Ücretli Ürünler{kind === 'ofis' ? ` · ${houseDoc?.office?.emoji || '🏢'} ofis` : ''}
-                  </button>
-                )}
+                {/* v196: Ücretli Ürünler ayarı kalktı (yeşil isimli ürünler artık normal ürün) */}
                 {/* v146 — düz ev / depo satılabilir: alış fiyatı geri, mobilyalar envantere */}
                 {isOwner && !bizType && !houseDoc?.venue && !isHq && (kind === 'ev' || kind === 'depo') && (
                   <button className="hs-btn ghost wide hs-sell-house" disabled={busy} onClick={() => setSellHouseAsk(true)}>

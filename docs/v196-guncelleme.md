@@ -63,7 +63,29 @@ Bitince: `gecis-v196.bat` → "Elle yedek kaydet" ve yolu yaz (`gs://neon-sehir.
 ## Yeni indeks
 `houses`: `listable ASC, popN DESC` (Evler listesi). Yüklemeden sonra birkaç dakika kurulur; kurulana kadar liste hata verir.
 
+## v196c — kalan şartname maddeleri
+- **Kat başına duvar / zemin:** tasarım modunda 🎨 Duvar & Zemin (seçili kat). "Varsayılan" ücretsiz; Kırık Beyaz duvar / Meşe parke ücretsiz; diğerleri sunucudaki fiyatla (100.000, tuğla / beyaz tuğla / ahşap panel / siyah mermer 5 zümrüt). Seçim deneme olarak kaydedilir, "Satın al" eşyalarla birlikte tek işlemde öder. Sunucu sadece bilinen kaplama anahtarlarını kabul eder.
+- **Pencereler:** tasarım modunda pencereye dokun → model (Klasik / Tek cam / Kafes / Panjurlu) + çerçeve rengi (8 renk). Ücretsiz. Ev belgesinde `win` (en fazla 40 kayıt, sunucuda doğrulanır). Çerçeveler duvar başına birleşik (ek çizim ≈ 16).
+- **Yeni ev kapıları:** Klasik (yeşil lake, tepe pencereli), Modern (antrasit, cam şerit), Ferforje. Ev ayarlarından seçilir (ücretsiz, diğer ev kapıları gibi).
+- **Kendi evindeki setler:** satın alınmış bilgisayar / konsol / arcade / oyuncu koltuğunun yanında "🎮 Oyun oyna" — sadece ev sahibine (misafire çıkmaz), ücretsiz, evden para kazanılmaz. Garajdaki araç ziyaretçiye gönderilmez (sadece sahibine görünür).
+- **Ücretli ürünler** ayarı ve yeşil isimler kalktı.
+- **Tablolar** (6 manzara, yağlı boya fırça izi, derin çerçeve), **yuvarlak halı** (yuvarlak bordür + madalyon), **kapılı bölme / duvar bölücü** (doku ölçeği tutarlı, kapı üstü tuğlalar yanlarla aynı).
+- **Profil › Mobilyalar** düğmesi kalktı (mobilya pazarı kapalı; mobilya evin içinden alınır).
+- **Ölçüm (masaüstü, yazılımsal GPU):** evin içinde 296 çizim / 26 bin üçgen (20 eşya); şehirde aynı yerde ~1.100 çizim. Eve giriş / çıkış ≈ anlık (şehir bellekte kalır, yeniden kurulmaz). Telefonda ölçülmedi.
+
+### v196c — oyuncu bildirimleri (24.11)
+- **İnternet kafe "internal" hatası:** oyunun mekânlarının sahibi `__game__`; Firestore `__…__` kimlikli belgeyi okumaz. Bilgisayar / yayın / garson siparişi yolunda sahip belgesi artık oyunun mekânı için okunmuyor; oyun dakikası nabzı da şehirdeki kafede "ayrıldı" saymıyor. Test sahte veritabanı da bu kimlikleri artık reddediyor (aynı hata bir daha gözden kaçmasın).
+- **Silahçı / galeri / modifiye fiyatları:** mağaza eski oyuncu dükkânlarının bayat tekliflerini gösteriyordu (sunucu katalog fiyatından satıyordu → "fiyat değişti"). Teklif okuması kapatıldı. Atölye (tamir / geliştirme) ekranı işçiliksiz yeni fiyatı gösteriyor (sunucuyla aynı).
+- **Fabrikada Çalış hatırlatması herkese** (fabrikası olana da); eski işçi makinesi dinleyicisi kalktı (okuma ↓).
+- **Ev:** sağda ⬆️ Üst kat / ⬇️ Alt kat düğmeleri (merdivenlerden yürütür); evin içinden kapıdan ve pencerelerden dış dünya görünür (diğer oyuncular görünmez); eve giren oyuncu dışarıdan hemen kaybolur (kapıda kalmaz).
+- **Tasarla modu yenilendi:** avatar gizli, evi üstten gören kamera (sürükle: döndür, iki parmak: yakınlaş), eşya rafı açık gelir (resimli kartlar, ev eşyaları önce), rafa dokununca eşya ekranın ortasına konur, parmakla sürüklenerek taşınır; seçili eşya kartı (Döndür / Renk / Kaldır), telefona göre kat seçici.
+
+### v196d — evden yayın, ücretli ürünler, mobilya pazarı, hız
+- **Evden canlı yayın:** kendi evinde oyuncu koltuğunun yanında (aynı katta oyuncu bilgisayarı) "🔴 Yayın aç" → başlık, koltuğa oturma, tam yayın paneli (sohbet, izleyenler, bağışlar, AFK), "🎮 Oyna" ile oyun salonu (izleyicide oyun büyük, kamera köşede). Koltuktan kalkınca / evden çıkınca yayın kapanır, özet gelir. Ücretsiz; bağışlar eskisi gibi. İzleyici sahnesi yayının katını (eşyalar + o katın duvar / zemini) ve yayıncıyı koltukta çizer. İnternet kafedeki yayın da aynı tam panele geçti (dakika 200, nabızla ücret).
+- **Ücretli ürünler tamamen kalktı** (ev, karargah): hiçbir mobilya ücretli yapılamaz, karargahtaki "Fiyatlar" ayarı kalktı; eski ücretli ayarlar etkisiz (ürünler ücretsiz, setler sadece sahibine).
+- **Mobilya pazarı devam ediyor:** Profil › 🛋️ Mobilyalar geri geldi. Oyuncunun mobilya envanteri artık kişisel evinde (`houses/home_{uid}.inv`); pazara koy / iptal / satın al buna göre (çete ilanları eskisi gibi karargah envanterinden). Pazardan alınan eşya evin envanterine düşer, tasarımda 📦 Envanter sekmesinden konur.
+- **Hız / telefon:** oyunun mekân belgeleri oturumda bir kez denetleniyor (her mekân girişinde ~10 okuma kalktı); tasarım rafı kapanınca küçük resim çizen ikinci WebGL bağlamı bırakılıyor; küçük resimler webp (bellek ↓); işçi makinesi dinleyicisi kalktı.
+
 ## Bilinen eksikler / sorular
-- Ev: pencere rengi / modeli, kat başına zemin / duvar kaplaması seçimi (sunucu hazır, arayüz yok), evdeki koltuklara oturma, Evler listesine evin dışından erişim — sonraki sürüm.
-- Karargah kapısının değiştirilememesi + karargah garaj kapısı, tablo / yuvarlak halı / kapı tuğlası kozmetik düzeltmeleri, firestore.rules'taki eski eşleşmelerin temizliği, admin paneli: sonraki sürüm.
+- Eski kod (işletme / ofis / mobilya pazarı ekranları, firestore.rules'taki eski koleksiyonlar) girişleri kapalı ama dosyalar duruyor; karargah ekranı bunların bir kısmını hâlâ kullandığı için ayrı ve dikkatli bir temizlik sürümünde silinmeli.
 - Eski oyuncu evi testleri (`houses`, `business`, `furn-market`, çete `market`) kaldırıldı; kalan eski testlerden kalkan sistemi deneyenler gerekçeli olarak atlandı.

@@ -92,6 +92,8 @@ const FutbolFullScreen = lazy(() => import('../FutbolScreen/FutbolFullScreen'));
 const GangsFullScreen = lazy(() => import('../Gangs/GangsFullScreen'));
 const GangPanel = lazy(() => import('../Gangs/GangPanel')); // v160.3: 5 sekmeli Çeteler paneli
 const MekanlarScreen = lazy(() => import('../MekanlarScreen/MekanlarScreen'));
+const ArcadeHub = lazy(() => import('../Arcade/ArcadeHub')); // v196: evdeki oyun cihazları
+const CityStreamHost = lazy(() => import('../Stream/CityStreamHost')); // v196: evden canlı yayın
 const ProfileFullScreen = lazy(() => import('../ProfileFullScreen/ProfileFullScreen'));
 const StreamViewer = lazy(() => import('../Stream/StreamViewer'));
 // v154 — fabrika ve yarış pisti sayfaları şehrin İÇİNDE açılır (şehir kapanmaz)
@@ -427,6 +429,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const [homeInside, setHomeInside] = useState(false); // v196: 3 katlı evin içindeyim
   const homeEvtRef = useRef(null);
   const [evlerOpen, setEvlerOpen] = useState(false); // v196: Müstakil › Evler listesi
+  const [homeArcade, setHomeArcade] = useState(false); // v196: kendi evinde oyun
+  const [homeStream, setHomeStream] = useState(null); // v196: evden yayın { chairId, houseId, items }
   const [homeInfo, setHomeInfo] = useState(null); // v196: { name, owner, floor, mine }
   const [homeSetReq, setHomeSetReq] = useState(0);
   // v167 — açılış sırası: 1 = diğer oyuncular + altın / şüphe + görevler, 2 = telefon, yayın, seçim, yakındakiler
@@ -1061,6 +1065,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       setSelfTicket: () => {},
       city: true, // v160.4 — mekân katmanı şehirde (HouseScreen değil)
       setHolding: (p) => engineRef.current?.setHolding?.(p), // v160.4 — belediye çaycısı
+      cityEng: () => engineRef.current, // v196 — internet kafede yayın (kamera görüntüsü şehir motorundan)
     };
   }
   const rotated = false; // v157.1: yatay mod kaldırıldı
@@ -1427,6 +1432,10 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       if (!vs.haracDone) list.push({ label: '💰 Haraç kes', cls: 'heist', on: () => setPanel({ kind: 'heist', zone }) });
       list.push({ label: '🧾 Menü', on: () => setPanel({ kind: 'menu', zone }) });
     }
+    if (zone.kind === 'homePlay') list.push({ label: '🎮 Oyun oyna', cls: 'take', on: () => setHomeArcade(true) }); // v196: sadece kendi evinde
+    if (zone.kind === 'homePlay' && zone.chair && !homeStream) {
+      list.push({ label: '🔴 Yayın aç', cls: 'take', on: () => setHomeStream({ chairId: zone.chair, houseId: engineRef.current?.homeId?.(), items: engineRef.current?.homeItems?.() || [] }) });
+    }
     if (zone.kind === 'evler' && !guest) list.push({ label: '🏘️ Evler', cls: 'take', on: () => setEvlerOpen(true) }); // v196
     if (zone.kind === 'park' && zone.act === 'bufe') list.push({ label: '🌭 Büfe', on: () => setPanel({ kind: 'bufe' }) });
     if (zone.kind === 'park' && zone.act === 'npc') list.push({ label: '🕶️ Şüpheli adam', on: () => setPanel({ kind: 'shady' }) });
@@ -1599,7 +1608,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   };
 
   return (
-    <div className={`hs-root cs-root${driving ? ' driving' : ''}${heistOn ? ' cs-heist-on' : ''}${rotated ? ' cs-rotated' : ''}${landscape ? ' cs-land' : ''}${vui && (vui.biz || vui.region || vui.inCity || vui.heist) ? ' cs-vbtn' : ''}`} style={covered ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}>
+    <div className={`hs-root cs-root${homeInfo?.designing ? ' cs-designing' : ''}${driving ? ' driving' : ''}${heistOn ? ' cs-heist-on' : ''}${rotated ? ' cs-rotated' : ''}${landscape ? ' cs-land' : ''}${vui && (vui.biz || vui.region || vui.inCity || vui.heist) ? ' cs-vbtn' : ''}`} style={covered ? { visibility: 'hidden', pointerEvents: 'none' } : undefined}>
       <div className="hs-stage" ref={stageRef} />
       {/* v168 — Rıza Amca senaryosu: sadece üye oyuncuda (misafirde yok) */}
       {!guest && user && ready && bootWorld && (
@@ -1957,6 +1966,22 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           {/* v196 — fabrikaya giren herkes: alt ortada Çalış (günde 1 kez 5.000) */}
           {atFactory && <FactoryWorkButton flash={flash} />}
           {/* v196 — 3 katlı ev: Evler · Tasarla · Ayarlar */}
+          {venue === 'ev' && homeInfo && !homeInfo.designing && (
+            <div className="cs-home-floors">
+              {homeInfo.lv < 2 && <button type="button" onClick={() => engineRef.current?.homeGoFloor(homeInfo.lv + 1)}>⬆️ Üst kat</button>}
+              {homeInfo.lv > 0 && <button type="button" onClick={() => engineRef.current?.homeGoFloor(homeInfo.lv - 1)}>⬇️ Alt kat</button>}
+            </div>
+          )}
+          {homeStream?.houseId && (
+            <Suspense fallback={null}>
+              <CityStreamHost eng={engineRef.current} houseId={homeStream.houseId} room="ev" items={homeStream.items} chairId={homeStream.chairId} price={0} flash={flash} onClose={() => setHomeStream(null)} />
+            </Suspense>
+          )}
+          {homeArcade && (
+            <Suspense fallback={null}>
+              <ArcadeHub onClose={() => setHomeArcade(false)} />
+            </Suspense>
+          )}
           {!guest && uid && <HomePanel eng={engineRef.current} uid={uid} inside={homeInside} flash={flash} evtRef={homeEvtRef} Sheet={Sheet} listOpen={evlerOpen} onListClose={() => setEvlerOpen(false)} onInfo={setHomeInfo} settingsReq={homeSetReq} />}
           {/* v157 — oyunun mekânları (camii, banka, karakol, belediye): işlemler içeride */}
           {gameVenueKey && !guest && VENUES[gameVenueKey] && (

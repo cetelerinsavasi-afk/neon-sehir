@@ -31,6 +31,7 @@ export function streamSetOf(items, chairId) {
   let best = STREAM_SET_RANGE;
   list.forEach((it) => {
     if (it?.p !== 1 || !STREAM_PCS.includes(it.k)) return;
+    if (chair.f != null && (it.f ?? 0) !== chair.f) return; // v196: 3 katlı evde aynı kat
     const d = Math.hypot(Number(it.x) - Number(chair.x), Number(it.z) - Number(chair.z));
     if (d <= best) {
       best = d;
@@ -64,6 +65,7 @@ export function streamPose(items, chairId, pcId) {
     ty: 0.82,
     tz: Number(chair.z) + nz * 2.5,
     fov: 72,
+    ...(chair.f != null ? { f: chair.f } : {}),
   };
 }
 

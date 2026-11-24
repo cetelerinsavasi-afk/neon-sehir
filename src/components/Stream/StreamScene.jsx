@@ -14,7 +14,13 @@ import { streamPose } from './streamShared';
 // =============================================================================
 const PRESENCE_STALE_MS = 90_000; // v147.1: nabız 60 sn — 60 sn eşik duran avatarı kırpıştırıyordu
 
-export default function StreamScene({ houseId, chairId, pcId, bubble = null, className = '' }) {
+// v196: şehirdeki yayın (stream.city — oyunun kafesi / kişisel ev): odadakiler housePresence'ta yok →
+// yayıncı koltuğunda çizilir; evde sadece yayının katı (eşyalar + o katın duvar / zemin kaplaması).
+const HOME_WALL = 'boya_krem';
+const HOME_FLOOR = 'parke_ceviz';
+export default function StreamScene({ houseId, chairId, pcId, bubble = null, className = '', stream = null }) {
+  const cityRef = useRef(null);
+  cityRef.current = stream?.city ? { uid: stream.uid, name: stream.name, avatar: stream.avatar || null, floor: stream.floor ?? null } : null;
   const mountRef = useRef(null);
   const engRef = useRef(null);
   const fsRef = useRef([]);
@@ -36,13 +42,25 @@ export default function StreamScene({ houseId, chairId, pcId, bubble = null, cla
           return !ms || t - ms < PRESENCE_STALE_MS;
         })
         .map((p) => mergeLive({ ...p, holdingVisible: p.holding || null }, liveRef.current[p.uid], p.updatedAt?.toMillis?.() ?? 0));
+      const cs = cityRef.current;
+      if (cs?.uid && !list.some((p) => p.uid === cs.uid)) list.push({ uid: cs.uid, displayName: cs.name, avatar: cs.avatar, x: 0, z: 0, seat: `${chairId}:0` });
       eng.setOthers(list);
     };
     const offHouse = onSnapshot(doc(db, 'houses', houseId), (s) => {
       if (!s.exists()) return;
       const h = s.data();
-      eng.setDesign({ items: h.items || [], wall: h.wall, floor: h.floor }, { force: true });
-      eng.setFixedCamera(streamPose(h.items, chairId, pcId));
+      const cs = cityRef.current;
+      if (h.kind === 'home') {
+        const f = cs?.floor ?? (h.items || []).find((it) => it.i === chairId)?.f ?? 0;
+        const items = (h.items || []).filter((it) => (it.f ?? 0) === f && it.p === 1);
+        const sf = h.surf?.[f] || {};
+        eng.setDesign({ items, wall: sf.wall || HOME_WALL, floor: sf.floor || HOME_FLOOR }, { force: true });
+        eng.setFixedCamera(streamPose(items, chairId, pcId));
+      } else {
+        eng.setDesign({ items: h.items || [], wall: h.wall, floor: h.floor }, { force: true });
+        eng.setFixedCamera(streamPose(h.items, chairId, pcId));
+      }
+      push();
     });
     const offPres = onSnapshot(query(collection(db, 'housePresence'), where('houseId', '==', houseId), limit(40)), (s) => {
       fsRef.current = s.docs.map((d) => ({ uid: d.id, ...d.data() }));

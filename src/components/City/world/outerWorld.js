@@ -679,6 +679,7 @@ export function mergeVenue(v) {
     g.visible = was;
   });
   mergeInPlace(v.int.group, new Set([...v.lowInner, ...(v.stubs || [])]));
+  v.ml?.useMerge?.(mergeInPlace); // v196: pencere çerçeveleri (duvar başına ayrı birleşir, stil değişince yeniden)
 }
 
 // =============================================================================

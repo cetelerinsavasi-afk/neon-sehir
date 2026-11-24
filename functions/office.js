@@ -119,6 +119,8 @@ export function createOffice({ db, FieldValue, HttpsError, splitIncomeForDebt, b
 
   // ---- sahip: ücretli yap / fiyat / emoji -------------------------------------------
   async function officeSet(uid, p) {
+    // v196: ücretli ürünler kalktı (fiyat / ücretli yapma yok)
+    if (p.keys || p.prices || p.minute != null || p.minutes) fail('failed-precondition', 'Ücretli ürünler kalktı: mobilyalar sadece sahibine / yetkililere açık, para kazandırmaz.');
     const houseId = String(p.houseId || '');
     if (!isId(houseId)) fail('invalid-argument', 'Geçersiz ev.');
     let result = null;

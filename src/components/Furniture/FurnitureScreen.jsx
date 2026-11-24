@@ -40,9 +40,10 @@ function useHouseInventory(uid) {
   const [inv, setInv] = useState(null);
   useEffect(() => {
     if (!uid) return undefined;
+    // v196: mobilya envanteri kişisel evde (houses/home_{uid}.inv) — sadece bu ekran açıkken dinlenir
     return onSnapshot(
-      doc(db, 'houseInventories', uid),
-      (s) => setInv(s.exists() ? s.data() : { items: {} }),
+      doc(db, 'houses', `home_${uid}`),
+      (s) => setInv(s.exists() ? s.data()?.inv || { items: {} } : { items: {} }),
       () => setInv({ items: {} })
     );
   }, [uid]);
@@ -246,7 +247,7 @@ export default function FurnitureScreen({ onBack }) {
                 );
               })}
             </div>
-            <p className="fu-note">Mağazadan satın alma evinin içinde (Tasarla) yapılır.</p>
+            <p className="fu-note">Mağazadan satın alma evinin içinde (⚙️ Ayarlar › eşya rafı) yapılır.</p>
           </>
         )}
 

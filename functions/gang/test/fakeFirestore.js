@@ -290,6 +290,8 @@ class CollectionReference extends Query {
     this.id = path.split('/').pop();
   }
   doc(id) {
+    // gerçek Firestore gibi: __…__ kimlikler ayrılmış (v196: '__game__' sahip okuması "internal" veriyordu)
+    if (id != null && /^__.*__$/.test(String(id))) throw new Error(`3 INVALID_ARGUMENT: Document ID "${id}" is reserved.`);
     return new DocumentReference(this._db, `${this.path}/${id || this._db._autoId()}`);
   }
   async add(data) {

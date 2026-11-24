@@ -128,6 +128,9 @@ test('internet kafe: oyun dakikası 100, yayın bilgisayarı 200; gelir oyuna', 
   assert.equal(statSum(w.db, `hs_${VENUE_CO_SK.internet}`), 40);
   const r2 = await w.act('ali', { op: 'netStart', houseId: 'game_internet', itemId: 'nspc', expect: 200 });
   assert.equal(r2.price, 200, 'yayın seti bilgisayarı 200');
+  // nabız: oyunun kafesi şehirde (housePresence yok) — oturum "ayrıldı" diye kapanmamalı
+  const tk = await w.act('ali', { op: 'netTick', houseId: 'game_internet' });
+  assert.notEqual(tk.stopped, 'left');
   assert.ok(items.some((x) => x.k === 'console'));
 });
 

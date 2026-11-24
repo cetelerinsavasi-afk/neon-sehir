@@ -14,9 +14,9 @@
 // Kendi evindeki setler (mikser, yayıncı seti…) sadece sahibine açık; evden para kazanılmaz.
 // =============================================================================
 import { V196_GONE_TEXT, isRemovedKey, WALL_ITEM_KEYS, CEIL_ITEM_KEYS, CATALOG_KEYS, REMOVED_DOOR_TYPES } from './v196Shared.js';
-import { ITEM_PRICES, surfacePrice, FREE_SURFACES } from './houseCatalogData.js';
+import { ITEM_PRICES, surfacePrice, FREE_SURFACES, SURFACE_KEYS } from './houseCatalogData.js';
 import { DOOR_TYPES } from './houseDoor.js';
-import { checkPlacement, homeIdOf, isHomeId, uidOfHome, MAX_HOME_ITEMS, HOME_LIST_MIN_ITEMS, HOME_IDLE_DAYS } from './homeGeometry.js';
+import { checkPlacement, homeIdOf, isHomeId, uidOfHome, MAX_HOME_ITEMS, HOME_LIST_MIN_ITEMS, HOME_IDLE_DAYS, cleanWin } from './homeGeometry.js';
 import { goldTag } from './moneyLog.js';
 import { VEHICLE_CATALOG } from './catalogData.js';
 
@@ -144,7 +144,7 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
         const d = dayKeyOf(t);
         tx.update(ref(id), h.popDay === d ? { popN: FieldValue.increment(1) } : { popDay: d, popN: 1 });
       }
-      out = { id, ...h, inv: own ? h.inv : undefined };
+      out = { id, ...h, inv: own ? h.inv : undefined, ...(own ? {} : { garage: null, garageCar: 0 }) }; // garajdaki araç sadece sahibine
     });
     return { ok: true, home: out };
   }
@@ -167,6 +167,7 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
       items.push(it);
     }
     const surf = cleanSurf(p.surf);
+    const win = p.win != null ? cleanWin(p.win) : null; // pencere modeli / rengi (ücretsiz)
     let out = null;
     await db.runTransaction(async (tx) => {
       const s = await tx.get(ref(id));
@@ -192,8 +193,8 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
         surf[f] = v;
       }
       const itemCount = items.filter((x) => x.p === 1).length;
-      tx.update(ref(id), { items, inv, surf, itemCount, listable: homeListable({ locked: h.locked, itemCount }), updatedAtMs: now() });
-      out = { ok: true, count: items.length, itemCount, inv };
+      tx.update(ref(id), { items, inv, surf, ...(win ? { win } : {}), itemCount, listable: homeListable({ locked: h.locked, itemCount }), updatedAtMs: now() });
+      out = { ok: true, count: items.length, itemCount, inv, surf };
     });
     return out;
   }
@@ -203,8 +204,8 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
       const v = raw?.[f];
       if (!v || typeof v !== 'object') continue;
       const o = {};
-      if (typeof v.wall === 'string' && KEY_RE.test(v.wall)) o.wall = v.wall;
-      if (typeof v.floor === 'string' && KEY_RE.test(v.floor)) o.floor = v.floor;
+      if (typeof v.wall === 'string' && SURFACE_KEYS.wall.includes(v.wall)) o.wall = v.wall;
+      if (typeof v.floor === 'string' && SURFACE_KEYS.floor.includes(v.floor)) o.floor = v.floor;
       if (Object.keys(o).length) out[f] = o;
     }
     return out;

@@ -78,6 +78,7 @@ export function streamSetOf(items, chairId) {
   let best = STREAM_SET_RANGE;
   list.forEach((it) => {
     if (it?.p !== 1 || !STREAM_PCS.includes(it.k)) return;
+    if (chair.f != null && (it.f ?? 0) !== chair.f) return; // v196: 3 katlı evde aynı kat
     const d = Math.hypot(Number(it.x) - Number(chair.x), Number(it.z) - Number(chair.z));
     if (d <= best) {
       best = d;
@@ -200,9 +201,11 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
       // v81: sadece kendi evinde/dükkânında (ücretsiz) ya da internet kafede (ücretli)
       // yayın açılır — başkasının setiyle yayın yok (orada sadece oyun oynanır)
       if (h.ownerUid !== uid && h.biz?.type !== 'internet') fail('failed-precondition', 'not-owner');
-      if (!(h.ownerUid === '__game__' || h.bizGame) && !(await txPresent(tx, uid, houseId))) fail('failed-precondition', 'not-present'); // v196: oyunun kafesi şehirde
+      // v196: oyunun kafesi ve kişisel ev şehirde (housePresence yok); ev: sadece sahibi (yukarıda not-owner)
+      const cityRoom = h.ownerUid === '__game__' || h.bizGame || h.kind === 'home';
+      if (!cityRoom && !(await txPresent(tx, uid, houseId))) fail('failed-precondition', 'not-present');
       const cafe = h.biz?.type === 'internet' && h.ownerUid !== uid;
-      const [us, seat, list, os] = await Promise.all([tx.get(userRef(uid)), tx.get(seatRef(houseId, chairId)), tx.get(listRef()), cafe ? tx.get(userRef(h.ownerUid)) : Promise.resolve(null)]);
+      const [us, seat, list, os] = await Promise.all([tx.get(userRef(uid)), tx.get(seatRef(houseId, chairId)), tx.get(listRef()), cafe && !(h.ownerUid === '__game__' || h.bizGame) ? tx.get(userRef(h.ownerUid)) : Promise.resolve(null)]);
       const user = us.data() || {};
       // koltukta başka canlı yayın var mı
       if (seat.exists && seat.data().uid !== uid && t - Number(seat.data().lastBeatMs || 0) < STREAM_STALE_MS) fail('failed-precondition', 'seat-busy');
@@ -248,6 +251,8 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
         bizType: h.biz?.type || null,
         chairId,
         pcId: set.pc.i,
+        // v196: şehirdeki yayın (oyunun kafesi / kişisel ev) — izleyici sahnesi yayıncıyı koltukta çizer
+        ...(cityRoom ? { city: true, avatar: user.avatar || null, ...(h.kind === 'home' ? { floor: Number(set.chair.f) || 0 } : {}) } : {}),
         title: title || `${nameOf(user)} canlı yayında`,
         status: 'live',
         startedAtMs: t,
@@ -298,13 +303,13 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
       const viewers = counted ? counted.viewers : Math.max(0, Math.min(100000, Math.floor(Number(p.viewers) || 0)));
       const seen = counted ? counted.seen : Math.max(0, Math.min(1000000, Math.floor(Number(p.seen) || 0)));
       const needCharge = s.cafe && Number(s.paidUntilMs || 0) - t <= 3000;
-      const present = String(s.houseId || '').startsWith('game_') ? true : await txPresent(tx, uid, s.houseId); // v196: oyunun kafesi (şehirde, housePresence yok)
+      const present = s.city || String(s.houseId || '').startsWith('game_') || String(s.houseId || '').startsWith('home_') ? true : await txPresent(tx, uid, s.houseId); // v196: şehirdeki yayın (housePresence yok)
       const reads = [tx.get(userRef(uid)), tx.get(listRef())];
       let hs = null;
       let os = null;
       if (needCharge && present) {
         hs = await tx.get(houseRef(s.houseId));
-        if (hs.exists) os = await tx.get(userRef(hs.data().ownerUid));
+        if (hs.exists && !(hs.data().ownerUid === '__game__' || hs.data().bizGame)) os = await tx.get(userRef(hs.data().ownerUid)); // v196: oyunun kafesi
       }
       const [us, list] = await Promise.all(reads);
       if (!present) {

@@ -81,7 +81,11 @@ export function ownedOfficeKeys(h) {
   return [...out];
 }
 // Ücretli (aktif) olanlar: sahip açmış + odada satın alınmış hâli var
+// v196: ÜCRETLİ ÜRÜNLER TAMAMEN KALKTI (ev, karargah, her yer) — hiçbir mobilya ücretli değil;
+// setler (mikser, yayın seti…) sadece sahibine / yetkililerine açık, kimse para kazanmaz.
+export const PAID_PRODUCTS_GONE = true;
 export function activeOfficeKeys(h) {
+  if (PAID_PRODUCTS_GONE) return [];
   const on = h?.office?.keys || {};
   return ownedOfficeKeys(h).filter((k) => on[k] === true);
 }

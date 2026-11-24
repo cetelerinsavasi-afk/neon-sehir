@@ -281,7 +281,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       const here = await txPresence(tx, uid, o.houseId);
       const hs = await tx.get(houseRef(o.houseId));
       const h = hs.exists && hs.data().biz?.type && MENU_TYPES.includes(hs.data().biz.type) ? hs.data() : null;
-      const [own, wus, custPres] = await Promise.all([tx.get(userRef(o.ownerUid)), tx.get(userRef(uid)), txPresence(tx, o.customerUid, o.houseId)]);
+      const [own, wus, custPres] = await Promise.all([ownerGet(tx, o.ownerUid), tx.get(userRef(uid)), txPresence(tx, o.customerUid, o.houseId)]);
       const served = !late && stillWaiter && Boolean(here) && Boolean(h);
       // geç kaldıysa (ya da artık garson değilse) sipariş otomatik teslim edilir
       fulfillTx(tx, { o, orderRef, h, os: own, ws2: wus, custPres, served, t });
@@ -309,7 +309,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
         const hs = await tx.get(houseRef(o.houseId));
         const h = hs.exists && hs.data().biz?.type && MENU_TYPES.includes(hs.data().biz.type) ? hs.data() : null;
         const ws = await tx.get(waiterRef(o.houseId));
-        const [own, custPres] = await Promise.all([tx.get(userRef(o.ownerUid)), txPresence(tx, o.customerUid, o.houseId)]);
+        const [own, custPres] = await Promise.all([ownerGet(tx, o.ownerUid), txPresence(tx, o.customerUid, o.houseId)]);
         fulfillTx(tx, { o, orderRef: d.ref, h, os: own, ws2: null, custPres, served: false, t });
         if (ws.exists && ws.data().uid === o.waiterUid) {
           tx.delete(waiterRef(o.houseId));
@@ -369,6 +369,9 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
 
   // v100 — mikser konsolu (ofis): her evde. Sahip ücretsiz kullanır; başkaları sadece
   // sahip mikseri ücretli yaptıysa (dakika ücreti ofis kazancına, günde 10.000 sınırı).
+  // v196: oyunun mekânlarının sahibi '__game__' — Firestore'da __…__ kimlikli belge okunamaz (hata = "internal").
+  // Sahip belgesi gereken yerlerde oyunun mekânı için okuma yapılmaz (gelir mekân paylaşımına gider).
+  const ownerGet = (tx, ownerUid) => (!ownerUid || /^__.*__$/.test(String(ownerUid)) ? Promise.resolve(null) : tx.get(userRef(ownerUid)));
   async function txNetHouse(tx, houseId, deviceId) {
     if (!isId(houseId)) fail('invalid-argument', 'Geçersiz mekân.');
     const s = await tx.get(houseRef(houseId));
@@ -389,7 +392,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     const others = occ.docs.filter((d) => d.data().uid !== uid && t - Number(d.data().lastSeenMs || 0) < NET_SEEN_MS).length;
     if (others >= (STUDIO_DEVICE_CAP.mixer || 1)) fail('failed-precondition', 'device-full');
     const ref = sessRef(houseId, uid);
-    const [ss, us, os] = await Promise.all([tx.get(ref), tx.get(userRef(uid)), tx.get(userRef(h.ownerUid))]);
+    const [ss, us, os] = await Promise.all([tx.get(ref), tx.get(userRef(uid)), ownerGet(tx, h.ownerUid)]);
     const sess = ss.exists ? ss.data() : null;
     let creditUntilMs = Number(sess?.creditUntilMs || 0);
     let charged = 0;
@@ -429,7 +432,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       const others = occ.docs.filter((d) => d.data().uid !== uid && t - Number(d.data().lastSeenMs || 0) < NET_SEEN_MS).length;
       if (others >= cap) fail('failed-precondition', 'device-full');
       const ref = sessRef(houseId, uid);
-      const [ss, us, os] = await Promise.all([tx.get(ref), tx.get(userRef(uid)), tx.get(userRef(h.ownerUid))]);
+      const [ss, us, os] = await Promise.all([tx.get(ref), tx.get(userRef(uid)), ownerGet(tx, h.ownerUid)]);
       const sess = ss.exists ? ss.data() : null;
       const streaming = h.ownerUid !== uid && h.biz.type === 'internet' && (await txStreamingHere(tx, us, houseId, t));
       const isOwner = h.ownerUid === uid || streaming;
@@ -465,7 +468,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       }
       const { h, mix } = await txNetHouse(tx, houseId, sess.deviceId);
       const t = now();
-      const present = await txPresence(tx, uid, houseId);
+      const present = isGameHouse(h) ? true : await txPresence(tx, uid, houseId); // v196: oyunun kafesi şehirde (housePresence yok)
       if (!present) {
         tx.update(ref, { deviceId: null, updatedAtMs: t });
         result = { ok: true, stopped: 'left', creditUntilMs: Number(sess.creditUntilMs || 0) };
@@ -480,7 +483,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
         const price = isOwner ? 0 : officeMinuteOf(h, key);
         if (creditUntilMs - t <= 3000) {
           if (!isOwner) {
-            const [us, os] = await Promise.all([tx.get(userRef(uid)), tx.get(userRef(h.ownerUid))]);
+            const [us, os] = await Promise.all([tx.get(userRef(uid)), ownerGet(tx, h.ownerUid)]);
             const stop = (why) => {
               tx.update(ref, { deviceId: null, lastSeenMs: t, updatedAtMs: t });
               result = { ok: true, stopped: why, creditUntilMs };
@@ -497,7 +500,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
         result = { ok: true, creditUntilMs, charged, price };
         return;
       }
-      const [us, os] = await Promise.all([tx.get(userRef(uid)), tx.get(userRef(h.ownerUid))]);
+      const [us, os] = await Promise.all([tx.get(userRef(uid)), ownerGet(tx, h.ownerUid)]);
       let creditUntilMs = Number(sess.creditUntilMs || 0);
       let charged = 0;
       const price = devicePriceOf(h, sess.deviceId);

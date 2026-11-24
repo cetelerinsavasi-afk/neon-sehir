@@ -13,7 +13,6 @@ import CarImg from '../VehicleCard/CarImg';
 import { modCost, modDefaults } from '../../../functions/vehicleMods.js';
 import {
   WORKSHOP_ITEM_TYPE,
-  gameWorkshopPrice,
   clampWorkshopPrice,
   workshopJob,
   workshopCost,
@@ -24,6 +23,7 @@ import {
   weaponPowerAtLevel,
 } from '../../../functions/itemRules.js';
 import { BIZ_MATERIALS } from '../../../functions/businessCatalogData.js';
+import { WORKSHOP_MATERIAL_PRICE } from '../../../functions/v196Shared.js';
 import { CarStatBars, LevelPips, vehicleRaceLevel, VEHICLE_MAX_LEVEL } from '../RaceTrackScreen/CarStats';
 import '../../styles/bizui.css';
 import './Workshop.css';
@@ -96,7 +96,8 @@ export default function Workshop({ shop, onClose }) {
   const material = job?.material || (tab === 'repair' ? 'tamirMalzemesi' : isWeapon ? 'silahUpgrade' : 'arabaGelistirme');
   const mat = BIZ_MATERIALS[material] || { icon: '📦', name: material };
   const isOwner = !isGame && shop.houseDoc?.ownerUid === user?.uid;
-  const price = isGame ? gameWorkshopPrice(material) : clampWorkshopPrice(material, shop.houseDoc?.bizPrices?.materials?.[material]);
+  // v196: oyunun atölyesi — malzeme başına sabit fiyat, işçilik yok (sunucu: v196WorkshopPrice ile aynı)
+  const price = isGame ? { mat: WORKSHOP_MATERIAL_PRICE[material] || 0, labor: 0 } : clampWorkshopPrice(material, shop.houseDoc?.bizPrices?.materials?.[material]);
   const priceKey = `${material}:${price.mat}:${price.labor}`;
   const qty = job?.qty || 0;
   // Stok = dükkân sahibinin ortak envanteri. Sadece sahibi kendi stoğunu görür

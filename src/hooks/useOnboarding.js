@@ -1,6 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
-import { doc, onSnapshot } from 'firebase/firestore';
-import { db } from '../firebase';
+import { useMemo } from 'react';
 import { usePoliticsState, politicsNeed } from './usePolitics';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlayer } from './usePlayer';
@@ -125,26 +123,7 @@ export function useOnboarding(gangReminders = null, gangChans = null, { inStadiu
   const bizReminders = useBizReminders(); // v92: galeri / silahçı / spor salonu
   const matchLive = useMatchLive(Boolean(user)); // v163: 18:00–19:00 maç günü
 
-  // Kullanıcının işveren fabrikasındaki (kendi fabrikası olsun olmasın)
-  // ATANDIĞI makinenin lastProducedDateKey'ini dinlemek için ayrı bir
-  // dinleyici gerekiyor — useMyFactory sadece KENDİ fabrikasını getiriyor.
-  const employment = player?.employment || null;
-  const [employmentMachine, setEmploymentMachine] = useState(null);
-
-  useEffect(() => {
-    if (!employment?.factoryId || !employment?.machineId) {
-      setEmploymentMachine(null);
-      return;
-    }
-    const ref = doc(db, 'factories', employment.factoryId, 'machines', employment.machineId);
-    const unsubscribe = onSnapshot(
-      ref,
-      (snap) => setEmploymentMachine(snap.exists() ? snap.data() : null),
-      (err) => console.error('useOnboarding (employmentMachine) dinleme hatası:', err)
-    );
-    return unsubscribe;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [employment?.factoryId, employment?.machineId]);
+  // v196: işçi sistemi kalktı — Çalış hatırlatması dailyActions.factoryWork'ten (ek okuma yok)
 
   const todayKey = istanbulDateKey();
   const win = currentPrayerWindow();
@@ -219,7 +198,8 @@ export function useOnboarding(gangReminders = null, gangChans = null, { inStadiu
       list.push({ id: 'lineup', emoji: '⚽', text: 'Kadronu düzenle' });
     }
 
-    if (employment && employmentMachine && employmentMachine.lastProducedDateKey !== todayKey) {
+    // v196: Çalış herkes için (fabrikası olan da) — günde 1 kez 5.000 (dailyActions.factoryWork)
+    if (!actionsLoading && !actions.factoryWork) {
       list.push({ id: 'work', emoji: '🏭', text: 'Fabrikada çalış' });
     }
 
@@ -283,7 +263,7 @@ export function useOnboarding(gangReminders = null, gangChans = null, { inStadiu
     list.push(...bizReminders);
 
     return list;
-  }, [matchLive, inStadium, player, actions, vehicles, weapons, weaponsLoading, inventory, invLoading, team, futbolRole, employment, employmentMachine, factory, machines, todayKey, win, gangReminders?.joinWar, gangReminders?.takeMoney, gangReminders?.report, gangReminders?.leak, bizReminders, belediyeChat, gangChat, intelChat, polNeed]);
+  }, [matchLive, inStadium, player, actions, vehicles, weapons, weaponsLoading, inventory, invLoading, team, futbolRole, actionsLoading, factory, machines, todayKey, win, gangReminders?.joinWar, gangReminders?.takeMoney, gangReminders?.report, gangReminders?.leak, bizReminders, belediyeChat, gangChat, intelChat, polNeed]);
 
   return {
     loading: playerLoading || actionsLoading,

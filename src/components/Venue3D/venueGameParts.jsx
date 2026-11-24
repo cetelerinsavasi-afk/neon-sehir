@@ -5,15 +5,24 @@
 // Bu mekânlar "hafif": konum kaydı (interiorPresence) yazılmaz.
 // =============================================================================
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { usePlayer } from '../../hooks/usePlayer';
-import { shopAction, streamAction } from '../../services/gameActions';
+import { shopAction } from '../../services/gameActions';
 import MenuPanel from '../Venue/MenuPanel';
 import GymPanel from '../Gym/GymPanel';
 import { DepoTradeSheet } from '../Depo/DepoPanels';
-import { NET_MINUTE_PRICE } from '../../../functions/v196Shared.js';
+import { NET_MINUTE_PRICE, GAME_VENUE_HOUSES } from '../../../functions/v196Shared.js';
 import '../../styles/bizui.css';
 
 const ArcadeHub = lazy(() => import('../Arcade/ArcadeHub'));
+const CityStreamHost = lazy(() => import('../Stream/CityStreamHost'));
+// oyunun mekân belgeleri (houses/game_*) oturumda BİR kez denetlenir (her mekân girişinde ~10 okuma yerine)
+let gameVenuesEnsured = false;
+function ensureGameVenues() {
+  if (gameVenuesEnsured) return;
+  gameVenuesEnsured = true;
+  shopAction({ op: 'venueEnsureGame' }).catch(() => {
+    gameVenuesEnsured = false;
+  });
+}
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 const gameDoc = (id, type) => ({ id, ownerUid: '__game__', bizGame: true, biz: { type }, name: '' });
 
@@ -43,7 +52,7 @@ function menuPart(type, label) {
   return function MenuPart({ panel, setPanel, walk, flash }) {
     const id = `game_${type}`;
     useEffect(() => {
-      shopAction({ op: 'venueEnsureGame' }).catch(() => {});
+      ensureGameVenues();
     }, []);
     return (
       <>
@@ -64,17 +73,15 @@ export const BarPart = menuPart('bar', 'Bar');
 // v196: liste yok — bilgisayara / konsola yaklaşınca "🎮 Oyun oyna" (dakikası 100, ilk dakika peşin, oynadıkça
 // her dakika), yayın setinin koltuğunda "🔴 Yayın aç" (dakikası 200). İstasyonlar: City/world/layouts.js netkafe.
 const deviceName = (id) => (id.startsWith('nps') ? `🎮 PlayStation ${id.slice(3)}` : `🖥️ Bilgisayar ${id.slice(3)}`);
-export function NetKafePart({ panel, setPanel, flash }) {
-  const { player } = usePlayer();
+export function NetKafePart({ panel, setPanel, flash, engineRef }) {
   const [sess, setSess] = useState(null); // { id, until }
-  const [live, setLive] = useState(null); // { id }
-  const [title, setTitle] = useState('');
   const [busy, setBusy] = useState(false);
   const [arcade, setArcade] = useState(false);
+  const [streamChair, setStreamChair] = useState(null); // yayın: koltuk kimliği (yayın paneli açık)
   const tickRef = useRef(null);
   const houseId = 'game_internet';
   useEffect(() => {
-    shopAction({ op: 'venueEnsureGame' }).catch(() => {});
+    ensureGameVenues();
   }, []);
   const leave = useCallback(() => {
     shopAction({ op: 'netLeave', houseId }).catch(() => {});
@@ -82,21 +89,15 @@ export function NetKafePart({ panel, setPanel, flash }) {
     setArcade(false);
   }, []);
   useEffect(() => {
-    if (!sess && !live) return undefined;
+    if (!sess) return undefined;
     tickRef.current = setInterval(async () => {
       try {
-        if (sess) {
-          const r = await shopAction({ op: 'netTick', houseId });
-          if (r?.stopped) {
-            setSess(null);
-            setArcade(false);
-            flash?.('⏱️ Süren bitti.');
-          } else if (r?.creditUntilMs) setSess((s) => (s ? { ...s, until: r.creditUntilMs } : s));
-        }
-        if (live) {
-          const r = await streamAction({ op: 'tick', streamId: live.id, viewers: 0, seen: 0 });
-          if (r?.stopped) setLive(null);
-        }
+        const r = await shopAction({ op: 'netTick', houseId });
+        if (r?.stopped) {
+          setSess(null);
+          setArcade(false);
+          flash?.('⏱️ Süren bitti.');
+        } else if (r?.creditUntilMs) setSess((s) => (s ? { ...s, until: r.creditUntilMs } : s));
       } catch (e) {
         flash?.(e?.message || 'Bağlantı koptu.');
         setSess(null);
@@ -104,7 +105,7 @@ export function NetKafePart({ panel, setPanel, flash }) {
       }
     }, 20_000);
     return () => clearInterval(tickRef.current);
-  }, [sess, live, flash]);
+  }, [sess, flash]);
   useEffect(() => () => shopAction({ op: 'netLeave', houseId }).catch(() => {}), []);
   // istasyon düğmesi: play:<cihaz> → hemen başlar (onay penceresi yok), oyun açılır
   useEffect(() => {
@@ -130,36 +131,19 @@ export function NetKafePart({ panel, setPanel, flash }) {
       }
     })();
   }, [panel, sess, setPanel, flash]);
-  const chair = panel && panel.startsWith('stream:') ? panel.slice(7) : null;
-  const goLive = async () => {
-    setBusy(true);
-    try {
-      const r = await streamAction({ op: 'start', houseId, chairId: chair, title: title || `${player?.displayName || 'Oyuncu'} yayında`, expect: NET_MINUTE_PRICE.stream });
-      setLive({ id: r.streamId });
-      setPanel(null);
-      flash?.(`🔴 Yayındasın! −${fmt(r.charged || NET_MINUTE_PRICE.stream)} altın (1 dk)`);
-    } catch (e) {
-      flash?.(/seat-busy/.test(e?.message || '') ? 'Bu set dolu.' : e?.message || 'Yayın açılamadı.');
-    } finally {
-      setBusy(false);
-    }
-  };
-  const stopLive = async () => {
-    if (!live) return;
-    try {
-      await streamAction({ op: 'stop', streamId: live.id });
-    } catch {
-      /* zaten kapanmış */
-    }
-    setLive(null);
-  };
+  // yayın seti koltuğu: stream:<koltuk> → tam yayın (başlık, sohbet, izleyiciler, bağış, oyun)
+  useEffect(() => {
+    if (!panel || !panel.startsWith('stream:')) return;
+    setPanel(null);
+    if (sess) leave();
+    setStreamChair(panel.slice(7));
+  }, [panel, setPanel, sess, leave]);
   return (
     <>
-      {(sess || live) && (
+      {sess && !streamChair && (
         <div className="hb-topbtns">
-          {sess && <button className="hb-topbtn" onClick={() => setArcade(true)}>🎮 Oyna · {deviceName(sess.id)}</button>}
-          {sess && <button className="hb-topbtn" onClick={leave}>🚪 Kalk</button>}
-          {live && <button className="hb-topbtn" onClick={stopLive}>⏹️ Yayını kapat</button>}
+          <button className="hb-topbtn" onClick={() => setArcade(true)}>🎮 Oyna · {deviceName(sess.id)}</button>
+          <button className="hb-topbtn" onClick={leave}>🚪 Kalk</button>
         </div>
       )}
       {arcade && sess && (
@@ -167,22 +151,21 @@ export function NetKafePart({ panel, setPanel, flash }) {
           <ArcadeHub onClose={() => setArcade(false)} />
         </Suspense>
       )}
-      {chair && !live && (
-        <Layer onClose={() => setPanel(null)}>
-          <div className="bz vn-panel">
-            <div className="bz-head">
-              <div className="bz-head-main">
-                <h3>🔴 Yayın aç</h3>
-                <p>Dakikası {fmt(NET_MINUTE_PRICE.stream)} altın. Kamera hazır.</p>
-              </div>
-              <button className="bz-x" onClick={() => setPanel(null)}>✕</button>
-            </div>
-            <input className="hh-input" value={title} maxLength={60} placeholder="Yayın başlığı" onChange={(e) => setTitle(e.target.value)} />
-            <button className="bz-btn primary" disabled={busy} onClick={goLive}>🔴 Yayına başla</button>
-          </div>
-        </Layer>
+      {streamChair && (
+        <Suspense fallback={null}>
+          <CityStreamHost
+            eng={engineRef?.current?.cityEng?.() || null}
+            houseId={houseId}
+            room="netkafe"
+            items={GAME_VENUE_HOUSES.internet.items}
+            chairId={streamChair}
+            price={NET_MINUTE_PRICE.stream}
+            flash={flash}
+            onClose={() => setStreamChair(null)}
+          />
+        </Suspense>
       )}
-      {busy && !chair && <div className="hb-topbtns"><span className="hb-topbtn">…</span></div>}
+      {busy && <div className="hb-topbtns"><span className="hb-topbtn">…</span></div>}
     </>
   );
 }

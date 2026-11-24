@@ -58,6 +58,22 @@ export function createFurnMarket({ db, FieldValue, HttpsError, now = () => Date.
   const marketRef = () => db.collection('furnMarket').doc('main');
   const invRef = (uid) => db.collection('houseInventories').doc(uid);
   const userRef = (uid) => db.collection('users').doc(uid);
+  // v196: oyuncunun mobilya envanteri kişisel evinde (houses/home_{uid}.inv). Çetenin envanteri
+  // eskisi gibi houseInventories/gang_… (karargah). Okuma / yazma tek yerden:
+  const homeRef = (uid) => db.collection('houses').doc(`home_${uid}`);
+  async function invRead(tx, sid) {
+    if (isGangSeller(sid)) {
+      const s = await tx.get(invRef(sid));
+      return { gang: true, inv: s.exists ? s.data() : {}, exists: true };
+    }
+    const s = await tx.get(homeRef(sid));
+    return { gang: false, inv: s.exists ? s.data().inv || {} : {}, exists: s.exists };
+  }
+  function invWrite(tx, sid, cur, items) {
+    if (cur.gang) tx.set(invRef(sid), { items, walls: cur.inv.walls || [], floors: cur.inv.floors || [], updatedAtMs: now() });
+    else tx.update(homeRef(sid), { 'inv.items': items, updatedAtMs: now() });
+  }
+  const NO_HOME = 'Önce evine bir kez gir (mobilya envanterin evinde tutulur).';
 
   // İşlem içinde: k için açık ilanlar (exclude: bu işlemde kapanacak ilanlar; extra: yeni ilan)
   async function readOpen(tx, k) {
@@ -87,20 +103,21 @@ export function createFurnMarket({ db, FieldValue, HttpsError, now = () => Date.
     if (!validFurnPrice(k, v)) fail('invalid-argument', `furn-price:${band.min}:${band.max}`);
     let result = null;
     await db.runTransaction(async (tx) => {
-      const [is, us, mine, open] = await Promise.all([
-        tx.get(invRef(sid)),
+      const [cur, us, mine, open] = await Promise.all([
+        invRead(tx, sid),
         actor ? Promise.resolve(null) : tx.get(userRef(uid)),
         tx.get(col().where('sellerUid', '==', sid).where('status', '==', 'open').limit(FURN_MAX_OPEN_PER_USER + 1)),
         readOpen(tx, k),
       ]);
-      const inv = is.exists ? is.data() : {};
+      if (!cur.exists) fail('failed-precondition', NO_HOME);
+      const inv = cur.inv;
       const have = Number(inv.items?.[k] || 0);
       if (have < 1) fail('failed-precondition', 'Envanterinde bu eşyadan yok.');
       if (mine.size >= FURN_MAX_OPEN_PER_USER) fail('failed-precondition', `En fazla ${FURN_MAX_OPEN_PER_USER} ilanın olabilir.`);
       const items = { ...(inv.items || {}) };
       items[k] = have - 1;
       if (items[k] <= 0) delete items[k];
-      tx.set(invRef(sid), { items, walls: inv.walls || [], floors: inv.floors || [], updatedAtMs: now() });
+      invWrite(tx, sid, cur, items);
       const ref = col().doc();
       const sellerName = actor ? String(actor.name || 'Çete').slice(0, 40) : String(us.data()?.displayName || 'Oyuncu').slice(0, 40);
       const row = { sellerUid: sid, sellerName, k, t: band.t, v, status: 'open', createdAtMs: now(), ...(actor?.gang ? { gangId: actor.gang.gangId, gangWorld: actor.gang.worldId, listedBy: uid } : {}) };
@@ -122,10 +139,11 @@ export function createFurnMarket({ db, FieldValue, HttpsError, now = () => Date.
       const l = ls.exists ? ls.data() : null;
       if (!l || l.sellerUid !== sid) fail('not-found', 'İlan bulunamadı.');
       if (l.status !== 'open') fail('failed-precondition', 'Bu ilan artık açık değil.');
-      const [is, open] = await Promise.all([tx.get(invRef(sid)), readOpen(tx, l.k)]);
-      const inv = is.exists ? is.data() : {};
+      const [cur, open] = await Promise.all([invRead(tx, sid), readOpen(tx, l.k)]);
+      if (!cur.exists) fail('failed-precondition', NO_HOME);
+      const inv = cur.inv;
       const items = { ...(inv.items || {}), [l.k]: Number(inv.items?.[l.k] || 0) + 1 };
-      tx.set(invRef(sid), { items, walls: inv.walls || [], floors: inv.floors || [], updatedAtMs: now() });
+      invWrite(tx, sid, cur, items);
       tx.update(col().doc(id), { status: 'cancelled', cancelledAtMs: now() });
       writeBest(tx, { [l.k]: pickBest(open.filter((x) => x.id !== id)) });
       result = { ok: true, k: l.k };
@@ -209,13 +227,14 @@ export function createFurnMarket({ db, FieldValue, HttpsError, now = () => Date.
       if ((exp.t && exp.t !== l.t) || (exp.v != null && Number(exp.v) !== l.v)) fail('aborted', 'price-changed');
       const pre = await readForCheckout(tx, [{ k: l.k, m: id }], uid);
       if (!pre.byId[id]) fail('failed-precondition', 'Bu ilan artık yok.');
-      const [us, is] = await Promise.all([tx.get(userRef(uid)), tx.get(invRef(uid))]);
+      const [us, cur] = await Promise.all([tx.get(userRef(uid)), invRead(tx, uid)]);
+      if (!cur.exists) fail('failed-precondition', NO_HOME);
       const u = us.data() || {};
       if (l.t === 'gem' ? Number(u.emerald || 0) < l.v : Number(u.gold || 0) < l.v) fail('failed-precondition', l.t === 'gem' ? 'Yetersiz zümrüt.' : 'Yetersiz altın.');
-      const inv = is.exists ? is.data() : {};
+      const inv = cur.inv;
       const items = { ...(inv.items || {}), [l.k]: Number(inv.items?.[l.k] || 0) + 1 };
       tx.update(userRef(uid), l.t === 'gem' ? { emerald: FieldValue.increment(-l.v) } : { gold: FieldValue.increment(-l.v), goldTag: goldTag('mobilya') });
-      tx.set(invRef(uid), { items, walls: inv.walls || [], floors: inv.floors || [], updatedAtMs: now() });
+      invWrite(tx, uid, cur, items);
       writeCheckout(tx, pre, [id], { buyerUid: uid, houseId: null });
       result = { ok: true, k: l.k, t: l.t, v: l.v };
     });

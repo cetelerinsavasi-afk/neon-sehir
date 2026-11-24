@@ -166,7 +166,7 @@ export default function StreamViewer({ streamId, onClose }) {
   return (
     <div className="st-root" onClick={(e) => e.stopPropagation()}>
       <div className={`st-stage${gameOn ? ' gaming' : ''}`}>
-        {s && s.houseId && live && <StreamScene houseId={s.houseId} chairId={s.chairId} pcId={s.pcId} bubble={bubble} className={gameOn ? 'pip' : ''} />}
+        {s && s.houseId && live && <StreamScene houseId={s.houseId} chairId={s.chairId} pcId={s.pcId} bubble={bubble} className={gameOn ? 'pip' : ''} stream={s} />}
         {gameOn && live && (gameKind === 'race' ? <StreamRaceView frameRef={frameRef} /> : gameKind === 'cards' ? <StreamCardsView frameRef={frameRef} hostUid={s?.uid} /> : gameKind === 'match' ? null : gameKind === 'casino' ? <StreamCasinoView frameRef={frameRef} /> : <StreamGameView frameRef={frameRef} />)}
         <div className="st-top">
           <div className="st-who">

@@ -28,6 +28,21 @@ export const HOLE_2 = Object.freeze({ x0: -1, x1: 4.6, z0: -7, z1: -5.6 });
 export const MAX_HOME_ITEMS = 400; // belge boyutu: eşya başına ~80 bayt → 400 eşya ≈ 32 KB (sınır 1 MB)
 export const HOME_LIST_MIN_ITEMS = 10; // Evler listesi: 10+ mobilya (ya da içinde biri var)
 export const HOME_IDLE_DAYS = 20; // 20 gün girmeyenin evi listede görünmez
+// pencere stili (v196): win: { "<kat>_<duvar>_<sıra>": { m: model, c: renk } } — ücretsiz
+export const WIN_MODEL_N = 4; // Klasik, Tek cam, Kafes, Panjurlu (istemci: houseFloors.js WIN_MODELS)
+export const WIN_COLOR_N = 8; // istemci: houseFloors.js WIN_COLORS
+export const WIN_ID_RE = /^[01]_[0-3]_[0-9]$/;
+export function cleanWin(raw) {
+  const out = {};
+  if (!raw || typeof raw !== 'object') return out;
+  for (const [id, v] of Object.entries(raw).slice(0, 40)) {
+    if (!WIN_ID_RE.test(id) || !v || typeof v !== 'object') continue;
+    const m = Number.isInteger(v.m) && v.m >= 0 && v.m < WIN_MODEL_N ? v.m : 0;
+    const c = Number.isInteger(v.c) && v.c >= 0 && v.c < WIN_COLOR_N ? v.c : 0;
+    if (m || c) out[id] = { m, c };
+  }
+  return out;
+}
 export const homeIdOf = (uid) => `home_${uid}`;
 export const isHomeId = (id) => typeof id === 'string' && /^home_[A-Za-z0-9_-]{1,128}$/.test(id);
 export const uidOfHome = (id) => (isHomeId(id) ? id.slice(5) : null);

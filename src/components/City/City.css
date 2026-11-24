@@ -661,3 +661,9 @@ body.ns-city-open .ta-root { z-index: 96; }
 /* v196 — evin içinde üst başlık panelinin en sağında ⚙️ Ayarlar */
 .cs-root .hs-title { position: relative; }
 .cs-root .hs-title .cs-home-set { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); padding: 6px 10px; border-radius: 10px; border: 1px solid rgba(255, 210, 63, 0.7); background: rgba(20, 16, 4, 0.85); color: #ffd23f; font: 800 12px/1 inherit; }
+/* v196: evde kat düğmeleri (telefonda merdiven zor) — sağ kenar ortası */
+.cs-root .cs-home-floors { position: absolute; right: calc(env(safe-area-inset-right, 0px) + 10px); top: 42%; display: flex; flex-direction: column; gap: 8px; z-index: 6; }
+.cs-root .cs-home-floors button { min-width: 92px; padding: 10px 12px; border-radius: 14px; border: 1px solid rgba(255, 210, 63, 0.6); background: rgba(14, 16, 22, 0.86); color: #fff; font: 800 13px/1 inherit; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); }
+.cs-root .cs-home-floors button:active { transform: scale(0.96); }
+/* v196: evde tasarım modunda sadece tasarım arayüzü (joystick, düğmeler, başlık gizli) */
+.cs-root.cs-designing > *:not(.hs-stage):not(.hm-design):not(.wk-sheet-bg):not(.hs-toast):not(.hs-overlay) { display: none !important; }

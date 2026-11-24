@@ -817,6 +817,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   const solids = [];
   const lights = [];
   const zones = [];
+  const HOME_PLAY_KEYS = new Set(['pc', 'pcstation', 'console', 'arcade', 'gamer']); // v196: evde oyun
   let waters = [];
   const labels = [];
   const blockers = [];
@@ -1229,6 +1230,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   let evY = 0.16; // oyuncunun ayak yüksekliği (blockedAt yükseklik bilmez)
   let evHome = null; // { id, ownerUid, items, surf, door, … }
   let evDesign = null; // tasarımda: { f, sel, add } | null
+  // v196 tasarım kamerası: katın ortasına bakan yörünge (avatar gizli); sürükle = döndür, iki parmak = yakınlaştır
+  const dCam = { yaw: 0, pitch: 0.95, dist: 17, x: 0, z: 0 };
+  let dDrag = null; // eşya sürükleme { idx, it, moved }
   // garajdaki araç: ev sahibinin favorisi (yoksa en pahalısı) — oyunun araç modeli (buildVehicle)
   let evCar = null;
   function evSetGarageCar(key, mods = null) {
@@ -1255,11 +1259,20 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   // evdeki koltuklar (satın alınmış oturulabilir eşyalar) şehrin oturma listesine eklenir / çıkarılır
   function evSeats() {
     for (let i = seats.length - 1; i >= 0; i--) if (seats[i].ev) seats.splice(i, 1);
+    for (let i = zones.length - 1; i >= 0; i--) if (zones[i].ev) zones.splice(i, 1);
     EV.root.updateMatrixWorld(true);
     EV.ml.seatList().forEach((st) => {
       const p = fromRoom(EV, st.x, st.z);
       seats.push({ x: p.x, y: st.y, z: p.z, yaw: EV.ry + st.yaw, taken: false, tier: false, ev: true });
     });
+    // v196: kendi evindeki oyun cihazları (satın alınmış) sadece sahibine: "🎮 Oyun oyna" (ücretsiz)
+    if (evHome?.mine) {
+      (evHome.items || []).forEach((it) => {
+        if (it.p !== 1 || !HOME_PLAY_KEYS.has(it.k)) return;
+        const p = fromRoom(EV, it.x, it.z);
+        zones.push({ kind: 'homePlay', id: `hp_${it.i}`, title: it.k === 'gamer' ? '🎮 Oyun · 🔴 Yayın' : '🎮 Oyun', chair: it.k === 'gamer' ? it.i : null, x: p.x, z: p.z, y: EV.ml.floors[it.f] ?? 0, r: 1.7, ev: true });
+      });
+    }
   }
   const evLocal = (x, z) => {
     if (!EV) return null;
@@ -2171,7 +2184,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         }
       }
       if (show && isoV && W.inVenueRoom(f.x, f.z) !== isoV) show = false; // v158: karargahtayken sadece içerdekiler
-      if (show && EV && (r.st.hm || (curVenue?.ml && evLocal(f.x, f.z))) && (r.st.hm || null) !== (curVenue?.ml ? evHome?.id || null : null)) show = false; // v196: herkes kendi evinde (ayrı oda)
+      // v196: herkes kendi evinde (ayrı oda). Evdeyken sadece aynı evdekiler; dışarıdayken evdekiler görünmez
+      if (show && EV) {
+        if (curVenue?.ml) show = Boolean(r.st.hm) && r.st.hm === (evHome?.id || '_');
+        else if (r.st.hm) show = false;
+      }
       f.group.visible = show;
       if (show) {
         f.sink = waters.length ? sinkAt(f.x, f.z) : 0;
@@ -3243,6 +3260,17 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       });
       const hit = ray.intersectObjects(objs, true).find((h) => h.object.userData.evIdx != null && ml.items[h.object.userData.evIdx]?.f === evDesign.f);
       const g = ml.pick(o, d);
+      // pencereye dokunuş (eşya seçilmediyse): zeminden önce değiyorsa pencere
+      if (!hit) {
+        const wh = ml.pickWindow(ray.ray, evDesign.f);
+        if (wh) {
+          const gw = g ? ml.groups[0].parent.localToWorld(new THREE.Vector3(g.x, g.y, g.z)).distanceTo(ray.ray.origin) : Infinity;
+          if (wh.dist < gw) {
+            onEvent?.({ type: 'homeTap', win: wh.id, idx: null, x: null, z: null, f: evDesign.f });
+            return true;
+          }
+        }
+      }
       onEvent?.({ type: 'homeTap', idx: hit ? hit.object.userData.evIdx : null, x: g?.x ?? null, z: g?.z ?? null, f: g ? ml.level(g.y + 0.2) : null });
       return true;
     }
@@ -3337,6 +3365,35 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       return;
     }
     drag = { moved: 0 };
+    // v196 tasarım: bu kattaki bir eşyaya basıldıysa sürüklenir (kamera dönmez)
+    if (evDesign && curVenue?.ml) {
+      setNdc(e);
+      ray.setFromCamera(ndc, camera);
+      const ml = curVenue.ml;
+      const hit = ray.intersectObject(ml.furnKit(evDesign.f).group, true).find((h) => h.object.userData.evIdx != null && ml.items[h.object.userData.evIdx]?.f === evDesign.f);
+      dDrag = hit ? { idx: hit.object.userData.evIdx, it: { ...ml.items[hit.object.userData.evIdx] }, moved: 0 } : null;
+    }
+  }
+  function designDragMove(e) {
+    const ml = curVenue.ml;
+    setNdc(e);
+    ray.setFromCamera(ndc, camera);
+    const root = ml.groups[0].parent;
+    root.updateMatrixWorld(true);
+    evInv.copy(root.matrixWorld).invert();
+    const o = ray.ray.origin.clone().applyMatrix4(evInv);
+    const d = ray.ray.direction.clone().transformDirection(evInv);
+    // katın zemin düzlemi
+    const fy = ml.floors[evDesign.f];
+    if (Math.abs(d.y) < 1e-4) return;
+    const t = (fy - o.y) / d.y;
+    if (t <= 0) return;
+    const x = o.x + d.x * t;
+    const z = o.z + d.z * t;
+    const it2 = { ...dDrag.it };
+    if (!ml.place(it2, x, z)) return;
+    dDrag.it = it2;
+    ml.dragTo(dDrag.idx, it2);
   }
   function onMove(e) {
     if (paused) return; // v157.9: ortak tuval başka ekrandayken (karargah düzenleme) şehir dokunuş almaz
@@ -3358,12 +3415,24 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         if (da < -Math.PI) da += Math.PI * 2;
         if (Math.abs(da) < 0.5) top.az -= da;
         pinch.a = ang;
-      } else self.camDist = clamp(self.camDist * ratio, 1.8, 16);
+      } else if (evDesign && curVenue?.ml) dCam.dist = clamp(dCam.dist * ratio, 7, 30);
+      else self.camDist = clamp(self.camDist * ratio, 1.8, 16);
       pinch.d = d;
       return;
     }
     if (!drag) return;
     drag.moved += Math.abs(dx) + Math.abs(dy);
+    if (evDesign && curVenue?.ml) {
+      if (drag.moved <= 6) return;
+      if (dDrag) {
+        dDrag.moved = drag.moved;
+        designDragMove(e);
+      } else {
+        dCam.yaw -= dx * 0.006;
+        dCam.pitch = clamp(dCam.pitch + dy * 0.004, 0.35, 1.45);
+      }
+      return;
+    }
     if (drag.moved > 6) {
       if (view === '2d') {
         top.az -= dx * 0.006;
@@ -3389,13 +3458,16 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   function onUp(e) {
     pointers.delete(e.pointerId);
     if (pointers.size < 2) pinch = null;
-    if (drag && drag.moved <= 8 && e.type === 'pointerup') handleTap(e);
+    if (dDrag && dDrag.moved > 8 && evDesign) onEvent?.({ type: 'homeDrop', idx: dDrag.idx, x: dDrag.it.x, z: dDrag.it.z, r: dDrag.it.r });
+    else if (drag && drag.moved <= 8 && e.type === 'pointerup') handleTap(e);
+    dDrag = null;
     drag = null;
   }
   function onWheel(e) {
     if (paused) return; // v157.9: ortak tuval başka ekrandayken (karargah düzenleme) şehir dokunuş almaz
     e.preventDefault();
     if (view === '2d') top.dist = clamp(top.dist * (1 + clamp(e.deltaY, -200, 200) * 0.0012), 14, 110);
+    else if (evDesign && curVenue?.ml) dCam.dist = clamp(dCam.dist + e.deltaY * 0.02, 7, 30);
     else self.camDist = clamp(self.camDist + e.deltaY * 0.006, 1.8, 16);
   }
   const onKeyDown = (e) => {
@@ -3924,6 +3996,20 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   function placeCamera(dt) {
     camera.userData.billboardYaw = null;
     if (heist?.active && heist.cam(dt)) return; // v154
+    if (evDesign && curVenue?.ml) {
+      const v = curVenue;
+      const fy = v.ml.floors[evDesign.f];
+      const yaw = v.ry + dCam.yaw;
+      const c0 = fromRoom(v, dCam.x, dCam.z);
+      const c = { x: c0.x + Math.sin(yaw) * (dCam.lift || 0), z: c0.z + Math.cos(yaw) * (dCam.lift || 0) };
+      const want = new V(c.x + Math.sin(yaw) * Math.cos(dCam.pitch) * dCam.dist, fy + Math.sin(dCam.pitch) * dCam.dist, c.z + Math.cos(yaw) * Math.cos(dCam.pitch) * dCam.dist);
+      camPos.lerp(want, first ? 1 : 1 - Math.exp(-dt * 10));
+      camera.position.copy(camPos);
+      const look = new V(c.x, fy + 0.4, c.z);
+      lookSm = !lookSm ? look.clone() : lookSm.lerp(look, 1 - Math.exp(-dt * 12));
+      camera.lookAt(lookSm);
+      return;
+    }
     {
       const ic = view !== '2d' && carCam === 'in' ? (driving && myCar ? myCar : !driving ? rideCar() : null) : null;
       setInterior(ic);
@@ -4295,7 +4381,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     setVenue((!driving || myCar?.v.walker) && !self.ride && !heist?.active ? W.inVenueRoom(self.x, self.z, -0.1) : null); // v157.4: binekle mekâna girilir
     if (LAZY_INT) lazyInteriors(dt);
     {
-      const want = (curVenue?.isolated || curVenue?.ml) && view !== '2d' ? curVenue : null; // v196: ev içi de yalıtılmış (şehir çizilmez)
+      const want = curVenue?.isolated && view !== '2d' ? curVenue : null; // v196: evde dış dünya çizilir (kapıdan / pencereden dışarısı görünsün); diğer oyuncular gizli
       if (want !== isoV) setIso(want);
     }
     W.venues.forEach((v) => {
@@ -4409,6 +4495,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       if (z.kind === 'door') return; // v157: kapı butonu yok — mekânın içine yürüyerek girilir
       if (z.kind === 'hqIn' && curVenue) return; // v158: karargah kapısı — dışarıdayken
       if (z.kind === 'hqOut' && (!curVenue || curVenue.hqSlot !== z.slot)) return; // içerideyken
+      if (z.y != null && Math.abs(me.y - z.y) > 1.6) return; // v196: evde başka kattaki cihaz
       const d = Math.hypot(z.x - self.x, z.z - self.z);
       if (d < z.r && d < bd) {
         best = z;
@@ -5537,7 +5624,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       const out = {};
       remotes.forEach((r) => {
         const h = r.st?.hm;
-        if (h) out[h] = (out[h] || 0) + 1;
+        if (h && h !== '_') out[h] = (out[h] || 0) + 1;
       });
       return out;
     },
@@ -5547,6 +5634,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       evHome = home || null;
       EV.ml.setItems(home?.items || []);
       EV.ml.setSurfaces(home?.surf || {});
+      EV.ml.setWindows(home?.win || {});
       evSeats();
       this.homeDoor?.(home?.door?.t || 'ahsap');
       evSetGarageCar(home?.garage?.cid || home?.garageCar || null, home?.garage?.mods || null);
@@ -5557,11 +5645,77 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       evSeats();
       if (evHome) evHome.items = items;
     },
+    // v196: kat başına duvar / zemin kaplaması (önizleme + kayıttan sonra)
+    homeWindows(win) {
+      if (!EV) return;
+      EV.ml.setWindows(win || {});
+      if (evHome) evHome.win = win;
+    },
+    // v196: telefonda merdiven zor — kat düğmesi oyuncuyu merdivenlerden o kata yürütür
+    homeGoFloor(f) {
+      if (!EV || curVenue !== EV || evDesign || driving) return false;
+      const g = EV.ml.floorTarget(Math.max(0, Math.min(2, f | 0)));
+      if (self.seat) standUp();
+      const here = toRoom(EV, self.x, self.z);
+      const pts = EV.ml.route({ x: here.x, z: here.z, y: me.y }, g).map(([x, z]) => fromRoom(EV, x, z));
+      if (!pts.length) return false;
+      self.path = pts;
+      self.target = pts.shift();
+      self.repath = 0;
+      self.stuckT = 0;
+      return true;
+    },
+    // v196 — şehirdeki yayın (oyunun internet kafesi / kişisel ev): yayın kamerasından küçük kare
+    // pose: oda koordinatları (streamShared.streamPose) + room ('ev' | mekân türü) + f (evde kat)
+    renderStreamView(pose, target) {
+      if (!pose || !target) return false;
+      const v = W.venues.find((q) => q.type === (pose.room || 'ev'));
+      if (!v) return false;
+      try {
+        const base = v.ml ? v.ml.floors[pose.f || 0] : 0.16;
+        const p = fromRoom(v, pose.px, pose.pz);
+        const t = fromRoom(v, pose.tx, pose.tz);
+        const cw = canvas.width;
+        const ch = canvas.height;
+        const want = target.width / target.height;
+        let vw = cw;
+        let vh = Math.round(cw / want);
+        if (vh > ch) {
+          vh = ch;
+          vw = Math.round(ch * want);
+        }
+        const c = camera.clone();
+        c.fov = pose.fov || 64;
+        c.aspect = want;
+        c.near = 0.05;
+        c.position.set(p.x, base + pose.py, p.z);
+        c.lookAt(t.x, base + pose.ty, t.z);
+        c.updateMatrixWorld();
+        c.updateProjectionMatrix();
+        const pr = renderer.getPixelRatio();
+        renderer.setViewport(0, 0, vw / pr, vh / pr);
+        renderer.render(scene, c);
+        target.getContext('2d').drawImage(canvas, 0, ch - vh, vw, vh, 0, 0, target.width, target.height);
+        renderer.setViewport(0, 0, cw / pr, ch / pr);
+        renderer.render(scene, camera);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    homeItems: () => (evHome?.items || []).map((x) => ({ ...x })),
+    homeId: () => evHome?.id || null,
+    homeSurfaces(surf) {
+      if (!EV) return;
+      EV.ml.setSurfaces(surf || {});
+      if (evHome) evHome.surf = surf;
+    },
     // ana kapı türü (ahşap / beyaz / çift / salon) — konum aynı, açılır kapı yenisiyle değişir
     homeDoor(t) {
       if (!EV || !EV.doors?.[0]) return;
       const key = `door_${t || 'ahsap'}`;
       const old = EV.doors[0];
+      old.traverse((o) => o.userData.doorVoid && (o.visible = false)); // kapının arkası siyah değil: dışarısı görünsün
       if (old.userData.doorKey === key || (!old.userData.doorKey && key === 'door_ahsap')) return;
       const kit = EV.low[0];
       const n = kit.item(key, old.position.x, old.position.z, 0, 0, { solid: false, y: 0.02 });
@@ -5583,8 +5737,35 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     homePlace: (it, x, z) => (EV ? EV.ml.place(it, x, z) : false),
     homeSelect: (idx) => EV?.ml.select(idx),
     homeDesign(f) {
+      const was = evDesign;
       evDesign = f == null ? null : { f: Math.max(0, Math.min(2, f | 0)) };
+      me.group.visible = !evDesign; // tasarımda avatar gizli
+      if (evDesign && !was) {
+        dCam.yaw = 0;
+        const portrait = (canvas.clientHeight || 1) > (canvas.clientWidth || 1);
+        dCam.yaw = portrait ? Math.PI / 2 : 0; // dikey ekranda evin uzun kenarı dikey
+        dCam.pitch = portrait ? 1.1 : 0.95;
+        dCam.dist = portrait ? 25 : 19;
+        dCam.lift = portrait ? 4 : 2; // alttaki eşya rafı zemini kapatmasın: bakış noktası kameraya doğru
+        dCam.x = 0;
+        dCam.z = 0;
+      }
       if (!evDesign && EV) EV.ml.select(null);
+      dDrag = null;
+    },
+    // tasarım: ekranın ortasının denk geldiği zemin noktası (yeni eşya oraya konur) — oda yereli
+    homeViewCenter() {
+      if (!EV || !evDesign) return { x: 0, z: 0 };
+      ndc.set(0, 0);
+      ray.setFromCamera(ndc, camera);
+      const root = EV.ml.groups[0].parent;
+      root.updateMatrixWorld(true);
+      evInv.copy(root.matrixWorld).invert();
+      const o = ray.ray.origin.clone().applyMatrix4(evInv);
+      const d = ray.ray.direction.clone().transformDirection(evInv);
+      const fy = EV.ml.floors[evDesign.f];
+      const t = Math.abs(d.y) > 1e-4 ? (fy - o.y) / d.y : -1;
+      return t > 0 ? { x: o.x + d.x * t, z: o.z + d.z * t } : { x: 0, z: 0 };
     },
     // kapının iç tarafına (giriş katı) ışınlan — "Evine git" / ziyaret
     homeSpawn() {
@@ -5923,8 +6104,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       }
       if (me.holding) st.h = me.holding;
       // v196: evin içinde — hangi evdeyim (ayrı oda) + kat yüksekliği
-      if (curVenue?.ml && evHome) {
-        st.hm = evHome.id;
+      // (ev belgesi henüz gelmediyse de "evde" sayılır: dışarıdakilere kapıda görünmeyiz)
+      if (curVenue?.ml) {
+        st.hm = evHome?.id || '_';
         st.y = Math.round(me.y * 100) / 100;
       }
       return st;

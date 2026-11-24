@@ -362,7 +362,8 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
   const changed = (a, b) => {
     if (!a || !b) return true;
     if (Math.hypot(a.x - b.x, a.z - b.z) > 0.2) return true;
-    for (const k of ['l', 'm', 'p', 'sy', 'e', 'et', 'h', 'ro', 'rk', 'r']) if (a[k] !== b[k]) return true;
+    if (Math.abs((a.y ?? 0) - (b.y ?? 0)) > 0.3) return true; // v196: evde kat değişti
+    for (const k of ['l', 'm', 'p', 'sy', 'e', 'et', 'h', 'ro', 'rk', 'r', 'hm']) if (a[k] !== b[k]) return true; // v196: eve girdi / çıktı hemen gitsin
     return false;
   };
   // v160 — ŞEHİR ÖRTÜLÜYKEN GÖRÜNMEZ: karargah / ev / işletme ekranı şehrin üstünde açıkken
@@ -397,7 +398,7 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
   let lastCarFullAt = 0;
   const sameButPos = (a, b) => {
     if (!a || !b) return false;
-    for (const k of ['l', 'm', 'p', 'sy', 'e', 'et', 'h', 'ro', 'rk', 'r']) if (a[k] !== b[k]) return false;
+    for (const k of ['l', 'm', 'p', 'sy', 'e', 'et', 'h', 'ro', 'rk', 'r', 'hm']) if (a[k] !== b[k]) return false;
     return true;
   };
   function tick(state, car) {

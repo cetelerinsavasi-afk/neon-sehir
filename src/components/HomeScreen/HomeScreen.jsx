@@ -23,8 +23,8 @@ import { retryImport } from '../../lib/lazyRetry';
 import './HomeScreen.css';
 
 // v146 — Profil › Mobilyalar (3D katalog / three.js ana pakete girmesin diye ayrı parça)
-const FurnitureScreen = lazy(retryImport(() => import('../Furniture/FurnitureScreen')));
 const CostumeShop = lazy(retryImport(() => import('../CostumeShop/CostumeShop'))); // v160
+const FurnitureScreen = lazy(retryImport(() => import('../Furniture/FurnitureScreen'))); // v196: mobilya pazarı devam
 
 function weaponImage(catalogId) {
   return weaponCatalog.find((w) => w.id === catalogId)?.image;
@@ -222,7 +222,7 @@ export default function HomeScreen() {
   const [accShop, setAccShop] = useState(false);
   const [cosShop, setCosShop] = useState(false); // v160
   const [report, setReport] = useState(false);
-  const [furn, setFurn] = useState(false); // v146
+  const [furn, setFurn] = useState(false); // v146 / v196: Profil › Mobilyalar (pazar)
   const [vehOpen, toggleVeh] = useFold('veh'); // v169
   const [wepOpen, toggleWep] = useFold('wep');
   const [vehTab, setVehTab] = useState('araba');
@@ -244,15 +244,15 @@ export default function HomeScreen() {
   if (accShop) {
     return <AccessoryShop onBack={() => setAccShop(false)} />;
   }
-  if (report) {
-    return <DailyReport onBack={() => setReport(false)} />;
-  }
   if (furn) {
     return (
       <Suspense fallback={<div className="app-lazy-fallback" aria-busy="true"><span /></div>}>
         <FurnitureScreen onBack={() => setFurn(false)} />
       </Suspense>
     );
+  }
+  if (report) {
+    return <DailyReport onBack={() => setReport(false)} />;
   }
 
   // v77: vitrindeki (dükkândaki) ürünler kilitli — soluk ve 🔒 ile gösterilir

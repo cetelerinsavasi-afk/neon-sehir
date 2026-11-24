@@ -1459,8 +1459,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     const uid = requireAuth(request);
     // v196 — kişisel 3 katlı ev (functions/home.js)
     if (Object.prototype.hasOwnProperty.call(home.ops, p.op)) return home.ops[p.op](uid, p);
-    // v196 — oyuncu evi / işletmesi satın alma, açma, satma ve mobilya pazarı kalktı
-    if (['buy', 'bizOpen', 'bizIntent', 'bizClose', 'sellHouse', 'furnBuy', 'furnList', 'furnCancel'].includes(p.op) && !String(p.houseId || '').startsWith('hq')) fail('failed-precondition', V196_GONE_TEXT);
+    // v196 — oyuncu evi / işletmesi satın alma, açma, satma kalktı (mobilya pazarı devam: envanter kişisel evde)
+    if (['buy', 'bizOpen', 'bizIntent', 'bizClose', 'sellHouse'].includes(p.op) && !String(p.houseId || '').startsWith('hq')) fail('failed-precondition', V196_GONE_TEXT);
     switch (p.op) {
       case 'buy':
         return buy(uid, p);

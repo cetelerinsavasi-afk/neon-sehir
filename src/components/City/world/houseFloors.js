@@ -155,15 +155,29 @@ function route(a, b) {
   return pts;
 }
 
+export const HOME_FLOOR_DEFAULT = 'parke_ceviz';
+export const HOME_WALL_DEFAULT = 'boya_krem';
 // ---- yapı parçaları -----------------------------------------------------------------------
-const matCache = new Map();
-function surfMat(def, rough) {
-  if (matCache.has(def.key)) return matCache.get(def.key);
-  const map = tileBaseTexture(def).clone();
-  map.needsUpdate = true;
-  map.wrapS = map.wrapT = THREE.RepeatWrapping;
-  const m = new THREE.MeshStandardMaterial({ map, roughness: rough ?? def.rough ?? 0.8 });
-  matCache.set(def.key, m);
+// v196: kat başına kaplama — her katın kendi malzemesi (noDedupe: birleştirmede ayrı kalır, kat katlar
+// birbirine karışmaz). Kaplama değişince yeni mesh kurulmaz; malzemenin dokusu yerinde değişir.
+function paintSurf(m, def, rough) {
+  const t = tileBaseTexture(def).clone();
+  t.needsUpdate = true;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  const r = m.userData.baseRep / (def.rep || m.userData.baseRep);
+  t.repeat.set(r, r);
+  const old = m.map;
+  m.map = t;
+  m.roughness = rough ?? def.rough ?? 0.8;
+  m.userData.key = def.key;
+  m.needsUpdate = true;
+  if (old && old !== t) old.dispose();
+}
+function ownSurf(def, rough, baseRep) {
+  const m = new THREE.MeshStandardMaterial({ roughness: rough });
+  m.userData.noDedupe = true;
+  m.userData.baseRep = baseRep;
+  paintSurf(m, def, rough);
   return m;
 }
 // yatay döşeme parçası (UV dünya ölçeğinde, yan yana kesintisiz)
@@ -261,7 +275,7 @@ function wallSeg(g, side, a0, a1, y0, y1, at, t, mat, cast = true) {
   const c = (a0 + a1) / 2;
   return alongX(side) ? box(g, w, y1 - y0, t, mat, c, y0, at, 0, cast) : box(g, t, y1 - y0, w, mat, at, y0, c, 0, cast);
 }
-function frame(g, side, h, at, mat, { bars = 0, d = 0.08, t = 0.07 } = {}) {
+function frame(g, side, h, at, mat, { bars = 0, hbars = 0, d = 0.08, t = 0.07 } = {}) {
   const { a0, a1, y0, y1 } = h;
   wallSeg(g, side, a0 - t, a1 + t, y1, y1 + t, at, d, mat, false);
   wallSeg(g, side, a0 - t, a1 + t, y0 - t, y0, at, d, mat, false);
@@ -270,6 +284,49 @@ function frame(g, side, h, at, mat, { bars = 0, d = 0.08, t = 0.07 } = {}) {
   for (let i = 1; i <= bars; i++) {
     const a = a0 + ((a1 - a0) * i) / (bars + 1);
     wallSeg(g, side, a - t / 2, a + t / 2, y0, y1, at, d * 0.8, mat, false);
+  }
+  for (let i = 1; i <= hbars; i++) {
+    const y = y0 + ((y1 - y0) * i) / (hbars + 1);
+    wallSeg(g, side, a0, a1, y - t / 2, y + t / 2, at, d * 0.8, mat, false);
+  }
+}
+// v196: pencere modeli / rengi (evin penceresine dokununca). Ev belgesi: win: { [id]: { m, c } }
+export const WIN_MODELS = ['Klasik', 'Tek cam', 'Kafes', 'Panjurlu'];
+export const WIN_COLORS = [
+  ['Beyaz', '#f7f3ec'],
+  ['Krem', '#e6d8bd'],
+  ['Ahşap', '#7a5234'],
+  ['Ceviz', '#3f2a1c'],
+  ['Siyah', '#1d1d1f'],
+  ['Antrasit', '#4a4f57'],
+  ['Yeşil', '#2f5d3a'],
+  ['Lacivert', '#23395d'],
+];
+function drawWindow(w, st) {
+  const m = Math.max(0, Math.min(WIN_MODELS.length - 1, st?.m | 0));
+  const mat = M(WIN_COLORS[Math.max(0, Math.min(WIN_COLORS.length - 1, st?.c | 0))][1], 0.55);
+  const { side, h, big } = w;
+  const nn = alongX(side) ? NORMALS[side][1] : NORMALS[side][0];
+  const barsN = big ? Math.max(1, Math.round((h.a1 - h.a0) / 1.7) - 1) : 1;
+  const bars = m === 1 ? 0 : barsN;
+  const hbars = m === 2 ? (big ? 2 : 1) : 0;
+  const og = w.og;
+  const ig = w.ig;
+  frame(og, side, h, w.outer + nn * 0.03, mat, { bars, hbars });
+  frame(ig, side, h, w.inner - nn * 0.03, mat, { bars, hbars });
+  if (!big) {
+    wallSeg(og, side, h.a0 - 0.18, h.a1 + 0.18, h.y0 - 0.14, h.y0 - 0.04, w.outer + nn * 0.12, 0.26, mat, false);
+    wallSeg(ig, side, h.a0 - 0.12, h.a1 + 0.12, h.y0 - 0.1, h.y0 - 0.04, w.inner - nn * 0.1, 0.2, mat, false);
+  }
+  if (m === 3 && !big) {
+    // panjurlar: pencerenin iki yanında, dışta (çıtalı)
+    const sw = (h.a1 - h.a0) / 2;
+    const at = w.outer + nn * 0.05;
+    const slat = M(WIN_COLORS[Math.max(0, Math.min(WIN_COLORS.length - 1, st?.c | 0))][1], 0.7);
+    for (const [s0, s1] of [[h.a0 - 0.09 - sw, h.a0 - 0.09], [h.a1 + 0.09, h.a1 + 0.09 + sw]]) {
+      wallSeg(og, side, s0, s1, h.y0 - 0.02, h.y1 + 0.02, at, 0.05, mat, false);
+      for (let y = h.y0 + 0.14; y < h.y1 - 0.05; y += 0.16) wallSeg(og, side, s0 + 0.05, s1 - 0.05, y - 0.02, y + 0.02, at + nn * 0.03, 0.03, slat, false);
+    }
   }
 }
 function pane(g, side, h, at) {
@@ -282,7 +339,7 @@ function pane(g, side, h, at) {
   return m;
 }
 // bir kat duvarı (dış + iç yüz + pencereler)
-function storeyWall(outG, inG, side, { T, yb, yt, yIn0, yIn1, holes, extM, wallM, wr, trimM }) {
+function storeyWall(outG, inG, side, { T, yb, yt, yIn0, yIn1, holes, extM, wallM, wr, storey, wins }) {
   const n = NORMALS[side];
   const half = alongX(side) ? EF : TF;
   const mid = alongX(side) ? n[1] * (TF + T / 2) : n[0] * (EF + T / 2);
@@ -291,19 +348,20 @@ function storeyWall(outG, inG, side, { T, yb, yt, yIn0, yIn1, holes, extM, wallM
   const span = alongX(side) ? half + T : half;
   splitHoles(-span, span, yb, yt, holes).forEach(([a0, a1, y0, y1]) => wallSeg(outG, side, a0, a1, y0, y1, mid, T, extM));
   splitHoles(-half, half, yIn0, yIn1, holes.map((h) => ({ ...h, y0: Math.max(h.y0, yIn0), y1: Math.min(h.y1, yIn1) }))).forEach(([a0, a1, y0, y1]) => wallPlane(inG, wallM, wr, a0, a1, y0, y1, inner, [-n[0], -n[1]]));
-  holes.forEach((h) => {
-    if (h.door) return;
+  // pencere çerçeveleri ayrı grupta (kendi içinde birleşir; model / renk değişince sadece o duvarınki yeniden kurulur)
+  const og = new THREE.Group();
+  const ig = new THREE.Group();
+  og.userData.noMerge = true;
+  ig.userData.noMerge = true;
+  outG.add(og);
+  if (inG !== outG) inG.add(ig);
+  else og.add(ig);
+  const list = [];
+  holes.filter((h) => !h.door).forEach((h, i) => {
     pane(outG, side, h, mid);
-    const bars = h.big ? Math.max(1, Math.round((h.a1 - h.a0) / 1.7) - 1) : 1;
-    frame(outG, side, h, outer + (alongX(side) ? n[1] : n[0]) * 0.03, trimM, { bars });
-    frame(inG, side, h, inner - (alongX(side) ? n[1] : n[0]) * 0.03, trimM, { bars: h.big ? bars : 1 });
-    if (!h.big) {
-      const sillO = outer + (alongX(side) ? n[1] : n[0]) * 0.12;
-      const sillI = inner - (alongX(side) ? n[1] : n[0]) * 0.1;
-      wallSeg(outG, side, h.a0 - 0.18, h.a1 + 0.18, h.y0 - 0.14, h.y0 - 0.04, sillO, 0.26, trimM, false);
-      wallSeg(inG, side, h.a0 - 0.12, h.a1 + 0.12, h.y0 - 0.1, h.y0 - 0.04, sillI, 0.2, trimM, false);
-    }
+    list.push({ id: `${storey}_${side}_${i}`, storey, side, h, big: Boolean(h.big), outer, inner, mid, og, ig });
   });
+  wins.push({ og, ig, list });
 }
 function roof(g, { roofM, ceilM, trimM, T }) {
   const slopeLen = Math.hypot(CF, KP) + 0.05;
@@ -372,10 +430,13 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
   const w2dip = [0, 1, 2, 3].map((i) => grp(`ev_k2_dip${i}`));
   [...w1dip, ...w2dip].forEach((g) => (g.visible = false));
   // kaplamalar (kat başına değiştirilebilir — setSurfaces)
-  let parke = floorDef('parke_ceviz');
-  let boya = wallDef('boya_krem');
-  const floorM = [surfMat(parke, 0.5), surfMat(parke, 0.5), surfMat(parke, 0.5)];
-  const wallM = surfMat(boya, 0.9);
+  const parke = floorDef(HOME_FLOOR_DEFAULT);
+  const boya = wallDef(HOME_WALL_DEFAULT);
+  const fRep0 = parke.rep || 2;
+  const wRep0 = boya.rep || 3;
+  const floorM = [0, 1, 2].map(() => ownSurf(parke, 0.5, fRep0));
+  const wallMs = [0, 1, 2].map(() => ownSurf(boya, 0.9, wRep0));
+  const wallM = wallMs[0];
   const extM = wallMat('boya_krem');
   const ceilM = M('#f4f1ea', 0.9);
   const slabEdgeM = M('#e8e1d4', 0.8);
@@ -384,21 +445,22 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
   const stairM = M('#6b4630', 0.55);
   const treadM = M('#e6dccb', 0.85);
   const railM = M('#2b2420', 0.5, 0.3);
-  const fRep = parke.rep || 2;
-  const wRep = boya.rep || 3;
+  const fRep = fRep0;
+  const wRep = wRep0;
   const [, F1, F2] = UP;
-  const floorParts = [[], [], []]; // setSurfaces için
+  // giriş katı zemini (kabuğun zemininin hemen üstünde; kaplaması değiştirilebilir)
+  floorPlane(k0, floorM[0], fRep, -EF, EF, -TF, TF, UP[0] + 0.004, true);
   // 1. kat döşemesi (merdiven boşluğu hariç) + 0. kat tavanı
   [[XP.x1, EF, -TF, TF], [-EF, XP.x1, -TF, XP.z0], [-EF, XP.x1, XP.z1, TF]].forEach(([x0, x1, z0, z1]) => {
     floorPlane(ceil0, ceilM, 1, x0, x1, z0, z1, F1 - SLAB, false);
-    floorParts[1].push(floorPlane(k1, floorM[1], fRep, x0, x1, z0, z1, F1, true));
+    floorPlane(k1, floorM[1], fRep, x0, x1, z0, z1, F1, true);
   });
   wallPlane(ceil0, slabEdgeM, 1, XP.z0, XP.z1, F1 - SLAB, F1, XP.x1, [-1, 0]);
   wallPlane(ceil0, slabEdgeM, 1, XP.x0, XP.x1, F1 - SLAB, F1, XP.z1, [0, -1]);
   wallPlane(ceil0, slabEdgeM, 1, XP.x0, XP.x1, F1 - SLAB, F1, XP.z0, [0, 1]);
   // çatı katı döşemesi (dar) + 1. kat tavanı
   [[-EF, ZP.x0, -TF, TF], [ZP.x1, EF, -TF, TF], [ZP.x0, ZP.x1, ZP.z1, TF]].forEach(([x0, x1, z0, z1]) => floorPlane(ceil1, ceilM, 1, x0, x1, z0, z1, F2 - SLAB, false));
-  [[-QP, ZP.x0, -TF, TF], [ZP.x1, QP, -TF, TF], [ZP.x0, ZP.x1, ZP.z1, TF]].forEach(([x0, x1, z0, z1]) => floorParts[2].push(floorPlane(k2, floorM[2], fRep, x0, x1, z0, z1, F2, true)));
+  [[-QP, ZP.x0, -TF, TF], [ZP.x1, QP, -TF, TF], [ZP.x0, ZP.x1, ZP.z1, TF]].forEach(([x0, x1, z0, z1]) => floorPlane(k2, floorM[2], fRep, x0, x1, z0, z1, F2, true));
   wallPlane(ceil1, slabEdgeM, 1, ZP.x0, ZP.x1, F2 - SLAB, F2, ZP.z1, [0, -1]);
   wallPlane(ceil1, slabEdgeM, 1, ZP.z0, ZP.z1, F2 - SLAB, F2, ZP.x0, [1, 0]);
   wallPlane(ceil1, slabEdgeM, 1, ZP.z0, ZP.z1, F2 - SLAB, F2, ZP.x1, [-1, 0]);
@@ -427,14 +489,15 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
     return g;
   });
   const inner = P.lowInner;
-  const common = { T, extM, wallM, wr: wRep, trimM };
-  const s0 = { ...common, yb: 0, yt: 3.6, yIn0: UP[0], yIn1: F1 - SLAB };
+  const wins = []; // [{ og, ig, list }] — duvar başına pencere çerçeveleri
+  const common = { T, extM, wallM, wr: wRep, trimM, wins };
+  const s0 = { ...common, storey: 0, yb: 0, yt: 3.6, yIn0: UP[0], yIn1: F1 - SLAB };
   storeyWall(shells[0], inner[0], 0, { ...s0, holes: [doorHole, ...frontXs.map((x) => win(x, wy0))] });
   storeyWall(shells[1], inner[1], 1, { ...s0, holes: sideZs.map((z) => win(z, wy0)) });
   storeyWall(shells[2], inner[2], 2, { ...s0, holes: backXs.map((x) => win(x, wy0)) });
   storeyWall(shells[3], inner[3], 3, { ...s0, holes: sideZs.map((z) => win(z, wy0)) });
   box(shells[0], 2.6, 0.2, 1.4, roofM, doorX, 2.7, TF + T + 0.7); // kapı saçağı
-  const s1 = { ...common, yb: 3.6, yt: GP, yIn0: F1, yIn1: F2 - SLAB };
+  const s1 = { ...common, storey: 1, wallM: wallMs[1], yb: 3.6, yt: GP, yIn0: F1, yIn1: F2 - SLAB };
   const big = (a0, a1) => ({ a0, a1, y0: F1, y1: F2 - SLAB, big: true });
   storeyWall(w1[0], w1[0], 0, { ...s1, holes: [big(-8.5, EF - 0.5)] }); // ön: boydan cam (balkon görünümü)
   storeyWall(w1[1], w1[1], 1, { ...s1, holes: [big(-6.5, TF - 0.5)] });
@@ -453,7 +516,7 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
   const dip = (g, side, y, a0, a1) => {
     const n = [[0, -1], [-1, 0], [0, 1], [1, 0]][side];
     const at = [TF - 0.01, EF - 0.01, -TF + 0.01, -EF + 0.01][side];
-    wallPlane(g, wallM, wRep, a0, a1, y, y + 0.45, at, n);
+    wallPlane(g, wallMs[1], wRep, a0, a1, y, y + 0.45, at, n);
     const w = a1 - a0;
     const c = (a0 + a1) / 2;
     if (n[0] === 0) box(g, w + 0.3, 0.06, 0.3, dipM, c, y + 0.45, at + n[1] * 0.15, 0, false);
@@ -486,7 +549,7 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
     o.position.z = sgn * (TF + T);
     if (sgn < 0) o.rotation.y = PI;
     g.add(o);
-    const inn = new THREE.Mesh(shapeWithHole(innerPts), wallM);
+    const inn = new THREE.Mesh(shapeWithHole(innerPts), wallMs[2]);
     inn.position.z = sgn * (TF - 0.01);
     if (sgn > 0) inn.rotation.y = PI;
     g.add(inn);
@@ -511,8 +574,8 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
   }
   dip(w2dip[0], 0, F2, -QP, QP);
   dip(w2dip[2], 2, F2, -QP, QP);
-  wallPlane(k2, wallM, wRep, -TF, TF, F2, pe, QP, [-1, 0]);
-  wallPlane(k2, wallM, wRep, -TF, TF, F2, pe, -QP, [1, 0]);
+  wallPlane(k2, wallMs[2], wRep, -TF, TF, F2, pe, QP, [-1, 0]);
+  wallPlane(k2, wallMs[2], wRep, -TF, TF, F2, pe, -QP, [1, 0]);
   roof(roofG, { roofM, ceilM, trimM, T });
   // baca
   const cy = roofY(4.5) + 0.06;
@@ -532,7 +595,9 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
     root.add(k.group);
     return k;
   });
+  const objByIdx = []; // tasarımda sürükleme: eşya kimliği → 3B nesne
   const furnish = (k, f) => {
+    objByIdx.forEach((o, i) => o?.userData.evF === f && (objByIdx[i] = null));
     [...k.group.children].forEach((c) => c !== k.dynamic && k.group.remove(c));
     [...k.dynamic.children].forEach((c) => k.dynamic.remove(c));
     k.ticks.length = 0;
@@ -540,9 +605,42 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
     items.forEach((it, idx) => {
       if (it.f !== f) return;
       const o = k.item(it.k, it.x, it.z, it.r, it.c || 0, { y: UP[f], solid: false, dyn: true });
-      if (o) o.traverse((q) => (q.userData.evIdx = idx));
+      if (o) {
+        o.traverse((q) => (q.userData.evIdx = idx));
+        o.userData.evF = f;
+        objByIdx[idx] = o;
+      }
     });
   };
+  // pencere çerçeveleri: model / renk (win: { [id]: { m, c } }); birleştirme fonksiyonu mergeVenue'dan gelir
+  let winStyle = {};
+  let mergeFn = null;
+  const clearG = (g) => [...g.children].forEach((c) => {
+    if (c.userData.noMerge) return; // iç grup (aynı duvar grubu ise çerçeve grubunun içinde)
+    g.remove(c);
+    if (c.userData.merged) c.geometry?.dispose();
+  });
+  const drawWall = (wb) => {
+    clearG(wb.og);
+    clearG(wb.ig);
+    wb.list.forEach((w) => drawWindow(w, winStyle[w.id]));
+    if (mergeFn) {
+      mergeFn(wb.og);
+      mergeFn(wb.ig);
+    }
+    wb.og.traverse((o) => (o.userData.dyn = true));
+    wb.ig.traverse((o) => (o.userData.dyn = true));
+  };
+  wins.forEach(drawWall);
+  const winById = new Map();
+  wins.forEach((wb) => wb.list.forEach((w) => winById.set(w.id, { w, wb })));
+  const shown = (o) => {
+    for (let q = o; q; q = q.parent) if (!q.visible) return false;
+    return true;
+  };
+  const wInv = new THREE.Matrix4();
+  const wRay = new THREE.Ray();
+  const wPt = new THREE.Vector3();
   const ring = new THREE.Mesh(new THREE.RingGeometry(0.9, 1.05, 40), new THREE.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: 0.9, depthTest: false }));
   ring.rotation.x = -PI / 2;
   ring.renderOrder = 20;
@@ -572,6 +670,60 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
   };
   const ml = {
     groups: all,
+    // pencereler (v196): kimlik listesi, stil, dokunuş
+    windowIds: () => [...winById.keys()],
+    // kat düğmesi (telefon): o katın merdiven başı { x, z, y }
+    floorTarget(f) {
+      if (f <= 0) return { x: RF[0].hub[0], z: RF[0].hub[1], y: UP[0] };
+      if (f === 1) return { x: RF[0].up[0], z: RF[0].up[1], y: UP[1] };
+      return { x: RF[1].up[0], z: RF[1].up[1], y: UP[2] };
+    },
+    setWindows(win) {
+      const next = win && typeof win === 'object' ? win : {};
+      const dirty = new Set();
+      for (const id of new Set([...Object.keys(winStyle), ...Object.keys(next)])) {
+        const a = winStyle[id];
+        const b = next[id];
+        if ((a?.m | 0) !== (b?.m | 0) || (a?.c | 0) !== (b?.c | 0)) {
+          const e = winById.get(id);
+          if (e) dirty.add(e.wb);
+        }
+      }
+      winStyle = { ...next };
+      dirty.forEach(drawWall);
+    },
+    useMerge(fn) {
+      mergeFn = fn;
+      wins.forEach((wb) => {
+        fn(wb.og);
+        fn(wb.ig);
+      });
+    },
+    // dünya ışını → bu katın görünen penceresi { id, dist } (yoksa null)
+    pickWindow(worldRay, f) {
+      let best = null;
+      for (const wb of wins) {
+        if (!wb.list.length || wb.list[0].storey !== f || !shown(wb.og)) continue;
+        wb.og.updateMatrixWorld(true);
+        wInv.copy(wb.og.matrixWorld).invert();
+        wRay.copy(worldRay).applyMatrix4(wInv);
+        for (const w of wb.list) {
+          const ax = alongX(w.side);
+          const dn = ax ? wRay.direction.z : wRay.direction.x;
+          if (Math.abs(dn) < 1e-4) continue;
+          const t = (w.mid - (ax ? wRay.origin.z : wRay.origin.x)) / dn;
+          if (t <= 0) continue;
+          wRay.at(t, wPt);
+          const a = ax ? wPt.x : wPt.z;
+          const m = 0.12;
+          if (a < w.h.a0 - m || a > w.h.a1 + m || wPt.y < w.h.y0 - m || wPt.y > w.h.y1 + m) continue;
+          wPt.applyMatrix4(wb.og.matrixWorld);
+          const dist = wPt.distanceTo(worldRay.origin);
+          if (!best || dist < best.dist) best = { id: w.id, dist };
+        }
+      }
+      return best;
+    },
     floors: UP,
     level: houseLevel,
     groundAt,
@@ -589,16 +741,14 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
       rebuildSolids(items);
       [0, 1, 2].forEach((f) => furnish(furn[f], f));
     },
-    // kat başına zemin kaplaması (duvar şimdilik tek: v196 ilk sürüm)
+    // kat başına zemin + duvar kaplaması: { 0:{wall,floor}, 1:{…}, 2:{…} } (seçilmeyen = varsayılan)
     setSurfaces(surf) {
       [0, 1, 2].forEach((f) => {
-        const key = surf?.[f]?.floor;
-        if (!key) return;
-        const m = surfMat(floorDef(key), 0.5);
-        floorParts[f].forEach((mesh) => (mesh.material = m));
+        const fk = surf?.[f]?.floor || HOME_FLOOR_DEFAULT;
+        const wk = surf?.[f]?.wall || HOME_WALL_DEFAULT;
+        if (floorM[f].userData.key !== fk) paintSurf(floorM[f], floorDef(fk), 0.5);
+        if (wallMs[f].userData.key !== wk) paintSurf(wallMs[f], wallDef(wk), 0.9);
       });
-      void parke;
-      void boya;
     },
     camClamp(cam, toRoomFn, fromRoomFn, y) {
       const lv = houseLevel(y);
@@ -637,6 +787,15 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
       rebuildSolids(items);
       if (f == null) [0, 1, 2].forEach((q) => furnish(furn[q], q));
       else furnish(furn[f], f);
+    },
+    // sürüklerken eşyayı yerinde taşı (yeniden kurmadan); bırakınca React kaydeder
+    dragTo(idx, it2) {
+      const o = objByIdx[idx];
+      if (!o) return;
+      o.position.x = it2.x;
+      o.position.z = it2.z;
+      o.rotation.y = (it2.r * PI) / 4;
+      ring.position.set(it2.x, UP[it2.f] + 0.03, it2.z);
     },
     select(idx) {
       const it = idx == null ? null : items[idx];

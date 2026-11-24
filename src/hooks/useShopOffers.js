@@ -13,7 +13,12 @@ const ensured = new Set();
 // Dönen: { katalogId: en ucuz fiyat } — oyunun fiyatından pahalı olan sayılmaz.
 // exclude: bu dükkân sayılmaz (v134: sahibin "piyasa değeri" — diğer dükkânların en ucuzu)
 // v166 excludeMine: alıcının KENDİ dükkânları sayılmaz (oyunun mağazası — sunucu da onları atlar)
-export function useShopOffers(kind, { enabled = true, exclude = null, excludeMine = false } = {}) {
+// v196: oyuncu dükkânları kapandı — oyunun mağazası her zaman kendi (katalog) fiyatından satar
+// (sunucu: shop.gameStoreBuy). Eski shopOffers belgesi bayat teklif içerebilir; okunmaz.
+const SHOP_OFFERS_OFF = true;
+export function useShopOffers(kind, { enabled: enabled0 = true, exclude = null, excludeMine: excludeMine0 = false } = {}) {
+  const enabled = enabled0 && !SHOP_OFFERS_OFF;
+  const excludeMine = excludeMine0 && !SHOP_OFFERS_OFF;
   const { user } = useAuth();
   const uid = user?.uid || null;
   const [raw, setRaw] = useState(null); // shopOffers belgesinin offers alanı

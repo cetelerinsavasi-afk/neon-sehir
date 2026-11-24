@@ -120,7 +120,7 @@ export const ITEM_PRICES = {
   // YAPI
   wall2: g(10000), wall4: g(20000), walldoor: g(30000), glassdiv: g(50000), column: g(100000), podium: z(5), doordeco: g(20000), garagedoor: g(150000),
   // v101 — kapılar
-  door_beyaz: g(15000), door_cam: g(25000), door_market: g(60000), door_cift: g(35000), door_metal: g(20000), door_salon: g(25000), door_hastane: g(40000), door_doner: g(90000),
+  door_beyaz: g(15000), door_cam: g(25000), door_market: g(60000), door_cift: g(35000), door_metal: g(20000), door_salon: g(25000), door_hastane: g(40000), door_doner: g(90000), door_klasik: g(30000), door_modern: g(30000), door_ferforje: g(35000),
 };
 
 // Duvar & zemin kaplamaları bir kez alınır, oyuncunun TÜM evlerinde kullanılır.

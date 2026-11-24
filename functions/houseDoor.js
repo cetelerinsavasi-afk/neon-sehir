@@ -26,12 +26,15 @@ export const DOOR_TYPES = {
   salon: { name: 'Salon (Bar) Kapısı', icon: '🤠', half: 0.8 },
   hastane: { name: 'Hastane Kapısı', icon: '🏥', half: 1.05 },
   doner: { name: 'Döner Kapı', icon: '🌀', half: 1.3 },
+  klasik: { name: 'Klasik Ev Kapısı', icon: '🚪', half: 0.7 }, // v196
+  modern: { name: 'Modern Ev Kapısı', icon: '🚪', half: 0.7 },
+  ferforje: { name: 'Ferforje Kapı', icon: '🚪', half: 0.7 },
 };
 export const DOOR_TYPE_KEYS = Object.keys(DOOR_TYPES);
 export const DEFAULT_DOOR = Object.freeze({ w: 2, x: -5, t: 'ahsap', def: true, main: null });
 
 // Giriş kapısı olabilen mobilyalar
-export const DOOR_ITEM_KEYS = ['doordeco', 'garagedoor', 'door_beyaz', 'door_cam', 'door_market', 'door_cift', 'door_metal', 'door_salon', 'door_hastane', 'door_doner', 'celldoor', 'vaultdoor'];
+export const DOOR_ITEM_KEYS = ['doordeco', 'garagedoor', 'door_beyaz', 'door_cam', 'door_market', 'door_cift', 'door_metal', 'door_salon', 'door_hastane', 'door_doner', 'door_klasik', 'door_modern', 'door_ferforje', 'celldoor', 'vaultdoor'];
 export const isDoorItemKey = (k) => DOOR_ITEM_KEYS.includes(k);
 export const isEntranceItem = (it) => Boolean(it && it.p === 1 && isDoorItemKey(it.k));
 
