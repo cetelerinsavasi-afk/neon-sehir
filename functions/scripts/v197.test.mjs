@@ -112,3 +112,20 @@ test('v197 para güvenliği: çift satın alma yok, deneme eşya evde kalır, en
   assert.equal(w.G(`houses/${homeIdOf('ali')}`).inv.items.sofa3, undefined, 'envanterdeki kullanıldı');
   assert.equal(w.G(`houses/${homeIdOf('ali')}`).items[0].p, 1);
 });
+
+test('v197 tasarım: satın almadan kaydedip çıkılır (deneme eşya kalır), kitaplık duvara sıfır konur, kayıt sürümü döner', async () => {
+  const { checkPlacement, HALF_D, WALL_GAP } = await import('../homeGeometry.js');
+  // kitaplık (kutu yarı derinliği 0,19) arka duvara değecek kadar yaklaşabilir; duvarın içine giremez
+  assert.equal(checkPlacement({ f: 0, x: 0, z: -HALF_D + 0.19 }), null);
+  assert.equal(checkPlacement({ f: 0, x: 0, z: -HALF_D + WALL_GAP / 2 }), 'bounds');
+  const w = world();
+  const home = createHome({ db: w.db, FieldValue, HttpsError, now: () => w.clock.now });
+  await home.enter('ali', {});
+  const gold0 = w.G('users/ali').gold;
+  const r = await home.save('ali', { items: [{ i: 'b1', k: 'bookshelf', x: 0, z: -HALF_D + 0.19, r: 0, c: 0, f: 0 }] });
+  assert.equal(r.updatedAtMs, w.clock.now, 'istemci taslağı bu sürüme bağlar');
+  const h = w.G(`houses/${homeIdOf('ali')}`);
+  assert.equal(h.items.length, 1);
+  assert.equal(h.items[0].p, undefined, 'deneme olarak evde kalır');
+  assert.equal(w.G('users/ali').gold, gold0, 'Bitti para çekmez');
+});

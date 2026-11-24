@@ -197,8 +197,9 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
         surf[f] = v;
       }
       const itemCount = items.filter((x) => x.p === 1).length;
-      tx.update(ref(id), { items, inv, surf, ...(win ? { win } : {}), itemCount, listable: homeListable({ locked: h.locked, itemCount }), updatedAtMs: now() });
-      out = { ok: true, count: items.length, itemCount, inv, surf };
+      const at = now();
+      tx.update(ref(id), { items, inv, surf, ...(win ? { win } : {}), itemCount, listable: homeListable({ locked: h.locked, itemCount }), updatedAtMs: at });
+      out = { ok: true, count: items.length, itemCount, inv, surf, updatedAtMs: at };
     });
     return out;
   }
@@ -263,8 +264,9 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
       if (Number(user.gold || 0) < gold || Number(user.emerald || 0) < gem) fail('failed-precondition', 'Yetersiz altın / zümrüt.');
       if (gold || gem) tx.update(userRef(uid), { ...(gold ? { gold: FieldValue.increment(-gold), goldTag: goldTag('mobilya') } : {}), ...(gem ? { emerald: FieldValue.increment(-gem) } : {}) });
       const itemCount = items.filter((x) => x.p === 1).length;
-      tx.update(ref(id), { items, inv, surf, itemCount, listable: homeListable({ locked: h.locked, itemCount }), updatedAtMs: now() });
-      out = { ok: true, gold, gem, count: n, inv }; // v197: istemci sahip olunan kaplamaları hemen bilsin (tekrar sepete girmesin)
+      const at = now();
+      tx.update(ref(id), { items, inv, surf, itemCount, listable: homeListable({ locked: h.locked, itemCount }), updatedAtMs: at });
+      out = { ok: true, gold, gem, count: n, inv, updatedAtMs: at }; // v197: istemci sahip olunan kaplamaları hemen bilsin (tekrar sepete girmesin)
     });
     return out;
   }

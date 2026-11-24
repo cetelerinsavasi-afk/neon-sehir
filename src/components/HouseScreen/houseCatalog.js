@@ -1919,11 +1919,14 @@ function aquarium(g) {
 }
 function bookshelf(g, ctx) {
   const w = M(tintHex(ctx, '#5a3a24'), 0.5);
-  B(g, 1.2, 2.1, 0.04, 0, 1.05, -0.17, w);
-  [-0.58, 0.58].forEach((x) => B(g, 0.04, 2.1, 0.36, x, 1.05, 0, w));
+  // v197: halının üstünde dursun (taban 0,035 yukarıda) · arka yüz kutunun arkasında (-0,19) → duvara sıfır oturur
+  const L = 0.035;
+  B(g, 1.2, 2.1, 0.04, 0, 1.05 + L, -0.17, w);
+  [-0.58, 0.58].forEach((x) => B(g, 0.04, 2.1, 0.38, x, 1.05 + L, 0, w));
+  B(g, 1.2, 0.07, 0.38, 0, L + 0.035, 0, w); // süpürgelik tabanı
   const cols = ['#6b1a22', '#1f2a48', '#1d4d3c', '#b8862e', '#e6dfd2', '#141416', '#553075'];
   for (let s = 0; s < 5; s++) {
-    const y = 0.05 + s * 0.5;
+    const y = 0.05 + L + 0.035 + s * 0.495;
     B(g, 1.16, 0.03, 0.36, 0, y, 0, w);
     if (s === 4) break;
     let x = -0.52;

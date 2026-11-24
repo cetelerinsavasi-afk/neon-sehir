@@ -892,11 +892,12 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const gk = VENUE_GAME_KEY[v.type];
     const list = [...(v.venue.npcs || [])];
     (v.venue.bots || []).forEach((b) => list.push({ id: b.i, name: b.cfg.n, x: b.x, z: b.z, lines: b.cfg.l, av: { gender: b.cfg.g, skin: b.cfg.s, hairColor: b.cfg.h, clothing: 'vest', clothColor: '#f4f1e8', neckAcc: 'bow', pantsColor: '#1a1a1a' } }));
-    if (v.type === 'camii') list.push({ id: 'npc_imam_sehir', name: 'İmam', x: 0, z: -5.75, lines: ['Namaza gelin.', 'Cemaatle kılınan namaz daha faziletlidir.'], av: { clothing: 'robe', clothColor: '#f4f1e8', hat: 'kufi', hatColor: '#ffffff', facialHair: 'full', hairColor: '#3b2a1a', neckAcc: 'none', pantsColor: '#f4f1e8' } });
+    // v197: oyundaki imam (imamState) — imam yoksa NPC gizli; varsa adı + avatarıyla görünür (venueNpcSet)
+    if (v.type === 'camii') list.push({ id: 'npc_imam', off: true, name: 'İmam', x: 0, z: -5.75, lines: ['Namaza gelin.', 'Cemaatle kılınan namaz daha faziletlidir.'], av: { clothing: 'robe', clothColor: '#f4f1e8', hat: 'kufi', hatColor: '#ffffff', facialHair: 'full', hairColor: '#3b2a1a', neckAcc: 'none', pantsColor: '#f4f1e8' } });
     list.forEach((n) => {
       const p = fromRoom(v, n.x, n.z);
       const route = Array.isArray(n.route) ? n.route.map(([rx, rz]) => fromRoom(v, rx, rz)) : null; // v196 bot garson
-      venueNpcDefs.push({ id: n.id, name: n.name, av: n.av, x: p.x, z: p.z, y: 0.16 + (v.y0 || 0), lines: n.lines || [], left: Boolean(n.left), venue: v, route, quiet: Boolean(gk && ['camii', 'banka', 'karakol', 'belediye'].includes(gk)) });
+      venueNpcDefs.push({ id: n.id, off: Boolean(n.off), name: n.name, av: n.av, x: p.x, z: p.z, y: 0.16 + (v.y0 || 0), lines: n.lines || [], left: Boolean(n.left), venue: v, route, quiet: Boolean(gk && ['camii', 'banka', 'karakol', 'belediye'].includes(gk)) });
     });
     // istasyonlar: oyunun mekânlarında (camii, banka, karakol) oyunun panelleri; markette alışveriş + ATM
     const stations = gk && ['camii', 'banka', 'karakol', 'belediye'].includes(gk) ? GAME_VENUES[gk]?.stations || {} : v.type === 'benzinlik' ? NEW_VENUES.market.stations : v.type === 'netkafe' ? NEW_VENUES.netkafe.stations : {}; // v196: internet kafe — bilgisayar / konsol / yayın seti
@@ -1873,6 +1874,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     f.vendor = n.vendor;
     f.venue = n.venue || null; // etiketi sadece o mekânın içindeyken görünür
     f.quiet = Boolean(n.quiet); // konuşmayı mekân katmanı (VenueLayer) yönetir
+    f.off = Boolean(n.off); // v197: kapalı NPC (ör. imam yokken) hiç çizilmez
     if (n.route) f.route = n.route; // v196: devriye (bot garson)
     return f;
   });
@@ -4575,7 +4577,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     W.water?.tick?.(t);
     npcs.forEach((n) => {
       // uzaktaki NPC çizilmez; mekân NPC'sinin etiketi sadece o mekânın içindeyken
-      const near = !n.storyHidden && (n.x - camera.position.x) ** 2 + (n.z - camera.position.z) ** 2 < 55 * 55 && (!isoV || n.venue === isoV); // v168: storyHidden
+      const near = !n.storyHidden && !n.off && (n.x - camera.position.x) ** 2 + (n.z - camera.position.z) ** 2 < 55 * 55 && (!isoV || n.venue === isoV); // v168: storyHidden
       n.group.visible = near;
       n.hideLabel = Boolean(n.venue) && n.venue !== curVenue;
       if (!near) return;
@@ -5567,7 +5569,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       npcs.forEach((n) => {
         // v157: sadece fotoğraf karesinin yakınındakiler (uzaktaki NPC dokusu boşuna çizilmesin)
         const vp = n.venue ? toRoom(n.venue, cam.px, cam.pz) : null;
-        const near = (n.x - cam.px) ** 2 + (n.z - cam.pz) ** 2 < 60 * 60 && (!vp || (Math.abs(vp.x) < VROOM.W / 2 + 4 && Math.abs(vp.z) < VROOM.D / 2 + 4));
+        const near = !n.off && (n.x - cam.px) ** 2 + (n.z - cam.pz) ** 2 < 60 * 60 && (!vp || (Math.abs(vp.x) < VROOM.W / 2 + 4 && Math.abs(vp.z) < VROOM.D / 2 + 4));
         if (!near) {
           if (n.group.visible) hide(n.group);
           return;
@@ -5736,7 +5738,27 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       me.setHolding(p);
     },
     npcSay(id, text) {
-      npcs.find((n) => n.id === id)?.say(text);
+      const n = npcs.find((q) => q.id === id);
+      if (n && !n.off) n.say(text);
+    },
+    // v197: mekân NPC'sini aç / kapat, adını + avatarını değiştir (ör. camide oyundaki imam). o = null → gizli
+    venueNpcSet(id, o) {
+      const n = npcs.find((q) => q.id === id);
+      if (!n) return;
+      n.off = !o;
+      if (!o) {
+        n.group.visible = false;
+        return;
+      }
+      if (o.name) n.setName(String(o.name).slice(0, 40));
+      if (!o.av || typeof o.av !== 'object' || !Object.keys(o.av).length) return;
+      const av = { ...o.av };
+      delete av.pet; // camide evcil hayvan dolaşmasın
+      if (n.tex.lazy) {
+        n.av0 = av;
+        n.avBase = av;
+        n.avKey = n.avBaseKey = JSON.stringify(av);
+      } else n.setAvatar(av);
     },
     pause() {
       paused = true;

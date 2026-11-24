@@ -1093,6 +1093,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   if (!venueEngRef.current) {
     venueEngRef.current = {
       say: (id, line) => engineRef.current?.npcSay(id, line),
+      venueNpc: (id, o) => engineRef.current?.venueNpcSet?.(id, o), // v197: camide oyundaki imam
       getSelfState: () => engineRef.current?.venueLocal?.() || null,
       approach: () => false,
       setSelfTicket: () => {},

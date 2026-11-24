@@ -15,6 +15,7 @@ export const SLAB = 0.2; // kat döşemesi kalınlığı
 export const HALF_W = 9; // x
 export const HALF_D = 7; // z
 export const ROOF_HALF_W = 5.8; // çatı katı
+export const WALL_GAP = 0.1; // v197: zemin eşyasının merkezi duvara en az bu kadar uzak
 export const ROOF_RISE = 5; // beşik çatı yüksekliği (GP + KP)
 export const ROOF_SPAN = 9.8;
 // rampa: ax = merdivenin ilerlediği eksen; d0 → d1 tabandan tepeye; c0..c1 diğer eksende genişlik
@@ -89,7 +90,9 @@ export function checkPlacement(it, def = {}) {
     if (!onZ && !onX) return 'wall';
     return null;
   }
-  if (Math.abs(x) > halfX - 0.3 + 1e-6 || z < -HALF_D + 0.35 - 1e-6 || z > HALF_D - 0.35 + 1e-6) return 'bounds';
+  // v197: eşya duvara sıfır oturabilir (istemci kutuya göre hizalar; burada sadece en az WALL_GAP pay)
+  const mx = f === 2 ? 0.3 : WALL_GAP;
+  if (Math.abs(x) > halfX - mx + 1e-6 || Math.abs(z) > HALF_D - WALL_GAP + 1e-6) return 'bounds';
   if (f === 1 && inBox(HOLE_1, x, z)) return 'hole';
   if (f === 2 && inBox(HOLE_2, x, z)) return 'hole';
   for (const r of RAMPS) if (r.base === f && rampAt(r, x, z).inside) return 'stairs';

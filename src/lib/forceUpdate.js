@@ -16,7 +16,7 @@
 // Kontrol: açılışta + açıkken 5 dakikada bir neon-flags.json (küçük statik dosya; Firestore /
 // RTDB okuması YOK). Dosya yoksa / bozuksa / minBuild yoksa hiçbir şey yapılmaz.
 // =============================================================================
-export const BUILD = 201; // v197 (v196e dahil)
+export const BUILD = 202; // v197 (v196e dahil)
 export const CHECK_MS = 5 * 60 * 1000;
 export const IDLE_MS = 3 * 60 * 1000;
 export const FIRST_TOUCH_MS = 30 * 1000;

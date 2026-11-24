@@ -63,6 +63,55 @@ const cleanSurfState = (surf) => {
   return out;
 };
 const ownsSurf = (inv, type, key) => FREE_SURFACES[type].includes(key) || (inv?.[type === 'wall' ? 'walls' : 'floors'] || []).includes(key);
+// v197 — yarım kalan tasarım taslağı (oyundan atılınca / kayıt olmayınca kaybolmasın). Sadece bu cihazda
+// (localStorage) tutulur; Firestore'a ek okuma / yazma yok. Sunucudaki ev o arada değiştiyse (başka cihaz) atılır.
+const DRAFT_KEY = (id) => `neon-home-draft-${id}`;
+function readDraft(home) {
+  try {
+    const d = JSON.parse(localStorage.getItem(DRAFT_KEY(home?.id)) || 'null');
+    if (!d || !Array.isArray(d.items)) return null;
+    if ((d.base || 0) !== (home.updatedAtMs || 0) || Date.now() - (d.t || 0) > 14 * 864e5) {
+      localStorage.removeItem(DRAFT_KEY(home.id));
+      return null;
+    }
+    return d;
+  } catch {
+    return null;
+  }
+}
+function writeDraft(id, base, data) {
+  try {
+    localStorage.setItem(DRAFT_KEY(id), JSON.stringify({ ...data, base: base || 0, t: Date.now() }));
+  } catch {
+    /* depolama dolu / kapalı */
+  }
+}
+function clearDraft(id) {
+  try {
+    localStorage.removeItem(DRAFT_KEY(id));
+  } catch {
+    /* yok */
+  }
+}
+// taslağı sunucudaki sahipliğe göre düzelt: sahip olunmayan "alınmış" eşya denemeye döner, envanter yeniden sayılır
+function applyDraft(home, d) {
+  const owned = { ...(home.inv?.items || {}) };
+  (home.items || []).forEach((x) => {
+    if (x.p === 1) owned[x.k] = (owned[x.k] || 0) + 1;
+  });
+  const seen = new Set();
+  const items = [];
+  d.items.forEach((x) => {
+    if (!x || !x.i || seen.has(x.i) || !CATALOG_MAP[x.k] || items.length >= MAX_HOME_ITEMS) return;
+    seen.add(x.i);
+    const it = { ...x };
+    if (it.p === 1 && (owned[it.k] || 0) > 0) owned[it.k] -= 1;
+    else delete it.p;
+    items.push(it);
+  });
+  Object.keys(owned).forEach((k) => !owned[k] && delete owned[k]);
+  return { items, inv: owned, surf: cleanSurfState(d.surf), win: { ...(d.win || {}) }, f: Number.isInteger(d.f) ? d.f : null };
+}
 const SHOP = CATALOG.filter((d) => CATALOG_KEYS.has(d.k) && !d.hidden && !d.venueOnly && !d.door && d.price);
 // evde önce ev eşyaları (oturma, masa, yatak…), sonra diğerleri
 const HOME_FIRST = ['oturma', 'masa', 'yatak', 'banyo', 'mutfak', 'dekor', 'hali', 'duvar', 'elektronik', 'luks', 'eglence', 'spor', 'dis', 'hayvan', 'petshop', 'yapi', 'kapi', 'resim'];
@@ -92,21 +141,29 @@ export default function HomePanel({ eng, uid, inside, flash, evtRef, Sheet, list
       const h = h0 ? { ...h0, mine: h0.id === own } : null; // kendi evindeki setler sadece sahibine
       setHome(h);
       eng?.setHome(h);
+      // v197: oyundan atılınca yarım kalan tasarım → eve girince Tasarla kendiliğinden açılır, kaldığı yerden
+      if (h?.mine && readDraft(h)) setMode('design');
     } catch (e) {
       flash(errText(e));
       setVisit(null);
       if (id && id !== own) load(null);
     }
   }, [eng, own, flash]);
+  // v197: dışarıdan (Evler listesinden) arkadaşın evi seçilince ziyaret, içeri girmeden SIFIRLANMASIN
+  // (eskiden dışarıdayken visit hemen null'lanıyordu → herkes kendi evine giriyordu)
+  const wasIn = useRef(false);
   useEffect(() => {
     if (!eng) return;
-    if (inside) load(visit);
-    else {
+    if (inside) {
+      wasIn.current = true;
+      load(visit);
+    } else {
       setHome(null);
       setMode(null);
       eng.homeDesign(null);
       eng.setHome(null);
-      setVisit(null);
+      if (wasIn.current) setVisit(null);
+      wasIn.current = false;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inside, visit, eng]);
@@ -163,6 +220,7 @@ export default function HomePanel({ eng, uid, inside, flash, evtRef, Sheet, list
       )} onDone={async (reload) => {
         eng.homeDesign(null);
         setMode(null);
+        if (reload === 'keep') return; // kaydedilemedi: ekrandaki tasarım (taslak) kalır
         if (reload) await load(null);
         else eng.setHome(home);
       }} />}
@@ -259,9 +317,13 @@ function Money({ gold = 0, gem = 0, small }) {
 const SHOP_ALL = SHOP_CATS;
 function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null }) {
   const [setOpen, setSetOpen] = useState(false);
-  const [items, setItems] = useState(() => (home.items || []).map((x) => ({ ...x })));
-  const [inv, setInv] = useState(() => ({ ...(home.inv?.items || {}) }));
-  const [f, setF] = useState(() => eng.homeLevel());
+  const [draft0] = useState(() => {
+    const d = readDraft(home);
+    return d ? applyDraft(home, d) : null;
+  });
+  const [items, setItems] = useState(() => draft0?.items || (home.items || []).map((x) => ({ ...x })));
+  const [inv, setInv] = useState(() => draft0?.inv || { ...(home.inv?.items || {}) });
+  const [f, setF] = useState(() => draft0?.f ?? eng.homeLevel());
   const [sel, setSel] = useState(null);
   const [tab, setTab] = useState('magaza'); // magaza | envanter | pazar
   const [cat, setCat] = useState(SHOP_ALL[0]?.key || null); // ya da 'yuzey'
@@ -269,19 +331,39 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
   const [panel, setPanel] = useState(null); // checkout | leave | sell | buy
   const [buyAsk, setBuyAsk] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [dirty, setDirty] = useState(false);
-  const [surf, setSurf] = useState(() => cleanSurfState(home.surf));
-  const [win, setWin] = useState(() => ({ ...(home.win || {}) }));
+  const [dirty, setDirty] = useState(Boolean(draft0));
+  const [surf, setSurf] = useState(() => draft0?.surf || cleanSurfState(home.surf));
+  const [win, setWin] = useState(() => draft0?.win || { ...(home.win || {}) });
   const [winSel, setWinSel] = useState(null);
   const [sInv, setSInv] = useState(() => home.inv || null);
   const best = useFurnBest(tab === 'pazar');
   // v197 — karargah tasarımındaki gibi: 👁️ göz (deneme eşyaları gerçek gör), ↶ geri al (tavan / zemin modu yok)
   const [realLook, setRealLook] = useState(false);
   const undoRef = useRef([]);
+  const baseRef = useRef(home.updatedAtMs || 0); // v197: taslağın dayandığı sunucu sürümü (kaydedince güncellenir)
   const savedRef = useRef(false); // v197: bu oturumda kaydedildi / satın alındı → çıkışta ev yeniden yüklenir (bayat sepet olmasın)
   useEffect(() => {
     eng.homeRealLook?.(realLook);
   }, [eng, realLook]);
+  // taslak geri geldiyse motora uygula (bir kez)
+  useEffect(() => {
+    if (!draft0) return;
+    eng.homeSetItems(draft0.items);
+    eng.homeSurfaces(draft0.surf);
+    eng.homeWindows?.(draft0.win);
+    flash('📝 Yarım kalan tasarımın geri geldi — kaldığın yerden devam et.');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    // ayarlar (ad / kapı) kaydedilince sunucu sürümü ilerler — taslak geçerli kalsın
+    if ((home.updatedAtMs || 0) > baseRef.current) baseRef.current = home.updatedAtMs;
+  }, [home.updatedAtMs]);
+  // her değişiklikte taslak cihaza yazılır (kaydedilince silinir)
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const t = setTimeout(() => writeDraft(home.id, baseRef.current, { items, surf, win, f }), 400);
+    return () => clearTimeout(t);
+  }, [dirty, items, surf, win, f, home.id]);
   useEffect(() => () => {
     eng.homeRealLook?.(false);
   }, [eng]);
@@ -445,7 +527,9 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
     try {
       const r = await houseAction(payload(list));
       if (r.data?.inv) setSInv(r.data.inv);
+      if (r.data?.updatedAtMs) baseRef.current = r.data.updatedAtMs;
       setDirty(false);
+      clearDraft(home.id);
       savedRef.current = true;
       return true;
     } catch (e) {
@@ -477,6 +561,7 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
         return nx;
       });
       if (r.data?.inv?.items) setInv({ ...r.data.inv.items });
+      if (r.data?.updatedAtMs) baseRef.current = r.data.updatedAtMs;
       const owned = items.map((it) => ({ ...it, p: 1 }));
       setItems(owned);
       eng.homeSetItems(owned);
@@ -505,20 +590,19 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
     flash('Sepet boşaltıldı.');
     return next;
   };
+  // v197: ✓ Bitti = kaydet ve çık (satın almak ŞART DEĞİL). Deneme eşyalar evde yarı saydam KALIR;
+  // parası yetince Tasarla › 🛒 Sepet › Alışverişi Tamamla ile alınır (sadece sepetteki İptal kaldırır).
+  // Kayıt olmazsa (internet yok vb.) yine çıkılır: tasarım telefonda taslak olarak durur, Tasarla'da geri gelir.
   const finish = async () => {
-    if (cart.count > 0) {
-      setPanel('leave');
+    if (busy) return;
+    if (dirty && !(await save())) {
+      flash('📝 Kaydedilemedi — tasarımın telefonda saklandı, Tasarla’ya girince kaldığın yerden devam edersin.');
+      onDone('keep');
       return;
     }
-    if (dirty && !(await save())) return;
+    clearDraft(home.id);
+    if (cart.count > 0) flash('🛒 Deneme eşyalar evinde duruyor — istediğinde Sepet’ten satın alabilirsin.');
     onDone(dirty || savedRef.current);
-  };
-  // v197: satın almadan çıkınca deneme eşyalar evde yarı saydam KALIR (parası yetince sepetten alınır);
-  // sadece sepetteki "İptal" kaldırır
-  const leaveKeep = async () => {
-    setPanel(null);
-    if (dirty && !(await save())) return;
-    onDone(true);
   };
   // seçili (satın alınmış) eşyayı pazara koy: odadan envantere alınır, kaydedilir, ilan verilir
   const sell = async (v) => {
@@ -733,14 +817,13 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
       </div>
 
       {/* alışverişi tamamla */}
-      {(panel === 'checkout' || panel === 'leave') && (
+      {panel === 'checkout' && (
         <div className="hs-modal-bg" onClick={() => !busy && setPanel(null)}>
           <div className="hs-modal" onClick={(e) => e.stopPropagation()}>
             <div className="hs-modal-head">
-              <b>{panel === 'leave' ? '🛒 Sepette ürün var' : '🛒 Alışverişi Tamamla'}</b>
+              <b>🛒 Alışverişi Tamamla</b>
               <button className="hs-x" onClick={() => setPanel(null)}>✕</button>
             </div>
-            {panel === 'leave' && <p className="hs-dim">Yarı saydam eşyalar deneme. Şimdi almazsan evinde yarı saydam olarak kalır; parası yetince Tasarla › 🛒 Sepet'ten alırsın (sepetteki İptal kaldırır).</p>}
             <div className="hs-receipt">
               {cart.lines.map((l) => (
                 <div key={l.name} className="hs-receipt-row">
@@ -759,12 +842,8 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
             </div>
             {(payGold < cart.gold || payGem < cart.gem) && <p className="hs-err">{payGold < cart.gold ? 'Altının yetmiyor. ' : ''}{payGem < cart.gem ? 'Zümrütün yetmiyor.' : ''}</p>}
             <div className="hh-modal-row">
-              {panel === 'leave' ? (
-                <button className="hs-btn ghost" disabled={busy} onClick={leaveKeep}>Sonra al (evde kalsın)</button>
-              ) : (
-                <button className="hs-btn ghost" disabled={busy} onClick={() => setPanel(null)}>Vazgeç</button>
-              )}
-              <button className="hs-btn gold" disabled={busy || payGold < cart.gold || payGem < cart.gem} onClick={() => doCheckout(panel === 'leave')}>
+              <button className="hs-btn ghost" disabled={busy} onClick={() => setPanel(null)}>Vazgeç</button>
+              <button className="hs-btn gold" disabled={busy || payGold < cart.gold || payGem < cart.gem} onClick={() => doCheckout(false)}>
                 {busy ? 'İşleniyor…' : 'Onayla ve Satın Al'}
               </button>
             </div>

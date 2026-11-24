@@ -29,7 +29,7 @@ import GarageScreen from '../GarageScreen/GarageScreen';
 import ShadyDealPanel from '../ShadyDeal/ShadyDealPanel';
 import SaleToast from '../ShadyDeal/SaleToast';
 import HeldIcon from '../HouseScreen/HeldIcon';
-import { camiiDynamicNpcs, VENDORS, VENDOR_COST } from '../../../functions/venueLayouts.js';
+import { camiiDynamicNpcs, CAMII_IMAM_IDLE_LINES, VENDORS, VENDOR_COST } from '../../../functions/venueLayouts.js';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import '../../styles/bizui.css';
 import '../RolePanels/RolePanels.css'; // v197: polis / imam panelleri yeni tasarım
@@ -92,7 +92,10 @@ function gaveSermonToday(imam) {
 }
 
 // ── CAMİİ ──────────────────────────────────────────────────────────────────────
-export function CamiiPart({ panel, setPanel, setDynNpcs, walk }) {
+// v197: şehirdeki camide imamın son vaazı (nasihatı) 30 sn'de bir imamın başında balon olur.
+// Veri zaten dinlenen imamState/current belgesinden gelir — ek Firestore okuması / yazması yok.
+const IMAM_SAY_MS = 30_000;
+export function CamiiPart({ panel, setPanel, setDynNpcs, walk, engineRef }) {
   const { user } = useAuth();
   const { imam } = useImamState();
   const { members, window: win } = useMosqueAttendance();
@@ -107,8 +110,36 @@ export function CamiiPart({ panel, setPanel, setDynNpcs, walk }) {
   // imam (varsa) mihrapta — bugün nasihat verdiyse minberin önünde; dilenciler köşede minderlerde
   useEffect(() => {
     // v95.3: liste sunucuyla ortak (fotoğrafta da aynısı çizilir)
-    setDynNpcs(camiiDynamicNpcs({ imam, sermon: gaveSermonToday(imam), beggars }));
-  }, [imam, beggars, setDynNpcs]);
+    const list = camiiDynamicNpcs({ imam, sermon: gaveSermonToday(imam), beggars });
+    // şehirde imam motorun kendi NPC'si: sıradaki konuşma döngüsüne girmez, 30 sn'de bir aşağıda konuşur
+    setDynNpcs(engineRef?.current?.city ? list.map((n) => (n.id === 'npc_imam' ? { ...n, lines: [] } : n)) : list);
+  }, [imam, beggars, setDynNpcs, engineRef]);
+  const imamName = imam?.displayName || '';
+  const imamAv = imam?.avatar || null;
+  const imamOn = Boolean(imam);
+  useEffect(() => {
+    const e = engineRef?.current;
+    if (!e?.city) return;
+    // imam yoksa NPC de yok; varsa NPC imamın kendisi (adı + görünüşü)
+    e.venueNpc?.('npc_imam', imamOn ? { name: `🕌 İmam ${imamName}`.trim(), av: imamAv } : null);
+  }, [engineRef, imamOn, imamName, imamAv]);
+  const imamLine = imam?.lastNasihat ? String(imam.lastNasihat) : '';
+  useEffect(() => {
+    const e = engineRef?.current;
+    if (!e?.city || !imamOn) return undefined;
+    let idle = 0;
+    const talk = () => {
+      if (document.hidden) return;
+      const line = imamLine || CAMII_IMAM_IDLE_LINES[idle++ % CAMII_IMAM_IDLE_LINES.length];
+      e.say('npc_imam', line.length > 220 ? `${line.slice(0, 217)}…` : line);
+    };
+    const t0 = setTimeout(talk, 2500);
+    const iv = setInterval(talk, IMAM_SAY_MS);
+    return () => {
+      clearTimeout(t0);
+      clearInterval(iv);
+    };
+  }, [engineRef, imamOn, imamLine]);
 
   const pray = async () => {
     setBusy(true);

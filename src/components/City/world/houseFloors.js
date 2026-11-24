@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { Kit, M, GLASS, wallMat } from '../kit.js';
 import { CATALOG_MAP, itemBoxes } from '../../HouseScreen/houseCatalog.js';
 import { floorDef, wallDef, tileBaseTexture } from '../../HouseScreen/houseTextures.js';
-import { FLOOR_Y as UP, SLAB, WALL_H, HALF_W as EF, HALF_D as TF, ROOF_HALF_W as QP, ROOF_RISE as KP, ROOF_SPAN as CF, RAMPS as RAMP_DEFS, HOLE_1 as XP, HOLE_2 as ZP } from '../../../../functions/homeGeometry.js';
+import { FLOOR_Y as UP, SLAB, WALL_H, HALF_W as EF, HALF_D as TF, ROOF_HALF_W as QP, ROOF_RISE as KP, ROOF_SPAN as CF, RAMPS as RAMP_DEFS, HOLE_1 as XP, HOLE_2 as ZP, WALL_GAP } from '../../../../functions/homeGeometry.js';
 
 const PI = Math.PI;
 const GP = UP[2]; // saçak (çatı katı zemini) yüksekliği
@@ -81,6 +81,26 @@ function rebuildSolids(items) {
     const s = Math.sin(a);
     itemBoxes(def).forEach(([bx, bz, hw, hd]) => solidsByFloor[it.f].push({ x: it.x + bx * c + bz * s, z: it.z - bx * s + bz * c, c, s, hw, hd }));
   });
+}
+// v197: döndürülmüş çarpışma kutularının merkeze göre sınırları [minX, maxX, minZ, maxZ] (yoksa null)
+function itemExtent(def, r) {
+  const boxes = def ? itemBoxes(def) : [];
+  if (!boxes.length) return null;
+  const a = ((r || 0) * PI) / 4;
+  const c = Math.cos(a);
+  const s = Math.sin(a);
+  const o = [1e9, -1e9, 1e9, -1e9];
+  boxes.forEach(([bx, bz, hw, hd]) => {
+    const px = bx * c + bz * s;
+    const pz = -bx * s + bz * c;
+    const wx = hw * Math.abs(c) + hd * Math.abs(s);
+    const wz = hw * Math.abs(s) + hd * Math.abs(c);
+    o[0] = Math.min(o[0], px - wx);
+    o[1] = Math.max(o[1], px + wx);
+    o[2] = Math.min(o[2], pz - wz);
+    o[3] = Math.max(o[3], pz + wz);
+  });
+  return o;
 }
 function blockedPoint(x, z, y) {
   const upper = y > 1.9;
@@ -867,8 +887,30 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
         it.r = best[2];
         return true;
       }
-      const cx = Math.max(-lim, Math.min(lim, x));
-      const cz = Math.max(-6.65, Math.min(TF - 0.35, z));
+      // v197: kutusu olan eşya duvara SIFIR oturur (döndürülmüş kutunun kenarı duvara değer; 0,2 m yakında mıknatıs)
+      const ex = itemExtent(def, it.r);
+      let cx;
+      let cz;
+      if (ex) {
+        const M0 = WALL_GAP;
+        const xl = f === 2 ? -lim : -EF + Math.max(M0, -ex[0]);
+        const xh = f === 2 ? lim : EF - Math.max(M0, ex[1]);
+        const zl = -TF + Math.max(M0, -ex[2]);
+        const zh = TF - Math.max(M0, ex[3]);
+        cx = xl > xh ? 0 : Math.max(xl, Math.min(xh, x));
+        cz = zl > zh ? 0 : Math.max(zl, Math.min(zh, z));
+        if (f !== 2 && xl <= xh) {
+          if (cx - xl < 0.2) cx = xl;
+          else if (xh - cx < 0.2) cx = xh;
+        }
+        if (zl <= zh) {
+          if (cz - zl < 0.2) cz = zl;
+          else if (zh - cz < 0.2) cz = zh;
+        }
+      } else {
+        cx = Math.max(-lim, Math.min(lim, x));
+        cz = Math.max(-6.65, Math.min(TF - 0.35, z));
+      }
       groundsAt(cx, cz, tmpGrounds);
       if (!tmpGrounds.some((g) => Math.abs(g - UP[f]) < 0.01)) return false;
       for (const r of YP) if (rampAt(r, cx, cz).inside && (Math.abs(r.base - UP[f]) < 0.01 || Math.abs(r.top - UP[f]) < 0.01)) return false;
