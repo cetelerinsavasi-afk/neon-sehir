@@ -17923,7 +17923,7 @@ export const payFutbolTrainingSlot = onCall(async (request) => {
     if (futbolTrainingSlotPaid(team, position)) throw new HttpsError('failed-precondition', 'slot-paid');
     const g = gymSnap.exists ? gymSnap.data() : null;
     if (!g || g.biz?.type !== 'spor') throw new HttpsError('failed-precondition', 'biz-closed');
-    if (g.bizGame) throw new HttpsError('failed-precondition', 'gym-closed'); // v132: oyunun salonu kapalı
+    // v196: tek salon oyunun salonu (game_spor, günlük 1.000) — oyuncu salonları kalktı
     const ownerSnap = g.bizGame ? null : await tx.get(db.collection('users').doc(g.ownerUid));
     const price = gymPriceOf(g);
     if (Number(expect) !== price) throw new HttpsError('aborted', `price-changed:${price}`);

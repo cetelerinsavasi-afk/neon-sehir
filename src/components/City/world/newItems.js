@@ -154,6 +154,8 @@ const ITEMS = [
   },
   {
     k: 'gazebo', name: 'Kamelya', cat: 'bahce', icon: '⛱️', box: [1.6, 1.6],
+    // 4 kişi oturur: iki bankta ikişer, yüzler masaya dönük
+    seats: [[-0.7, 0.56, -1.15, 0], [0.7, 0.56, -1.15, 0], [-0.7, 0.56, 1.15, Math.PI], [0.7, 0.56, 1.15, Math.PI]],
     build(g) {
       const wood = M('#7a5232', 0.75);
       const roof = M('#3b2a26', 0.8);

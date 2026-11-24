@@ -123,8 +123,14 @@ export function CamiiPart({ panel, setPanel, setDynNpcs, walk }) {
 
   return (
     <>
-      {/* v94: imam butonları sağ üstte */}
-      <Menu show={walk} right>
+      {/* v196: bütün mekân düğmeleri solda (sağdakiler haritanın üstüne geliyordu) — tek menü */}
+      <Menu show={walk}>
+        {user && !prayed && (
+          <button className="v3-btn primary" disabled={busy} onClick={pray}>
+            {busy ? 'İbadet ediliyor…' : '🤲 İbadet Et'}
+          </button>
+        )}
+        {err && <span className="v3-err">{err}</span>}
         <button className="v3-btn" onClick={() => setPanel('imam')}>
           {imam ? `🕌 İmam: ${imam.displayName}` : '🕌 İmamlık Başvurusu'}
         </button>
@@ -135,14 +141,6 @@ export function CamiiPart({ panel, setPanel, setDynNpcs, walk }) {
         <button className="v3-btn" onClick={() => setPanel('congregation')}>
           📿 {win}. Vakit Cemaati ({members.length})
         </button>
-      </Menu>
-      <Menu show={walk}>
-        {user && !prayed && (
-          <button className="v3-btn primary" disabled={busy} onClick={pray}>
-            {busy ? 'İbadet ediliyor…' : '🤲 İbadet Et'}
-          </button>
-        )}
-        {err && <span className="v3-err">{err}</span>}
       </Menu>
       {booklet && <ImamBooklet onClose={() => setBooklet(false)} />}
       {panel === 'imam' && (

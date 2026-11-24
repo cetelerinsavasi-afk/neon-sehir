@@ -604,7 +604,7 @@ export function buildModifiye(kit, lot) {
   kit.item('cone', -2, d / 2 - 2.2, 0, 0);
   kit.item('cone', 2, d / 2 - 2.2, 0, 0);
   kit.item('car_sport', bw / 2 - 3, d / 2 - 3.4, 2, 2);
-  kit.item('door_metal', bw / 2 - 0.2, bz + 2.5, 2, 0, { solid: false });
+  // v196: sağ duvardaki işlevsiz metal kapı kaldırıldı
   kit.pool(0, bz + bd / 2 + 1.5, '#39ff88', 13, 0.17, 0.42);
   kit.solid(0, bz - bd / 2, bw / 2, 0.3);
   kit.solid(-bw / 2, bz, 0.3, bd / 2);

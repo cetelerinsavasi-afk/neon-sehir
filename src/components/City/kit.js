@@ -669,7 +669,7 @@ export class Kit {
     if (solid && def) {
       itemBoxes(def).forEach(([bx, bz, hw, hd]) => this.solids.push({ o, x: bx * scale, z: bz * scale, hw: hw * scale, hd: hd * scale, item: def.cat, key: k })); // v161: key → ağaçlar araca engel
     }
-    if (def?.seats && def.cat !== 'araba' && def.cat !== 'motor') def.seats.forEach((sp) => this.seats.push({ o, x: sp[0] * scale, y: sp[1] * scale, z: sp[2] * scale }));
+    if (def?.seats && def.cat !== 'araba' && def.cat !== 'motor') def.seats.forEach((sp) => this.seats.push({ o, x: sp[0] * scale, y: sp[1] * scale, z: sp[2] * scale, ...(sp[3] ? { yaw: sp[3] } : {}) }));
     if (ctl?.light) {
       const L = ctl.light;
       this.lights.push({ o, x: L.x, y: L.y, z: L.z, color: L.color, intensity: L.intensity, distance: L.distance });

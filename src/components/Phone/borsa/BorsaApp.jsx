@@ -354,7 +354,7 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
           <VendorAvatar id={sel} size={64} />
           <div>
             <h2>{meta.name}</h2>
-            <span className="borsa-sub">{meta.kind === 'sirket' ? 'Şirket' : 'Seyyar satıcı'}</span>
+            <span className="borsa-sub">{meta.kind === 'sirket' ? 'Şirket' : meta.kind === 'mekan' ? 'Mekân' : 'Seyyar satıcı'}</span>
           </div>
         </div>
         <div className="borsa-bigp">

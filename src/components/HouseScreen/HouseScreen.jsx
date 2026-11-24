@@ -2150,7 +2150,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
                   <button onClick={() => engineRef.current?.duplicateSelected(null, invView[sel.k] > 0)}>⧉ Bir tane daha</button>
                 )}
                 {/* v102 — satın alınmış kapı: ana (giriş) kapı yap */}
-                {!venue && sel.p === 1 && isDoorItemKey(sel.k) &&
+                {!venue && !isHq && sel.p === 1 && isDoorItemKey(sel.k) && /* v196: karargah kapıları değiştirilemez */
                   (resolveEntrance(design?.door, design?.items).item?.i === sel.i ? (
                     <button className="hs-main-door on" disabled>⭐ Ana kapı</button>
                   ) : (
@@ -2209,7 +2209,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
                     ))}
                     <button className={cat === 'yuzey' ? 'on' : ''} onClick={() => pickCat('yuzey')}>🎨 Duvar & Zemin</button>
                   </div>
-                  {cat === 'kapi' && !venue && <EntranceDoorBar design={design} onChange={(d) => engineRef.current?.setDoor(d)} />}
+                  {cat === 'kapi' && !venue && !isHq && <EntranceDoorBar design={design} onChange={(d) => engineRef.current?.setDoor(d)} />}
                   {cat !== 'yuzey' && (
                     <div className="hs-shelf-items">
                       {shelfItems.map((d) => (

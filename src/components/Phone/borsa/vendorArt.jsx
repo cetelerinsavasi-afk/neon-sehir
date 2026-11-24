@@ -11,6 +11,15 @@ export const VENDOR_LOOK = {
   nakliye: { c: '#ffb13d', bg: '#33220a' },
   terminal: { c: '#4dd0ff', bg: '#0a2533' },
   taksi: { c: '#ffd60a', bg: '#2e2a06' },
+  // v196 mekânlar
+  mk_silahci: { c: '#3ad6ff', bg: '#0a1f2a' },
+  mk_galeri: { c: '#ff2e5a', bg: '#2e0a14' },
+  mk_motogaleri: { c: '#ff8a1e', bg: '#2e1a06' },
+  mk_modifiye: { c: '#7cff6b', bg: '#0f2a0c' },
+  mk_spor: { c: '#ff4fd8', bg: '#2a0a26' },
+  mk_cafe: { c: '#d9a066', bg: '#2a1a0c' },
+  mk_bar: { c: '#ffab4a', bg: '#2e1a08' },
+  mk_internet: { c: '#b56bff', bg: '#1c0d33' },
 };
 
 function Art({ id }) {
@@ -136,6 +145,81 @@ function Art({ id }) {
           <path d="M10 50h60" stroke="#1a1a1a" strokeWidth="3" strokeDasharray="4 4" />
           <circle cx="24" cy="58" r="6" fill="#222" />
           <circle cx="56" cy="58" r="6" fill="#222" />
+        </>
+      );
+    // ── v196 mekân hisseleri ────────────────────────────────────────
+    case 'mk_silahci':
+      return (
+        <>
+          <path d="M12 34h44l4-4h10v8l-14 4-4 8h-8l-2 14H30l4-14H12z" fill="#2c3440" />
+          <path d="M12 34h44l4-4h10v8l-14 4" fill="none" stroke="#3ad6ff" strokeWidth="2.5" strokeLinejoin="round" />
+          <rect x="18" y="38" width="20" height="3" rx="1.5" fill="#3ad6ff" opacity=".7" />
+        </>
+      );
+    case 'mk_galeri':
+      return (
+        <>
+          <path d="M10 50l8-14q4-6 12-6h20q8 0 12 6l8 14v8H10z" fill="#ff2e5a" />
+          <path d="M24 36h32l6 10H18z" fill="#ffd0da" opacity=".85" />
+          <circle cx="24" cy="58" r="7" fill="#1a1a1f" />
+          <circle cx="56" cy="58" r="7" fill="#1a1a1f" />
+          <circle cx="24" cy="58" r="3" fill="#cfd6df" />
+          <circle cx="56" cy="58" r="3" fill="#cfd6df" />
+        </>
+      );
+    case 'mk_motogaleri':
+      return (
+        <>
+          <circle cx="20" cy="54" r="10" fill="none" stroke="#1a1a1f" strokeWidth="5" />
+          <circle cx="60" cy="54" r="10" fill="none" stroke="#1a1a1f" strokeWidth="5" />
+          <path d="M20 54l14-16h14l12 16M36 38l-4-8h10" fill="none" stroke="#ff8a1e" strokeWidth="4" strokeLinejoin="round" strokeLinecap="round" />
+          <path d="M40 40h14l4 6H44z" fill="#ff8a1e" />
+        </>
+      );
+    case 'mk_modifiye':
+      return (
+        <>
+          <path d="M22 18a12 12 0 0 0 4 20L48 60a6 6 0 1 0 8-8L34 30a12 12 0 0 0-20-4l8 8-4 4-8-8" fill="#cfd6df" />
+          <circle cx="52" cy="56" r="3" fill="#0f2a0c" />
+          <path d="M50 18l12 12M56 14l10 10" stroke="#7cff6b" strokeWidth="4" strokeLinecap="round" />
+        </>
+      );
+    case 'mk_spor':
+      return (
+        <>
+          <rect x="14" y="36" width="52" height="8" rx="4" fill="#cfd6df" />
+          <rect x="10" y="26" width="8" height="28" rx="3" fill="#ff4fd8" />
+          <rect x="18" y="30" width="6" height="20" rx="2" fill="#ff4fd8" opacity=".8" />
+          <rect x="62" y="26" width="8" height="28" rx="3" fill="#ff4fd8" />
+          <rect x="56" y="30" width="6" height="20" rx="2" fill="#ff4fd8" opacity=".8" />
+        </>
+      );
+    case 'mk_cafe':
+      return (
+        <>
+          <path d="M18 36h36v12q0 14-18 14T18 48z" fill="#f4efe6" />
+          <path d="M54 40h4q8 0 8 7t-8 7h-5" fill="none" stroke="#f4efe6" strokeWidth="4" />
+          <ellipse cx="36" cy="37" rx="17" ry="4" fill="#6b4226" />
+          <path d="M28 28q4-6 0-12M38 28q4-6 0-12M48 28q4-6 0-12" stroke="#ffffff99" strokeWidth="2.5" fill="none" strokeLinecap="round" />
+          <ellipse cx="38" cy="66" rx="26" ry="4" fill="#d9a066" opacity=".6" />
+        </>
+      );
+    case 'mk_bar':
+      return (
+        <>
+          <path d="M18 18h44L42 42v18h10v4H28v-4h10V42z" fill="#ffe2b8" opacity=".9" />
+          <path d="M24 24h32L42 38h-4z" fill="#ffab4a" />
+          <circle cx="54" cy="22" r="5" fill="#7cff6b" />
+          <path d="M50 14l8 10" stroke="#5c3a1e" strokeWidth="2" />
+        </>
+      );
+    case 'mk_internet':
+      return (
+        <>
+          <rect x="12" y="18" width="56" height="36" rx="4" fill="#1a1a2e" stroke="#b56bff" strokeWidth="3" />
+          <path d="M22 44l10-12 8 8 10-14 8 18" fill="none" stroke="#b56bff" strokeWidth="3" strokeLinejoin="round" />
+          <rect x="34" y="56" width="12" height="6" fill="#cfd6df" />
+          <rect x="24" y="62" width="32" height="4" rx="2" fill="#cfd6df" />
         </>
       );
     default:

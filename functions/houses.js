@@ -705,7 +705,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
         if (q.gem) userPatch.emerald = FieldValue.increment(-q.gem);
         tx.update(userRef(uid), userPatch);
       }
-      tx.update(houseRef(houseId), { items, wall, floor, kind: houseKind({ ...h, items, ...(closing ? { biz: null, bizType: null } : {}) }), door: settleDoor(mergeDoor(h, design.door), items), updatedAtMs: now(), ...(editor ? { lastEditBy: uid } : {}) });
+      tx.update(houseRef(houseId), { items, wall, floor, kind: houseKind({ ...h, items, ...(closing ? { biz: null, bizType: null } : {}) }), door: isHqHouse(h) ? settleDoor(h.door || null, items) : settleDoor(mergeDoor(h, design.door), items), // v196: karargah kapısı değiştirilemez
+ updatedAtMs: now(), ...(editor ? { lastEditBy: uid } : {}) });
       tx.set(invRef(owner), { items: invItems, walls, floors, updatedAtMs: now() });
       const cnt = Object.values(q.lines).reduce((a, b) => a + b, 0);
       result = { ok: true, gold: q.gold, gem: q.gem, count: cnt, wall, floor, ...(editor ? { fromFund: true, inv: { items: invItems, walls, floors } } : {}) };

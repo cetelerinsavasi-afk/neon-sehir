@@ -6,9 +6,9 @@ import { LAYOUT_LOTS } from './cityLayout.js';
 
 // --- gerçek harita resmi ↔ dünya eşlemesi ---------------------------------------
 export const MAP_PX = {
-  camii: [180, 400], karakol: [370, 330], banka: [665, 320], galeri: [560, 490], spor: [1030, 420], belediye: [1360, 500],
+  karakol: [370, 330], banka: [665, 320], galeri: [560, 490], spor: [1030, 420], belediye: [1360, 500],
   silah: [75, 560], modifiye: [330, 600], fabrika: [800, 620], netkafe: [1050, 710], casino: [130, 750], park: [640, 820],
-  bar: [1240, 850], cafe: [1450, 1020], pist: [400, 980], ev: [690, 1200], liman: [300, 1230],
+  pist: [400, 980], ev: [690, 1200], liman: [300, 1230],
 };
 export const MAP_SIZE = 1600;
 function solve3(A, b) {

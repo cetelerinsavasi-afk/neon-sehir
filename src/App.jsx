@@ -652,7 +652,7 @@ function GameShell() {
   }, [cityCovered, somethingOpen, city]);
   useEffect(() => {
     if (city || somethingOpen) return;
-    openCityRef.current(cityReturn || { region: 'ev', out: true });
+    openCityRef.current(cityReturn || 'ev'); // v196: oyun oyuncunun evinin içinde açılır
   }, [cityReturn, city, somethingOpen]);
   // v167 — şehir açıkken ana sayfa arayüzü (HUD, alt çubuk, telefon / ChatsApp / Görevler / Canlı / Seçim
   // düğmeleri) şehrin ALTINDA görünmeden çalışıyordu: şehrin kendi kopyalarıyla birlikte aynı dinleyiciler

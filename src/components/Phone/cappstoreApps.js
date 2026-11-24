@@ -32,16 +32,6 @@ export const STORE_APPS = [
     feats: ['Fabrikadaki panelin aynısı', 'Kripto ve elmas makineleri', 'Günlük gelir-gider raporu'],
   },
   {
-    id: 'isletme',
-    name: 'İşletme',
-    title: 'İşletmelerim',
-    sub: 'Tüm işletmelerin tek listede',
-    cat: 'İş',
-    size: '19 MB',
-    desc: 'Sahip olduğun her işletme bugünkü kazancıyla listelenir. Birine dokununca o işletmenin ayarlar menüsü (fiyatlar, envanter, günlük rapor) açılır.',
-    feats: ['Bugünkü kazanç ve müşteri sayısı', 'Fiyatlar, envanter, günlük rapor', 'Dünkü kazanç sıralaması'],
-  },
-  {
     id: 'futbol',
     name: 'Futbol',
     title: 'Futbol',

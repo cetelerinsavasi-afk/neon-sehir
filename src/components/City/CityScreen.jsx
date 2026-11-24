@@ -110,7 +110,7 @@ const VENUE_UI = {
   netkafe: { game: 'internet_mekan', heist: 'internet_kafe' },
   spor: { game: 'spor_mekan' },
   galeri: { game: 'araba_galerisi' }, // soygun düğmesi mekânın içinde (GaleriPart)
-  motogaleri: { game: 'motor_galerisi' },
+  motogaleri: { openBiz: 'motogaleri', label: '🏍️ Motor Galerisi' }, // içine girilmez: kapıda düğme → oyunun motor galerisi
   silah: { game: 'silah_magazasi', heist: 'silah_magazasi' },
   modifiye: { game: 'modifiye_garaji' },
   casino: { game: 'gazino' },
@@ -426,6 +426,9 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const [ready, setReady] = useState(false);
   const [homeInside, setHomeInside] = useState(false); // v196: 3 katlı evin içindeyim
   const homeEvtRef = useRef(null);
+  const [evlerOpen, setEvlerOpen] = useState(false); // v196: Müstakil › Evler listesi
+  const [homeInfo, setHomeInfo] = useState(null); // v196: { name, owner, floor, mine }
+  const [homeSetReq, setHomeSetReq] = useState(0);
   // v167 — açılış sırası: 1 = diğer oyuncular + altın / şüphe + görevler, 2 = telefon, yayın, seçim, yakındakiler
   const bootWorld = useBootStage(1);
   const bootLive = useBootStageAfter(2, 1600); // v171: yayın / seçim düğmeleri en son (dinleyicileri var)
@@ -1035,16 +1038,19 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const curLive = curMatch ? liveState(curMatch) : null;
   // v157 — mekândan çıkınca liste kapanır; oyunun mekân katmanı (camii, banka…) içeride kurulur,
   // çıkıldıktan 3 sn sonra kapanır (kapıda gidip gelince konum kaydı tekrar tekrar yazılmasın)
+  // v196: cafe / bar bahçesine (masalı alan) girince de sipariş verilir
+  const terraceVenue = !venue && zone?.kind === 'terrace' ? zone.venue : null;
+  const walkVenue = venue || terraceVenue;
   useEffect(() => {
     setBizOpen(false);
-    const gk = VENUE_UI[venue]?.game || null;
+    const gk = VENUE_UI[walkVenue]?.game || null;
     if (gk) {
       setGameVenueKey(gk);
       return undefined;
     }
     const t = setTimeout(() => setGameVenueKey(null), 3000);
     return () => clearTimeout(t);
-  }, [venue]);
+  }, [walkVenue]);
   // mekân katmanının istediği motor işlevleri (konuşma balonu, oda içi konum)
   const venueEngRef = useRef(null);
   if (!venueEngRef.current) {
@@ -1421,6 +1427,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       if (!vs.haracDone) list.push({ label: '💰 Haraç kes', cls: 'heist', on: () => setPanel({ kind: 'heist', zone }) });
       list.push({ label: '🧾 Menü', on: () => setPanel({ kind: 'menu', zone }) });
     }
+    if (zone.kind === 'evler' && !guest) list.push({ label: '🏘️ Evler', cls: 'take', on: () => setEvlerOpen(true) }); // v196
     if (zone.kind === 'park' && zone.act === 'bufe') list.push({ label: '🌭 Büfe', on: () => setPanel({ kind: 'bufe' }) });
     if (zone.kind === 'park' && zone.act === 'npc') list.push({ label: '🕶️ Şüpheli adam', on: () => setPanel({ kind: 'shady' }) });
     if (zone.kind === 'pist') list.push({ label: '🏁 Yarış Pisti', cls: 'take', free: true, on: () => openIn('yaris_pisti') });
@@ -1670,7 +1677,12 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
             </div>
             ) : (
             <div className="hs-title">
-              <b>{zoneName}</b>
+              <b>{venue === 'ev' && homeInfo ? `🏠 ${homeInfo.name}${homeInfo.owner ? ` · ${homeInfo.owner}` : ''} · ${homeInfo.floor}` : zoneName}</b>
+              {venue === 'ev' && homeInfo?.mine && (
+                <button type="button" className="cs-home-set" onClick={() => setHomeSetReq((n) => n + 1)}>
+                  ⚙️ Ayarlar
+                </button>
+              )}
               <span>
                 {guest ? (
                   // v194: misafir — yakındakiler (izleyebiliyorsa); giriş düğmesi sol üstteki hapta
@@ -1919,6 +1931,13 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                   </button>
                 </div>
               )}
+              {vui?.openBiz && (
+                <div className="cs-venue-bar">
+                  <button className="cs-venue-btn" onClick={() => (guest ? setAskSignIn(true) : onOpenBiz?.({ type: vui.openBiz, game: true }))}>
+                    {vui.label}
+                  </button>
+                </div>
+              )}
               {vui && (vui.inCity || vui.heist) && (
                 <div className="cs-venue-bar">
                   {vui.inCity && (
@@ -1938,15 +1957,15 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           {/* v196 — fabrikaya giren herkes: alt ortada Çalış (günde 1 kez 5.000) */}
           {atFactory && <FactoryWorkButton flash={flash} />}
           {/* v196 — 3 katlı ev: Evler · Tasarla · Ayarlar */}
-          {!guest && uid && <HomePanel eng={engineRef.current} uid={uid} inside={homeInside} flash={flash} evtRef={homeEvtRef} Sheet={Sheet} />}
+          {!guest && uid && <HomePanel eng={engineRef.current} uid={uid} inside={homeInside} flash={flash} evtRef={homeEvtRef} Sheet={Sheet} listOpen={evlerOpen} onListClose={() => setEvlerOpen(false)} onInfo={setHomeInfo} settingsReq={homeSetReq} />}
           {/* v157 — oyunun mekânları (camii, banka, karakol, belediye): işlemler içeride */}
           {gameVenueKey && !guest && VENUES[gameVenueKey] && (
-            <div className={`cs-venue-layer${venue && VENUE_UI[venue]?.game === gameVenueKey ? '' : ' away'}`}>
+            <div className={`cs-venue-layer${walkVenue && VENUE_UI[walkVenue]?.game === gameVenueKey ? '' : ' away'}`}>
               <VenueLayer
                 venue={gameVenueDef}
                 engineRef={venueEngRef}
                 interact={zone?.kind === 'station' ? { id: zone.station } : null}
-                mode={venue && VENUE_UI[venue]?.game === gameVenueKey && !driving ? 'walk' : 'away'}
+                mode={walkVenue && VENUE_UI[walkVenue]?.game === gameVenueKey && !driving ? 'walk' : 'away'}
                 apiRef={venueApiRef}
                 onOpenHeist={(t) => setPanel({ kind: 'heist', target: t, title: VENUE_TITLE[venue] || '' })}
                 flash={flash}

@@ -41,7 +41,7 @@ export const CITY_GRID = { x0: WALK.x0 - 2, x1: EXIT.x1 + 12, z0: BOUNDS.z0 - 2,
 // v159.1: ev, ofis ve depo (liman) binaları da — kapıda "🏠 Evler" / "🏢 Ofisler" / "📦 Depolar" düğmesi
 // v196: haritadaki mekânlar oyunun — kapılar açılır, içeri yürünür (ev: kendi evine giriş, Faz 4; ofis binası kalktı)
 export const CLOSED_SHOPS = new Set(['ofis']); // v196: ev = oyuncunun 3 katlı evi (açık)
-export const VENUE_GAME_KEY = { camii: 'camii', banka: 'banka', karakol: 'karakol', belediye: 'belediye', galeri: 'araba_galerisi', silah: 'silah_magazasi', casino: 'gazino' };
+export const VENUE_GAME_KEY = { camii: 'camii', banka: 'banka', karakol: 'karakol', belediye: 'belediye', galeri: 'araba_galerisi', silah: 'silah_magazasi', casino: 'gazino', netkafe: 'internet_mekan' }; // v196: internet kafe istasyonları (Oyun oyna / Yayın aç)
 
 const yawOf = (m) => Math.atan2(m.elements[8], m.elements[10]);
 

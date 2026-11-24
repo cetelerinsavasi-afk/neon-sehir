@@ -36,7 +36,6 @@ const AchievementsScreen = lazy(retryImport(() => import('../AchievementsScreen/
 const FactoryScreen = lazy(retryImport(() => import('../FactoryScreen/FactoryScreen')));
 const FutbolFullScreen = lazy(retryImport(() => import('../FutbolScreen/FutbolFullScreen')));
 const BelediyeScreen = lazy(retryImport(() => import('../Belediye/BelediyeScreen')));
-const BusinessesApp = lazy(retryImport(() => import('./BusinessesApp')));
 
 // Telefon 3 sayfa, gerçek telefondaki gibi yana kaydırılır:
 //   [ Gazete ]  ←  [ Ana ekran ]  →  [ Altın · Neon Şehir · Bi fikrin mi var? ]
@@ -49,7 +48,7 @@ const CAPPSTORE_APP = { id: 'cappstore', note: 'Cappstore', tone: 'cappstore', s
 const STORE_ICON = {
   parara: { id: 'parara', glyph: 'P', note: 'Parara', tone: 'banka' },
   fabrika: { id: 'fabrika', note: 'Fabrika', tone: 'fabrika', svg: true },
-  isletme: { id: 'isletme', note: 'İşletme', tone: 'isletme', svg: true },
+  // v196: İşletme uygulaması kalktı (oyuncu işletmeleri yok)
   futbol: { id: 'futbol', note: 'Futbol', tone: 'futbol', svg: true },
   belediye: { id: 'belediye', note: 'Belediye', tone: 'belediye', svg: true },
 };
@@ -478,11 +477,7 @@ export default function PhoneScreen({ onClose, initialApp = null, onAppChange = 
               <FactoryScreen />
             </Suspense>
           )}
-          {openApp === 'isletme' && (
-            <Suspense fallback={<div className="phone-app-loading">Yükleniyor…</div>}>
-              <BusinessesApp selected={bizSel?.id || null} onSelect={(id, name) => setBizSel({ id, name })} />
-            </Suspense>
-          )}
+          {/* v196: İşletme uygulaması kalktı */}
           {openApp === 'chatsapp' && <ChatsAppScreen />}
           {openApp === 'gazete' && <NewspaperScreen />}
           {openApp === 'sixtagram' && <SixtagramScreen />}

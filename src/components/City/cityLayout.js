@@ -29,7 +29,8 @@ export const BOUNDS = { x0: KORDON_X + 1.4, x1: OUTER.x1 - 0.6, z0: OUTER.z0 + 0
 // [tür, i0, j0, i1, j1, yön]
 export const LOTS = [
   ['karakol', 1, 0], ['banka', 2, 0], ['spor', 4, 0], ['belediye', 5, 0],
-  ['camii', 0, 1], ['galeri', 1, 1], ['fabrika', 2, 1], ['netkafe', 3, 1], ['bar', 4, 1], ['cafe', 5, 1],
+  // v196: camii barın eski yerine, taksi durağı cafenin eski yerine; camiinin eski yeri (0,1) sıradan bina
+  ['galeri', 1, 1], ['fabrika', 2, 1], ['netkafe', 3, 1], ['camii', 4, 1], ['taksi_duragi', 5, 1, 5, 1, 's'],
   ['silah', 0, 2], ['modifiye', 1, 2], ['park', 2, 2, 3, 2],
   ['casino', 0, 3, 0, 3, 'e'], ['pist', 1, 3, 2, 3], ['ev', 3, 3],
   ['liman', 0, 4, 1, 4],
@@ -42,7 +43,8 @@ export const LOTS = [
   // v196 — taksi durağı eski Ofisler binasının yerinde (evin karşısı); doğu dış halkadaki eski durak kalktı
   // v157.4 — evin karşısı: müstakil evler mahallesi (eski eczane/optik/pide blokları) + ofis binası
   ['mustakil', 3, 4],
-  ['taksi_duragi', 4, 4, 4, 4, 's'], // v196: Ofisler binası kalktı
+  // v196: bar eski taksi durağının yerine (deniz kenarı), cafe onunla stadyumun arasına (deniz kenarı)
+  ['bar', 4, 4], ['cafe', 5, 4],
   // v156 — şehirlerarası OTOGAR (dış halka, otoyol ağzının yanı; iki parsel, batıya bakar)
   ['otogar', 7, -1, 7, 0, 'w'],
   // v196 — stadyum güneydoğu köşesine, deniz kenarına (eski taksi durağının karesi + köşe: 4 parsel). Eski yeri (4,2)–(5,3) sıradan bloklar

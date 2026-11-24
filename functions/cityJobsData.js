@@ -38,14 +38,14 @@ const S = (n, name, x, z, fx, fz) => ({ n, key: `durak${n}`, name, x, z, fx, fz,
 export const BUS_STOPS = [
   S(1, 'Kuzey Kapısı', -60, -138, 0, 1), // üst dış yol, doğuya
   S(2, 'Karakol', -42, -80, -1, 0), // x = -40, güneye
-  S(3, 'Bar', 60, -58, 0, 1), // z = -60, doğuya
+  S(3, 'Camii', 60, -58, 0, 1), // z = -60, doğuya (v196: camii barın eski yerinde)
   S(4, 'Hastane', 158, -40, -1, 0), // doğu dış yol, güneye
   S(5, 'Stadyum', 118, 80, -1, 0), // v196: stadyum güneydoğu köşesine taşındı — x = 120, güneye (stadyumun batısı; ön kaldırımı otopark + giriş)
   S(6, 'Yarış Pisti', -40, 58, 0, -1), // v196: evin önünden yarış pistinin kaldırımına taşındı (z = 60, batıya)
   S(7, 'Plaza', -20, 98, 0, -1), // sahil yolu, batıya
   S(8, 'Liman', -100, 98, 0, -1), // sahil yolu, batıya
   S(9, 'Sahil Bulvarı', -118, 0, 1, 0), // v157: batı artık deniz — sahil bulvarı, kuzeye
-  S(10, 'Camii', -100, -58, 0, 1), // z = -60, doğuya
+  S(10, 'Batı Mahallesi', -100, -58, 0, 1), // z = -60, doğuya (v196: camii taşındı)
 ];
 
 export const manhattan = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.z - b.z);
@@ -71,10 +71,10 @@ const covered = (x, z) => BIG.some(([x0, x1, z0, z1]) => x > x0 - 1 && x < x1 + 
 // yakındaki yer adı (lot merkezleri)
 const PLACES = [
   ['Karakol', -60, -80], ['Banka', -20, -80], ['Benzinlik', 20, -80], ['Spor Salonu', 60, -80], ['Belediye', 100, -80],
-  ['Camii', -100, -40], ['Galeri', -60, -40], ['Fabrika', -20, -40], ['İnternet Kafe', 20, -40], ['Bar', 60, -40], ['Cafe', 100, -40],
+  ['Batı Mahallesi', -100, -40], ['Galeri', -60, -40], ['Fabrika', -20, -40], ['İnternet Kafe', 20, -40], ['Camii', 60, -40], ['Taksi Durağı', 100, -40],
   ['Silahçı', -100, 0], ['Modifiyeci', -60, 0], ['Park', 0, 0], ['Stadyum', 160, 60],
   ['Casino', -100, 40], ['Yarış Pisti', -40, 40], ['Evler', 20, 40],
-  ['Liman', -80, 80], ['Plaza', -20, 80], ['Sahil', 60, 80],
+  ['Liman', -80, 80], ['Plaza', -20, 80], ['Bar', 60, 80], ['Cafe', 100, 80],
 ];
 const placeName = (x, z) => {
   let best = PLACES[0];
@@ -136,12 +136,12 @@ const cxw = (i) => -100 + P_ * i;
 const czw = (j) => -80 + P_ * j;
 const FACE_ = { s: 0, e: Math.PI / 2, n: Math.PI, w: -Math.PI / 2 };
 export const KURYE_LOTS = {
-  camii: [0, 1, 0, 1, 's', 'Camii'], banka: [2, 0, 2, 0, 's', 'Banka'], karakol: [1, 0, 1, 0, 's', 'Karakol'], belediye: [5, 0, 5, 0, 's', 'Belediye'],
+  camii: [4, 1, 4, 1, 's', 'Camii'], banka: [2, 0, 2, 0, 's', 'Banka'], karakol: [1, 0, 1, 0, 's', 'Karakol'], belediye: [5, 0, 5, 0, 's', 'Belediye'],
   galeri: [1, 1, 1, 1, 's', 'Araba Galerisi'], silah: [0, 2, 0, 2, 's', 'Silah Mağazası'], modifiye: [1, 2, 1, 2, 's', 'Modifiye Garajı'],
   casino: [0, 3, 0, 3, 'e', 'Casino'], spor: [4, 0, 4, 0, 's', 'Spor Salonu'], fabrika: [2, 1, 2, 1, 's', 'Fabrika'], netkafe: [3, 1, 3, 1, 's', 'İnternet Kafe'],
-  bar: [4, 1, 4, 1, 's', 'Bar'], cafe: [5, 1, 5, 1, 's', 'Cafe'], ev: [3, 3, 3, 3, 's', 'Evler'], stadyum: [6, 3, 7, 4, 's', 'Stadyum'],
+  bar: [4, 4, 4, 4, 's', 'Bar'], cafe: [5, 4, 5, 4, 's', 'Cafe'], ev: [3, 3, 3, 3, 's', 'Evler'], stadyum: [6, 3, 7, 4, 's', 'Stadyum'],
   park: [2, 2, 3, 2, 's', 'Park'], pist: [1, 3, 2, 3, 's', 'Yarış Pisti'], liman: [0, 4, 1, 4, 's', 'Liman'], hastane: [6, 1, 6, 1, 'w', 'Hastane'],
-  benzinlik: [3, 0, 3, 0, 's', 'Benzinlik'], taksi_duragi: [4, 4, 4, 4, 's', 'Taksi Durağı'], plaza: [2, 4, 2, 4, 's', 'Plaza'],
+  benzinlik: [3, 0, 3, 0, 's', 'Benzinlik'], taksi_duragi: [5, 1, 5, 1, 's', 'Taksi Durağı'], plaza: [2, 4, 2, 4, 's', 'Plaza'],
 };
 // lot yerel (x, z) → dünya
 function lotWorld(lot, x, z) {

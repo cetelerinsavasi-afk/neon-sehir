@@ -45,19 +45,24 @@ function CreateCard({ gold }) {
   const prices = useInvestmentPrices().prices;
   const rates = useBelediyeRates();
   const cost = starterCost(prices, rates);
+  const minCost = withMachineTax(miningPriceOf(0, prices.cryptoPrice), 'mining', rates) + withMachineTax(miningPriceOf(1, prices.cryptoPrice), 'mining', rates);
+  const dmCost = withMachineTax(diamondMachinePriceOf(0, prices.diamondPrice), 'elmas', rates) + withMachineTax(diamondMachinePriceOf(1, prices.diamondPrice), 'elmas', rates);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   return (
-    <div className="factory-machine-buy-card">
-      <div className="factory-machine-buy-title">🏭 Fabrika kur</div>
-      <div className="fv-row"><span>Kuruluş</span><b>{fmt(FACTORY_CREATE_COST)}</b></div>
-      <div className="fv-row"><span>⛏️ 2 kripto makinesi</span><b>{fmt(withMachineTax(miningPriceOf(0, prices.cryptoPrice), 'mining', rates) + withMachineTax(miningPriceOf(1, prices.cryptoPrice), 'mining', rates))}</b></div>
-      <div className="fv-row"><span>💎 2 elmas makinesi</span><b>{fmt(withMachineTax(diamondMachinePriceOf(0, prices.diamondPrice), 'elmas', rates) + withMachineTax(diamondMachinePriceOf(1, prices.diamondPrice), 'elmas', rates))}</b></div>
-      <div className="fv-row"><span>Toplam (vergi dahil)</span><b>{fmt(cost)} altın</b></div>
-      <p className="factory-hint">Makineler her gün çalıştırılır. Üretim gece 00:00'da doğrudan bankaya düşer.</p>
-      {err && <p className="factory-error">{err}</p>}
+    <div className="fx-create">
+      <div className="fx-hero">
+        <span className="fx-hero-ic">🏭</span>
+        <b>Fabrikanı kur</b>
+        <small>Baca senin, kâr senin.</small>
+      </div>
+      <div className="fx-kit">
+        <div><i>🏗️</i><b>Kuruluş</b><span>{fmt(FACTORY_CREATE_COST)}</span></div>
+        <div><i>⛏️</i><b>2 kripto makinesi</b><span>{fmt(minCost)}</span></div>
+        <div><i>💎</i><b>2 elmas makinesi</b><span>{fmt(dmCost)}</span></div>
+      </div>
       <button
-        className="factory-btn primary"
+        className="fx-cta"
         disabled={busy || gold < cost}
         onClick={async () => {
           setBusy(true);
@@ -71,8 +76,9 @@ function CreateCard({ gold }) {
           }
         }}
       >
-        {gold < cost ? 'Yetersiz altın' : busy ? 'Kuruluyor…' : 'Kur'}
+        {busy ? 'Kuruluyor…' : gold < cost ? `Yetersiz altın · ${fmt(cost)}` : `Kur · ${fmt(cost)} altın`}
       </button>
+      {err && <p className="factory-error">{err}</p>}
     </div>
   );
 }
@@ -85,6 +91,7 @@ function OwnerView({ factory, machines, gold }) {
   const [rename, setRename] = useState(null);
   const [logo, setLogo] = useState(false);
   const [sponsor, setSponsor] = useState(false);
+  const [report, setReport] = useState(false);
   const mining = machines.filter((m) => m.type === 'mining');
   const dm = Math.max(0, Math.floor(Number(factory.dm?.n) || 0));
   const day = today();
@@ -109,7 +116,7 @@ function OwnerView({ factory, machines, gold }) {
     <div>
       <div className="factory-top-row">
         <button className="factory-btn small" onClick={() => setLogo(true)} title="Logo"><FactoryBadge logo={factory.logo} name={factoryDisplayName(factory)} size={44} /></button>
-        <b style={{ flex: 1, fontSize: 18 }}>{factoryDisplayName(factory)}</b>
+        <b className="fx-name">{factoryDisplayName(factory)}</b>
         <button className="factory-btn small" onClick={() => setRename(factory.name || '')}>✏️</button>
         <NotificationBell kind="factory" id={factory.id} unread={Boolean(factory.notifUnread)} />
       </div>
@@ -120,14 +127,14 @@ function OwnerView({ factory, machines, gold }) {
         </div>
       )}
       <div className="fv-stats">
-        <div className="fv-stat"><b>{fmt(value)}</b><span>Fabrika değeri</span></div>
-        <div className="fv-stat"><b>{fmt(factory.dailyIncomeAvg10 || 0)}</b><span>10 günlük ortalama gelir</span></div>
+        <div className="fv-stat"><b>{fmt(value)}</b><span>Değer</span></div>
+        <div className="fv-stat"><b>{fmt(factory.dailyIncomeAvg10 || 0)}</b><span>Ort. gelir / gün</span></div>
       </div>
       <div className="fv-machines">
         <div className="fv-machine">
           <div className="em">⛏️</div>
           <div className="n">{mining.length}</div>
-          <div className="lb">Kripto makinesi</div>
+          <div className="lb">Kripto</div>
           <button className="factory-btn primary small" disabled={busy || gold < minPrice} onClick={() => run('min', async () => { await buyFactoryMachine('mining', minPrice); return '⛏️ Kripto makinesi alındı.'; })}>
             + {fmt(minPrice)}
           </button>
@@ -135,7 +142,7 @@ function OwnerView({ factory, machines, gold }) {
         <div className="fv-machine">
           <div className="em">💎</div>
           <div className="n">{dm}</div>
-          <div className="lb">Elmas makinesi</div>
+          <div className="lb">Elmas</div>
           <button className="factory-btn primary small" disabled={busy || gold < dmPrice} onClick={() => run('dm', async () => { await buyFactoryMachine('elmas', dmPrice); return '💎 Elmas makinesi alındı.'; })}>
             + {fmt(dmPrice)}
           </button>
@@ -144,17 +151,22 @@ function OwnerView({ factory, machines, gold }) {
       <button className="factory-btn primary" style={{ width: '100%', marginTop: 12 }} disabled={busy || ranToday} onClick={() => run('run', async () => { await runFactoryMachines(); return '⚙️ Makineler çalışıyor. Üretim 00:00\'da bankada.'; })}>
         {ranToday ? '✅ Makineler bugün çalışıyor' : '⚙️ Makineleri çalıştır'}
       </button>
-      <p className="factory-hint">Elektrik: üretim değerinin %30'u. Fiyat yükseldikçe verim düşer.</p>
-      <button className="factory-btn small" onClick={() => setSponsor(true)}>⚽ Kulüp sponsorluğu</button>
+      <div className="fx-rep">
+        <button className="fx-rep-head" onClick={() => setReport((v) => !v)}>
+          <span>📋 Günlük rapor</span>
+          <b className={(factory.dailyIncome || 0) < 0 ? 'neg' : ''}>{fmt(factory.dailyIncome || 0)}</b>
+          <i>{report ? '▴' : '▾'}</i>
+        </button>
+        {report && (
+          <div className="fx-rep-body">
+            <div className="fv-row"><span>Net kâr</span><b>{fmt(factory.dailyIncome || 0)}</b></div>
+            <div className="fv-row"><span>Elektrik</span><b>−{fmt(factory.dailyElectricityExpense || 0)}</b></div>
+            <div className="fv-row"><span>Vergi</span><b>−{fmt(factory.dailyTaxExpense || 0)}</b></div>
+          </div>
+        )}
+      </div>
+      <button className="factory-btn small fx-sponsor" onClick={() => setSponsor(true)}>⚽ Kulüp sponsorluğu</button>
       {sponsor && <FactorySponsorModal onClose={() => setSponsor(false)} />}
-      {(factory.dailyIncomeDateKey || factory.dailyElectricityExpense != null) && (
-        <div className="factory-machine-buy-card">
-          <div className="factory-section-title">📋 Dünkü rapor</div>
-          <div className="fv-row"><span>Net kâr</span><b>{fmt(factory.dailyIncome || 0)}</b></div>
-          <div className="fv-row"><span>Elektrik</span><b>{fmt(factory.dailyElectricityExpense || 0)}</b></div>
-          <div className="fv-row"><span>Vergi</span><b>{fmt(factory.dailyTaxExpense || 0)}</b></div>
-        </div>
-      )}
       {msg && <p className={typeof msg === 'string' && /^[✅⛏️💎⚙️]/u.test(msg) ? 'factory-hint' : 'factory-error'}>{msg}</p>}
     </div>
   );
@@ -166,7 +178,7 @@ function FactoriesList() {
     <div className="factory-browse-list">
       <div className="factory-section-title">🏭 Fabrikalar</div>
       {loading && <p className="factory-hint">Yükleniyor…</p>}
-      {!loading && !factories.length && <p className="factory-hint">Kazanan fabrika yok. İlk sen ol.</p>}
+      {!loading && !factories.length && <p className="factory-hint">Henüz kazanan fabrika yok.</p>}
       {factories.map((f, i) => (
         <div key={f.id} className="factory-browse-card">
           <div className="factory-browse-top">
@@ -176,7 +188,7 @@ function FactoriesList() {
               <span className="factory-browse-owner">{f.ownerName || 'Oyuncu'}</span>
             </div>
           </div>
-          <div className="factory-browse-meta">Ortalama gelir: <b>{fmt(f.dailyIncomeAvg10)}</b> altın/gün · 💎 {fmt(f.dm?.n || 0)} elmas makinesi</div>
+          <div className="factory-browse-meta">Ort. gelir <b>{fmt(f.dailyIncomeAvg10)}</b> / gün</div>
         </div>
       ))}
     </div>

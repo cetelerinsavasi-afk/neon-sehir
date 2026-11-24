@@ -24,7 +24,7 @@ const T = 0.3; // dış duvar kalınlığı
 const LOWH = 3.6;
 export const DOOR = { x: 5, w: 1.9, h: 2.4 };
 // kapı eşyasının açıklığı [genişlik, yükseklik] — duvar boşluğu kapıyla birebir (üstünde/yanında boşluk kalmaz)
-const DOOR_SIZE = { door_cam: [1.1, 2.25], door_cift: [1.9, 2.3], door_doner: [2.3, 2.35], door_market: [1.9, 2.3], door_metal: [1.05, 2.2], door_salon: [1.4, 2.3], door_hastane: [1.9, 2.3], door_beyaz: [1.0, 2.15], door_ahsap: [1.1, 2.25] };
+const DOOR_SIZE = { garagedoor: [2.8, 2.55], door_cam: [1.1, 2.25], door_cift: [1.9, 2.3], door_doner: [2.3, 2.35], door_market: [1.9, 2.3], door_metal: [1.05, 2.2], door_salon: [1.4, 2.3], door_hastane: [1.9, 2.3], door_beyaz: [1.0, 2.15], door_ahsap: [1.1, 2.25] };
 let RX = 0; // oda merkezinin parsel içindeki x kayması (ev, liman)
 // dış kapı: oyundaki açılır kapı eşyaları (yaklaşınca açılır, arkası karanlık boşluk)
 const RZ = -5.2; // oda merkezi (parsel yerel z) → ön duvar z = 1.8
@@ -43,7 +43,7 @@ function archWindow(kit, x, y, z, w, h, ry, color = '#ffcf7a', inten = 1.6) {
 // ext: (kit, w, h, d, x, y, z) → dış duvar kutusu çizer
 // vitrin: ön duvar kapının iki yanında cam (dükkânlar) — sokaktan içerisi görünür
 // v196: noCeil (tavan yok), noHigh (üst kütle yok), ownWalls (dış duvar + iç yüzleri kendisi çizer — 3 katlı ev)
-function shell(parts, { ext, extH, venue, doorKey, vitrine = false, ceil = '#1a1b20', noCeil = false, noHigh = false, ownWalls = false }) {
+function shell(parts, { ext, extH, venue, doorKey, vitrine = false, ceil = '#1a1b20', noCeil = false, noHigh = false, ownWalls = false, windows = null }) {
   if (ownWalls) ext = () => {};
   const base = parts.base;
   const [DW, DH] = DOOR_SIZE[doorKey] || [1.9, 2.3];
@@ -81,6 +81,26 @@ function shell(parts, { ext, extH, venue, doorKey, vitrine = false, ceil = '#1a1
       glassSpans.push([a, b]);
     });
     ext(front, DW, LOWH - DH, T, DOOR.x, DH, fz);
+  } else if (windows?.length) {
+    // v196: gerçek pencereler (0,55–2,9 m cam) — dışarıdan içerisi görünür (bar, silahçı)
+    const L0 = -W / 2 - T;
+    const R0 = W / 2 + T;
+    const holes = [[dl, dr], ...windows].sort((p, q) => p[0] - q[0]);
+    let cur = L0;
+    holes.forEach(([a, b]) => {
+      if (a > cur) ext(front, a - cur, LOWH, T, (cur + a) / 2, 0, fz);
+      cur = Math.max(cur, b);
+    });
+    if (cur < R0) ext(front, R0 - cur, LOWH, T, (cur + R0) / 2, 0, fz);
+    windows.forEach(([a, b]) => {
+      ext(front, b - a, 0.55, T, (a + b) / 2, 0, fz);
+      ext(front, b - a, LOWH - 2.9, T, (a + b) / 2, 2.9, fz);
+      const g = front.mesh(new THREE.PlaneGeometry(b - a, 2.35), glassM, (a + b) / 2, 0.55 + 2.35 / 2, fz, 0, { cast: false, receive: false });
+      g.renderOrder = 5;
+      glassSpans.push([a, b]);
+    });
+    ext(front, DW, LOWH - DH, T, DOOR.x, DH, fz);
+    parts.vitrine = true; // içerisi uzaktan da çizilir
   } else {
     ext(front, dl + W / 2 + T, LOWH, T, (-W / 2 - T + dl) / 2, 0, fz);
     ext(front, W / 2 + T - dr, LOWH, T, (dr + W / 2 + T) / 2, 0, fz);
@@ -557,10 +577,10 @@ export function buildSilahVenue(lot) {
   const { w, d } = lot;
   P.base.floor('beton', w, d, 0, 0);
   const extH = 7;
-  shell(P, { ext: wallExt('tugla', '#7a6a66'), extH, venue: gameVenue('silah_magazasi'), doorKey: 'door_metal' });
+  shell(P, { ext: wallExt('tugla', '#7a6a66'), extH, venue: gameVenue('silah_magazasi'), doorKey: 'door_metal', windows: [[-6.3, -2.7], [2.7, 6.3]] });
   P.high.box(BW + 0.4, 0.4, BD + 0.4, M('#1a1a1d', 0.6), 0, extH, RZ);
   for (const sx of [-1, 1]) {
-    P.low[0].mesh(new THREE.PlaneGeometry(3.6, 2.4), glowMat('#3ad6ff', 0.45), sx * 4.5, 1.9, FRONT + 0.02, 0, { cast: false });
+    // v196: gerçek cam (shell windows) — önünde parmaklık
     for (let i = 0; i < 9; i++) P.low[0].box(0.05, 2.6, 0.05, M('#1b1b1d', 0.4, 0.8), sx * 4.5 - 1.8 + i * 0.45, 0.6, FRONT + 0.12, { cast: false });
   }
   const gun = canvasTex('silahneon', 1024, 420, (g, W, H) => {
@@ -750,14 +770,27 @@ export function buildBarVenue(lot) {
   P.base.floor('kaldirim', w, d, 0, 0);
   P.base.floor('parke_ceviz', w - 4, d / 2 - FRONT - 0.5, 0, (FRONT + d / 2) / 2, 0.16);
   const extH = 8;
-  shell(P, { ext: wallExt('tugla'), extH, venue: NEW_VENUES.bar, doorKey: 'door_salon' });
+  const BAR_WIN = [-6.6, -2.2, 2.2, 6.6].map((x) => [x - 1.3, x + 1.3]);
+  shell(P, { ext: wallExt('tugla'), extH, venue: NEW_VENUES.bar, doorKey: 'door_salon', windows: BAR_WIN });
   P.high.box(BW + 0.5, 0.5, BD + 0.5, M('#2a1a12', 0.7), 0, extH, RZ);
-  // ahşap ön yüz (kapı hariç)
-  for (const [a, b] of [[-BW / 2, DOOR.x - 0.75], [DOOR.x + 0.75, BW / 2]]) P.low[0].wallBox('ahsap_panel', b - a, 3.4, 0.2, (a + b) / 2, 0, FRONT + 0.1);
+  // ahşap ön yüz (kapı ve camlar hariç) — v196: pencereler gerçek cam, içerisi görünür
+  {
+    const holes = [[DOOR.x - 0.75, DOOR.x + 0.75], ...BAR_WIN].sort((p, q) => p[0] - q[0]);
+    let cur = -BW / 2;
+    holes.forEach(([a, b]) => {
+      if (a > cur) P.low[0].wallBox('ahsap_panel', a - cur, 3.4, 0.2, (cur + a) / 2, 0, FRONT + 0.1);
+      cur = Math.max(cur, b);
+    });
+    if (cur < BW / 2) P.low[0].wallBox('ahsap_panel', BW / 2 - cur, 3.4, 0.2, (cur + BW / 2) / 2, 0, FRONT + 0.1);
+    BAR_WIN.forEach(([a, b]) => {
+      P.low[0].wallBox('ahsap_panel', b - a, 0.55, 0.2, (a + b) / 2, 0, FRONT + 0.1);
+      P.low[0].wallBox('ahsap_panel', b - a, 0.5, 0.2, (a + b) / 2, 2.9, FRONT + 0.1);
+      for (const fx of [a, (a + b) / 2, b]) P.low[0].box(0.08, 2.35, 0.08, M('#2a1a12', 0.6), fx, 0.55, FRONT + 0.22, { cast: false });
+    });
+  }
   P.low[0].wallBox('ahsap_panel', 1.5, 1.0, 0.2, DOOR.x, 2.4, FRONT + 0.1);
   for (let i = 0; i < 4; i++) {
     const x = -6.6 + i * 4.4;
-    if (offDoor(x, 1.3, 0)) P.low[0].mesh(new THREE.PlaneGeometry(2.6, 2.2), glowMat('#ffab4a', 1.3), x, 1.6, FRONT + 0.22, 0, { cast: false });
     P.high.mesh(new THREE.PlaneGeometry(2.2, 1.8), glowMat('#ffc06a', 1.0), x, 5.4, FRONT + 0.02, 0, { cast: false });
   }
   P.low[0].box(BW, 0.2, 2.2, M('#3a1610', 0.7), 0, 3.6, FRONT + 1.1);
@@ -829,6 +862,23 @@ export function buildEvVenue(lot) {
   shell(P, { ext: wallExt('boya_krem'), extH: HOUSE_EXT_H, venue, doorKey: 'door_ahsap', ceil: '#f4f1ea', noCeil: true, noHigh: true, ownWalls: true });
   const [dw, dh] = DOOR_SIZE.door_ahsap;
   buildHouseFloors(P, { RX, RZ, T, doorX: DOOR.x, doorW: dw, doorH: dh });
+  // ahşap kapının arka levhası (duvara gömülü oda kapısı için siyah dolgu) burada içeriyi kapatıyordu → sadece kasa
+  const dr = P.doors[0];
+  if (dr) {
+    const slab = dr.children.find((o) => o.isMesh && !o.userData.doorVoid && o.geometry?.parameters?.width === 1.3);
+    if (slab) {
+      slab.visible = false;
+      const fm = slab.material;
+      const bar = (w, h, x, y) => {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.12), fm);
+        m.position.set(x, y, 0.06);
+        dr.add(m);
+      };
+      bar(0.1, 2.4, -0.6, 1.2);
+      bar(0.1, 2.4, 0.6, 1.2);
+      bar(1.3, 0.15, 0, 2.325);
+    }
+  }
   P.base.light(RX + DOOR.x, 2.5, FRONT + 1.2, '#ffcf8a', 5, 8);
   // GARAJ (araba ve yaya girer): üç duvar + çatı, önü açık, kepenk yukarıda
   const gx0 = RX + BW / 2 + 0.6;
@@ -868,7 +918,8 @@ export function buildEvVenue(lot) {
   P.garageCar = P.base.item('car_classic', gcx, gcz - 0.4, 0, 6, { dyn: true });
   P.base.item('tires', gx1 - 0.9, gz0 + 0.9, 0, 0);
   P.base.item('toolwall', gcx, gz0 + 0.26, 0, 0, { solid: false });
-  P.base.light(gcx, 2.8, gcz, '#fff1d6', 4, 8);
+  P.base.light(gcx, 2.8, gcz, '#fff1d6', 5, 9);
+  P.base.lights.at(-1).inner = true; // v196: garaj lambası gündüz de yanar (araba görünsün)
   // çarpışma: garaj duvarları (ön ağız açık)
   P.base.solid(gcx, gz0 + 0.125, gw / 2, 0.15);
   P.base.solid(gx0 + 0.125, gcz, 0.15, gd / 2);
@@ -897,7 +948,7 @@ export function buildEvVenue(lot) {
   // bahçe (v196): iki meyve ağacı, kamelya, mangal
   P.base.item('fruittree', -E + 1.8, Z - 1.5, 0, 0);
   P.base.item('fruittree', -E + 1.8, FRONT + 1.5, 3, 0);
-  P.base.item('gazebo', -E + 5.6, (FRONT + Z) / 2, 0, 0);
+  P.base.item('gazebo', -E + 5.6, (FRONT + Z) / 2, 0, 0, { solid: false }); // içine girilir, 4 kişi oturur
   P.base.item('mangal', -E + 9.4, Z - 1.6, 0, 0);
   return finish(P, 'ev', venue, { x: DOOR.x, z: FRONT + 1.2 });
 }
@@ -1137,10 +1188,11 @@ export function buildHqVenue(lot, slot) {
   const tint = HQ_TINTS[slot % HQ_TINTS.length];
   const metal = M(tint, 0.75, 0.45);
   const extH = 6.2;
-  shell(P, { ext: (kit, ww, hh, dd, x, y, z) => kit.box(ww, hh, dd, metal, x, y, z), extH, venue, doorKey: 'door_metal', ceil: '#2a2a2e' });
+  // v196: karargahın kapısı garaj kapısı (değiştirilemez)
+  shell(P, { ext: (kit, ww, hh, dd, x, y, z) => kit.box(ww, hh, dd, metal, x, y, z), extH, venue, doorKey: 'garagedoor', ceil: '#2a2a2e' });
   // oluklu sac nervürleri + yarım silindir çatı (eski hangarlar gibi)
   const rib = M('#5a564f', 0.6, 0.6);
-  for (let x = -BW / 2; x <= BW / 2 + 0.01; x += 1.55) if (Math.abs(x - DOOR.x) > 1.2) P.high.box(0.12, extH - 0.2, 0.1, rib, x, 0.1, FRONT + 0.06, { cast: false });
+  for (let x = -BW / 2; x <= BW / 2 + 0.01; x += 1.55) if (Math.abs(x - DOOR.x) > 1.8) P.high.box(0.12, extH - 0.2, 0.1, rib, x, 0.1, FRONT + 0.06, { cast: false });
   const roof = new THREE.Mesh(new THREE.CylinderGeometry(BW / 2 + 0.3, BW / 2 + 0.3, BD + 0.8, 18, 1, false, PI / 2, PI), M(tint, 0.7, 0.5));
   roof.rotation.x = PI / 2;
   roof.scale.set(1, 1, 0.42);
@@ -1153,14 +1205,14 @@ export function buildHqVenue(lot, slot) {
   P.high.sign(`hq_no${slot}`, `${slot + 1}`, 0.9, BW / 2 - 1.4, 4.4, FRONT + 0.08, 0, { color: '#e8e2d0', font: '900 120px Impact, Arial Black, sans-serif', light: false });
   // v158 — karargah HARİTADAN BAĞIMSIZ: kapı kapalı ve geçilmez; içeri "İçeri gir", dışarı "Şehre çık"
   // düğmesiyle geçilir. İçerideyken şehir çizilmez (ayrı bir iç mekân gibi), dışarıdan içerisi görünmez.
-  P.base.solid(DOOR.x, FRONT - T / 2, 1.6, T / 2 + 0.08);
+  P.base.solid(DOOR.x, FRONT - T / 2, 1.9, T / 2 + 0.08);
   // v158.1: kapı hep kapalı (yaklaşınca açılmaz) ve arkası opak — dışarıdan içerisi görünmez
   P.doors.forEach((dr) => {
     if (dr?.userData.ctl) dr.userData.ctl.tick = undefined;
     dr?.traverse((o) => o.userData.doorVoid && (o.visible = true));
   });
   // içeriden de kapalı bir kapı görünür (duvardaki boşluktan dışarısı görünmesin)
-  const inDoor = P.int.item('door_metal', DOOR.x, ROOM.D / 2 - 0.02, 4, 0, { solid: false, y: 0.16 });
+  const inDoor = P.int.item('garagedoor', DOOR.x, ROOM.D / 2 - 0.02, 4, 0, { solid: false, y: 0.16 });
   if (inDoor) {
     if (inDoor.userData.ctl) inDoor.userData.ctl.tick = undefined;
     P.int.group.remove(inDoor);

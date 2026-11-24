@@ -847,9 +847,10 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       const rot = Math.abs(Math.sin(yawOf(k.group.matrixWorld))) > 0.7;
       areas.push({ x: p.x, z: p.z, rx: rot ? a.rz : a.rx, rz: rot ? a.rx : a.rz, key: a.key });
     });
+    const inner = /_int$/.test(k.group.name || ''); // v196: mekân içi lambası — gündüz dışarıdan bakınca da yanar (kapı / camdan içerisi kararmasın)
     k.lights.forEach((L) => {
       const p = L.o.localToWorld(tv.set(L.x, L.y, L.z));
-      lights.push({ x: p.x, y: p.y, z: p.z, color: new THREE.Color(L.color), intensity: L.intensity, distance: L.distance });
+      lights.push({ x: p.x, y: p.y, z: p.z, color: new THREE.Color(L.color), intensity: L.intensity, distance: L.distance, inner: inner || Boolean(L.inner) });
     });
     let doorZone = null;
     k.zones.forEach((z, i) => {
@@ -897,7 +898,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       venueNpcDefs.push({ id: n.id, name: n.name, av: n.av, x: p.x, z: p.z, y: 0.16 + (v.y0 || 0), lines: n.lines || [], left: Boolean(n.left), venue: v, route, quiet: Boolean(gk && ['camii', 'banka', 'karakol', 'belediye'].includes(gk)) });
     });
     // istasyonlar: oyunun mekânlarında (camii, banka, karakol) oyunun panelleri; markette alışveriş + ATM
-    const stations = gk && ['camii', 'banka', 'karakol', 'belediye'].includes(gk) ? GAME_VENUES[gk]?.stations || {} : v.type === 'benzinlik' ? NEW_VENUES.market.stations : {};
+    const stations = gk && ['camii', 'banka', 'karakol', 'belediye'].includes(gk) ? GAME_VENUES[gk]?.stations || {} : v.type === 'benzinlik' ? NEW_VENUES.market.stations : v.type === 'netkafe' ? NEW_VENUES.netkafe.stations : {}; // v196: internet kafe — bilgisayar / konsol / yayın seti
     Object.entries(stations).forEach(([iid, acts]) => {
       const it = v.venue.items.find((q) => q.i === iid);
       if (!it) return;
@@ -961,6 +962,15 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     });
   }
   venueExtraZones();
+  // v196 — cafe / bar bahçesi (kapının önündeki masalı alan): sipariş burada da verilir
+  W.venues.filter((v) => v.type === 'cafe' || v.type === 'bar').forEach((v) => {
+    const p = fromRoom(v, 0, VROOM.D / 2 + 6.2);
+    zones.push({ kind: 'terrace', id: `teras_${v.type}`, venue: v.type, title: v.type === 'bar' ? '🍸 Bar bahçesi' : '☕ Cafe bahçesi', x: p.x, z: p.z, r: 9 });
+  });
+  // v196 — Müstakil evler bloğunun ön kaldırımı: "🏘️ Evler" (başkalarının evlerini gez)
+  city.lots.filter((l) => l.type === 'mustakil').forEach((l) => {
+    zones.push({ kind: 'evler', id: `evler_${l.i0}_${l.j0}`, title: '🏘️ Müstakil Evler', x: l.mx, z: l.mz + l.bd / 2 - 1.2, r: 14 });
+  });
   // statik geometriyi malzemeye + bölgeye göre birleştir (çizim çağrısı az olsun)
   mergeStatic(scene);
   // v158.2 — kameraya duvar gelince şeffaflaşan parçalar (ör. pit lounge duvarları / çatısı)
@@ -1221,15 +1231,16 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   let evDesign = null; // tasarımda: { f, sel, add } | null
   // garajdaki araç: ev sahibinin favorisi (yoksa en pahalısı) — oyunun araç modeli (buildVehicle)
   let evCar = null;
-  function evSetGarageCar(key) {
+  function evSetGarageCar(key, mods = null) {
     if (!EV?.garageSpot) return;
-    if (evCar?.key === key) return;
+    const sig = `${key}|${JSON.stringify(mods || null)}`;
+    if (evCar?.sig === sig) return;
     if (evCar?.obj) evCar.obj.removeFromParent();
     if (EV.garageCar) EV.garageCar.visible = !key;
-    evCar = { key, obj: null };
+    evCar = { key, sig, obj: null };
     if (!key) return;
     try {
-      const car = buildVehicle(key);
+      const car = buildVehicle(key, mods);
       const g = car?.root;
       if (!g?.isObject3D) return;
       g.position.set(EV.garageSpot.x, 0.17, EV.garageSpot.z);
@@ -1240,6 +1251,15 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     } catch {
       if (EV.garageCar) EV.garageCar.visible = true;
     }
+  }
+  // evdeki koltuklar (satın alınmış oturulabilir eşyalar) şehrin oturma listesine eklenir / çıkarılır
+  function evSeats() {
+    for (let i = seats.length - 1; i >= 0; i--) if (seats[i].ev) seats.splice(i, 1);
+    EV.root.updateMatrixWorld(true);
+    EV.ml.seatList().forEach((st) => {
+      const p = fromRoom(EV, st.x, st.z);
+      seats.push({ x: p.x, y: st.y, z: p.z, yaw: EV.ry + st.yaw, taken: false, tier: false, ev: true });
+    });
   }
   const evLocal = (x, z) => {
     if (!EV) return null;
@@ -3601,7 +3621,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         o.visible = false;
         hidden.push(o);
       });
-      cullItems.forEach((c) => (c.iso = true));
+      cullItems.forEach((c) => (c.iso = c.o !== v.root)); // v196: yalıtılan mekânın kökü (3 katlı ev) gizlenmez
       scene.background = isoBg;
       isoSaved = { root: v.root, parent: parent !== scene ? parent : null, hidden };
     }
@@ -4190,7 +4210,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       }
       pl.position.set(n.L.x, n.L.y, n.L.z);
       pl.color.copy(n.L.color);
-      pl.intensity = n.L.intensity * 1.15 * mul;
+      pl.intensity = n.L.intensity * 1.15 * (n.L.inner ? 1 : mul);
       pl.distance = n.L.distance * 1.2;
     });
     void force;
@@ -5527,12 +5547,14 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       evHome = home || null;
       EV.ml.setItems(home?.items || []);
       EV.ml.setSurfaces(home?.surf || {});
+      evSeats();
       this.homeDoor?.(home?.door?.t || 'ahsap');
-      evSetGarageCar(home?.garageCar || null);
+      evSetGarageCar(home?.garage?.cid || home?.garageCar || null, home?.garage?.mods || null);
     },
     homeSetItems(items) {
       if (!EV) return;
       EV.ml.setItems(items);
+      evSeats();
       if (evHome) evHome.items = items;
     },
     // ana kapı türü (ahşap / beyaz / çift / salon) — konum aynı, açılır kapı yenisiyle değişir
@@ -5557,7 +5579,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       } else if (n.userData.ctl?.tick) ticks.push({ obj: n, ctl: n.userData.ctl });
       EV.doors[0] = n;
     },
-    homeGarage: (key) => evSetGarageCar(key || null),
+    homeGarage: (key, mods) => evSetGarageCar(key || null, mods || null),
     homePlace: (it, x, z) => (EV ? EV.ml.place(it, x, z) : false),
     homeSelect: (idx) => EV?.ml.select(idx),
     homeDesign(f) {

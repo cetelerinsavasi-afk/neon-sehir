@@ -70,7 +70,7 @@ export const NEW_VENUES = {
       it('cf_pl2', 'plants', -8.3, 6.3),
     ],
     stations: { cf_cnt: [{ act: 'cafe', label: '☕ Sipariş ver' }] },
-    npcs: [{ id: 'npc_bot_cafe', name: '🤖 Garson Bot', x: 0, z: 2, av: { gender: 'erkek', build: 'zayif', skin: '#b8c4d6', hairStyle: 'short', hairColor: '#22d3ee', clothing: 'vest', clothColor: '#f4f1e8', neckAcc: 'bow', pantsColor: '#1a1a1a' }, route: [[-5, -2], [4, 1.5], [0, 6.2], [-4.5, 9.6], [4.5, 9.6], [0, 6.2]], lines: ['Siparişin hemen geliyor.', 'Masalar dışarıda da var.', 'Ne alırdınız?', 'Afiyet olsun!'] }, { id: 'npc_barista', name: 'Barista Can', x: -2.2, z: -6.6, av: P.barista, station: 'cf_cnt', lines: ['Türk kahvesi mi filtre mi?', 'Pasta da taze geldi.', 'Afiyet olsun!'] }],
+    npcs: [{ id: 'npc_bot_cafe', name: 'Garson Elif', x: 0, z: 2, av: { gender: 'kadin', build: 'zayif', skin: '#e8c2a0', hairStyle: 'bun', hairColor: '#3b2416', clothing: 'vest', clothColor: '#1c1c1f', neckAcc: 'bow', pantsColor: '#1c1c1f', mouthShape: 'smile', eyelash: 'natural' }, route: [[-5, -2], [4, 1.5], [0, 6.2], [-4.5, 9.6], [4.5, 9.6], [0, 6.2]], lines: ['Siparişin hemen geliyor.', 'Masalar dışarıda da var.', 'Ne alırdınız?', 'Afiyet olsun!'] }, { id: 'npc_barista', name: 'Barista Can', x: -2.2, z: -6.6, av: P.barista, station: 'cf_cnt', lines: ['Türk kahvesi mi filtre mi?', 'Pasta da taze geldi.', 'Afiyet olsun!'] }],
   },
   // --- BAR -------------------------------------------------------------------------------
   bar: {
@@ -101,7 +101,7 @@ export const NEW_VENUES = {
       it('br_pl', 'plantb', -8.3, -6.3),
     ],
     stations: { br_bar: [{ act: 'bar', label: '🍸 Bar' }], br_pool: [{ act: 'pool', label: '🎱 Bilardo' }] },
-    npcs: [{ id: 'npc_bot_bar', name: '🤖 Garson Bot', x: 0, z: 2, av: { gender: 'erkek', build: 'zayif', skin: '#b8c4d6', hairStyle: 'short', hairColor: '#22d3ee', clothing: 'vest', clothColor: '#f4f1e8', neckAcc: 'bow', pantsColor: '#1a1a1a' }, route: [[-5, -2], [4, 1.5], [0, 6.2], [-4.5, 9.6], [4.5, 9.6], [0, 6.2]], lines: ['Siparişin hemen geliyor.', 'Masalar dışarıda da var.', 'Ne alırdınız?', 'Afiyet olsun!'] }, { id: 'npc_barmen2', name: 'Barmen Selim', x: -1.0, z: -6.6, av: AV.barmen, station: 'br_bar', lines: ['Ne içersin?', 'Bu akşam müzik bizden.', 'Bilardo masası boş, buyur.'] }],
+    npcs: [{ id: 'npc_bot_bar', name: 'Garson Murat', x: 0, z: 2, av: { gender: 'erkek', build: 'standart', skin: '#d9a77c', hairStyle: 'slick', hairColor: '#1f140d', clothing: 'vest', clothColor: '#1a1a1a', neckAcc: 'bow', pantsColor: '#141414', mouthShape: 'smile', facialHair: 'short' }, route: [[-5, -2], [4, 1.5], [0, 6.2], [-4.5, 9.6], [4.5, 9.6], [0, 6.2]], lines: ['Siparişin hemen geliyor.', 'Masalar dışarıda da var.', 'Ne alırdınız?', 'Afiyet olsun!'] }, { id: 'npc_barmen2', name: 'Barmen Selim', x: -1.0, z: -6.6, av: AV.barmen, station: 'br_bar', lines: ['Ne içersin?', 'Bu akşam müzik bizden.', 'Bilardo masası boş, buyur.'] }],
   },
   // --- İNTERNET KAFE ---------------------------------------------------------------------
   netkafe: {
@@ -109,19 +109,28 @@ export const NEW_VENUES = {
     icon: '🖥️',
     wall: 'boya_lacivert',
     floor: 'epoksi_siyah',
+    // v196: 8 bilgisayar (koltuklu), 2 yayın seti, 2 PlayStation + karşılarında 2'li koltuk. Kimlikler sunucuyla
+    // aynı (functions/v196Shared.js GAME_VENUE_HOUSES.internet). Bilgisayara yaklaşınca "Oyun oyna", yayın
+    // setinin koltuğunda "Yayın aç" (panel listesi yok)
     items: [
-      ...[-5.8, -2.4, 1.0].flatMap((z, n) => [it(`nk_a${n}`, 'pcstation', -6.6, z), it(`nk_b${n}`, 'pcstation', -4.0, z), it(`nk_c${n}`, 'pcstation', 4.0, z), it(`nk_d${n}`, 'pcstation', 6.6, z)]),
-      it('nk_ar1', 'arcade', -1.0, -6.4),
-      it('nk_ar2', 'arcade', 0.9, -6.4),
+      ...[-7.6, -5.6, -3.6, -1.6].flatMap((x, n) => [it(`npc${n + 1}`, 'pcstation', x, -6.1), it(`nkc${n + 1}`, 'gamer', x, -5.15, 4), it(`npc${n + 5}`, 'pcstation', x, -2.6), it(`nkc${n + 5}`, 'gamer', x, -1.65, 4)]),
+      it('nspc', 'pc', 3.6, -6.1), it('nsch', 'gamer', 3.6, -5.15, 4), it('nsrl', 'ringlight', 2.5, -5.9), it('nscm', 'streamcam', 3.6, -4.1, 4),
+      it('nspc2', 'pc', 7.0, -6.1), it('nsch2', 'gamer', 7.0, -5.15, 4), it('nsrl2', 'ringlight', 8.1, -5.9), it('nscm2', 'streamcam', 7.0, -4.1, 4),
+      it('nps1', 'console', 3.6, -1.6), it('nss1', 'sofa2', 3.6, 1.0, 4), it('nps2', 'console', 7.0, -1.6), it('nss2', 'sofa2', 7.0, 1.0, 4),
       it('nk_ck', 'checkout', -5.4, 4.8),
       it('nk_df', 'drinkfridge', 8.5, 4.6, 6),
-      it('nk_n', 'neon3', -9, 3.6, 2),
-      it('nk_gr', 'graffiti', 9, 2.4, 6),
+      it('nk_gr', 'graffiti', -9, 0.4, 2),
       it('nk_sp', 'speaker', -8.4, 6.2),
       it('nk_pl', 'plantb', 8.3, 6.3),
     ],
-    stations: { nk_ck: [{ act: 'netkafe', label: '🖥️ Bilgisayar kirala' }], nk_a0: [{ act: 'pc', label: '🎮 Oyna' }] },
-    npcs: [{ id: 'npc_netci', name: 'Kasada Emre', x: -5.4, z: 4.05, av: P.netci, station: 'nk_ck', lines: ['Kaç saat açayım?', 'Turnuva cumartesi!', 'Kulaklık rafta.'] }],
+    stations: {
+      ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8].map((n) => [`npc${n}`, [{ act: `play:npc${n}`, label: '🎮 Oyun oyna' }]])),
+      nps1: [{ act: 'play:nps1', label: '🎮 PlayStation oyna' }],
+      nps2: [{ act: 'play:nps2', label: '🎮 PlayStation oyna' }],
+      nsch: [{ act: 'stream:nsch', label: '🔴 Yayın aç' }],
+      nsch2: [{ act: 'stream:nsch2', label: '🔴 Yayın aç' }],
+    },
+    npcs: [{ id: 'npc_netci', name: 'Kasada Emre', x: -5.4, z: 4.05, av: P.netci, lines: ['Hoş geldin, boş bilgisayar var.', 'Turnuva cumartesi!', 'Kulaklık rafta.'] }],
   },
   // --- SPOR SALONU -----------------------------------------------------------------------
   spor: {

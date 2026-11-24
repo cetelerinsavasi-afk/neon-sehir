@@ -51,7 +51,7 @@ const tintCount = (def) => (def?.tints && TINTS[def.tints] ? TINTS[def.tints].le
 const SHOP = CATALOG.filter((d) => CATALOG_KEYS.has(d.k) && !d.hidden && !d.venueOnly && !d.door && d.price);
 const SHOP_CATS = CATEGORIES.filter((c) => SHOP.some((d) => d.cat === c.key));
 
-export default function HomePanel({ eng, uid, inside, flash, evtRef, Sheet }) {
+export default function HomePanel({ eng, uid, inside, flash, evtRef, Sheet, listOpen = false, onListClose, onInfo, settingsReq = 0 }) {
   const own = homeIdOf(uid);
   const [home, setHome] = useState(null);
   const [visit, setVisit] = useState(null); // ziyaret edilen ev (null = kendi evim)
@@ -91,28 +91,25 @@ export default function HomePanel({ eng, uid, inside, flash, evtRef, Sheet }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inside, visit, eng]);
 
+  // üstteki uzun başlık panelinde ev adı + kat; ⚙️ Ayarlar o panelin en sağında (CityScreen)
+  useEffect(() => {
+    onInfo?.(inside && home ? { name: home.name, owner: mine ? null : home.ownerName, floor: FLOOR_NAMES[lv], mine } : null);
+  }, [inside, home, mine, lv, onInfo]);
+  useEffect(() => {
+    if (settingsReq && inside && mine) setMode('design');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsReq]);
   const goHome = (id) => {
     setMode(null);
+    onListClose?.();
     setVisit(id === own ? null : id);
     if (!inside) eng?.homeSpawn();
   };
 
   return (
     <>
-      {inside && !mode && (
-        <div className="hm-bar">
-          <span className="hm-floor">{FLOOR_NAMES[lv]}{home && !mine ? ` · ${home.name}` : ''}</span>
-          <button onClick={() => setMode('list')}>🏘️ Evler</button>
-          {mine ? (
-            <>
-              <button onClick={() => setMode('design')}>⚙️ Ayarlar</button>
-            </>
-          ) : (
-            <button onClick={() => goHome(own)}>🏠 Evim</button>
-          )}
-        </div>
-      )}
-      {mode === 'list' && <HomeList Sheet={Sheet} eng={eng} own={own} onPick={goHome} onClose={() => setMode(null)} flash={flash} />}
+
+      {(mode === 'list' || listOpen) && <HomeList Sheet={Sheet} eng={eng} own={own} onPick={goHome} onClose={() => { setMode(null); onListClose?.(); }} flash={flash} />}
       {mode === 'design' && home && mine && <HomeDesign eng={eng} home={home} evtRef={evtRef} flash={flash} settings={(close) => (
         <HomeSettings Sheet={Sheet} home={home} busy={busy} onClose={close} onSave={async (patch) => {
           setBusy(true);
@@ -124,7 +121,7 @@ export default function HomePanel({ eng, uid, inside, flash, evtRef, Sheet }) {
             if (h) {
               setHome((old) => ({ ...h, items: old?.items || h.items }));
               eng?.homeDoor(h.door?.t || 'ahsap');
-              eng?.homeGarage(h.garageCar || null);
+              eng?.homeGarage(h.garage?.cid || h.garageCar || null, h.garage?.mods || null);
             }
             close();
           } catch (e) {
@@ -182,7 +179,7 @@ function HomeSettings({ Sheet, home, busy, onClose, onSave }) {
   const [door, setDoor] = useState(home.door?.t || 'ahsap');
   const [car, setCar] = useState(null);
   const { vehicles } = useVehicles();
-  const cars = vehicles.filter((v) => !v.seizedByBank);
+  const cars = vehicles.filter((v) => !v.seizedByBank && !v.listed && !v.mortgaged);
   const patch = () => {
     const p = {};
     if (name.trim() !== home.name) p.name = name;
@@ -198,10 +195,9 @@ function HomeSettings({ Sheet, home, busy, onClose, onSave }) {
       <div className="hm-field">Ana kapı
         <div className="hm-chips">{HOME_DOORS.map(([k, n]) => <button key={k} className={door === k ? 'on' : ''} onClick={() => setDoor(k)}>{n}</button>)}</div>
       </div>
-      <div className="hm-field">Garajdaki araç
+      <div className="hm-field">❤️ Favori araç (garajda durur)
         <div className="hm-chips">
-          <button className={car === 0 || (car == null && !home.garageCar) ? 'on' : ''} onClick={() => setCar(0)}>Boş</button>
-          {cars.map((v) => <button key={v.id} className={car === v.id || (car == null && home.garageCar === v.catalogId) ? 'on' : ''} onClick={() => setCar(v.id)}>{vehicleCatalog[v.catalogId]?.name || `#${v.catalogId}`}</button>)}
+          {cars.map((v) => <button key={v.id} className={car === v.id || (car == null && home.garage?.id === v.id) ? 'on' : ''} onClick={() => setCar(v.id)}>{vehicleCatalog[v.catalogId]?.name || `#${v.catalogId}`}</button>)}
         </div>
       </div>
       <p className="hm-note">10+ eşyalı ve açık evler Evler listesinde görünür. 20 gün girmezsen listeden düşer.</p>

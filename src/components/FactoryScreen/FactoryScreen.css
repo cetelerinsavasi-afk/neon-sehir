@@ -1388,3 +1388,30 @@
 .fv-machine .n { font-size: 22px; font-weight: 900; }
 .fv-machine .lb { font-size: 12px; opacity: 0.75; }
 .fv-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #ffffff12; font-size: 14px; }
+
+/* v196 — sade fabrika ekranı: yazılar panele sığar, rapor açılır kapanır */
+.factory-screen, .factory-screen * { box-sizing: border-box; min-width: 0; }
+.factory-screen { overflow-wrap: anywhere; }
+.fx-name { flex: 1; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fv-stat b { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fv-machine .factory-btn { width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 6px; padding-right: 6px; }
+.fx-create { display: flex; flex-direction: column; gap: 12px; padding: 4px 0; }
+.fx-hero { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 18px 12px; border-radius: 16px; background: radial-gradient(120% 120% at 50% 0%, rgba(255, 122, 46, 0.28), rgba(255, 122, 46, 0.05)); border: 1px solid rgba(255, 122, 46, 0.35); text-align: center; }
+.fx-hero-ic { font-size: 40px; line-height: 1; }
+.fx-hero b { font-size: 19px; margin-top: 6px; }
+.fx-hero small { opacity: 0.7; font-size: 12px; }
+.fx-kit { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.fx-kit > div { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 10px 6px; border-radius: 12px; background: #ffffff0d; text-align: center; }
+.fx-kit i { font-style: normal; font-size: 24px; }
+.fx-kit b { font-size: 11px; opacity: 0.8; line-height: 1.15; }
+.fx-kit span { font-size: 13px; font-weight: 900; color: #ffd23f; white-space: nowrap; }
+.fx-cta { width: 100%; padding: 14px; border-radius: 14px; border: 0; background: linear-gradient(90deg, #ff7a2e, #ffb13d); color: #1a0d03; font-weight: 900; font-size: 15px; }
+.fx-cta:disabled { opacity: 0.5; }
+.fx-rep { margin-top: 12px; border-radius: 12px; background: #ffffff0b; overflow: hidden; }
+.fx-rep-head { width: 100%; display: flex; align-items: center; gap: 8px; padding: 11px 12px; background: none; border: 0; color: inherit; font: inherit; text-align: left; }
+.fx-rep-head span { flex: 1; font-weight: 800; font-size: 14px; }
+.fx-rep-head b { color: #2fd47a; font-size: 14px; }
+.fx-rep-head b.neg { color: #ff5470; }
+.fx-rep-head i { font-style: normal; opacity: 0.7; }
+.fx-rep-body { padding: 0 12px 8px; }
+.fx-sponsor { margin-top: 10px; width: 100%; }

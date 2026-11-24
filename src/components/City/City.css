@@ -644,3 +644,20 @@ body.ns-city-open .ta-root { z-index: 96; }
 /* araba düğmesi: çizim ikon */
 .cs-carbtn .cs-car-ico { width: 26px; height: 26px; display: block; margin: auto; }
 .cs-root.cs-land .cs-carbtn .cs-car-ico { width: 22px; height: 22px; }
+
+/* v196 — mekân düğmeleri (Sipariş, Satılık arabalar, Tamir…) solda, şüphe · altın hapının hemen altında, alt alta */
+.cs-root .cs-venue-layer .hb-topbtns {
+  top: calc(var(--cs-lmenu-b, 110px) + 6px) !important;
+  left: calc(8px + var(--hs-safe-l, 0px));
+  right: auto;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  max-width: 46vw;
+}
+.cs-root .cs-venue-layer .hb-topbtn { text-align: left; }
+/* v196 — mekânın sağ menüsü de solda (harita sağ üstte) */
+.cs-root .cs-venue-layer .v3-menu.right { left: calc(8px + var(--hs-safe-l, 0px)) !important; right: auto !important; top: calc(var(--cs-lmenu-b, 196px) + 6px) !important; align-items: flex-start; }
+/* v196 — evin içinde üst başlık panelinin en sağında ⚙️ Ayarlar */
+.cs-root .hs-title { position: relative; }
+.cs-root .hs-title .cs-home-set { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); padding: 6px 10px; border-radius: 10px; border: 1px solid rgba(255, 210, 63, 0.7); background: rgba(20, 16, 4, 0.85); color: #ffd23f; font: 800 12px/1 inherit; }
