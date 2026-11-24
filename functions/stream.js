@@ -64,6 +64,7 @@ export function topDonorsShown(top) {
 const LIST_MAX = 30;
 
 export function streamPriceOf(h) {
+  if (h?.ownerUid === '__game__' || h?.bizGame) return NET_MINUTE_PRICE.stream; // v196: oyunun internet kafesi 200
   const v = Number(h?.bizPrices?.stream);
   // v93: eski (yeni aralığın dışındaki) fiyatlar aralığa çekilir
   return Number.isInteger(v) && v > 0 ? Math.min(STREAM_PRICE.max, Math.max(STREAM_PRICE.min, v)) : STREAM_PRICE.def;
@@ -103,6 +104,7 @@ const cleanText = (s, max) =>
     .trim()
     .slice(0, max);
 
+import { NET_MINUTE_PRICE } from './v196Shared.js';
 export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, business, assertCanSpeak = async () => {}, now = () => Date.now() }) {
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
@@ -148,6 +150,11 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
   // dakika ücreti (kafe). YAZMA — okumalar önceden yapılmış olmalı.
   function chargeTx(tx, { houseId, h, uid, os, price }) {
     tx.update(userRef(uid), { gold: FieldValue.increment(-price), goldTag: goldTag('yayin') });
+    if (h?.ownerUid === '__game__' || h?.bizGame) {
+      // v196: oyunun internet kafesi — gelir mekânın paylaşımına
+      business?.recordGameIncomeTx?.(tx, { type: 'internet', amount: price, kind: 'service', customerUid: uid, products: { yayin: 1 } });
+      return;
+    }
     const tax = bizTax(price, h?.biz?.type || 'studyo'); // v127: oran türüne göre (Stüdyo)
     const { goldDelta, debtDelta } = splitIncomeForDebt(os.data()?.debtToState, price - tax);
     tx.update(userRef(h.ownerUid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('yayin'), debtToState: FieldValue.increment(debtDelta) });
@@ -193,7 +200,7 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
       // v81: sadece kendi evinde/dükkânında (ücretsiz) ya da internet kafede (ücretli)
       // yayın açılır — başkasının setiyle yayın yok (orada sadece oyun oynanır)
       if (h.ownerUid !== uid && h.biz?.type !== 'internet') fail('failed-precondition', 'not-owner');
-      if (!(await txPresent(tx, uid, houseId))) fail('failed-precondition', 'not-present');
+      if (!(h.ownerUid === '__game__' || h.bizGame) && !(await txPresent(tx, uid, houseId))) fail('failed-precondition', 'not-present'); // v196: oyunun kafesi şehirde
       const cafe = h.biz?.type === 'internet' && h.ownerUid !== uid;
       const [us, seat, list, os] = await Promise.all([tx.get(userRef(uid)), tx.get(seatRef(houseId, chairId)), tx.get(listRef()), cafe ? tx.get(userRef(h.ownerUid)) : Promise.resolve(null)]);
       const user = us.data() || {};
@@ -291,7 +298,7 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
       const viewers = counted ? counted.viewers : Math.max(0, Math.min(100000, Math.floor(Number(p.viewers) || 0)));
       const seen = counted ? counted.seen : Math.max(0, Math.min(1000000, Math.floor(Number(p.seen) || 0)));
       const needCharge = s.cafe && Number(s.paidUntilMs || 0) - t <= 3000;
-      const present = await txPresent(tx, uid, s.houseId);
+      const present = String(s.houseId || '').startsWith('game_') ? true : await txPresent(tx, uid, s.houseId); // v196: oyunun kafesi (şehirde, housePresence yok)
       const reads = [tx.get(userRef(uid)), tx.get(listRef())];
       let hs = null;
       let os = null;
@@ -495,11 +502,11 @@ export function createStream({ db, FieldValue, HttpsError, splitIncomeForDebt, b
     const snap = await db.collection('streams').where('status', '==', 'live').limit(200).get();
     let n = 0;
     for (const d of snap.docs) {
-      if (t - Number(d.data().lastBeatMs || 0) < STREAM_STALE_MS) continue;
+      if (!d.data().v196End && t - Number(d.data().lastBeatMs || 0) < STREAM_STALE_MS) continue; // v196End: kapanan mekândaki yayın (geçiş)
       await db.runTransaction(async (tx) => {
         const ss = await tx.get(d.ref);
         const s = ss.data();
-        if (!s || s.status !== 'live' || now() - Number(s.lastBeatMs || 0) < STREAM_STALE_MS) return;
+        if (!s || s.status !== 'live' || (!s.v196End && now() - Number(s.lastBeatMs || 0) < STREAM_STALE_MS)) return;
         const [us, list] = await Promise.all([tx.get(userRef(s.uid)), tx.get(listRef())]);
         finalizeTx(tx, { id: d.id, s, us, list, t: now(), reason: 'stale' });
         n += 1;

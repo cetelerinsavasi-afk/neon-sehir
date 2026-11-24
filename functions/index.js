@@ -26,7 +26,7 @@ import { createBelediye } from './belediye.js'; // v127
 import { createPolitics } from './politics.js'; // v136 seçim sistemi
 import { rateFrac } from './belediyeRates.js'; // v127
 import { SLOT_GAME_COST, GAME_SLOT_STATE_CUT, rollSlotReels, slotOutcome, normalizeRouletteBets, roulettePayout, ROULETTE_ORDER, LOTTERY_TICKET, GAME_LOTTERY_CUT, GAME_CASINO_ID } from './casinoRules.js';
-import { vaultWrite, settleGameCasinoVaults } from './gameCasinoVault.js'; // v126
+import { vaultWrite } from './gameCasinoVault.js'; // v126 (v196: gece aktarımı yok, sadece istatistik)
 import { createVisits } from './visits.js';
 import { createShop, newSaleStat } from './shop.js';
 import { createJobs } from './jobs.js';
@@ -89,8 +89,9 @@ import { createFleet, SOFOR_TAX_RATE_ID, canResell, NO_RESALE_TEXT } from './fle
 import { createStable } from './stable.js'; // v177 at / deve / bisiklet
 import { newVehicleDoc } from './shop.js';
 import { createV196Migration } from './v196Migration.js'; // v196 tek seferlik geçiş
+import { DIAMOND_PROD_FACTOR, FACTORY_STARTER_V196, diamondMachinePriceOf, diamondFleetValueOf, WORK_BUTTON_REWARD, NEW_PLAYER_GOLD, REFERRAL_NEW_PLAYER_BONUS_V196 } from './v196Shared.js';
 import { createClosing } from './v196Closing.js'; // v196 kapanış modu
-import { addDayKey as rateAddDayKey } from './belediyeRates.js';
+import { addDayKey as rateAddDayKey, bizRateFrac } from './belediyeRates.js';
 import { policeBustSplit, heistStateEntries, heistStat, crimeLockedBySuspicion, CRIME_LOCK_TEXT, CRIME_LOCK_TEAM_TEXT, BELEDIYE_CRIME_TEXT, BELEDIYE_CRIME_TEAM_TEXT } from './policeRules.js';
 
 admin.initializeApp();
@@ -244,7 +245,7 @@ export const socialAction = social.socialAction;
 // v66 — 3D Ev (herkese açık: satın alma, envanter, sepet, davet). Ayrıntı functions/houses.js
 // v77 — İşletmeler: günlük rapor/sıralama (business) + silahçı/modifiye/galeri
 // (shop: atölye + vitrin). shop'un kapanış kancaları houses'a verilir.
-const business = createBusiness({ db, FieldValue: admin.firestore.FieldValue, HttpsError }); // v195: pasif mekân geliri iptal
+const business = createBusiness({ db, FieldValue: admin.firestore.FieldValue, HttpsError, venueTaxFrac: (type) => bizRateFrac(ratesFor(), type) }); // v196: oyunun mekânları — gelir paylaşımı
 // v100 — Ofisler: ücretli mobilyalar (functions/office.js)
 const office = createOffice({
   db,
@@ -443,11 +444,8 @@ export const borsaHourly = onSchedule({ schedule: '1 * * * *', timeZone: 'Europe
 // çalışır ama her tür/gün için yalnızca bir kez yazar (businessRollups bayrağı):
 // 00:05'te 00:00 sınırlı türler, 19:05'te spor salonu kapanır.
 export const businessRollover = onSchedule({ schedule: '5 * * * *', timeZone: 'Europe/Istanbul' }, async () => {
-  await business.rollover();
-  await business.sendShortageSms();
+  // v196: oyuncu işletmesi yok — sıralama / stok hatırlatma / pasif mekân / ofis işleri kalktı (boşuna okuma yok)
   await venue.cleanup();
-  await homeOffice.cleanup().catch((e) => console.error('homeOffice cleanup', e));
-  await office.cleanup().catch((e) => console.error('office cleanup', e));
   await gym.expireMemberships();
   await cleanupMoneyLog({ db }).catch((e) => console.error('moneyLog cleanup', e));
 });
@@ -887,6 +885,9 @@ export const migrateOnboardingPoliceRule = onCall(async (request) => {
 // içindeki ilgili blok.
 // ---------------------------------------------------------------------------
 const FACTORY_CREATE_COST = 100000;
+// v196 — kibar ret metinleri (eski istemciler)
+const FACTORY_WORKER_GONE = '🏭 İşçi sistemi kalktı. Fabrikaya gir, alttaki Çalış butonuna bas: günde 1 kez 5.000 altın.';
+const FACTORY_SHARE_GONE = '🏭 Fabrika hisseleri kalktı.';
 const FACTORY_MIN_SALARY = 1000;
 const FACTORY_MAX_SALARY = 5000;
 // Mining hariç tüm makine türleri sabit fiyatlı; mining'in fiyatı canlı
@@ -981,6 +982,10 @@ function miningFleetValue(count, cryptoPrice) {
 // bloğu (-0.5) ve elektrik faturası bloğu (-0.34).
 const MINING_EFFICIENCY_HIGH_PRICE = 1000000;
 const MINING_EFFICIENCY_MID_PRICE = 200000;
+// v196: elmas — eşikler kriptonun 1/10'u (elmas bantları da 1/10: 5.000 / 40.000)
+function diamondEfficiencyMultiplier(diamondPrice) {
+  return miningEfficiencyMultiplier((Number(diamondPrice) || 0) * 10);
+}
 function miningEfficiencyMultiplier(cryptoPrice) {
   if ((cryptoPrice || 0) > MINING_EFFICIENCY_HIGH_PRICE) return 0.25;
   if ((cryptoPrice || 0) > MINING_EFFICIENCY_MID_PRICE) return 0.5;
@@ -995,8 +1000,8 @@ function miningEfficiencyMultiplier(cryptoPrice) {
 // NOT: Bu değer sadece bilgi amaçlıdır (Fabrikalar sekmesinde gösterilir);
 // hiçbir para transferi/işlem bu sayıya dayanmaz, bu yüzden istemci
 // tarafında da (aynı formülle) hesaplanır — bkz. src/components/FactoryScreen.
-function computeFactoryValue(machinesByType, cryptoPrice) {
-  let value = FACTORY_CREATE_COST;
+function computeFactoryValue(machinesByType, cryptoPrice, diamondCount = 0, diamondPrice = 0) {
+  let value = FACTORY_CREATE_COST + diamondFleetValueOf(diamondCount, diamondPrice); // v196 elmas
   for (const type of VALID_MACHINES) {
     const count = machinesByType[type] || 0;
     if (type === 'mining') {
@@ -1193,7 +1198,7 @@ export const initializePlayer = onCall(async (request) => {
     tx.set(userRef, {
       displayName: request.auth.token.name || 'Oyuncu',
       xp: 0,
-      gold: 2000,
+      gold: NEW_PLAYER_GOLD, // v196: 2.000 → 5.000
       suspicion: 0,
       reputation: 0,
       profession: null,
@@ -1220,13 +1225,8 @@ export const initializePlayer = onCall(async (request) => {
   }
   // v195 — 20 gün girmeyen oyuncunun pasif mekânları girişte otomatik açılır (bayrak yoksa ek iş yok).
   // Giriş kaydı yukarıda yazıldı; açma başarısız olursa bayrak kalır, bir sonraki girişte yeniden denenir.
-  if (bizPassive) {
-    try {
-      await business.reactivateOwner(uid);
-    } catch (err) {
-      console.error('pasif mekânlar açılamadı', uid, err?.message || err);
-    }
-  }
+  // v196: pasif mekân kodu kalktı (oyuncu mekânı yok); users.bizPassive geçişte silinir
+  void bizPassive;
 
   return { ok: true, isNewPlayer };
 });
@@ -1273,7 +1273,7 @@ export const applyReferralCode = onCall(async (request) => {
       throw new HttpsError('failed-precondition', 'Geçersiz referans kodu.');
     }
 
-    const REFERRAL_NEW_PLAYER_BONUS = 2000;
+    const REFERRAL_NEW_PLAYER_BONUS = REFERRAL_NEW_PLAYER_BONUS_V196; // v196: 2.000 → 5.000 (referansla toplam 10.000)
     const REFERRAL_REFERRER_BONUS = 10000;
     // v141 — "Referans kodunla arkadaşını davet et" başarısı: ilk 10 davette ayrıca 1 zümrüt.
     // referralCount v141'den itibaren sayılır; 10. davette başarı tamamlanır.
@@ -1388,25 +1388,26 @@ export const cancelPendingPoliceChange = onCall(async (request) => {
 // kripto saatlik değiştiği için kuruluş bedeli de saatlik değişir. İstemci
 // gördüğü fiyatı `expect` ile gönderir; fiyat değiştiyse işlem yapılmaz.
 // Önceden kurulmuş fabrikalar olduğu gibi devam eder.
-const FACTORY_STARTER_MACHINES = ['mining', 'tamirMalzemesi', 'silahUpgrade', 'arabaGelistirme'];
-// v126: her makineye %5 vergi (makine fiyatı + %5; kuruluş ücretine vergi yok)
-function factoryStarterParts(cryptoPrice) {
+// v196: kurulum = 100.000 + 2 mining + 2 elmas makinesi (her biri kendi kademesinin fiyatıyla, + makine vergisi)
+const FACTORY_STARTER_MACHINES = ['mining', 'mining'];
+function factoryStarterParts(cryptoPrice, diamondPrice = 0) {
   let machines = 0;
   let tax = 0;
   const stat = {};
-  for (const t of FACTORY_STARTER_MACHINES) {
-    const p = t === 'mining' ? Math.ceil(2 * (cryptoPrice || 0)) : MACHINE_TYPES[t].price;
+  const add = (t, p) => {
     machines += p;
-    const mt = machineTax(p, t); // v127: makine türüne göre (Sanayi Bakanlığı)
+    const mt = machineTax(p, t);
     tax += mt;
     stat[`mk_${t}_n`] = (stat[`mk_${t}_n`] || 0) + 1;
     stat[`mk_${t}_ciro`] = (stat[`mk_${t}_ciro`] || 0) + p;
     stat[`mk_${t}_vergi`] = (stat[`mk_${t}_vergi`] || 0) + mt;
-  }
+  };
+  for (let i = 0; i < FACTORY_STARTER_V196.mining; i++) add('mining', Math.ceil((2 + 0.2 * Math.floor(i / 10)) * (cryptoPrice || 0)));
+  for (let i = 0; i < FACTORY_STARTER_V196.elmas; i++) add('elmas', diamondMachinePriceOf(i, diamondPrice));
   return { base: FACTORY_CREATE_COST + machines, tax, total: FACTORY_CREATE_COST + machines + tax, stat };
 }
-function factoryStarterCost(cryptoPrice) {
-  return factoryStarterParts(cryptoPrice).total;
+function factoryStarterCost(cryptoPrice, diamondPrice = 0) {
+  return factoryStarterParts(cryptoPrice, diamondPrice).total;
 }
 
 export const createFactory = onCall(async (request) => {
@@ -1420,81 +1421,33 @@ export const createFactory = onCall(async (request) => {
   }
   const prices = await getCurrentPrices();
   const cryptoPrice = prices.cryptoPrice || 0;
-  if (!(cryptoPrice > 0)) throw new HttpsError('unavailable', 'Kripto fiyatı alınamadı, biraz sonra tekrar dene.');
-  const parts = factoryStarterParts(cryptoPrice);
+  const diamondPrice = prices.diamondPrice || 0;
+  if (!(cryptoPrice > 0) || !(diamondPrice > 0)) throw new HttpsError('unavailable', 'Fiyatlar alınamadı, biraz sonra tekrar dene.');
+  const parts = factoryStarterParts(cryptoPrice, diamondPrice);
   const cost = parts.total;
   if (Math.round(expect) !== cost) {
     throw new HttpsError('aborted', `Fiyat güncellendi: yeni kuruluş bedeli ${cost.toLocaleString('tr-TR')} altın. Kontrol edip tekrar dene.`);
   }
-
   await db.runTransaction(async (tx) => {
     const [userSnap, factorySnap] = await Promise.all([tx.get(userRef), tx.get(factoryRef)]);
     const user = userSnap.data();
-    if (factorySnap.exists) {
-      throw new HttpsError('failed-precondition', 'Zaten bir fabrikan var.');
-    }
-    if (!user || (user.gold || 0) < cost) {
-      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
-    }
-    // Mevcut işten otomatik ayrılma (okuma, yazmalardan önce).
-    const job = user.employment?.factoryId && user.employment?.machineId ? user.employment : null;
-    let oldMachineSnap = null;
-    let oldFactorySnap = null;
-    if (job) {
-      const oldFactoryRef = db.collection('factories').doc(job.factoryId);
-      [oldMachineSnap, oldFactorySnap] = await Promise.all([
-        tx.get(oldFactoryRef.collection('machines').doc(job.machineId)),
-        tx.get(oldFactoryRef),
-      ]);
-    }
-    const userUpdate = { gold: admin.firestore.FieldValue.increment(-cost), goldTag: goldTag('fabrika') };
-    if (user.employment) userUpdate.employment = admin.firestore.FieldValue.delete();
-    if (user.employmentProducedDateKey) userUpdate.employmentProducedDateKey = admin.firestore.FieldValue.delete();
-    tx.update(userRef, userUpdate);
-    if (job && oldMachineSnap?.exists && oldMachineSnap.data().workerId === uid) {
-      const leftDateKey = istanbulDateKey();
-      tx.update(oldMachineSnap.ref, { workerLeftDateKey: leftDateKey });
-      tx.set(db.collection(FACTORY_WORKER_RELEASES).doc(`${job.factoryId}_${job.machineId}`), {
-        factoryId: job.factoryId,
-        machineId: job.machineId,
-        workerId: uid,
-        dateKey: leftDateKey,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-      if (job.factoryId !== uid && oldFactorySnap?.exists) {
-        sendFactoryNotification(
-          tx,
-          job.factoryId,
-          `${user.displayName || 'Bir işçin'} kendi fabrikasını kurduğu için fabrikandaki işinden ayrıldı. Adı 00:00'a kadar makinede görünür, sonra makine boşalır.`,
-          'worker_left_own_factory'
-        );
-      }
-    }
-    // v126: makinelerin %5 vergisi devlete (belediye kasası)
+    if (factorySnap.exists) throw new HttpsError('failed-precondition', 'Zaten bir fabrikan var.');
+    if (!user || (user.gold || 0) < cost) throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-cost), goldTag: goldTag('fabrika') });
     taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: parts.tax, source: 'makine', uid, atMs: Date.now(), ref: 'fabrika_kurulus', stat: parts.stat });
     tx.set(factoryRef, {
       ownerId: uid,
       ownerName: user.displayName || 'Oyuncu',
-      salary: FACTORY_MIN_SALARY,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
       createCost: cost,
       starterKit: true,
+      dm: { n: FACTORY_STARTER_V196.elmas, trig: null }, // v196: elmas makineleri sayaçla (makine başı belge yok)
     });
-    // her makineden birer tane
     for (const type of FACTORY_STARTER_MACHINES) {
-      tx.set(factoryRef.collection('machines').doc(), {
-        type,
-        workerId: null,
-        workerName: null,
-        lastProducedDateKey: null,
-        lastProducedQty: 0,
-        purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
-        starter: true,
-      });
+      tx.set(factoryRef.collection('machines').doc(), { type, purchasedAt: admin.firestore.FieldValue.serverTimestamp(), starter: true });
     }
   });
-
-  return { ok: true, cost, machines: FACTORY_STARTER_MACHINES.length };
+  return { ok: true, cost, machines: FACTORY_STARTER_MACHINES.length + FACTORY_STARTER_V196.elmas };
 });
 
 // v56 — Kendi fabrikasını kurup ayrılan işçinin eski makinesini 00:00'da
@@ -1556,7 +1509,7 @@ export const getFactoryValue = onCall(async (request) => {
     machinesByType[type] = (machinesByType[type] || 0) + 1;
   });
 
-  return { value: computeFactoryValue(machinesByType, prices.cryptoPrice || 0) };
+  return { value: computeFactoryValue(machinesByType, prices.cryptoPrice || 0, factorySnap.data().dm?.n || 0, prices.diamondPrice || 0) };
 });
 
 // buyFactoryMachine — sadece fabrika sahibi, istediği kadar makine alabilir.
@@ -1568,8 +1521,9 @@ export const buyFactoryMachine = onCall(async (request) => {
   if (machineType === 'yasakliMadde') {
     throw new HttpsError('failed-precondition', 'Yasaklı madde makineleri kaldırıldı — yasaklı madde ticareti artık çeteler üzerinden.');
   }
-  if (!BUYABLE_MACHINES.includes(machineType)) {
-    throw new HttpsError('invalid-argument', 'Geçersiz makine türü.');
+  if (machineType === 'elmas') return buyDiamondMachine(uid, expect); // v196
+  if (machineType !== 'mining') {
+    throw new HttpsError('failed-precondition', 'Fabrikalar artık sadece kripto ve elmas üretir.'); // v196: malzeme makineleri kalktı
   }
 
   const userRef = db.collection('users').doc(uid);
@@ -1627,23 +1581,70 @@ export const buyFactoryMachine = onCall(async (request) => {
   return { ok: true, machineId: machineRef.id, price, tax: machineTax(price, machineType), total: price + machineTax(price, machineType) };
 });
 
+// v196 — ELMAS MAKİNESİ: fiyat (20 + 2 × ⌊sahip olunan/10⌋) × elmas fiyatı + makine vergisi (Elmas Makinesi kalemi).
+// Sayaç factories/{uid}.dm.n (makine başına belge yok) — işlem içinde okunur, bayat fiyatla alınamaz.
+async function buyDiamondMachine(uid, expect) {
+  const userRef = db.collection('users').doc(uid);
+  const factoryRef = db.collection('factories').doc(uid);
+  const prices = await getCurrentPrices();
+  const D = prices.diamondPrice || 0;
+  if (!(D > 0)) throw new HttpsError('unavailable', 'Elmas fiyatı alınamadı, biraz sonra tekrar dene.');
+  let out = null;
+  await db.runTransaction(async (tx) => {
+    const [us, fs] = await Promise.all([tx.get(userRef), tx.get(factoryRef)]);
+    if (!fs.exists) throw new HttpsError('failed-precondition', 'Önce bir fabrika kurmalısın.');
+    const owned = Math.max(0, Math.floor(Number(fs.data().dm?.n) || 0));
+    const price = diamondMachinePriceOf(owned, D);
+    const tax = machineTax(price, 'elmas');
+    if (Number.isFinite(expect) && Math.round(expect) !== price + tax) {
+      throw new HttpsError('aborted', `Fiyat güncellendi: bu makine şu an ${(price + tax).toLocaleString('tr-TR')} altın. Kontrol edip tekrar dene.`);
+    }
+    if ((us.data()?.gold || 0) < price + tax) throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(-(price + tax)), goldTag: goldTag('fabrika') });
+    taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: tax, source: 'makine', uid, atMs: Date.now(), ref: 'elmas', stat: { mk_elmas_n: 1, mk_elmas_ciro: price, mk_elmas_vergi: tax } });
+    tx.update(factoryRef, { 'dm.n': admin.firestore.FieldValue.increment(1) });
+    out = { ok: true, machineType: 'elmas', price, tax, total: price + tax, owned: owned + 1 };
+  });
+  return out;
+}
+// v196 — elmas makinelerini tetikle (mining ile aynı: bugün tetiklenen, gece 00:00'da üretir)
+async function stampDiamond(uid, dateKey) {
+  const ref = db.collection('factories').doc(uid);
+  return db.runTransaction(async (tx) => {
+    const s = await tx.get(ref);
+    const n = Math.max(0, Math.floor(Number(s.data()?.dm?.n) || 0));
+    if (!n) return { triggeredCount: 0, totalCount: 0 };
+    if (s.data().dm?.trig === dateKey) return { triggeredCount: 0, totalCount: n };
+    tx.update(ref, { 'dm.trig': dateKey });
+    return { triggeredCount: n, totalCount: n };
+  });
+}
+
+// v196 — "ÇALIŞ" BUTONU: fabrikaya giren herkes (sahip olsun olmasın) günde 1 kez altın yakalama oyununu
+// bitirince 5.000 altın. Para hiçbir fabrikadan çıkmaz, üretim yok. Günlük hak mevcut dailyActions belgesinde.
+export const factoryWork = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const dateKey = istanbulDateKey();
+  const userRef = db.collection('users').doc(uid);
+  const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);
+  let res = null;
+  await db.runTransaction(async (tx) => {
+    const [us, ds] = await Promise.all([tx.get(userRef), tx.get(dailyRef)]);
+    if (!us.exists) throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
+    if (ds.exists && ds.data().factoryWork) throw new HttpsError('failed-precondition', 'Bugünkü mesaini doldurdun. Yarın gel.');
+    const { goldDelta, debtDelta } = splitIncomeForDebt(us.data().debtToState, WORK_BUTTON_REWARD);
+    tx.update(userRef, { gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('fabrikaCalis'), debtToState: admin.firestore.FieldValue.increment(debtDelta) });
+    tx.set(dailyRef, { factoryWork: true, factoryWorkAtMs: Date.now() }, { merge: true });
+    res = { ok: true, earned: WORK_BUTTON_REWARD, toDebt: -debtDelta };
+  });
+  await advanceOnboardingStep(uid, 1); // Rıza Amca "Fabrikada çalış"
+  return res;
+});
+
 // setFactorySalary — sadece fabrika sahibi, 1000-5000 altın arası.
 export const setFactorySalary = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const salary = Number(request.data?.salary);
-  if (!Number.isInteger(salary) || salary < FACTORY_MIN_SALARY || salary > FACTORY_MAX_SALARY) {
-    throw new HttpsError(
-      'invalid-argument',
-      `Maaş ${FACTORY_MIN_SALARY.toLocaleString('tr-TR')} - ${FACTORY_MAX_SALARY.toLocaleString('tr-TR')} altın arasında olmalı.`
-    );
-  }
-  const factoryRef = db.collection('factories').doc(uid);
-  const factorySnap = await factoryRef.get();
-  if (!factorySnap.exists) {
-    throw new HttpsError('failed-precondition', 'Bir fabrikan yok.');
-  }
-  await factoryRef.update({ salary });
-  return { ok: true };
+  requireAuth(request);
+  throw new HttpsError('failed-precondition', FACTORY_WORKER_GONE); // v196
 });
 
 // setFactoryName — sadece fabrika sahibi, fabrikasına özel bir isim
@@ -1728,134 +1729,23 @@ export const setFactoryLogo = onCall(async (request) => {
 // (bkz. applyForImam üstündeki not) imamlar da normal oyuncular gibi
 // fabrikada çalışabilir. Zaten başka bir yerde çalışıyorsa önce istifa etmeli.
 export const joinFactoryMachine = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const { factoryId, machineId } = request.data || {};
-  const userRef = db.collection('users').doc(uid);
-  const machineRef = db.collection('factories').doc(factoryId).collection('machines').doc(machineId);
-
-  await db.runTransaction(async (tx) => {
-    const [userSnap, machineSnap] = await Promise.all([tx.get(userRef), tx.get(machineRef)]);
-    const user = userSnap.data();
-    if (!user) throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
-    // v38: polisler ve imamlar da fabrikada çalışabilir.
-    if (user.employment) {
-      throw new HttpsError('failed-precondition', 'Zaten bir fabrikada çalışıyorsun — önce istifa et.');
-    }
-    if (!machineSnap.exists) {
-      throw new HttpsError('failed-precondition', 'Makine bulunamadı.');
-    }
-    const machine = machineSnap.data();
-    if (machine.type === 'mining') {
-      throw new HttpsError('failed-precondition', 'Mining makinesi işçi gerektirmez.');
-    }
-    if (RETIRED_MACHINE_TYPES.includes(machine.type)) {
-      throw new HttpsError('failed-precondition', 'Bu makine kaldırıldı.');
-    }
-    if (machine.workerId) {
-      throw new HttpsError('failed-precondition', 'Bu makinede zaten biri çalışıyor.');
-    }
-    tx.update(machineRef, { workerId: uid, workerName: user.displayName || 'Oyuncu' });
-    tx.update(userRef, { employment: { factoryId, machineId } });
-  });
-
-  return { ok: true };
+  requireAuth(request);
+  throw new HttpsError('failed-precondition', FACTORY_WORKER_GONE); // v196
 });
 
 // autoJoinFactory — fabrikaları gezerken hangi makinenin dolu/boş olduğu
 // artık gösterilmiyor; oyuncu sadece "İşe Gir"e basar, sunucu o fabrikadaki
 // boş (mining hariç) makinelerden rastgele birine otomatik atar.
 export const autoJoinFactory = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const { factoryId } = request.data || {};
-  if (!factoryId) {
-    throw new HttpsError('invalid-argument', 'Fabrika belirtilmedi.');
-  }
-  const userRef = db.collection('users').doc(uid);
-  const factoryRef = db.collection('factories').doc(factoryId);
-  const machinesRef = factoryRef.collection('machines');
-
-  let assignedMachineId = null;
-  await db.runTransaction(async (tx) => {
-    const [userSnap, factorySnap, machinesSnap] = await Promise.all([
-      tx.get(userRef),
-      tx.get(factoryRef),
-      tx.get(machinesRef),
-    ]);
-    const user = userSnap.data();
-    if (!user) throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
-    // v38: polisler ve imamlar da fabrikada çalışabilir.
-    if (user.employment) {
-      throw new HttpsError('failed-precondition', 'Zaten bir fabrikada çalışıyorsun — önce istifa et.');
-    }
-    if (!factorySnap.exists) {
-      throw new HttpsError('failed-precondition', 'Fabrika bulunamadı.');
-    }
-    const openMachines = machinesSnap.docs.filter(
-      (d) => WORKABLE_MACHINE(d.data().type) && !d.data().workerId
-    );
-    if (openMachines.length === 0) {
-      throw new HttpsError('failed-precondition', 'Bu fabrikada boş yer kalmadı.');
-    }
-    const chosen = openMachines[Math.floor(Math.random() * openMachines.length)];
-    assignedMachineId = chosen.id;
-    tx.update(chosen.ref, { workerId: uid, workerName: user.displayName || 'Oyuncu' });
-    tx.update(userRef, { employment: { factoryId, machineId: chosen.id } });
-  });
-
-  return { ok: true, machineId: assignedMachineId };
+  requireAuth(request);
+  throw new HttpsError('failed-precondition', FACTORY_WORKER_GONE); // v196
 });
 
 // reassignEmployee — sadece fabrika sahibi; bugün henüz üretim yapmamış bir
 // işçiyi, aynı fabrikadaki başka boş bir makineye taşır.
 export const reassignEmployee = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const { machineId, targetMachineId } = request.data || {};
-  if (!machineId || !targetMachineId) {
-    throw new HttpsError('invalid-argument', 'Makine belirtilmedi.');
-  }
-  if (machineId === targetMachineId) {
-    throw new HttpsError('invalid-argument', 'Aynı makineye taşınamaz.');
-  }
-  const dateKey = istanbulDateKey();
-  const factoryRef = db.collection('factories').doc(uid);
-  const fromRef = factoryRef.collection('machines').doc(machineId);
-  const toRef = factoryRef.collection('machines').doc(targetMachineId);
-
-  await db.runTransaction(async (tx) => {
-    const [fromSnap, toSnap] = await Promise.all([tx.get(fromRef), tx.get(toRef)]);
-    if (!fromSnap.exists || !toSnap.exists) {
-      throw new HttpsError('failed-precondition', 'Makine bulunamadı.');
-    }
-    const from = fromSnap.data();
-    const to = toSnap.data();
-    if (!from.workerId) {
-      throw new HttpsError('failed-precondition', 'Bu makinede kimse çalışmıyor.');
-    }
-    if (from.workerLeftDateKey) {
-      throw new HttpsError('failed-precondition', 'Bu işçi kendi fabrikasını kurup ayrıldı; makine 00:00\'da boşalacak.');
-    }
-    if (from.lastProducedDateKey === dateKey) {
-      throw new HttpsError('failed-precondition', 'Bu işçi bugün üretim yaptı, bugün taşınamaz.');
-    }
-    if (to.type === 'mining') {
-      throw new HttpsError('failed-precondition', 'Mining makinesine işçi taşınamaz.');
-    }
-    if (RETIRED_MACHINE_TYPES.includes(to.type)) {
-      throw new HttpsError('failed-precondition', 'Bu makine kaldırıldı.');
-    }
-    if (to.workerId) {
-      throw new HttpsError('failed-precondition', 'Hedef makine dolu.');
-    }
-    const workerId = from.workerId;
-    const workerName = from.workerName;
-    tx.update(fromRef, { workerId: null, workerName: null });
-    tx.update(toRef, { workerId, workerName });
-    tx.update(db.collection('users').doc(workerId), {
-      employment: { factoryId: uid, machineId: targetMachineId },
-    });
-  });
-
-  return { ok: true };
+  requireAuth(request);
+  throw new HttpsError('failed-precondition', FACTORY_WORKER_GONE); // v196
 });
 
 // ---------------------------------------------------------------------------
@@ -1893,91 +1783,16 @@ function shareMinPrice(percent, days, dailyIncome) {
 // yüzdesi + yeni percent 100'ü aşamaz (bir fabrikanın en fazla %100'ü
 // satılabilir).
 export const listFactoryShare = onCall(async (request) => {
-  const uid = requireAuth(request);
-  if (SHARE_SALES_CLOSED) throw new HttpsError('failed-precondition', SHARE_SALES_CLOSED_TEXT);
-  const percent = Number(request.data?.percent);
-  const days = Number(request.data?.days);
-  const price = Number(request.data?.price);
-
-  if (!Number.isInteger(percent) || percent < 1 || percent > 100) {
-    throw new HttpsError('invalid-argument', 'Yüzde 1-100 arasında tam sayı olmalı.');
-  }
-  if (!SHARE_VALID_DAYS.includes(days)) {
-    throw new HttpsError('invalid-argument', 'Süre sadece 10 veya 20 gün olabilir.');
-  }
-  if (!Number.isFinite(price) || price < 0) {
-    throw new HttpsError('invalid-argument', 'Geçersiz fiyat.');
-  }
-
-  const factoryRef = db.collection('factories').doc(uid);
-  const factorySnap = await factoryRef.get();
-  if (!factorySnap.exists) {
-    throw new HttpsError('failed-precondition', 'Bir fabrikan yok.');
-  }
-  const factory = factorySnap.data();
-  const dailyIncome = factory.dailyIncome || 0;
-
-  const minPrice = shareMinPrice(percent, days, dailyIncome);
-  const maxPrice = shareMaxPrice(percent, days, dailyIncome);
-  if (price < minPrice || price > maxPrice) {
-    throw new HttpsError(
-      'invalid-argument',
-      `Fiyat ${minPrice.toLocaleString('tr-TR')} - ${maxPrice.toLocaleString('tr-TR')} altın arasında olmalı.`
-    );
-  }
-
-  const sharesRef = factoryRef.collection('shares');
-  const existingSnap = await sharesRef.where('status', 'in', ['listed', 'active']).get();
-  const existingTotal = existingSnap.docs.reduce((sum, d) => sum + (d.data().percent || 0), 0);
-  if (existingTotal + percent > 100) {
-    throw new HttpsError(
-      'failed-precondition',
-      `Fabrikanın en fazla %100'ü satılabilir. Şu an %${existingTotal} zaten listede/satılmış — en fazla %${100 - existingTotal} daha ekleyebilirsin.`
-    );
-  }
-
-  const shareRef = sharesRef.doc();
-  await shareRef.set({
-    percent,
-    days,
-    price,
-    status: 'listed',
-    dailyIncomeAtListing: dailyIncome,
-    sellerId: uid,
-    sellerName: factory.ownerName || 'Oyuncu',
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    buyerId: null,
-    buyerName: null,
-    boughtAt: null,
-    totalDays: null,
-    remainingDays: null,
-    lastPayoutDateKey: null,
-  });
-
-  return { ok: true, shareId: shareRef.id, minPrice, maxPrice };
+  requireAuth(request);
+  throw new HttpsError('failed-precondition', FACTORY_SHARE_GONE); // v196
 });
 
 // cancelFactoryShareListing — sadece fabrika sahibi, sadece henüz
 // SATILMAMIŞ ('listed') bir ilanı kaldırabilir — satılmış (active) bir
 // hisse tek taraflı iptal edilemez.
 export const cancelFactoryShareListing = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const { shareId } = request.data || {};
-  if (!shareId) throw new HttpsError('invalid-argument', 'shareId gerekli.');
-
-  const shareRef = db.collection('factories').doc(uid).collection('shares').doc(shareId);
-  const shareSnap = await shareRef.get();
-  if (!shareSnap.exists) {
-    throw new HttpsError('failed-precondition', 'Hisse ilanı bulunamadı.');
-  }
-  if (shareSnap.data().status !== 'listed') {
-    throw new HttpsError('failed-precondition', 'Bu ilan zaten satılmış, kaldırılamaz.');
-  }
-  // Doküman silinir — böylece yüzdesi ANINDA listFactoryShare'in %100
-  // tavan kontrolünden düşer, ekstra bir "iptal edildi" durumu tutmaya
-  // gerek kalmaz.
-  await shareRef.delete();
-  return { ok: true };
+  requireAuth(request);
+  throw new HttpsError('failed-precondition', FACTORY_SHARE_GONE); // v196
 });
 
 // buyFactoryShare — fabrika sahibi HARİÇ herkes satın alabilir. Tek
@@ -1986,96 +1801,8 @@ export const cancelFactoryShareListing = onCall(async (request) => {
 // bedeldir (temettü fabrika sahibinin GÜNLÜK bakiyesinden gelir, bu
 // peşin bedelden DEĞİL).
 export const buyFactoryShare = onCall(async (request) => {
-  const uid = requireAuth(request);
-  if (SHARE_SALES_CLOSED) throw new HttpsError('failed-precondition', SHARE_SALES_CLOSED_TEXT);
-  const { factoryId, shareId } = request.data || {};
-  if (!factoryId || !shareId) {
-    throw new HttpsError('invalid-argument', 'factoryId ve shareId gerekli.');
-  }
-  if (factoryId === uid) {
-    throw new HttpsError('failed-precondition', 'Kendi fabrikanın hissesini alamazsın.');
-  }
-
-  const shareRef = db.collection('factories').doc(factoryId).collection('shares').doc(shareId);
-  const buyerRef = db.collection('users').doc(uid);
-  const sellerRef = db.collection('users').doc(factoryId);
-
-  let result = {};
-  await db.runTransaction(async (tx) => {
-    const [shareSnap, buyerSnap, sellerSnap] = await Promise.all([
-      tx.get(shareRef),
-      tx.get(buyerRef),
-      tx.get(sellerRef),
-    ]);
-    if (!shareSnap.exists) {
-      throw new HttpsError('failed-precondition', 'Hisse ilanı bulunamadı.');
-    }
-    const share = shareSnap.data();
-    if (share.status !== 'listed') {
-      throw new HttpsError('failed-precondition', 'Bu hisse artık satışta değil.');
-    }
-    const buyer = buyerSnap.data();
-    if (!buyer || (buyer.gold || 0) < share.price) {
-      throw new HttpsError('failed-precondition', 'Yetersiz altın.');
-    }
-    if (!sellerSnap.exists) {
-      throw new HttpsError('failed-precondition', 'Satıcı bulunamadı.');
-    }
-
-    // Alıcıdan peşin bedel düşülür.
-    tx.update(buyerRef, { gold: admin.firestore.FieldValue.increment(-share.price), goldTag: goldTag('fabrikaHisse') });
-    // Satıcıya (fabrika sahibi) gelir — 2. el eşya satışıyla (buyListing)
-    // BİREBİR AYNI şekilde, borç varsa Bölüm 10 kuralına göre bölüştürülür.
-    const { goldDelta, debtDelta } = splitIncomeForDebt(sellerSnap.data()?.debtToState, share.price);
-    tx.update(sellerRef, {
-      gold: admin.firestore.FieldValue.increment(goldDelta), goldTag: goldTag('fabrikaHisse'),
-      debtToState: admin.firestore.FieldValue.increment(debtDelta),
-    });
-
-    tx.update(shareRef, {
-      status: 'active',
-      buyerId: uid,
-      buyerName: buyer.displayName || 'Oyuncu',
-      boughtAt: admin.firestore.FieldValue.serverTimestamp(),
-      totalDays: share.days,
-      remainingDays: share.days,
-      lastPayoutDateKey: null,
-    });
-
-    // factories/{factoryId}.shareSaleIncomeToday — kullanıcı revizesi:
-    // günlük fabrika raporuna "hisse satışı" GELİRİ eklensin diye,
-    // salaryPaidToday ile AYNI desende, gün içinde biriktirilip
-    // dailyReset (Part A) tarafından okunup sıfırlanan bir sayaç.
-    tx.set(
-      db.collection('factories').doc(factoryId),
-      { shareSaleIncomeToday: admin.firestore.FieldValue.increment(share.price) },
-      { merge: true }
-    );
-
-    result = {
-      price: share.price,
-      percent: share.percent,
-      days: share.days,
-      sellerName: share.sellerName,
-    };
-  });
-
-  await Promise.all([
-    buyerRef.collection('messages').add({
-      text: `${result.sellerName || 'Bir fabrika sahibi'}nin fabrikasından %${result.percent} hisse satın aldın (${result.price.toLocaleString('tr-TR')} altın ödedin). Önümüzdeki ${result.days} gün boyunca fabrikanın günlük gelirinden payına düşen temettüyü alacaksın.`,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      read: false,
-      type: 'share_bought',
-    }),
-    sendFactoryNotification(
-      null,
-      factoryId,
-      `Fabrikandaki %${result.percent}'lik hisse ilanın satıldı — ${result.price.toLocaleString('tr-TR')} altın hesabına yatırıldı. Alıcı, önümüzdeki ${result.days} gün boyunca fabrikanın günlük gelirinden pay alacak.`,
-      'share_sold'
-    ),
-  ]);
-
-  return { ok: true, ...result };
+  requireAuth(request);
+  throw new HttpsError('failed-precondition', FACTORY_SHARE_GONE); // v196
 });
 
 // sendFactoryNotification — Bölüm 16 (Bildirimler): fabrikayla ilgili
@@ -2147,150 +1874,14 @@ async function sendElectricityBillSms(uid, bill, shortfall, newTotalDebt, tax = 
 // İSTİSNA: patron kendi fabrikasında kendisi çalışıyorsa (isSelfEmployed),
 // kendine maaş ödemez/almaz — sadece üretim gerçekleşir.
 export const produceAtFactory = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const userRef = db.collection('users').doc(uid);
-  const dateKey = istanbulDateKey();
-
-  let outcome = null;
-  await db.runTransaction(async (tx) => {
-    const userSnap = await tx.get(userRef);
-    const user = userSnap.data();
-    if (!user?.employment) {
-      throw new HttpsError('failed-precondition', 'Bir fabrikada çalışmıyorsun.');
-    }
-    const { factoryId, machineId } = user.employment;
-    const isSelfEmployed = factoryId === uid;
-    const factoryRef = db.collection('factories').doc(factoryId);
-    const machineRef = factoryRef.collection('machines').doc(machineId);
-    const ownerRef = db.collection('users').doc(factoryId);
-    const [machineSnap, ownerSnap] = await Promise.all([
-      tx.get(machineRef),
-      isSelfEmployed ? Promise.resolve(userSnap) : tx.get(ownerRef),
-    ]);
-    if (!machineSnap.exists) {
-      throw new HttpsError('failed-precondition', 'Makine bulunamadı.');
-    }
-    const machine = machineSnap.data();
-    if (machine.workerId !== uid) {
-      throw new HttpsError('failed-precondition', 'Bu makinede çalışan sen değilsin.');
-    }
-    if (machine.lastProducedDateKey === dateKey) {
-      throw new HttpsError('failed-precondition', 'Bugün bu makinede zaten üretim yaptın.');
-    }
-    // v38: işçi günde bir kez üretir (makine değişse / başka fabrikaya geçse bile)
-    if (user.employmentProducedDateKey === dateKey) {
-      throw new HttpsError('failed-precondition', 'Bugün zaten üretim yaptın.');
-    }
-    if (RETIRED_MACHINE_TYPES.includes(machine.type)) {
-      throw new HttpsError('failed-precondition', 'Yasaklı madde makineleri kaldırıldı — fabrika sahibine makine başı 100.000 altın ödendi, sen de başka bir makineye aktarılacaksın.');
-    }
-    const factorySnap = await tx.get(factoryRef);
-    const salary = factorySnap.data()?.salary || FACTORY_MIN_SALARY;
-
-    const cfg = MACHINE_TYPES[machine.type];
-    const qty =
-      machine.type === 'yasakliMadde' || machine.type === 'silahUpgrade' || machine.type === 'tamirMalzemesi'
-        ? Math.floor(randomInRange(cfg.min, cfg.max + 1))
-        : Math.round(randomInRange(cfg.min, cfg.max));
-
-    let shortfall = 0;
-    let newOwnerDebt = null;
-    let workerTax = { tax: 0, net: 0 };
-
-    if (isSelfEmployed) {
-      // Kendi fabrikanda kendin çalışıyorsan kendine maaş ödemezsin.
-      tx.update(userRef, { employmentProducedDateKey: dateKey });
-    } else {
-      const owner = ownerSnap.data();
-      const ownerGold = owner?.gold || 0;
-      const ownerPay = Math.min(salary, ownerGold);
-      shortfall = salary - ownerPay;
-
-      // İşçi: maaşını TAM alır. employmentProducedDateKey, frontend'in
-      // "bugün üretim yaptın mı" (istifa butonu görünürlüğü) sorusunu
-      // makine dokümanına ayrıca bakmadan cevaplayabilmesi için.
-      // v123: maaştan %10 vergi — patron tam maaşı öder, işçiye %90'ı yatar,
-      // %10 devlet kasasına (vergi_maas).
-      workerTax = splitSalaryTax(salary, 'isci'); // v127: oran Sanayi Bakanlığı
-      tx.update(userRef, {
-        gold: admin.firestore.FieldValue.increment(workerTax.net), goldTag: goldTag('fabrika'),
-        employmentProducedDateKey: dateKey,
-      });
-      taxLedgerWrite(tx, db, admin.firestore.FieldValue, { amount: workerTax.tax, source: 'maas', uid, atMs: Date.now(), ref: 'fabrika', stat: { isci_n: 1, isci_brut: salary } });
-      // Patron: elinden çıkabildiği kadarı düşülür, yetmeyen kısım CEZA/borç olur.
-      tx.update(ownerRef, {
-        gold: admin.firestore.FieldValue.increment(-ownerPay), goldTag: goldTag('fabrika'),
-        debtToState: admin.firestore.FieldValue.increment(shortfall),
-      });
-      // factories/{ownerId}.salaryPaidToday — yeni istek: "hisse satışı
-      // için günlük kazanç hesaplamasında işçiye verilen maaş düşülecek,
-      // kâr eksi bile olabilir". Bu alan (ownerRef'ten AYRI, fabrika
-      // belgesinde) gün içinde BİRİKTİRİLİR (tam maaş tutarı — ownerPay
-      // değil, çünkü altın yetmese bile borca yazılan kısım da patrona
-      // gerçek bir maliyettir) ve gece dailyReset Part A'da o günün brüt
-      // üretim değerinden düşülüp sıfırlanır (bkz. dailyReset).
-      // set+merge (update DEĞİL) — factorySnap.exists garanti değil (üstteki
-      // salary okuması da aynı şekilde defansif), doküman yoksa update()
-      // hata fırlatırdı.
-      tx.set(factoryRef, { salaryPaidToday: admin.firestore.FieldValue.increment(salary) }, { merge: true });
-      if (shortfall > 0) {
-        newOwnerDebt = (owner?.debtToState || 0) + shortfall;
-      }
-    }
-
-    const inventoryRef = ownerRef.collection('inventory').doc(machine.type);
-    tx.set(inventoryRef, { quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true });
-    tx.update(machineRef, { lastProducedDateKey: dateKey, lastProducedQty: qty });
-
-    outcome = {
-      salary: isSelfEmployed ? 0 : salary,
-      salaryTax: isSelfEmployed ? 0 : workerTax.tax, // v123
-      netSalary: isSelfEmployed ? 0 : workerTax.net, // v123
-      qty,
-      shortfall,
-      isSelfEmployed,
-      ownerId: factoryId,
-      newOwnerDebt,
-    };
-  });
-
-  if (outcome.shortfall > 0 && outcome.newOwnerDebt != null) {
-    await sendSalaryPenaltySms(outcome.ownerId, outcome.shortfall, outcome.newOwnerDebt);
-  }
-
-  // Onboarding görev 1 — "fabrikada çalış": işçi ya da kendi fabrikasında
-  // çalışan sahip fark etmeksizin, mini oyunu tamamlayıp (bu fonksiyon
-  // buraya kadar geldiyse) maaşı/üretimi almış oldu.
-  await advanceOnboardingStep(uid, 1);
-
-  return { ok: true, ...outcome };
+  requireAuth(request);
+  throw new HttpsError('failed-precondition', FACTORY_WORKER_GONE); // v196
 });
 
 // resignFromFactory — bugün üretim yapmadıysan istifa edebilirsin.
 export const resignFromFactory = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const userRef = db.collection('users').doc(uid);
-  const dateKey = istanbulDateKey();
-
-  await db.runTransaction(async (tx) => {
-    const userSnap = await tx.get(userRef);
-    const user = userSnap.data();
-    if (!user?.employment) {
-      throw new HttpsError('failed-precondition', 'Bir fabrikada çalışmıyorsun.');
-    }
-    const { factoryId, machineId } = user.employment;
-    const machineRef = db.collection('factories').doc(factoryId).collection('machines').doc(machineId);
-    const machineSnap = await tx.get(machineRef);
-    if (machineSnap.exists && machineSnap.data().lastProducedDateKey === dateKey) {
-      throw new HttpsError('failed-precondition', 'Bugün üretim yaptın, bugün istifa edemezsin.');
-    }
-    if (machineSnap.exists) {
-      tx.update(machineRef, { workerId: null, workerName: null });
-    }
-    tx.update(userRef, { employment: admin.firestore.FieldValue.delete() });
-  });
-
-  return { ok: true };
+  requireAuth(request);
+  throw new HttpsError('failed-precondition', FACTORY_WORKER_GONE); // v196
 });
 
 // ---------------------------------------------------------------------------
@@ -2485,19 +2076,7 @@ async function runYasakliMachineRetireV38() {
 // Fabrika / 2. el ekranı açılınca istemci sessizce çağırır (idempotent).
 export const ensureFactoryMigrationsV38 = onCall(async (request) => {
   requireAuth(request);
-  const r = await runYasakliMachineRetireV38();
-  try {
-    await runTamirDoubleV94();
-  } catch (err) {
-    console.error('ensureFactoryMigrationsV38 runTamirDoubleV94', err);
-  }
-  // v56: 00:00 çalışmadıysa/geciktiyse ayrılan işçilerin makineleri burada da boşalır.
-  try {
-    await releaseLeftFactoryWorkers();
-  } catch (err) {
-    console.error('ensureFactoryMigrationsV38 releaseLeftFactoryWorkers', err);
-  }
-  return { ok: true, ...r };
+  return { ok: true, v196: true }; // v196: eski fabrika geçişleri yok
 });
 
 // stampUntriggeredMining — bir fabrika sahibinin sahip olduğu, bugün henüz
@@ -2547,14 +2126,10 @@ export const triggerAllMining = onCall(async (request) => {
   const uid = requireAuth(request);
   const dateKey = istanbulDateKey();
   const result = await stampUntriggeredMining(uid, dateKey);
-  if (result.totalCount === 0) {
-    throw new HttpsError('failed-precondition', 'Hiç mining makinen yok.');
-  }
-  if (result.triggeredCount === 0) {
-    throw new HttpsError('failed-precondition', 'Bugün zaten tüm mining makinelerini tetikledin.');
-  }
-
-  return { ok: true, ...result };
+  const dm = await stampDiamond(uid, dateKey); // v196
+  if (result.totalCount === 0 && dm.totalCount === 0) throw new HttpsError('failed-precondition', 'Hiç makinen yok.');
+  if (result.triggeredCount === 0 && dm.triggeredCount === 0) throw new HttpsError('failed-precondition', 'Bugün zaten tüm makinelerini çalıştırdın.');
+  return { ok: true, ...result, diamondTriggeredCount: dm.triggeredCount, diamondTotalCount: dm.totalCount };
 });
 
 // runFactoryMachines — "Makineleri Çalıştır" butonu (sadece fabrika
@@ -2570,80 +2145,21 @@ export const triggerAllMining = onCall(async (request) => {
 export const runFactoryMachines = onCall(async (request) => {
   const uid = requireAuth(request);
   const dateKey = istanbulDateKey();
-  const factoryRef = db.collection('factories').doc(uid);
-  const factorySnap = await factoryRef.get();
-  if (!factorySnap.exists) {
-    throw new HttpsError('failed-precondition', 'Fabrikan yok.');
-  }
-
-  const machinesSnap = await factoryRef.collection('machines').get();
-  if (machinesSnap.empty) {
-    throw new HttpsError('failed-precondition', 'Hiç makinen yok.');
-  }
-
-  const workerMachines = machinesSnap.docs.filter((m) => m.data().type !== 'mining');
-  const untriggeredWorkerMachines = workerMachines.filter(
-    (m) => m.data().lastProducedDateKey !== dateKey && m.data().ownerTriggeredDateKey !== dateKey
-  );
-
-  const mining = await stampUntriggeredMining(uid, dateKey, machinesSnap.docs);
-
-  let workerTriggeredCount = 0;
-  if (untriggeredWorkerMachines.length > 0) {
-    const batch = db.batch();
-    untriggeredWorkerMachines.forEach((m) => batch.update(m.ref, { ownerTriggeredDateKey: dateKey }));
-    await batch.commit();
-    workerTriggeredCount = untriggeredWorkerMachines.length;
-  }
-
-  if (mining.triggeredCount === 0 && workerTriggeredCount === 0) {
-    throw new HttpsError('failed-precondition', 'Bugün zaten tüm makineleri çalıştırdın.');
-  }
-
-  return {
-    ok: true,
-    miningTriggeredCount: mining.triggeredCount,
-    miningTotalCount: mining.totalCount,
-    workerTriggeredCount,
-    workerTotalCount: workerMachines.length,
-  };
+  const factorySnap = await db.collection('factories').doc(uid).get();
+  if (!factorySnap.exists) throw new HttpsError('failed-precondition', 'Fabrikan yok.');
+  // v196: sadece kripto (mining) + elmas makineleri
+  const mining = await stampUntriggeredMining(uid, dateKey);
+  const dm = await stampDiamond(uid, dateKey);
+  if (mining.totalCount === 0 && dm.totalCount === 0) throw new HttpsError('failed-precondition', 'Hiç makinen yok.');
+  if (mining.triggeredCount === 0 && dm.triggeredCount === 0) throw new HttpsError('failed-precondition', 'Bugün zaten tüm makineleri çalıştırdın.');
+  return { ok: true, miningTriggeredCount: mining.triggeredCount, miningTotalCount: mining.totalCount, diamondTriggeredCount: dm.triggeredCount, diamondTotalCount: dm.totalCount, workerTriggeredCount: 0, workerTotalCount: 0 };
 });
 
 // fireEmployee — sadece fabrika sahibi; işçi bugün üretim yaptıysa
 // çıkaramaz.
 export const fireEmployee = onCall(async (request) => {
-  const uid = requireAuth(request);
-  const { machineId } = request.data || {};
-  const dateKey = istanbulDateKey();
-  const machineRef = db.collection('factories').doc(uid).collection('machines').doc(machineId);
-
-  await db.runTransaction(async (tx) => {
-    const machineSnap = await tx.get(machineRef);
-    if (!machineSnap.exists) {
-      throw new HttpsError('failed-precondition', 'Makine bulunamadı.');
-    }
-    const machine = machineSnap.data();
-    if (!machine.workerId) {
-      throw new HttpsError('failed-precondition', 'Bu makinede kimse çalışmıyor.');
-    }
-    if (machine.workerLeftDateKey) {
-      throw new HttpsError('failed-precondition', 'Bu işçi kendi fabrikasını kurup ayrıldı; makine 00:00\'da boşalacak.');
-    }
-    if (machine.lastProducedDateKey === dateKey) {
-      throw new HttpsError('failed-precondition', 'Bu işçi bugün üretim yaptı, bugün çıkaramazsın.');
-    }
-    // v56: işçinin iş kaydı yalnızca GERÇEKTEN bu makineyi gösteriyorsa silinir
-    // (başka bir işe geçmiş oyuncunun yeni işine dokunulmaz).
-    const workerRef = db.collection('users').doc(machine.workerId);
-    const workerSnap = await tx.get(workerRef);
-    const emp = workerSnap.data()?.employment;
-    if (emp && emp.factoryId === uid && emp.machineId === machineId) {
-      tx.update(workerRef, { employment: admin.firestore.FieldValue.delete() });
-    }
-    tx.update(machineRef, { workerId: null, workerName: null });
-  });
-
-  return { ok: true };
+  requireAuth(request);
+  throw new HttpsError('failed-precondition', FACTORY_WORKER_GONE); // v196
 });
 
 // resolveStuckLotteryAndChampionship — dailyReset'in piyango (Bölüm 9) ve
@@ -2721,7 +2237,7 @@ async function resolveStuckLotteryAndChampionship(dateKey) {
           // devlet kasasına yazılır. Aynı batch'te drawnAt yazıldığı için tek sefer çalışır.
           stateWrite(lotBatch, db, admin.firestore.FieldValue, { kind: 'in', cat: 'gazino_piyango', amount: Number(lottery.casinoCut || 0), atMs: Date.now(), dayKey: dateKey });
           lotBatch.set(winnerRef.collection('messages').doc(), {
-            text: `Tebrikler! Piyangodan ${fmtTr(lottery.jackpot)} altın kazandın. ${pctText(lotteryTaxRate(lotRates))} piyango vergisi (${fmtTr(lotTax.tax)} altın) belediyeye ödendi, hesabına ${fmtTr(lotTax.net)} altın yattı.`,
+            text: `Tebrikler! Piyangodan ${fmtTr(lottery.jackpot)} altın kazandın, hepsi hesabına yattı.`, // v196: piyango vergisi yok
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
             read: false,
             type: 'lottery_win',
@@ -3110,20 +2626,10 @@ async function runDailyResetBody(dateKey, dr) {
     // bilgi/rapor amaçlı tutulmaya devam ediyor.
     const miningTriggeredCountByOwner = new Map();
     const factoryDailyIncomeMap = new Map(); // ownerId -> bu geceki dailyIncome (altın) — hisse temettüsünün TEK kaynağı
+    let nightDiamondPrice = 0; // v196 elmas makineleri
+    const diamondQtyByOwner = new Map();
 
-    // v38: yasaklı madde makinelerinin tek seferlik kaldırılması (idempotent;
-    // fabrika ekranı açılınca zaten çalışmış olabilir — o zaman hiçbir şey yapmaz).
-    try {
-      await runYasakliMachineRetireV38();
-    } catch (err) {
-      console.error('dailyReset yasakli machine retire', err);
-    }
-    // v56: kendi fabrikasını kurup ayrılan işçilerin eski makineleri boşalır.
-    try {
-      await releaseLeftFactoryWorkers(dateKey);
-    } catch (err) {
-      console.error('dailyReset releaseLeftFactoryWorkers', err);
-    }
+    // v196: işçi sistemi ve malzeme makineleri kalktı (işçi serbest bırakma / yasaklı makine işleri yok)
 
     // 0) BORSA BÜLTENİ ANLIK GÖRÜNTÜSÜ (Gazete > Borsa Bülteni) — elmas/
     // hisse/kripto fiyatları hourlyInvestmentUpdate ile SAATTE BİR
@@ -3368,99 +2874,42 @@ async function runDailyResetBody(dateKey, dr) {
       await dr.mark('mining', { mining: { price: nightCryptoPrice, qty: Object.fromEntries(miningCryptoQtyByOwner) } });
     }
 
-    // -0.4) SAHİP-YERİNE-ÜRETİM (işçi gerektiren 4 makine türü): sahibi dün
-    // "Makineleri Çalıştır" butonuyla (runFactoryMachines) ownerTriggeredDateKey
-    // damgaladığı makinelerden, o gün İÇİNDE atanmış işçi tarafından
-    // GERÇEKTEN üretilmemiş (lastProducedDateKey dünün tarihiyle eşleşmeyen —
-    // yani işçi hiç gelip normal "Üretim Yap" akışını çalıştırmamış) her
-    // makine, sahibi tarafından üretilmiş sayılır ve SAHİBİN envanterine
-    // eklenir. Maaş ödemesi YOK — işçi fiilen çalışmadı. Miktar formülü
-    // makine türüne göre değişir: tamirMalzemesi ve yasakliMadde için KENDİ
-    // özel formülleri var (bkz. aşağısı), diğer türler (silahUpgrade,
-    // arabaGelistirme) hâlâ eski davranışı kullanıyor — normal min-max
-    // miktar hesaplanıp (produceAtFactory ile AYNI formül) 1/10'una
-    // düşürülüyor (0'a yuvarlanmaması için en az 1 birim garanti edilir).
-    // İşçi o gün ZATEN gerçek üretim yaptıysa (lastProducedDateKey === dün),
-    // işçinin üretimi ÖNCELİKLİDİR ve bu blok o makineyi atlar (çifte
-    // üretim yok).
-    {
+    // -0.45) v196 — ELMAS MAKİNELERİ (factories/{uid}.dm = { n, trig }): mining ile aynı kural —
+    // sahibi dün tetiklediyse (dm.trig === dün) her makine üretir, üretim DOĞRUDAN bankaya (elmas bakiyesi).
+    // Ortalama üretim mining'in kripto üretiminin 10 katı (DIAMOND_PROD_FACTOR); fiyat yükseldikçe verim
+    // düşer (eşikler elmas bantlarına göre: kriptonun 1/10'u). Elektrik %30 (aşağıda, gelir hesabında).
+    // Tek sorgu: dün tetiklenmiş fabrikalar (makine başına belge yok).
+    if (dr.done('diamond')) {
+      const m = dr.run.diamond || {};
+      nightDiamondPrice = Number(m.price || 0);
+      Object.entries(m.qty || {}).forEach(([k, v]) => diamondQtyByOwner.set(k, Number(v) || 0));
+    } else {
       const prevDateKey = addDaysToDateKey(dateKey, -1);
-      const workerMachineTypes = VALID_MACHINES.filter((t) => t !== 'mining');
-      const ownerTriggeredSnap = await db
-        .collectionGroup('machines')
-        .where('ownerTriggeredDateKey', '==', prevDateKey)
-        .get();
-      const fallbackDocs = ownerTriggeredSnap.docs.filter(
-        (m) => workerMachineTypes.includes(m.data().type) && m.data().lastProducedDateKey !== prevDateKey
-      );
-
-      // producedByOwner — KULLANICI İSTEĞİ: eskiden her makine ayrı ayrı
-      // listeleniyordu (aynı türden birden fazla makine varsa aynı satır
-      // birkaç kez tekrar ediyor, bildirim çok uzuyordu). Artık ownerId ->
-      // (makine türü -> TOPLAM miktar) şeklinde tutuluyor, yani aynı türden
-      // kaç makine olursa olsun o tür tek satırda ve TEK SEFER geçiyor.
-      const producedByOwner = new Map(); // ownerId -> Map(type -> totalQty)
-      const settleJobs = fallbackDocs.map((m) => {
-        const machine = m.data();
-        const factoryId = m.ref.parent.parent.id;
-        const cfg = MACHINE_TYPES[machine.type];
-        // Yeni istek: tamirMalzemesi ve yasakliMadde için genel "normal
-        // miktarın 1/10'u" formülü yerine, işçisiz çalışırken KENDİ
-        // (min-max'tan bağımsız) formülleri kullanılıyor.
-        let qty;
-        if (WORKERLESS_RANGE[machine.type]) {
-          // v154: işçisiz (1/3 verim) — tamir 1–1000, silah 1–100, araba 1–20
-          const [lo, hi] = WORKERLESS_RANGE[machine.type];
-          qty = Math.floor(randomInRange(lo, hi + 1));
-        } else if (machine.type === 'yasakliMadde') {
-          // "işçisiz çalışan yasaklı madde üretme makinesi %5 ihtimalle 2
-          // adet, %50 ihtimalle 1 adet, kalan ihtimallerde 0 üretim yapsın"
-          const roll = Math.random();
-          qty = roll < 0.05 ? 2 : roll < 0.55 ? 1 : 0;
-        } else {
-          const normalQty =
-            machine.type === 'silahUpgrade'
-              ? Math.floor(randomInRange(cfg.min, cfg.max + 1))
-              : Math.round(randomInRange(cfg.min, cfg.max));
-          qty = normalQty > 0 ? Math.max(1, Math.round(normalQty * 0.1)) : 0;
+      const [dmSnap, dPrices] = await Promise.all([db.collection('factories').where('dm.trig', '==', prevDateKey).get(), getCurrentPrices()]);
+      nightDiamondPrice = dPrices.diamondPrice || 0;
+      const eff = diamondEfficiencyMultiplier(nightDiamondPrice);
+      let b = db.batch();
+      let n = 0;
+      for (const f of dmSnap.docs) {
+        const count = Math.max(0, Math.floor(Number(f.data().dm?.n) || 0));
+        if (!count) continue;
+        let qty = 0;
+        for (let i = 0; i < count; i++) qty += randomInRange(MACHINE_TYPES.mining.min, MACHINE_TYPES.mining.max) * DIAMOND_PROD_FACTOR;
+        qty *= eff;
+        diamondQtyByOwner.set(f.id, qty);
+        b.update(db.collection('users').doc(f.id), { diamondHoldings: admin.firestore.FieldValue.increment(qty) });
+        recordInvestmentTrade(b, { assetType: 'diamond', uid: f.id, type: 'buy', goldAmount: qty * nightDiamondPrice });
+        n += 2;
+        if (n >= 380) {
+          await b.commit();
+          b = db.batch();
+          n = 0;
         }
-
-        const jobs = [m.ref.update({ lastProducedDateKey: prevDateKey, lastProducedQty: qty })];
-        if (qty > 0) {
-          if (!producedByOwner.has(factoryId)) producedByOwner.set(factoryId, new Map());
-          const byType = producedByOwner.get(factoryId);
-          byType.set(machine.type, (byType.get(machine.type) || 0) + qty);
-          jobs.push(
-            db
-              .collection('users')
-              .doc(factoryId)
-              .collection('inventory')
-              .doc(machine.type)
-              .set({ quantity: admin.firestore.FieldValue.increment(qty) }, { merge: true })
-          );
-        }
-        return Promise.all(jobs);
-      });
-      await Promise.all(settleJobs);
-
-      // KULLANICI İSTEĞİ: bildirim artık makine başına değil, TÜR başına
-      // (toplam miktarla) tek satır — "verimsiz (1/10)" gibi uzun açıklama
-      // metni kaldırıldı, sadece kısa ve anlaşılır bir özet kalsın.
-      const ownerSmsJobs = [];
-      producedByOwner.forEach((byType, ownerId) => {
-        const lines = Array.from(byType.entries())
-          .map(([type, qty]) => `${MACHINE_TYPES[type].label}: ${qty.toLocaleString('tr-TR')} adet`)
-          .join(', ');
-        ownerSmsJobs.push(
-          sendFactoryNotification(
-            null,
-            ownerId,
-            `İşçisiz çalışan makinelerin: ${lines}. Envanterine eklendi.`,
-            'factory_owner_production'
-          )
-        );
-      });
-      await Promise.all(ownerSmsJobs);
+      }
+      if (n) await b.commit();
+      const effNote = eff < 1 ? ` (elmas fiyatı yüksek olduğu için verim %${Math.round(eff * 100)}'e düştü)` : '';
+      await Promise.all([...diamondQtyByOwner].map(([ownerId, q]) => sendFactoryNotification(null, ownerId, `💎 Elmas makinelerin bu gece ${q.toFixed(4)} elmas üretti${effNote}. Bankaya yattı.`, 'diamond_production')));
+      await dr.mark('diamond', { diamond: { price: nightDiamondPrice, qty: Object.fromEntries(diamondQtyByOwner) } });
     }
 
     // -0.35) FABRİKA GÜNLÜK GELİR HESABI (Faz Fabrika Hisseleri — Part A):
@@ -3488,10 +2937,8 @@ async function runDailyResetBody(dateKey, dr) {
         silahUpgrade: 50,
       };
 
-      const producedSnap = await db
-        .collectionGroup('machines')
-        .where('lastProducedDateKey', '==', prevDateKey)
-        .get();
+      // v196: malzeme makineleri yok → işçi üretimi taranmaz (boş liste, okuma yok)
+      const producedSnap = { forEach() {}, docs: [] };
 
       const incomeByFactory = new Map(); // ownerId -> altın (yuvarlanmamış toplam)
       // Yeni istek: "günlük raporda kaç adet hangi malzemeden üretildiği de
@@ -3566,6 +3013,14 @@ async function runDailyResetBody(dateKey, dr) {
         const producedValue = qty * nightCryptoPrice;
         addElectricity(factoryId, Math.round(producedValue * MINING_ELECTRICITY_RATE));
       });
+      // v196: elmas makineleri — üretim değerinin %30'u (mining ile aynı)
+      diamondQtyByOwner.forEach((qty, factoryId) => {
+        const value = qty * nightDiamondPrice;
+        incomeByFactory.set(factoryId, (incomeByFactory.get(factoryId) || 0) + value);
+        if (!producedByTypeByFactory.has(factoryId)) producedByTypeByFactory.set(factoryId, {});
+        producedByTypeByFactory.get(factoryId).elmas = (producedByTypeByFactory.get(factoryId).elmas || 0) + qty;
+        addElectricity(factoryId, Math.round(value * MINING_ELECTRICITY_RATE));
+      });
       // Faturası olan sahiplerin GÜNCEL altın/borç bilgisini topluca çekiyoruz
       // — aşağıdaki batch yazımı senkron kurulduğu için, nakit/borç ayrımı bu
       // okumadan sonra hesaplanmalı (produceAtFactory'deki maaş açığı
@@ -3639,7 +3094,7 @@ async function runDailyResetBody(dateKey, dr) {
         // KIRPILMIYOR — bir makinenin ürettiği malın anlık satış değeri
         // maaştan düşük kalırsa o gün gerçekten zarar edilmiş demektir.
         const grossIncome = Math.round(incomeByFactory.get(f.id) || 0);
-        const salaryPaid = Math.round(f.data().salaryPaidToday || 0);
+        const salaryPaid = 0; // v196: işçi maaşı yok
         // Yeni istek (kullanıcı revizesi): "kar hesaplanırken elektrik
         // faturası masrafı da cirodan düşülsün" — dailyIncome artık
         // grossIncome - salaryPaid - electricityBill. electricityBill bu
@@ -3792,196 +3247,7 @@ async function runDailyResetBody(dateKey, dr) {
       );
     }
 
-    // -0.32) FABRİKA HİSSE (STOK) TEMETTÜ ÖDEMESİ (Faz Fabrika Hisseleri —
-    // Part B): üstteki bloktan (Part A) taze factoryDailyIncomeMap hazır —
-    // her AKTİF (satılmış, hâlâ ödeme süresi devam eden) hisse için, o
-    // hissenin sahip olduğu fabrikanın BU GECEKİ dailyIncome'undan
-    // (percent%) payına düşen kısım hisseyi ALAN oyuncuya ödenir.
-    // Fabrika sahibinin altını yetmezse fark, produceAtFactory'deki maaş
-    // mantığıyla BİREBİR AYNI şekilde (bkz. sendSalaryPenaltySms) sahibin
-    // borcuna (debtToState) yazılır — alıcı HER ZAMAN temettüsünü TAM alır.
-    // Kullanıcı revizesi: günlük rapora GİDER olarak "hisse pay (temettü)
-    // giderleri" de eklensin diye, bu fabrika sahibinin bu gece ödediği
-    // (ya da ödemesi gerekip borç yazılan — salaryPaid/electricityBill ile
-    // AYNI konvansiyon: TAM yükümlülük raporlanır, sadece fiilen ödenen
-    // kısım değil) toplam temettü tutarı burada biriktirilir.
-    const dividendExpenseByOwner = new Map(); // ownerId -> altın
-    if (!dr.done('dividends')) {
-      const todayDateKey = dateKey;
-      const activeSharesSnap = await db.collectionGroup('shares').where('status', '==', 'active').get();
-
-      await Promise.all(
-        activeSharesSnap.docs.map(async (shareDoc) => {
-          const share = shareDoc.data();
-          // v95.2: bu gece zaten ödenmiş hisse tekrar ödenmez
-          if (share.lastPayoutDateKey === todayDateKey) {
-            const ownerIdPaid = shareDoc.ref.parent.parent.id;
-            const paid = Number(share.lastPayoutAmount || 0);
-            if (paid > 0) dividendExpenseByOwner.set(ownerIdPaid, (dividendExpenseByOwner.get(ownerIdPaid) || 0) + paid);
-            return;
-          }
-          const ownerId = shareDoc.ref.parent.parent.id;
-          const factoryDailyIncome = factoryDailyIncomeMap.get(ownerId) || 0;
-          const dividend = Math.round(((share.percent || 0) / 100) * factoryDailyIncome);
-          const newRemainingDays = Math.max(0, (share.remainingDays || 0) - 1);
-          // NOT: bu satır bilerek İLK await'ten (aşağıdaki db.runTransaction)
-          // ÖNCE, senkron olarak çalışıyor — Promise.all içindeki tüm
-          // callback'ler ilk await'e kadar senkron sırayla çalıştığı için,
-          // aynı sahibin birden fazla hissesi olsa bile bu toplama işlemi
-          // yarış durumuna (race condition) girmez.
-          if (dividend > 0) {
-            dividendExpenseByOwner.set(ownerId, (dividendExpenseByOwner.get(ownerId) || 0) + dividend);
-          }
-
-          // totalPaidOut/lastPayoutAmount — yeni istek (madde 4): "hisse
-          // senedinden şu kadar para kazandın mesajında ... şu ana kadar şu
-          // kadar toplamda kazandın" — yatırımcı ekranında ve SMS'te
-          // gösterilecek kümülatif/bugünkü kazanç burada tutuluyor
-          // (eskiden hiç kayıt yoktu, bkz. araştırma notu).
-          const shareUpdate = {
-            remainingDays: newRemainingDays,
-            lastPayoutDateKey: todayDateKey,
-            lastPayoutAmount: dividend,
-            totalPaidOut: admin.firestore.FieldValue.increment(dividend),
-          };
-          if (newRemainingDays <= 0) shareUpdate.status = 'expired';
-
-          if (dividend <= 0) {
-            await shareDoc.ref.update(shareUpdate);
-            return;
-          }
-
-          const buyerRef = db.collection('users').doc(share.buyerId);
-          const ownerRef = db.collection('users').doc(ownerId);
-
-          let shortfall = 0;
-          let newOwnerDebt = null;
-          await db.runTransaction(async (tx) => {
-            const [buyerSnap, ownerSnap] = await Promise.all([tx.get(buyerRef), tx.get(ownerRef)]);
-            if (!buyerSnap.exists || !ownerSnap.exists) {
-              tx.update(shareDoc.ref, shareUpdate);
-              return;
-            }
-            const owner = ownerSnap.data();
-            const ownerGold = owner?.gold || 0;
-            const ownerPay = Math.min(dividend, ownerGold);
-            shortfall = dividend - ownerPay;
-
-            // Hisse sahibi (alıcı): temettüsünü TAM alır — produceAtFactory'
-            // deki işçi maaşı mantığıyla birebir aynı.
-            tx.update(buyerRef, { gold: admin.firestore.FieldValue.increment(dividend), goldTag: goldTag('fabrikaHisse') });
-            // Fabrika sahibi: elinden çıkabildiği kadarı düşülür, yetmeyen
-            // kısım CEZA/borç olur (splitIncomeForDebt DEĞİL — bu bir
-            // ödeme YÜKÜMLÜLÜĞÜ, gelir değil, tıpkı maaş ödemesinde olduğu
-            // gibi).
-            tx.update(ownerRef, {
-              gold: admin.firestore.FieldValue.increment(-ownerPay), goldTag: goldTag('fabrikaHisse'),
-              debtToState: admin.firestore.FieldValue.increment(shortfall),
-            });
-            if (shortfall > 0) {
-              newOwnerDebt = (owner?.debtToState || 0) + shortfall;
-            }
-            tx.update(shareDoc.ref, shareUpdate);
-          });
-
-          // Yeni istek (madde 4): "şu fiyata aldığın hisseden bugün şu kadar
-          // kazandın ve şu ana kadar şu kadar toplamda bu kadar kazandın ve
-          // vadenin bitmesine şu kadar gün kaldı" — mesaj artık tek bir
-          // rakam yerine tüm bu bağlamı içeriyor. `newTotalPaidOut` burada
-          // JS tarafında elle hesaplanıyor (FieldValue.increment sunucuda
-          // atomik uygulanır ama anlık yeni değeri bize geri vermez).
-          const newTotalPaidOut = (share.totalPaidOut || 0) + dividend;
-          const expiryNote =
-            newRemainingDays > 0
-              ? `Vadenin bitmesine ${newRemainingDays} gün kaldı.`
-              : 'Bu hissenin vadesi bugün doldu.';
-          const smsJobs = [
-            buyerRef.collection('messages').add({
-              text: `📈 Hisse temettün ödendi! %${share.percent}'ini ${(share.price || 0).toLocaleString('tr-TR')} altına aldığın fabrika hissesinden bugün ${dividend.toLocaleString('tr-TR')} altın kazandın. Bu hisseden şu ana kadar toplam ${newTotalPaidOut.toLocaleString('tr-TR')} altın kazandın. ${expiryNote}`,
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-              read: false,
-              type: 'share_dividend',
-            }),
-          ];
-          if (shortfall > 0 && newOwnerDebt != null) {
-            smsJobs.push(
-              sendFactoryNotification(
-                null,
-                ownerId,
-                `Fabrikandaki bir hisse sahibinin temettüsünü ödemeye altının yetmedi. Eksik ${shortfall.toLocaleString('tr-TR')} altın devlete borç yazıldı. Toplam borcun: ${newOwnerDebt.toLocaleString('tr-TR')} altın.`,
-                'share_dividend_penalty'
-              )
-            );
-          }
-          await Promise.all(smsJobs);
-        })
-      );
-
-      // dividendExpenseByOwner elde edildikten sonra, günlük rapora
-      // (Part A'nın yazdığı prevDateKey ile AYNI gün) "hisse pay gideri"
-      // satırını ekliyoruz — salaryPaidToday/dailySalaryExpense ile aynı
-      // desende (skaler + son 10 gün geçmişi). TÜM fabrikalara yazılır
-      // (Part A'daki allFactoriesSnap döngüsüyle AYNI konvansiyon) — bu
-      // gece temettü ödemesi olmayan fabrikalar da 0 alır, yoksa eski
-      // (bayat) bir değer asılı kalır ve geçmiş dizisi diğer kalemlerle
-      // (dailySalaryExpenseHistory vb.) senkron ilerlemez.
-      //
-      // Kullanıcı revizesi: "hisse pay giderleri de cirodan düşülecek ve
-      // kâr hesaplanırken etken olacak" — dailyShareDividendExpense'i SADECE
-      // ayrı bir bilgi kalemi olarak yazmak yetmiyor, Part A'nın az önce
-      // yazdığı dailyIncome (net kâr) ve dailyIncomeHistory'nin BUGÜNKÜ
-      // (son) elemanı da bu temettü gideri kadar AŞAĞI çekiliyor — dailyIncome
-      // artık grossIncome - salaryPaid - electricityBill - dividendExpense.
-      // NOT: temettü TUTARININ KENDİSİ hâlâ Part A'nın ORİJİNAL (temettü/
-      // sponsorluk düşülmeden ÖNCEKİ) dailyIncome'una göre hesaplanıyor
-      // (bkz. yukarısı, factoryDailyIncomeMap) — yoksa "kâr temettüyü
-      // düşürür, düşen kâr temettüyü küçültür" şeklinde dairesel/kararsız
-      // bir hesap olurdu. Burada SADECE raporlanan/persist edilen kâr
-      // rakamı düzeltiliyor, temettü ödemesinin kendisi zaten yukarıda
-      // tamamlandı.
-      {
-        const prevDateKeyForDividend = addDaysToDateKey(dateKey, -1);
-        const factorySnaps = (await db.collection('factories').get()).docs;
-        let dividendBatch = db.batch();
-        let dividendOpCount = 0;
-        const dividendBatchJobs = [];
-        factorySnaps.forEach((fSnap) => {
-          if (!fSnap.exists) return;
-          const data = fSnap.data();
-          if (data.dailyShareDividendExpenseDateKey === prevDateKeyForDividend) return; // v95.2: zaten yazıldı
-          const dividendExpense = dividendExpenseByOwner.get(fSnap.id) || 0;
-          const existingHistory = Array.isArray(data.dailyShareDividendExpenseHistory)
-            ? data.dailyShareDividendExpenseHistory
-            : [];
-          const dailyShareDividendExpenseHistory = [...existingHistory, dividendExpense].slice(-10);
-
-          const updatedDailyIncome = Math.round((data.dailyIncome || 0) - dividendExpense);
-          const currentIncomeHistory = Array.isArray(data.dailyIncomeHistory) ? data.dailyIncomeHistory : [];
-          const updatedIncomeHistory =
-            currentIncomeHistory.length > 0
-              ? [...currentIncomeHistory.slice(0, -1), updatedDailyIncome]
-              : currentIncomeHistory;
-
-          dividendBatch.update(fSnap.ref, {
-            dailyShareDividendExpense: dividendExpense,
-            dailyShareDividendExpenseHistory,
-            dailyShareDividendExpenseDateKey: prevDateKeyForDividend,
-            dailyIncome: updatedDailyIncome,
-            dailyIncomeHistory: updatedIncomeHistory,
-          });
-          dividendOpCount += 1;
-          if (dividendOpCount >= 400) {
-            dividendBatchJobs.push(dividendBatch.commit());
-            dividendBatch = db.batch();
-            dividendOpCount = 0;
-          }
-        });
-        if (dividendOpCount > 0) dividendBatchJobs.push(dividendBatch.commit());
-        await Promise.all(dividendBatchJobs);
-      }
-    }
-
-    await dr.mark('dividends');
+    // v196: fabrika hisse sözleşmeleri kalktı (satış 30+ gündür kapalıydı, aktif sözleşme yok) — temettü bloğu silindi
 
     // NOT: Fabrika↔Futbol Kulübü sponsorluk ödemeleri ARTIK BURADA DEĞİL —
     // Bölüm 14/7 (futbol menajerlik sistemi güncellemesi) ile 00:00'dan
@@ -4302,14 +3568,7 @@ async function runDailyResetBody(dateKey, dr) {
     // slot (çevirme başına 500) her gece; rulet ve 10 Numara (ayrı kasalar) sadece
     // artıdaysa yatar, eksideyse kaldığı eksiden yeni günde devam eder. Gelir YENİ
     // güne (dateKey) yazılır. İdempotent (kasa belgesinde lastSettledDay).
-    if (!dr.done('gameCasinoVault')) {
-      try {
-        const v = await settleGameCasinoVaults(db, admin.firestore.FieldValue, { dateKey });
-        await dr.mark('gameCasinoVault', { gameCasinoVault: v });
-      } catch (err) {
-        console.error('dailyReset gameCasinoVault', err);
-      }
-    }
+    // v196: gazinonun kazancı oyundan çıkar — belediyeye aktarım DURDU (settleGameCasinoVaults çağrılmaz)
 
     // 1c) v108 — İMAM MAAŞI · v127: GECE MAAŞLARI artık BELEDİYE kasasından —
     // polis + imam + belediye kadrosu birlikte (functions/belediye.js tryRunPayroll).
@@ -4659,6 +3918,9 @@ function recordInvestmentTrade(writer, { assetType, uid, type, goldAmount }) {
 // =============================================================================
 const CRYPTO_LOW_BAND = 50000;
 const CRYPTO_HIGH_BAND = 400000;
+// v196: elmas bantları (kriptonun 1/10'u; rejim eşiği 20.000 / taban 10.000 ile çelişmez)
+const DIAMOND_LOW_BAND = 5000;
+const DIAMOND_HIGH_BAND = 40000;
 export const hourlyInvestmentUpdate = onSchedule(
   { schedule: 'every 1 hours', timeZone: 'Europe/Istanbul' },
   async () => {
@@ -4702,7 +3964,10 @@ export const hourlyInvestmentUpdate = onSchedule(
       if (reversed) return up ? pct(0.01, revMax) : -pct(0.01, revMax);
       return up ? pct(0.01, normalUp) : -pct(0.01, normalDown);
     };
-    const diamondChangePct = move(diamondRegime.reversed, 0.05, 0.04, 0.05);
+    // v196: elmasta da kriptodaki bant kuralı — 5.000 altı %75 yükseliş, 40.000 üstü %75 düşüş, arada 50/50
+    // (gizli ters rejim = alışlar çoğunluktaysa, eşik 20.000 / taban 10.000 arasında: pickInvestmentRegime)
+    const diamondUpProb = prev.diamondPrice < DIAMOND_LOW_BAND ? 0.75 : prev.diamondPrice > DIAMOND_HIGH_BAND ? 0.25 : 0.5;
+    const diamondChangePct = move(diamondRegime.reversed, 0.05, 0.04, 0.05, diamondUpProb);
     const stockChangePct = move(stockRegime.reversed, 0.1, 0.08, 0.1);
     // Kripto sınır eğilimi: 50.000 altında %75 ihtimalle yukarı, 400.000 üstünde
     // %75 ihtimalle aşağı (aralıklar/rejim aynı; sadece yön olasılığı değişir).
@@ -5054,7 +4319,7 @@ export const buyInvestment = onCall(async (request) => {
   if (!INVESTMENT_PRICE_FIELD[assetType]) {
     throw new HttpsError('invalid-argument', 'Geçersiz yatırım aracı.');
   }
-  if (assetType === 'stock') await v196Closing.assertOpen(); // v196 kapanış modu
+  if (assetType === 'stock') throw new HttpsError('failed-precondition', '📉 Hisse senedi yatırımı kalktı. Elmas ve kripto devam.'); // v196
   if (!Number.isInteger(goldAmount) || goldAmount <= 0) {
     throw new HttpsError('invalid-argument', 'Geçersiz altın miktarı.');
   }
@@ -5381,7 +4646,7 @@ async function computeCreditScore(uid) {
       if (sh.status === 'listed' || sh.status === 'active') away += Number(sh.percent || 0);
     });
     const ownedPct = Math.max(0, Math.min(100, 100 - away)) / 100;
-    factory = Math.floor(computeFactoryValue(machinesByType, prices.cryptoPrice || 0) * ownedPct);
+    factory = Math.floor(computeFactoryValue(machinesByType, prices.cryptoPrice || 0, factorySnap.data().dm?.n || 0, prices.diamondPrice || 0) * ownedPct);
   }
   let team = 0;
   for (const d of teamsSnap.docs) team += await computeFutbolTeamValue(d.id);

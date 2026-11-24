@@ -61,7 +61,7 @@ test('v135 katalog: haber stüdyosu 10 zümrüt, liman fiyatları, yeni ofis mob
   assert.ok(isOfficeFurn('newsdesk') && isOfficeFurn('easel'));
 });
 
-test('v135 haber masası: sahip ücretsiz; ücretsizken başkası kullanamaz; ücretliyse 200–800/dk, ev ofis olur', async () => {
+test('v135 haber masası: sahip ücretsiz; ücretsizken başkası kullanamaz; ücretliyse 200–800/dk, ev ofis olur', { skip: 'v196: oyuncu evi / işletmesi / mobilya pazarı kalktı' }, async () => {
   const h = setup();
   const { houseId: id } = await h.hact('sahip', { op: 'buy' });
   const desk = it('newsdesk');
@@ -93,7 +93,7 @@ test('v135 haber masası: sahip ücretsiz; ücretsizken başkası kullanamaz; ü
   assert.equal(h.G(`officeDaily/${id}_2026-10-28`).byKind.dakika, 1000);
 });
 
-test('v135 röportaj ve resim paylaşımı sadece ilgili mobilyada yakın zamanda oturumla', async () => {
+test('v135 röportaj ve resim paylaşımı sadece ilgili mobilyada yakın zamanda oturumla', { skip: 'v196: oyuncu evi / işletmesi / mobilya pazarı kalktı' }, async () => {
   const h = setup();
   const { houseId: id } = await h.hact('sahip', { op: 'buy', name: 'Kanal 7' });
   const desk = it('newsdesk');
@@ -182,7 +182,7 @@ test('v135 hikâye fotoğrafı katmanı: yazı/çizim doğrulanır ve kırpılı
   assert.ok(sanitizeOverlay({ strokes: [{ c: 99, s: 0, p: [1, 1] }] }).error);
 });
 
-test('v135 hikâye fotoğrafı: çekimde imzalanan ek paylaşımda AYNEN kullanılır (sonradan gelen/çıkan değiştirmez)', async () => {
+test('v135 hikâye fotoğrafı: çekimde imzalanan ek paylaşımda AYNEN kullanılır (sonradan gelen/çıkan değiştirmez)', { skip: 'v196: oyuncu evi kalktı' }, async () => {
   const h = setup();
   const { houseId: id } = await h.hact('sahip', { op: 'buy', name: 'Foto Evi' });
   h.S(`houses/${id}`, { ...h.G(`houses/${id}`), items: [it('sofa3')] });

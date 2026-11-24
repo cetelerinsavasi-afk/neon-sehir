@@ -594,7 +594,9 @@ export function createCore(deps) {
     return null;
   }
 
+  // v196: yasaklı madde 1.000 sabit; silah / araba mağaza fiyatının %25'i
   function unitBuyPrice(item) {
+    if (item?.key === 'yasakliMadde' || item?.material === 'yasakliMadde') return GANG.CONTRABAND_ORDER_PRICE;
     return Math.floor(item.storePrice * GANG.TRADE_ROUTE_BUY_RATIO);
   }
   // "Anlık satış değeri" — mevcut instantSellListing ile aynı: yeni ürün için

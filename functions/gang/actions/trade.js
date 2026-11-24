@@ -98,6 +98,8 @@ export function createTradeActions(core, treasury) {
   // Depo satın al / genişlet: her alım +100 kapasite
   // ---------------------------------------------------------------------------
   async function buyDepot(ctx, data) {
+    // v196: depo kapasitesi kalktı (geçişte alınan kapasiteler kasaya iade edildi)
+    if (data !== '__v195__') fail('failed-precondition', '🚚 Depo kapasitesi kalktı: tır ulaşınca mallar otomatik depoya satılır, para kasaya girer.');
     return core.db.runTransaction(async (tx) => {
       const guard = await requestGuard(tx, ctx, data.requestId);
       if (guard.done) return guard.result;
@@ -185,14 +187,12 @@ export function createTradeActions(core, treasury) {
       const limit = orderLimitOf({ holder, route, isContraband, state, gang: gangSnap.data(), dateKey: ctx.dateKey });
       if (spentToday + cost > limit) fail('failed-precondition', `Günlük sipariş limitin: ${fmt(Math.max(0, limit - spentToday))} altın kaldı.`);
       if (Number(state.kasa || 0) < cost) fail('failed-precondition', 'Kasada yeterli para yok.');
-      const free = depotFree(depotSnap.data());
-      if (free < units) fail('failed-precondition', free <= 0 ? 'Depon yok ya da dolu — önce depo al.' : `Depoda yeterli yer yok (boş yer: ${fmt(free)}).`);
+      // v196: depo kapasitesi kalktı — tır ulaşınca mallar otomatik depoya satılır
       const orderSpent =
         state.orderSpent?.dateKey === ctx.dateKey
           ? { dateKey: ctx.dateKey, byProduct: { ...state.orderSpent.byProduct, [productId]: spentToday + cost } }
           : { dateKey: ctx.dateKey, byProduct: { [productId]: cost } };
       tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(-cost), orderSpent });
-      tx.set(ctx.ref.depot(gangId), { reservedUnits: FV.increment(units) }, { merge: true });
       tx.set(ctx.ref.order(orderId), {
         truckId,
         truckCode: truck.code,

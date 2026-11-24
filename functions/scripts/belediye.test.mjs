@@ -79,8 +79,12 @@ test('oranlar: varsayılanlar oyunun mevcut değerleri; tek adım; bağımlı s�
   assert.equal(r.imam, 10_000);
   assert.equal(r.soygunPay, 25);
   assert.equal(r.ikAraba, undefined, 'v132: 2. el vergisi kalktı');
-  assert.deepEqual(boundsOf(r, r, 'sfSilah'), [9, 11]);
-  assert.deepEqual(boundsOf({ ...r, sfSilah: 1 }, { ...r, sfSilah: 1 }, 'sfSilah'), [1, 2], 'v132: sıfır satış vergisi %1\'e iner');
+  // v196: sıfır satış kâr vergisi, işçi maaş / piyango / ofis / kumarhane / malzeme makinesi kalemleri kalktı
+  for (const id of ['sfSilah', 'sfAraba', 'fisci', 'piyango', 'isOfis', 'isKumar', 'mkTamir', 'mkAraba', 'mkSilah']) assert.equal(r[id], undefined, `v196: ${id} kalktı`);
+  assert.equal(r.isGaleri, 10);
+  assert.equal(r.isMotoGaleri, 10);
+  assert.equal(r.mkElmas, 5);
+  assert.deepEqual(boundsOf(r, r, 'isGaleri'), [9, 11]);
   assert.equal(validateNext(r, { ...r, sosyal: 11 }), null);
   assert.equal(validateNext(r, { ...r, sosyal: 9 }), null);
   assert.match(validateNext(r, { ...r, sosyal: 12 }), /en fazla/);
@@ -104,11 +108,13 @@ test('vergi fonksiyonları belediye oranını kullanır (önbellek / açık set)
   assert.equal(resaleTax(1000, 'weapon', r), 0, 'v132: 2. el vergisiz');
   assert.equal(resaleTax(1000, 'vehicle', r), 0);
   assert.equal(machineTax(10_000, 'mining', r), 800);
-  assert.deepEqual(splitSalaryTax(1000, 'isci', r), { gross: 1000, tax: 150, net: 850 });
+  assert.deepEqual(splitSalaryTax(1000, 'isci', r), { gross: 1000, tax: 0, net: 1000 }, 'v196: işçi maaş vergisi kalktı');
   assert.equal(factoryTax(500_000, r), 55_000);
   assert.equal(factoryRateFrac(r, 99_999), 0.01);
   assert.equal(resaleRateFrac(r, 'machine'), 0, 'v127: malzeme / makine 2. el satışı vergisiz');
-  assert.equal(bizRateFrac({ ...r, isOfis: 7 }, 'sinema'), 0.07, 'v127: sinema / stüdyo / mescit → Ofis oranı');
+  assert.equal(bizRateFrac({ ...r, isOfis: 7 }, 'sinema'), 0, 'v196: ofis yok');
+  assert.equal(bizRateFrac(r, 'gazino'), 0, 'v196: gazino vergi ödemez');
+  assert.equal(bizRateFrac({ ...r, isGaleri: 13 }, 'galeri'), 0.13);
   assert.equal(bizRateFrac(r, 'bilinmeyen'), 0.1);
   assert.equal(policeSalary(r, 'uzman'), 15_000);
   assert.equal(seatSalary(r, 'kul'), 30_000);
@@ -153,14 +159,14 @@ test('00:00: ayarlar yürürlüğe girer (v127: Sixtagram yerine gazetede), sonr
   const w = world();
   await seatAll(w);
   await w.act('veli', 'setRate', { id: 'mkKripto', value: 6 });
-  await w.act('ayse', 'setRate', { id: 'piyango', value: 9 });
+  await w.act('ayse', 'setRate', { id: 'isGaleri', value: 9 }); // v196: piyango kalemi kalktı
   w.clock.now = ms('2026-10-25', '00:00');
   const r = await w.bel.nightlyRoll('2026-10-25');
   assert.equal(r.changes.length, 2);
   assert.equal(w.posts.length, 0, 'Sixtagram paylaşımı yok (gazete)');
   const pub = w.G('belediye/public');
   assert.equal(pub.changesDay, '2026-10-25');
-  assert.equal(pub.changes.find((c) => c.id === 'piyango').by, 'AYSE');
+  assert.equal(pub.changes.find((c) => c.id === 'isGaleri').by, 'AYSE');
   assert.equal(w.G('belediye/rates').byDay['2026-10-25'].mkKripto, 6);
   assert.equal(resolveRates(w.G('belediye/rates'), '2026-10-24').mkKripto, 5, 'dünün oranı korunur (gece tahsilatı için)');
   await w.bel.nightlyRoll('2026-10-25');

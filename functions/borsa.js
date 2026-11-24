@@ -72,6 +72,7 @@ export const BORSA_INC_LEN = 10; // son 10 günün geliri
 export const BORSA_DOC = 'borsa/piyasa';
 export const BORSA_TAX_RATE_ID = 'hisse';
 export const BORSA_MARKET_V = 2;
+import { VENUE_SHARE_TYPES, VENUE_CO_ID, VENUE_CO_SK, VENUE_CO_NAME } from './v196Shared.js';
 export const BORSA_HOLD_V = 2;
 export const BORSA_RTDB_PATH = 'borsaFiyat'; // v189: canlı fiyat yayını { <mekân>: u }
 
@@ -88,7 +89,22 @@ export const BORSA_COS = [
   { id: 'nakliye', sk: 'nk', name: 'Nakliye', kind: 'sirket' },
   { id: 'terminal', sk: 'tm', name: 'Terminal', kind: 'sirket' },
   { id: 'taksi', sk: 'tk', name: 'Taksi Durağı', kind: 'sirket' },
+  // v196 — oyunun mekânları: gelir = brüt − %50 masraf − belediye vergisi (business.recordGameIncomeTx).
+  // Gelir zaten vergilendiği için TOPLARKEN hisse gelir vergisi kesilmez (çift vergi yok).
+  ...VENUE_SHARE_TYPES.map((t) => ({ id: VENUE_CO_ID[t], sk: VENUE_CO_SK[t], name: VENUE_CO_NAME[t], kind: 'mekan', venueType: t })),
 ];
+// v196: toplarken vergisi kesilen kısım (mekân hisseleri hariç). by: { co: altın }
+export const isTaxFreeCo = (id) => BORSA_CO_BY_ID[id]?.kind === 'mekan';
+export function collectTaxFrac(by, taxFrac) {
+  let total = 0;
+  let taxable = 0;
+  for (const [id, v] of Object.entries(by || {})) {
+    const n = Math.max(0, Number(v) || 0);
+    total += n;
+    if (!isTaxFreeCo(id)) taxable += n;
+  }
+  return total > 0 ? (Math.max(0, Number(taxFrac) || 0) * taxable) / total : 0;
+}
 export const BORSA_CO_IDS = BORSA_COS.map((c) => c.id);
 export const BORSA_CO_BY_ID = Object.fromEntries(BORSA_COS.map((c) => [c.id, c]));
 export const borsaCoOfVendor = (vendorId) => BORSA_COS.find((c) => c.vendor === vendorId) || null;
@@ -607,7 +623,7 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
         after[id] = { ...h, pq: h.pq - BigInt(g) * BORSA_Q }; // küsurat kalır, kaybolmaz
       }
       if (total <= 0) fail('failed-precondition', 'Toplanacak gelir yok.');
-      const r = splitCollect(total, taxFrac(day), user.debtToState);
+      const r = splitCollect(total, collectTaxFrac(by, taxFrac(day)), user.debtToState); // v196: mekân hisseleri vergisiz
       const u = { gold: FieldValue.increment(r.pay), goldTag: goldTag('borsaGelir'), borsaSon: t };
       if (user.borsaUyari) u.borsaUyari = FieldValue.delete();
       if (r.toDebt) u.debtToState = FieldValue.increment(-r.toDebt);
@@ -768,7 +784,7 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
       if (!user || idleStep(user, sSnap.data()?.lastSeenAtMs, t) !== 'sell') return null;
       const market = mSnap.data() || {};
       const dd = market.distDay ?? null;
-      const { total } = pendingAll(user, market);
+      const { total, by: pendBy } = pendingAll(user, market);
       // en değerli hisseden başlayarak sat
       const order = BORSA_CO_IDS.filter((id) => holdState(user, id).u > 0).sort((a, b) => coState(market, b).u - coState(market, a).u);
       let sale = 0;
@@ -786,7 +802,7 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
         const fromB = periodOpen(h, dd) ? h.b : 0;
         cos[id] = { ...co, u: co.u - x, h: Math.max(0, co.h - 1), bt: co.btd === dd ? Math.max(0, co.bt - fromB) : 0, btd: dd };
       }
-      const r = splitCollect(total, taxFrac(day), user.debtToState);
+      const r = splitCollect(total, collectTaxFrac(pendBy, taxFrac(day)), user.debtToState); // v196
       const u = { borsa: FieldValue.delete(), borsaSon: FieldValue.delete(), borsaUyari: FieldValue.delete(), gold: FieldValue.increment(sale + r.pay), goldTag: goldTag('borsa', { borsaKz: kz, borsaKom: -kom, borsaGelir: r.pay }) };
       if (r.toDebt) u.debtToState = FieldValue.increment(-r.toDebt);
       tx.update(userRef(uid), u);

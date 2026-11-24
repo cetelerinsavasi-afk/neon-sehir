@@ -24,6 +24,8 @@
 // =============================================================================
 
 import { isBizPassive } from './bizPassive.js'; // v195
+import { createHome } from './home.js'; // v196
+import { V196_GONE_TEXT } from './v196Shared.js';
 import { sanitizeOverlay, overlayText } from './photoOverlay.js';
 import {
   HOUSE_PRICE,
@@ -170,6 +172,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
   };
   const houseRef = (id) => db.collection('houses').doc(id);
   const invRef = (uid) => db.collection('houseInventories').doc(uid);
+  const home = createHome({ db, FieldValue, HttpsError, now }); // v196
   const fundRef = (houseId) => db.collection('houseFunds').doc(houseId); // v127 mobilya kasası
   const presenceRef = (uid) => db.collection('housePresence').doc(uid);
   const userRef = (uid) => db.collection('users').doc(uid);
@@ -1453,6 +1456,10 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     if (p.op === 'guestHouse') return guestHouse(p);
     if (p.op === 'guestLeagues') return guestLeagues();
     const uid = requireAuth(request);
+    // v196 — kişisel 3 katlı ev (functions/home.js)
+    if (Object.prototype.hasOwnProperty.call(home.ops, p.op)) return home.ops[p.op](uid, p);
+    // v196 — oyuncu evi / işletmesi satın alma, açma, satma ve mobilya pazarı kalktı
+    if (['buy', 'bizOpen', 'bizIntent', 'bizClose', 'sellHouse', 'furnBuy', 'furnList', 'furnCancel'].includes(p.op) && !String(p.houseId || '').startsWith('hq')) fail('failed-precondition', V196_GONE_TEXT);
     switch (p.op) {
       case 'buy':
         return buy(uid, p);

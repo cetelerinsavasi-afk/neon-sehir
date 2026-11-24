@@ -27,7 +27,7 @@ test('makine alımı: fiyat + %5 vergi (v126; devlete ayrı kalem); fabrika kuru
   assert.match(src, /return \{ base: FACTORY_CREATE_COST \+ machines, tax, total: FACTORY_CREATE_COST \+ machines \+ tax, stat \}/);
   assert.match(src, /const mt = machineTax\(p, t\)/, 'v127: makine türüne göre oran');
   const ui = fs.readFileSync(new URL('../../src/components/FactoryScreen/FactoryScreen.jsx', import.meta.url), 'utf8');
-  assert.match(ui, /withMachineTax\(machinePrice\(t, cryptoPrice \|\| 0\), t, rates\)/, 'istemci kuruluş bedeli sunucuyla aynı (v127: belediye oranı)');
+  assert.match(ui, /withMachineTax\(miningPriceOf\(i, prices\.cryptoPrice\), 'mining', rates\)/, 'istemci kuruluş bedeli sunucuyla aynı (v196: 2 kripto + 2 elmas)');
 });
 
 test('gazino raporu: verilen 0 olan 10 Numara eli makine raporunu boş haritayla EZMEZ', async () => {

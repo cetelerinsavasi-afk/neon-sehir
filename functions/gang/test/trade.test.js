@@ -48,7 +48,7 @@ test('tır: 100.000 altın, sadece Baba/Sağ Kol; 4 haneli benzersiz kimlik; öm
   const second = await h.act(G.baba, 'buyTruck');
   assert.notEqual(second.code, ok[0].code);
 });
-test('depo: 100.000 = +100 kapasite, her alımda genişler; sadece Baba/Sağ Kol; v39: günde en fazla 1', async () => {
+test('depo: 100.000 = +100 kapasite, her alımda genişler; sadece Baba/Sağ Kol; v39: günde en fazla 1', { skip: 'v196: depo kapasitesi / depoya teslim kalktı — yerine scripts/v196-economy.test.mjs (otomatik satış)' }, async () => {
   const h = await createHarness();
   const G = await setupTradeGang(h, 'Alfa', { depot: 0 });
   await h.fails(G.ids[1], 'buyDepot');
@@ -60,7 +60,7 @@ test('depo: 100.000 = +100 kapasite, her alımda genişler; sadece Baba/Sağ Kol
   assert.equal(h.state(G.gangId).kasa, 5_000_000 - 200_000);
   assert.ok(h.chat(G.gangId).some((m) => /kapasite 200/.test(m)));
 });
-test('sipariş: yol sahibi, yarı fiyat, Paz–Cum 00:00–12:00 (v136), tır kapasitesi 10/10/100, tek tür, depo yeri, günlük limit, iptal', async () => {
+test('sipariş: yol sahibi, yarı fiyat, Paz–Cum 00:00–12:00 (v136), tır kapasitesi 10/10/100, tek tür, depo yeri, günlük limit, iptal', { skip: 'v196: depo kapasitesi / depoya teslim kalktı — yerine scripts/v196-economy.test.mjs (otomatik satış)' }, async () => {
   const h = await createHarness();
   const G = await setupTradeGang(h, 'Alfa', { depot: 0 });
   const { truckId } = await h.act(G.baba, 'buyTruck');
@@ -114,7 +114,7 @@ test('sipariş: yol sahibi, yarı fiyat, Paz–Cum 00:00–12:00 (v136), tır ka
   assert.match(we.message, /Pazar–Cuma/);
 });
 
-test('v136: Pazar sipariş verilir; yola çıkan tır aynı gün iptal edilemez ve ikinci kez yüklenemez', async () => {
+test('v136: Pazar sipariş verilir; yola çıkan tır aynı gün iptal edilemez ve ikinci kez yüklenemez', { skip: 'v196: depo kapasitesi / depoya teslim kalktı — yerine scripts/v196-economy.test.mjs (otomatik satış)' }, async () => {
   const h = await createHarness();
   const G = await setupTradeGang(h);
   await h.giveRoute(G.gangId, 'araba', 1_000_000);
@@ -134,7 +134,7 @@ test('v136: Pazar sipariş verilir; yola çıkan tır aynı gün iptal edilemez 
   assert.equal(depotOf(h, G.gangId).items['araba:1'], 2, 'gece 00:00 teslim');
 });
 
-test('v67: sipariş verilen gün sonraki dilimde yola çıkar, gece 00:00 depoya ulaşır; ertesi gün tekrar yüklenir; çift teslim yok', async () => {
+test('v67: sipariş verilen gün sonraki dilimde yola çıkar, gece 00:00 depoya ulaşır; ertesi gün tekrar yüklenir; çift teslim yok', { skip: 'v196: depo kapasitesi / depoya teslim kalktı — yerine scripts/v196-economy.test.mjs (otomatik satış)' }, async () => {
   const h = await createHarness();
   const G = await setupTradeGang(h);
   await h.giveRoute(G.gangId, 'araba', 1_000_000);
@@ -169,7 +169,7 @@ test('v67: sipariş verilen gün sonraki dilimde yola çıkar, gece 00:00 depoya
   assert.equal(h.get(`trucks/${truckId}`).status, 'idle');
 });
 
-test('tır ömrü (v108): son gününde de sipariş verilir, sefer teslim edilir; sonra hurdaya çıkar, kimlik serbest', async () => {
+test('tır ömrü (v108): son gününde de sipariş verilir, sefer teslim edilir; sonra hurdaya çıkar, kimlik serbest', { skip: 'v196: depo kapasitesi / depoya teslim kalktı — yerine scripts/v196-economy.test.mjs (otomatik satış)' }, async () => {
   const h = await createHarness();
   const G = await setupTradeGang(h);
   await h.giveRoute(G.gangId, 'yasakliMadde', 1_000_000);
@@ -192,7 +192,7 @@ test('tır ömrü (v108): son gününde de sipariş verilir, sefer teslim edilir
   assert.match(e.message, /Tır bulunamadı|ömrü/);
 });
 
-test('v67: çete depo ürünleri anında satılamaz ve dağıtılamaz (sadece 2. el)', async () => {
+test('v67: çete depo ürünleri anında satılamaz ve dağıtılamaz (sadece 2. el)', { skip: 'v196: depo kapasitesi / depoya teslim kalktı — yerine scripts/v196-economy.test.mjs (otomatik satış)' }, async () => {
   const h = await createHarness();
   const G = await setupTradeGang(h);
   await h.db.doc(`gangWorlds/test/gangs/${G.gangId}/private/depot`).set({ items: { yasakliMadde: 100, 'silah:2': 5 }, capacity: 200, usedUnits: 150, reservedUnits: 0 });
@@ -285,7 +285,7 @@ test('saldırılar tır sahibine 12:00de duyurulur; o zamana kadar savunma/sald�
   assert.equal(h.chat(A.gangId).filter((m) => /saldırı altında/.test(m)).length, 1);
 });
 
-test('sabotaj başarılı: yük saldırganın deposuna, tır sahibine boş döner; savunma başarılıysa teslim', async () => {
+test('sabotaj başarılı: yük saldırganın deposuna, tır sahibine boş döner; savunma başarılıysa teslim', { skip: 'v196: depo kapasitesi / depoya teslim kalktı — yerine scripts/v196-economy.test.mjs (otomatik satış)' }, async () => {
   const h = await createHarness({ dice: [6, 6, 1, 1, 1, 1, 6, 6] });
   const A = await setupTradeGang(h, 'Alfa');
   const B = await setupTradeGang(h, 'Beta');
@@ -318,7 +318,7 @@ test('sabotaj başarılı: yük saldırganın deposuna, tır sahibine boş döne
   assert.ok(h.chat(B.gangId).some((m) => /sabotajı BAŞARILI/.test(m)));
 });
 
-test('haraç: alt/üst sınır yok; 21:00e kadar (v38); en güçlünün haracı ödenince sıradaki en güçlü esas alınır', async () => {
+test('haraç: alt/üst sınır yok; 21:00e kadar (v38); en güçlünün haracı ödenince sıradaki en güçlü esas alınır', { skip: 'v196: depo kapasitesi / depoya teslim kalktı — yerine scripts/v196-economy.test.mjs (otomatik satış)' }, async () => {
   const h = await createHarness({ dice: [6, 6, 1, 1, 2, 2] });
   const A = await setupTradeGang(h, 'Alfa');
   const B = await setupTradeGang(h, 'Beta');
@@ -354,7 +354,7 @@ test('haraç: alt/üst sınır yok; 21:00e kadar (v38); en güçlünün haracı 
   assert.equal(depotOf(h, B.gangId).reservedUnits, 0);
 });
 
-test('depo yeri tırın GERÇEK yüküyle: 1 arabası olan 100lük depoya 100 yasaklı madde sığmaz → sabotaj yok', async () => {
+test('depo yeri tırın GERÇEK yüküyle: 1 arabası olan 100lük depoya 100 yasaklı madde sığmaz → sabotaj yok', { skip: 'v196: depo kapasitesi / depoya teslim kalktı — yerine scripts/v196-economy.test.mjs (otomatik satış)' }, async () => {
   const h = await createHarness();
   const A = await setupTradeGang(h, 'Alfa');
   const B = await setupTradeGang(h, 'Beta', { depot: 0 });
@@ -424,7 +424,7 @@ test('v38: sabotajda günde 4 dilim (12·15·18·21): 12:00 öncesi zar yok; dil
   assert.equal(slots.length, 4, 'sabotaj gününde en fazla 4 saldırı');
 });
 
-test('v67: 09:00 siparişi → 12:00 kalkış → 18:00e kadar sabotaj → 18:00 duyuru ve saldırı → haraç 21:00e kadar → 00:00 sonuç', async () => {
+test('v67: 09:00 siparişi → 12:00 kalkış → 18:00e kadar sabotaj → 18:00 duyuru ve saldırı → haraç 21:00e kadar → 00:00 sonuç', { skip: 'v196: depo kapasitesi / depoya teslim kalktı — yerine scripts/v196-economy.test.mjs (otomatik satış)' }, async () => {
   const h = await createHarness({ dice: [6, 6, 1, 1] });
   const A = await setupTradeGang(h, 'Alfa');
   const B = await setupTradeGang(h, 'Beta');
@@ -462,7 +462,7 @@ test('v67: 09:00 siparişi → 12:00 kalkış → 18:00e kadar sabotaj → 18:00
   assert.equal(depotOf(h, A.gangId).items.yasakliMadde, 30);
 });
 
-test('v125 · v127 · v195: her çete yasaklı madde sipariş edebilir — günlük limit 00:00\'daki üye × 3.750 (üye başına 3 adet); yol sahibine savaş limitine eklenir', async () => {
+test('v125 · v127 · v195: her çete yasaklı madde sipariş edebilir — günlük limit 00:00\'daki üye × 3.750 (üye başına 3 adet); yol sahibine savaş limitine eklenir', { skip: 'v196: depo kapasitesi / depoya teslim kalktı — yerine scripts/v196-economy.test.mjs (otomatik satış)' }, async () => {
   const h = await createHarness();
   const G = await setupTradeGang(h);
   const members = h.get(`gangs/${G.gangId}`).memberCount;

@@ -837,7 +837,7 @@ export function createWarActions(core) {
       if (rel.allianceBlocks) fail('failed-precondition', rel.allianceKind === 'biat' ? '⛓️ Biat varken sabotaj yapılamaz.' : '🤝 İttifak varken sabotaj yapılamaz.');
       if (defGang.data()?.status !== 'active') fail('failed-precondition', 'Bu çete artık yok.');
       const units = Number(cargoSnap.data()?.units || 0);
-      if (core.depotFree(myDepot.data()) < units) fail('failed-precondition', 'Deponda bu tırın yükünü alacak yer yok.');
+      // v196: depo kapasitesi yok — ele geçirilen yük otomatik satılır
       const { price, count } = sabotagePrice(daySnap.data());
       if (Number(myState.data()?.kasa || 0) < price) fail('failed-precondition', `Sabotaj ücreti ${fmt(price)} altın — kasada yeterli para yok.`);
 
@@ -845,7 +845,6 @@ export function createWarActions(core) {
       const dg = defGang.data();
       tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(-price) });
       tx.set(ctx.ref.sabotageDay(ctx.dateKey), { count: count + 1 }, { merge: true });
-      if (units > 0) tx.set(ctx.ref.depot(gangId), { reservedUnits: FV.increment(units) }, { merge: true });
       const visibleLater = def?.announced ? [truck.gangId, ...allies] : [];
       if (!def) {
         const doc = defenseWarDoc(ctx, truck, dg);

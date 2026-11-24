@@ -361,3 +361,8 @@
   margin-top: 10px;
   text-align: center;
 }
+
+/* v196 — mekân üst butonları (eskiden HouseBusiness.css'teydi; işletme ekranları kalktı) */
+.hb-topbtns { position: absolute; top: calc(70px + var(--hs-safe-t, 0px)); right: 8px; display: flex; gap: 8px; z-index: 9; flex-wrap: wrap; justify-content: flex-end; max-width: 70vw; }
+.hb-topbtns.left { right: auto; left: 8px; }
+.hb-topbtn { padding: 9px 16px; border-radius: 14px; border: 1px solid var(--neon-yellow, #ffd23f); background: rgba(20, 16, 4, 0.82); color: var(--neon-yellow, #ffd23f); font-weight: 800; font-size: 14px; backdrop-filter: blur(8px); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35); }

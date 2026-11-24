@@ -131,7 +131,7 @@ export const CHAPTERS = { 1: 'Tahliye', 2: 'Sokağın Kuralları', 3: 'Kendi Tek
 // go: görev başlayınca · ride: birlikte yoldayken · there: kapıya gelince · done: görev bitince
 // Kural: Amca kısa konuşur ve görevin NEDEN yapıldığını tek cümlede söyler.
 const SCENES = {
-  1: { chapter: 1, to: 'fabrika', go: ['Sana fabrikada iş ayarladım. Bin, gidelim.'], there: ['Her gün çalış, maaşın her gün yatar.'], done: ['Alın teri kimseye hesap vermez.'] },
+  1: { chapter: 1, to: 'fabrika', go: ['Fabrikaya gidiyoruz. Bin.'], there: ['Kapıdan gir, Çalış’a bas. Günde bir kez, 5.000 altın.'], done: ['Alın teri kimseye hesap vermez.'] },
   21: { chapter: 1, to: 'liman', go: ['Benim bir işim var.', "Haritaya dokun, Liman'a ışınlan. Orada buluşuruz."], leave: true },
   2: { chapter: 2, to: 'liman', meet: ['Geldin mi? Gel bakalım.'], go: ['Maaşla iş yürümez.'], there: ['Depodan bir mal al.'], done: ['Şimdi alıcı lazım.'] },
   3: { chapter: 2, to: 'park', go: ['Parktaki adam alır.'], there: ['Bu iş kârlı. Ama şüphen yükselirse polis kapına gelir. Gözünü dört aç.'], done: ['Para böyle döner.'] },

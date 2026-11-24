@@ -11,6 +11,7 @@
 // doğrulanıp 'idle' yapılır). Tick yarıda kesilip tekrar çalışsa bile
 // işlenmiş varlıklar ikinci kez etki üretmez.
 import { GANG, INTEL, TRADE_PRODUCTS, MS_DAY, productById } from './config.js';
+import { GANG_AUTO_SELL_CONTRABAND, GANG_AUTO_SELL_RATIO } from '../v196Shared.js'; // v196 tır otomatik satışı
 import { addDays, midnightMsOf, weekdayOfKey, daysBetweenKeys, dateKeyOf, nextWindowStartMs, hhmmOf } from './time.js';
 import { computeGangRanks, computeIntelRanks } from './ranks.js';
 import { readBiatLinks, foldBiatTotals, biatWarPatch } from './actions/wars.js';
@@ -69,6 +70,21 @@ export function createClock(core, actions) {
   // ---------------------------------------------------------------------------
   // 1) TIR SEFERLERİ: varış / sabotaj / operasyon
   // ---------------------------------------------------------------------------
+  // v196 — yükün otomatik satışı: değer çete kasasına (+ çete defteri). YAZMA (okuma yok).
+  function autoSellCargo(tx, ctx, gangId, items, refId) {
+    let total = 0;
+    for (const [k, q] of Object.entries(items || {})) {
+      const it = core.parseItemKey(k);
+      if (!it) continue;
+      const unit = k === 'yasakliMadde' ? GANG_AUTO_SELL_CONTRABAND : Math.floor(Number(it.storePrice || 0) * GANG_AUTO_SELL_RATIO);
+      total += unit * Math.max(0, Math.floor(Number(q) || 0));
+    }
+    if (total > 0) {
+      tx.update(ctx.ref.gangState(gangId), { kasa: FV.increment(total) });
+      core.ledger(tx, ctx, { type: 'auto_sell', amount: total, from: { kind: 'state', id: 'depo' }, to: { kind: 'gang', id: gangId }, refId, actorId: 'system' });
+    }
+    return total;
+  }
   async function resolveTruckTrip(ctx, truckId, dayKey) {
     return db.runTransaction(async (tx) => {
       const truckSnap = await tx.get(ctx.ref.truck(truckId));
@@ -115,14 +131,13 @@ export function createClock(core, actions) {
         .join(', ');
 
       // --- yazmalar ---
-      if (ownerAlive && units) tx.set(ctx.ref.depot(truck.gangId), { reservedUnits: FV.increment(-units) }, { merge: true });
+      // v196: depo kapasitesi yok (yer ayırma kalktı)
       if (attackWon && strongest.type === 'sabotage') {
         outcome = 'stolen';
         if (attackerGangAlive[strongest.attackerGangId]) {
-          const upd = { usedUnits: FV.increment(units), reservedUnits: FV.increment(-Number(strongest.reservedUnits || 0)) };
-          for (const [k, q] of Object.entries(cargo.items || {})) upd[`items.${k}`] = FV.increment(q);
-          tx.update(ctx.ref.depot(strongest.attackerGangId), upd);
-          core.announce(tx, ctx, strongest.attackerGangId, '🏴‍☠️', `TIR #${truck.code} sabotajı BAŞARILI — yük depoya alındı${summary ? `: ${summary}` : ''}.`);
+          // v196: ele geçirilen yük de otomatik depoya satılır, para soyan çetenin kasasına
+          const sale = autoSellCargo(tx, ctx, strongest.attackerGangId, cargo.items, `sabotaj_${truckId}`);
+          core.announce(tx, ctx, strongest.attackerGangId, '🏴‍☠️', `TIR #${truck.code} sabotajı BAŞARILI${summary ? ` (${summary})` : ''} — yük depoya satıldı: +${sale.toLocaleString('tr-TR')} altın kasada.`);
         }
         if (ownerAlive) core.announce(tx, ctx, truck.gangId, '💥', `TIR #${truck.code} sabote edildi (${strongest.sides?.attacker?.name || ''}), yük çalındı. Tır geri döndü.`);
       } else if (attackWon && strongest.type === 'intelop') {
@@ -139,10 +154,9 @@ export function createClock(core, actions) {
         core.announceIntel(tx, ctx, '🚔', `TIR #${truck.code} operasyonu BAŞARILI — mallar imha edildi, ${fine.toLocaleString('tr-TR')} altınlık sipariş devlet kasasına geçti.`);
         strongest.reward = fine;
       } else if (ownerAlive) {
-        const upd = { usedUnits: FV.increment(units) };
-        for (const [k, q] of Object.entries(cargo.items || {})) upd[`items.${k}`] = FV.increment(q);
-        tx.update(ctx.ref.depot(truck.gangId), upd);
-        core.announce(tx, ctx, truck.gangId, '✅', `TIR #${truck.code} depoya ulaştı${summary ? `: ${summary}` : ''}${live.length ? ' — savunma başarılı!' : '.'}`);
+        // v196: tır ulaşınca mallar OTOMATİK depoya satılır (yasaklı madde 1.500 · silah / araba mağaza fiyatının %50'si)
+        const sale = autoSellCargo(tx, ctx, truck.gangId, cargo.items, `tir_${truckId}`);
+        core.announce(tx, ctx, truck.gangId, '💰', `Siparişlerden ${sale.toLocaleString('tr-TR')} altın kazandınız. (TIR #${truck.code}${summary ? `: ${summary}` : ''}${live.length ? ' — savunma başarılı' : ''})`);
       } else {
         outcome = 'lost';
       }
@@ -151,7 +165,6 @@ export function createClock(core, actions) {
         if (a.type === 'sabotage' && a.status === 'active') {
           const won = attackWon && strongest.id === a.id;
           if (!won && attackerGangAlive[a.attackerGangId]) {
-            if (a.reservedUnits) tx.set(ctx.ref.depot(a.attackerGangId), { reservedUnits: FV.increment(-a.reservedUnits) }, { merge: true });
             core.announce(tx, ctx, a.attackerGangId, '🛡️', `TIR #${truck.code} saldırısı başarısız.`);
           }
         }

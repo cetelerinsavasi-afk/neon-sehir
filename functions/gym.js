@@ -47,7 +47,8 @@ import { goldTag } from './moneyLog.js';
 export const GAME_GYM_ID = 'game_spor';
 export const GAME_OWNER = '__game__';
 export const GYM_PRICE = { def: 1000, min: 500, max: 2000 };
-export const GAME_GYM_PRICE = 2000;
+import { V196_GONE_TEXT } from './v196Shared.js';
+export const GAME_GYM_PRICE = 1000; // v196: oyunun salonu (tek salon) — günlük 1.000
 export const GYM_EQUIPMENT = ['bag', 'treadmill', 'bench', 'dumbbells'];
 export const GYM_STEP_MIN_MS = 10_000;
 export const GYM_MIN_WINDOW_MS = 60 * 60 * 1000;
@@ -126,6 +127,7 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
     if (!s.exists) fail('not-found', 'Salon bulunamadı.');
     const h = s.data();
     if (h.biz?.type !== 'spor') fail('failed-precondition', 'biz-closed');
+    if (!isGameGym(h)) fail('failed-precondition', V196_GONE_TEXT); // v196: oyuncu salonu yok
     return h;
   }
   async function txPresent(tx, uid, houseId) {
@@ -143,7 +145,7 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
     // v77 vergi · v127: oran Ticaret Bakanlığı (Spor Salonu) — ödeme gününün oranı
     const tax = bizTax(amount, 'spor', ratesFor(rateDayKey(atMs ?? now())));
     if (isGameGym(h)) {
-      business?.recordGameIncomeTx?.(tx, { type: 'spor', amount, kind, customerUid, atMs, products, tax });
+      business?.recordGameIncomeTx?.(tx, { type: 'spor', amount, kind, customerUid, atMs, products });
       return;
     }
     const { goldDelta, debtDelta } = splitIncomeForDebt(ownerSnap?.data()?.debtToState, amount - tax);
@@ -153,7 +155,8 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
 
   // Bonus: dünkü kazanç < en çok kazanan salonun (oyunun dahil) yarısı (ya da 0)
   async function gymBonus(gymId, h, dayKey) {
-    if (isGameGym(h)) return false;
+    // v196: salonlar arası %10 bonus kalktı (tek salon)
+    if (isGameGym(h) || h) return false;
     const prev = prevDayKey(dayKey);
     // yeni salon: dünün tamamında açık değilse bonus yok (ilk 19:00 sayılmaz)
     if (!bizOpenAllDay(h.biz?.openedAtMs, 'spor', prev)) return false;
@@ -272,7 +275,7 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
       const h = await txGym(tx, gymId);
       if (isGameGym(h)) fail('failed-precondition', 'gym-closed'); // v132: oyunun salonu kapalı
       business?.assertBizOpen?.(h); // v195: pasif salon üyelik satamaz
-      if (!(await txPresent(tx, uid, gymId))) fail('failed-precondition', 'not-present');
+      if (!isGameGym(h) && !(await txPresent(tx, uid, gymId))) fail('failed-precondition', 'not-present');
       const openSnaps = await Promise.all(open.docs.map((d) => tx.get(d.ref)));
       const [fs, us, ms, os] = await Promise.all([tx.get(fbRef(uid)), tx.get(userRef(uid)), tx.get(memRef(uid, dayKey)), isGameGym(h) ? null : tx.get(userRef(h.ownerUid))]);
       const user = us.data() || {};
@@ -352,7 +355,7 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
     let result = null;
     await db.runTransaction(async (tx) => {
       const { ref, m } = await txActive(tx, uid);
-      if (!(await txPresent(tx, uid, m.gymId))) fail('failed-precondition', 'not-present');
+      if (!String(m.gymId).startsWith('game_') && !(await txPresent(tx, uid, m.gymId))) fail('failed-precondition', 'not-present');
       if (String(p.equipment || '') !== m.tasks[m.step]) fail('failed-precondition', 'wrong-equipment');
       tx.update(ref, { stepStartedAtMs: now() });
       result = { ok: true, step: m.step, equipment: m.tasks[m.step] };
@@ -367,7 +370,7 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
       const { ref, m } = await txActive(tx, uid);
       const t = now();
       if (!m.stepStartedAtMs || t - Number(m.stepStartedAtMs) < GYM_STEP_MIN_MS) fail('failed-precondition', 'too-fast');
-      if (!(await txPresent(tx, uid, m.gymId))) fail('failed-precondition', 'not-present');
+      if (!String(m.gymId).startsWith('game_') && !(await txPresent(tx, uid, m.gymId))) fail('failed-precondition', 'not-present');
       const step = m.step + 1;
       if (step < 3) {
         tx.update(ref, { step, stepStartedAtMs: null });

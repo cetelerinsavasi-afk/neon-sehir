@@ -1824,7 +1824,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
     }
   };
 
-  const shelfItems = useMemo(() => CATALOG.filter((d) => d.cat === cat && !d.venueOnly), [cat]);
+  const shelfItems = useMemo(() => CATALOG.filter((d) => d.cat === cat && !d.venueOnly && !d.hidden), [cat]);
   const invList = useMemo(() => {
     const ord = invOrderRef.current;
     Object.keys(invView).forEach((k) => {

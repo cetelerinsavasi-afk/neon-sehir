@@ -26,9 +26,9 @@ const write = async (db, kind, delta, shard) => {
   await b.commit();
 };
 
-test('slot: 1.600 çevirme, 100 devlete (v127)', () => {
-  assert.equal(SLOT_GAME_COST, 1600);
-  assert.equal(GAME_SLOT_STATE_CUT, 100);
+test('v196 slot: 1.400 çevirme, devlete pay yok', () => {
+  assert.equal(SLOT_GAME_COST, 1400);
+  assert.equal(GAME_SLOT_STATE_CUT, 0);
   assert.ok(STATE_IN.gazino_slot && STATE_IN.gazino_piyango && STATE_IN.gazino_rulet && STATE_IN.gazino_onNumara);
 });
 
@@ -67,7 +67,7 @@ test('kasa: artıdaysa gece devlete (yeni güne) yatar ve 0\'dan devam eder; eks
   assert.equal(await balanceOf(db, 'rulet'), -2000);
 });
 
-test('index.js: slot/rulet/10 Numara kasaya yazar, gece kasalar kapanır, piyango kârı devlete', () => {
+test('index.js: slot/rulet/10 Numara kasaya yazar (istatistik), v196: gece aktarım yok', () => {
   const src = fs.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
   const slot = src.slice(src.indexOf('export const spinSlot'), src.indexOf('export const spinRoulette'));
   assert.ok(slot.includes("vaultWrite(tx, db, admin.firestore.FieldValue, 'slot', { delta: GAME_SLOT_STATE_CUT"));
@@ -76,7 +76,7 @@ test('index.js: slot/rulet/10 Numara kasaya yazar, gece kasalar kapanır, piyang
   assert.ok(src.includes("'onNumara', { delta: stakes"));
   assert.ok(src.includes("'onNumara', { delta: -back"));
   assert.ok(src.includes("'onNumara', { delta: -paid"));
-  assert.ok(src.includes("settleGameCasinoVaults(db, admin.firestore.FieldValue, { dateKey })"));
+  assert.ok(!src.includes("settleGameCasinoVaults(db, admin.firestore.FieldValue, { dateKey })"), 'v196: gazino kazancı gece belediyeye aktarılmaz');
   assert.ok(src.includes("cat: 'gazino_piyango'"));
   // belediye raporu: gece tahsil edilen fabrika vergisi yeni güne
   assert.ok(src.includes("source: 'fabrika', uid: f.id, dayKey: dateKey"));

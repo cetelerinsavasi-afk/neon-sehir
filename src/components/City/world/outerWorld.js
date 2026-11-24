@@ -39,7 +39,8 @@ export const CITY_GRID = { x0: WALK.x0 - 2, x1: EXIT.x1 + 12, z0: BOUNDS.z0 - 2,
 // ve geçilmez; kapının önünde mekân düğmeleri çıkar (ör. "🚗 Araba galerileri" listesi + "💰 Soygun yap").
 // Oyuncu listeden istediği işletmeye girer.
 // v159.1: ev, ofis ve depo (liman) binaları da — kapıda "🏠 Evler" / "🏢 Ofisler" / "📦 Depolar" düğmesi
-export const CLOSED_SHOPS = new Set(['bar', 'cafe', 'netkafe', 'spor', 'galeri', 'silah', 'casino', 'modifiye', 'ev', 'ofis', 'liman']);
+// v196: haritadaki mekânlar oyunun — kapılar açılır, içeri yürünür (ev: kendi evine giriş, Faz 4; ofis binası kalktı)
+export const CLOSED_SHOPS = new Set(['ofis']); // v196: ev = oyuncunun 3 katlı evi (açık)
 export const VENUE_GAME_KEY = { camii: 'camii', banka: 'banka', karakol: 'karakol', belediye: 'belediye', galeri: 'araba_galerisi', silah: 'silah_magazasi', casino: 'gazino' };
 
 const yawOf = (m) => Math.atan2(m.elements[8], m.elements[10]);
@@ -106,6 +107,7 @@ function patchCity(city) {
     const rot = l.face === 'e' || l.face === 'w';
     const v = VENUE_BUILDERS[l.type]({ w: (rot ? l.bd : l.bw) - 6, d: (rot ? l.bw : l.bd) - 6 });
     v.rebuild = () => VENUE_BUILDERS[l.type]({ w: (rot ? l.bd : l.bw) - 6, d: (rot ? l.bw : l.bd) - 6 }); // v157.2: iç mekân yeniden kurulumu
+    if (v.ml) v.rebuild = null; // v196: evin katları kalıcı (eşyalar setHome ile değişir)
     v.root.position.set(l.mx, 0, l.mz);
     v.ry = { s: 0, e: PI / 2, n: PI, w: -PI / 2 }[l.face] || 0;
     v.root.rotation.y = v.ry;
@@ -609,7 +611,7 @@ export function mergeInPlace(root, skip = new Set()) {
 // v157.2 — telefonda mekân içi (eşyalar) sadece yakında + yavaşken kurulur, uzaklaşınca bırakılır.
 // İç duvarlar, çarpışma, oturma yerleri, NPC'ler hep kalır; sadece birleştirilmiş eşya görüntüsü gider/gelir.
 export function dropVenueInt(v) {
-  if (v.intOn === false || v.noInt) return;
+  if (v.intOn === false || v.noInt || v.ml) return; // v196: evin içi yeniden kurulmaz (rebuild yok) — bırakılmaz
   [...v.int.group.children].forEach((m) => {
     if (!m.userData.merged && !m.userData.rb) return;
     v.int.group.remove(m);
@@ -660,6 +662,13 @@ export function buildVenueInt(v) {
   v.intOn = true;
 }
 export function mergeVenue(v) {
+  // v196: 3 katlı evin yapısı (kat / duvar / çatı grupları) kendi içinde birleşir; mobilya ve camlar ayrı
+  if (v.ml) v.ml.groups.forEach((g) => {
+    const was = g.visible;
+    g.visible = true;
+    mergeInPlace(g);
+    g.visible = was;
+  });
   v.low.forEach((k) => mergeInPlace(k.group));
   if (v.garage?.shell) mergeInPlace(v.garage.shell);
   v.lowInner.forEach((g) => mergeInPlace(g));

@@ -125,7 +125,7 @@ test('ihbar/sızdırma yetkisi: Çömez ihbar edemez; Tetikçi ihbar eder ama s�
   assert.match((await h.fails(c, 'leakTruck', { reportId: `${truckId}_2026-09-22` })).message, /Kıdemli/);
 });
 
-test('operasyon: sadece ihbarlı tıra, 12:00ye kadar, ücret sabit (v108: devlet öder); v94: başarılıysa yük çetede kalır, sipariş tutarı çete kasasından (v108) devlete', async () => {
+test('operasyon: sadece ihbarlı tıra, 12:00ye kadar, ücret sabit (v108: devlet öder); v94: başarılıysa yük çetede kalır, sipariş tutarı çete kasasından (v108) devlete', { skip: 'v196: depo kapasitesi kalktı — sipariş akışı v196-economy.test.mjs' }, async () => {
   const h = await createHarness({ dice: [6, 6, 1, 1] });
   const { G, mole, truckId } = await tradeGangWithMole(h);
   await h.act(mole, 'joinIntel', { codeName: 'Köstebek' });

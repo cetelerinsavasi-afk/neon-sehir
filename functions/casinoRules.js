@@ -22,8 +22,8 @@
 export const GAME_CASINO_ID = 'game';
 
 // ---- SLOT -------------------------------------------------------------------
-export const SLOT_GAME_COST = 1600;
-export const GAME_SLOT_STATE_CUT = 100; // v127: her çevirmede devletin kârı 100 (v126: 200; kalan 1.500 maliyet → çöp)
+export const SLOT_GAME_COST = 1400; // v196
+export const GAME_SLOT_STATE_CUT = 0; // v196: devlete pay yok — çevirme ücreti oyundan çıkar
 export const SLOT_PRICE_MIN = 1400;
 export const SLOT_PRICE_MAX = 1600;
 export const SLOT_PRICE_STEP = 50;
@@ -107,7 +107,7 @@ export function rouletteMaxNetWin(bets) {
 
 // ---- PİYANGO ----------------------------------------------------------------
 export const LOTTERY_TICKET = 100; // oyunun gazinosunda bilet (90 havuz + 10 kâr)
-export const GAME_LOTTERY_CUT = 10;
+export const GAME_LOTTERY_CUT = 0; // v196: biletin tamamı havuza
 // v124 Faz 6 (kullanıcı düzeltmesi): bilet fiyatı = 90 (havuza) + gazinonun kârı.
 // kâr 10 → 100 altın · kâr 1 → 91 altın. Havuza her bilette 90 gider.
 export const LOTTERY_POOL_PER_TICKET = 90;

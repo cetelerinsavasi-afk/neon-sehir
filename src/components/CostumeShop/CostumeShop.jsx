@@ -180,7 +180,6 @@ export default function CostumeShop({ onBack }) {
   const [toast, setToast] = useState(null);
   const toastT = useRef(0);
   const topRef = useRef(null);
-  const rootRef = useRef(null);
   // oyuncu bilgisi sonradan gelirse kuşanılı kostümle aç (bir kez)
   const synced = useRef(Boolean(player));
   useEffect(() => {
@@ -258,17 +257,9 @@ export default function CostumeShop({ onBack }) {
     const p = list.length ? list : LOOKS;
     setSel(p[Math.floor(Math.random() * p.length)].id);
   };
-  // v160.2: karta dokununca sayfanın en üstüne (önizleme) — kaydırılan kutu .cos-root
   const pick = (id) => {
     setSel(id);
-    const root = rootRef.current;
-    if (root) {
-      try {
-        root.scrollTo({ top: 0, behavior: 'smooth' });
-      } catch {
-        root.scrollTop = 0;
-      }
-    }
+    topRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
   };
 
   const slots = LOOK_TINT[sel] || [];
@@ -301,8 +292,7 @@ export default function CostumeShop({ onBack }) {
   }
 
   return (
-    <div className="cos-root" ref={rootRef}>
-      <div className="cos-wrap">
+    <div className="cos-root">
       <div className="cos-head" ref={topRef}>
         <button className="cos-back" onClick={onBack} aria-label="Geri">
           ←
@@ -469,7 +459,6 @@ export default function CostumeShop({ onBack }) {
         </div>
       )}
       {toast && <div className={`cos-toast${toast.ok ? '' : ' bad'}`}>{toast.text}</div>}
-      </div>
     </div>
   );
 }

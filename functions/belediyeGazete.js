@@ -123,8 +123,7 @@ export const fmtGazeteRate = (v, unit) => fmtRate(v, unit);
 const TOPICS = [
   { id: 'fabrika', unit: 'dilim', w: 5, ids: ['f1', 'f2', 'f3', 'f4'], name: (it) => `Fabrika vergisi (${it.label})` },
   { id: 'polis', unit: 'rütbe', w: 5, ids: ['polGenel', 'polAmir', 'polBaskom', 'polKomiser', 'polMemur'], name: (it) => `${it.label} maaşı` },
-  { id: 'isletme', unit: 'işletme türü', w: 4, ids: ['isSilahci', 'isModifiye', 'isKumar', 'isSpor', 'isKafe', 'isBar', 'isInternet', 'isOfis'], name: (it) => `${it.label} vergisi` },
-  { id: 'isci', unit: 'kalem', w: 4, ids: ['fisci'], name: () => 'İşçi maaş vergisi' },
+  { id: 'isletme', unit: 'işletme türü', w: 4, ids: ['isSilahci', 'isGaleri', 'isMotoGaleri', 'isModifiye', 'isSpor', 'isKafe', 'isBar', 'isInternet'], name: (it) => `${it.label} vergisi` },
   { id: 'kadro', unit: 'koltuk', w: 3, ids: ['bsk', 'byrd', 'bakan'], name: (it) => `${it.label} maaşı` },
 ];
 

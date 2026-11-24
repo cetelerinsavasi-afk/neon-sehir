@@ -61,8 +61,8 @@ export const currentRates = () => ratesFor();
 // Varsayılanlar (geriye uyum — yeni kod oranı ratesFor/fonksiyonlardan alır)
 export const BIZ_TAX_RATE = DEFAULT_RATES.isKafe / 100;
 export const RESALE_TAX_RATE = 0; // v132: 2. el vergisiz
-export const SALARY_TAX_RATE = DEFAULT_RATES.fisci / 100;
-export const LOTTERY_TAX_RATE = DEFAULT_RATES.piyango / 100;
+export const SALARY_TAX_RATE = 0; // v196: işçi maaş vergisi kalktı
+export const LOTTERY_TAX_RATE = 0; // v196: piyango vergisi kalktı
 export const MACHINE_TAX_RATE = DEFAULT_RATES.mkTamir / 100;
 export const FACTORY_TAX_RATE = 0.1; // eski sabit oran (geriye uyum)
 export const FACTORY_TAX_BRACKETS = FACTORY_BRACKET_FROM.map((from, i) => ({ from, rate: DEFAULT_RATES[`f${i + 1}`] / 100 }));
@@ -94,18 +94,22 @@ export const socialTax = (amount, rates = ratesFor()) => taxOf(amount, rateFrac(
 // v123: brüt → { tax, net } (net + tax = brüt; yuvarlama vergiden yana değil)
 //   job: 'isci' (fabrika işçisi) · 'futbolcu' · 'menajer'
 const SALARY_RATE_ID = { isci: 'fisci', fabrika: 'fisci', futbolcu: 'futbolcu', menajer: 'menajer' };
+// v196: işçi maaş vergisi kalktı (işçi sistemi yok) — 'isci' / 'fabrika' 0
+const NO_SALARY_TAX = ['isci', 'fabrika'];
 export function splitSalaryTax(gross, job = 'isci', rates = ratesFor()) {
   const g = Math.max(0, Math.round(Number(gross) || 0));
-  const tax = Math.min(g, Math.floor(g * rateFrac(rates, SALARY_RATE_ID[job] || 'fisci')));
+  const tax = NO_SALARY_TAX.includes(job) ? 0 : Math.min(g, Math.floor(g * rateFrac(rates, SALARY_RATE_ID[job] || 'fisci')));
   return { gross: g, tax, net: g - tax };
 }
-export const salaryTaxRate = (job = 'isci', rates = ratesFor()) => rateFrac(rates, SALARY_RATE_ID[job] || 'fisci');
-export function splitLotteryTax(gross, rates = ratesFor()) {
+export const salaryTaxRate = (job = 'isci', rates = ratesFor()) => (NO_SALARY_TAX.includes(job) ? 0 : rateFrac(rates, SALARY_RATE_ID[job] || 'fisci'));
+// v196: piyango kazanç vergisi kalktı — kazanan havuzun tamamını alır
+// eslint-disable-next-line no-unused-vars
+export function splitLotteryTax(gross, rates = null) {
   const g = Math.max(0, Math.round(Number(gross) || 0));
-  const tax = Math.min(g, Math.floor(g * rateFrac(rates, 'piyango')));
-  return { gross: g, tax, net: g - tax };
+  return { gross: g, tax: 0, net: g };
 }
-export const lotteryTaxRate = (rates = ratesFor()) => rateFrac(rates, 'piyango');
+// eslint-disable-next-line no-unused-vars
+export const lotteryTaxRate = (rates = null) => 0; // v196
 // Kumarhane (oyuncu gazinosu: piyango payı + makine kasasından çekim)
 export const casinoTaxRate = (rates = ratesFor()) => bizRateFrac(rates, 'gazino');
 // Yüzde metni (SMS / ipucu)

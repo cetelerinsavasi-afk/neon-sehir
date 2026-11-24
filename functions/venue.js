@@ -27,6 +27,7 @@
 // =============================================================================
 
 import { cafeDevicePrice } from './stream.js';
+import { MENU_PRICES, NET_MINUTE_PRICE, V196_GONE_TEXT, GAME_VENUE_HOUSES } from './v196Shared.js';
 import { HOUSE_TAKEABLES, HOUSE_PRODUCTS } from './houseCatalogData.js';
 import { midnightDayKey } from './businessCatalogData.js';
 import { bizTax } from './tax.js';
@@ -38,6 +39,8 @@ const MINUTE_TAG = { mixer: 'studyo', newsdesk: 'haberStudyo', easel: 'resimAtol
 
 // v93: sinema (home ofis) da menülü mekân — içecek dolabı / patlamış mısır ücretli.
 // Garson sadece cafe/bar'da.
+// v196: oyunun mekânı mı (oyuncu mekânı kalmadı)
+export const isGameHouse = (h) => Boolean(h && (h.ownerUid === '__game__' || h.bizGame));
 export const MENU_TYPES = ['cafe', 'bar', 'sinema'];
 export const WAITER_TYPES = ['cafe', 'bar'];
 export const MENU_PRICE = { def: 100, min: 10, max: 1000 };
@@ -77,6 +80,7 @@ export const NET_TYPES = ['internet', 'studyo'];
 export const minuteBand = (type) => (type === 'studyo' ? STUDIO_MINUTE : NET_MINUTE);
 export const deviceCapOf = (type, key) => (type === 'studyo' ? STUDIO_DEVICE_CAP[key] : NET_DEVICE_CAP[key]) || 0;
 export function netPriceOf(h) {
+  if (isGameHouse(h)) return NET_MINUTE_PRICE.play; // v196: oyunun internet kafesi
   const band = minuteBand(h?.biz?.type);
   const v = Number(h?.bizPrices?.minute);
   // v93: eski (yeni tavanın üstündeki) fiyatlar aralığa çekilir
@@ -106,6 +110,8 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     if (!s.exists) fail('not-found', 'Mekân bulunamadı.');
     const h = s.data();
     if (!h.biz?.type || !types.includes(h.biz.type)) fail('failed-precondition', 'biz-closed');
+    // v196: oyuncu mekânı kalmadı — sadece oyunun mekânları
+    if (!isGameHouse(h)) fail('failed-precondition', V196_GONE_TEXT);
     return h;
   }
   async function txPresence(tx, uid, houseId) {
@@ -151,12 +157,12 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     let result = null;
     await db.runTransaction(async (tx) => {
       const h = await txHouse(tx, houseId, MENU_TYPES);
-      if (!menuOf(h.items)[product]) fail('failed-precondition', 'not-on-menu');
-      const presRef = await txPresence(tx, uid, houseId);
-      if (!presRef) fail('failed-precondition', 'not-present');
+      // v196: oyunun cafe / bar'ı — sabit menü (MENU_PRICES), bot garson; içeride ya da önündeki masalarda
+      if (!Object.prototype.hasOwnProperty.call(MENU_PRICES, product)) fail('failed-precondition', 'not-on-menu');
+      const presRef = await txPresence(tx, uid, houseId); // şehirdeki mekânda housePresence olmayabilir (yok sayılır)
       const t = now();
-      const isOwner = h.ownerUid === uid;
-      const price = isOwner ? 0 : menuPriceOf(h, product);
+      const isOwner = false;
+      const price = MENU_PRICES[product];
       if (!isOwner && Number(p.expect) !== price) fail('aborted', `price-changed:${price}`);
       const dayKey = midnightDayKey(t);
       const spendRef = db.collection('bizSpend').doc(`${houseId}_${uid}_${dayKey}`);
@@ -166,7 +172,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       const waiter = ws?.exists ? ws.data() : null;
       const waiterHere = waiter && waiter.uid !== uid ? await txPresence(tx, waiter.uid, houseId) : null;
       // v154: Kafe & Bar şüphe düşürme kaldırıldı — harcama artık biriktirilmiyor (ek okuma yok)
-      const [us, os, ss] = await Promise.all([tx.get(userRef(uid)), isOwner ? null : tx.get(userRef(h.ownerUid)), isOwner ? null : tx.get(spendRef)]);
+      const [us, ss] = await Promise.all([tx.get(userRef(uid)), tx.get(spendRef)]);
       const spent = Number(ss?.exists ? ss.data().amount || 0 : 0);
       if (!isOwner) {
         if (spent + price > MENU_DAILY_LIMIT) fail('failed-precondition', `limit:${spent}`);
@@ -197,13 +203,9 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
         result = { ok: true, queued: true, orderId: orderRef.id, deadlineMs: t + WAITER_ORDER_MS, waiterName: waiter.name || 'Garson', product, label: HOUSE_PRODUCTS[product].label, price, spent: spent + price, limit: MENU_DAILY_LIMIT };
         return;
       }
-      if (!isOwner) {
-        const mt = bizTax(price, h.biz?.type); // v77 vergi · v127: oran türüne göre (Kafe / Bar / Sinema)
-        payOwnerTx(tx, os, h.ownerUid, price - mt, 'isletme');
-        business?.recordIncomeTx(tx, { houseId, h, amount: price, kind: 'menu', customerUid: uid, products: { [product]: 1 }, tax: mt });
-      }
+      business?.recordGameIncomeTx?.(tx, { type: h.biz.type, amount: price, kind: 'menu', customerUid: uid, products: { [product]: 1 } });
       tx.set(db.collection('heldItems').doc(uid), { itemId: product, venue: 'ev', houseId, untilMs: t + HELD_MS, boughtAtMs: t });
-      tx.update(presRef, { holding: product });
+      if (presRef) tx.update(presRef, { holding: product });
       result = { ok: true, product, label: HOUSE_PRODUCTS[product].label, price, spent: spent + price, limit: MENU_DAILY_LIMIT, untilMs: t + HELD_MS };
     });
     return result;
@@ -353,11 +355,10 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
   function chargeMinuteTx(tx, { houseId, h, uid, os, sess, price, t, free = false }) {
     const from = Math.max(t, Number(sess?.creditUntilMs || 0));
     const creditUntilMs = from + NET_SLOT_MS;
-    if (h.ownerUid !== uid && !free) {
-      tx.update(userRef(uid), { gold: FieldValue.increment(-price), goldTag: goldTag(h.biz?.type === 'studyo' ? 'studyo' : 'internet') });
-      const dt = bizTax(price, h.biz?.type); // v77 vergi · v127: oran türüne göre (İnternet Kafe / Stüdyo)
-      payOwnerTx(tx, os, h.ownerUid, price - dt);
-      business?.recordIncomeTx(tx, { houseId, h, amount: price, kind: 'service', customerUid: uid, products: { dakika: 1 }, tax: dt });
+    if (!free) {
+      tx.update(userRef(uid), { gold: FieldValue.increment(-price), goldTag: goldTag('internet') });
+      // v196: oyunun internet kafesi — dakika 100 (oyun) / 200 (yayın bilgisayarı), gelir mekânın paylaşımına
+      business?.recordGameIncomeTx?.(tx, { type: 'internet', amount: price, kind: 'service', customerUid: uid, products: { dakika: 1 } });
     }
     // kredi sürerken gerekli mobilyalar kaldırılamaz.
     // v79 maliyet: kilit 5 dk payla uzatılır → ev belgesi her dakika değil ~5 dk'da
@@ -382,7 +383,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     const isOwner = h.ownerUid === uid;
     const key = dev.k;
     if (!isOwner && !activeOfficeKeys(h).includes(key)) fail('failed-precondition', 'mixer-private');
-    if (!(await txPresence(tx, uid, houseId))) fail('failed-precondition', 'not-present');
+    if (!isGameHouse(h) && !(await txPresence(tx, uid, houseId))) fail('failed-precondition', 'not-present');
     const t = now();
     const occ = await tx.get(db.collection('netSessions').where('houseId', '==', houseId).where('deviceId', '==', deviceId));
     const others = occ.docs.filter((d) => d.data().uid !== uid && t - Number(d.data().lastSeenMs || 0) < NET_SEEN_MS).length;
@@ -422,7 +423,7 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       }
       const cap = dev ? deviceCapOf(h.biz.type, dev.k) : 0;
       if (!cap) fail('invalid-argument', 'Cihaz bulunamadı.');
-      if (!(await txPresence(tx, uid, houseId))) fail('failed-precondition', 'not-present');
+      if (!isGameHouse(h) && !(await txPresence(tx, uid, houseId))) fail('failed-precondition', 'not-present');
       const t = now();
       const occ = await tx.get(db.collection('netSessions').where('houseId', '==', houseId).where('deviceId', '==', deviceId));
       const others = occ.docs.filter((d) => d.data().uid !== uid && t - Number(d.data().lastSeenMs || 0) < NET_SEEN_MS).length;
@@ -557,6 +558,21 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     fail('failed-precondition', 'Kafe & Bar şüphe düşürme kaldırıldı.');
   }
 
-  const ops = { cafeCalm, menuPrices, menuBuy, netPrice, netStart, netTick, netLeave, waiterJoin, waiterQuit, orderDeliver, orderSweep };
-  return { ops, cleanup };
+  // v196 — oyunun cafe / bar / internet kafe belgeleri (yoksa kurulur; varsa 1 okuma)
+  async function venueEnsureGame() {
+    const out = {};
+    for (const [type, g] of Object.entries(GAME_VENUE_HOUSES)) {
+      const ref = houseRef(g.id);
+      const s = await ref.get();
+      if (!s.exists) {
+        await ref.set({ ownerUid: '__game__', ownerName: 'Neon Şehir', ownerAvatar: null, name: g.name, privacy: 'public', items: g.items, biz: { type, openedAtMs: now() }, bizType: type, bizGame: true, createdAtMs: now() });
+      } else if (type === 'internet' && JSON.stringify(s.data().items || []) !== JSON.stringify(g.items)) {
+        await ref.update({ items: g.items });
+      }
+      out[type] = g.id;
+    }
+    return { ok: true, houses: out };
+  }
+  const ops = { cafeCalm, menuPrices, menuBuy, netPrice, netStart, netTick, netLeave, waiterJoin, waiterQuit, orderDeliver, orderSweep, venueEnsureGame: () => venueEnsureGame() };
+  return { ops, cleanup, venueEnsureGame };
 }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { labelTexture, cityTexture, viewTexture, WINDOW_VIEWS, FLOORS as SURF_FLOORS, WALLS as SURF_WALLS, tileBaseTexture, skyCeilTexture, SKY_CEILINGS, fullMoonTexture } from './houseTextures';
+import { REMOVED_CATEGORIES, RENAMED_CATEGORIES, MOVED_ITEMS, isRemovedItem, isRemovedKey } from '../../../functions/v196Shared.js'; // v196
 import { ITEM_PRICES, HOUSE_TAKEABLES, FLOOR_TILE_KEYS, WALL_PANEL_KEYS, CEIL_TILE_KEYS, CEIL_TILE } from '../../../functions/houseCatalogData.js';
 import { v92CatalogEntries, V92_CATEGORIES, BOSSTABLE_TINTS, V92_TINTS, marketShelfV92 } from './houseCatalogV92';
 import { v135CatalogEntries, V135_TINTS } from './houseCatalogV135';
@@ -279,7 +280,8 @@ const CAT_ORDER = [
   ['oturma', 'masa', 'yatak', 'banyo', 'mutfak', 'dekor', 'hali', 'duvar', 'dis', 'hayvan', 'petshop'],
   ['yapi', 'kapi', 'tavan', 'zemin_parca', 'duvar_parca'],
 ];
-export const CATEGORIES = CAT_ORDER.flatMap((keys, g) => keys.filter((k) => CAT_BY_KEY[k]).map((k) => ({ ...CAT_BY_KEY[k], g: g + 1 })));
+// v196: kalkan kategoriler gösterilmez; Cami → İbadet
+export const CATEGORIES = CAT_ORDER.flatMap((keys, g) => keys.filter((k) => CAT_BY_KEY[k] && !REMOVED_CATEGORIES.includes(k)).map((k) => ({ ...CAT_BY_KEY[k], ...(RENAMED_CATEGORIES[k] ? { name: RENAMED_CATEGORIES[k] } : {}), g: g + 1 })));
 // listede olmayan bir kategori kalırsa (ileride eklenen) 3. grubun sonuna
 Object.keys(CAT_BY_KEY).forEach((k) => {
   if (!CATEGORIES.some((c) => c.key === k) && k !== 'mafya') CATEGORIES.push({ ...CAT_BY_KEY[k], g: 3 });
@@ -3441,6 +3443,9 @@ CATALOG.forEach((d) => {
   d.takes = HOUSE_TAKEABLES[d.k] || null;
   // v137.1 — kapılar: duvara takılır YA DA odanın ortasında (bölmeler arasında) durur
   if (d.k.startsWith('door_') || d.k === 'garagedoor') d.door = true;
+  // v196: taşınan eşyalar yeni kategorisinde; kalkanlar satılmaz / listelenmez (mekânlar çizmeye devam eder)
+  if (Object.prototype.hasOwnProperty.call(MOVED_ITEMS, d.k)) d.cat = MOVED_ITEMS[d.k];
+  if (isRemovedKey(d.k) || isRemovedItem(d.k, d.cat)) d.hidden = true;
 });
 CATALOG.find((d) => d.k === 'arcade').panel = 'arcade';
 // v75 — oyun salonu: bu eşyalardan (ve karşılarındaki koltuklardan) oyun oynanır

@@ -5,6 +5,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { enterInterior, enterPark, recordVenueVisit } from '../../services/gameActions';
 import { venueTo2d } from '../../../functions/venueLayouts.js';
 import { CamiiPart, BankaPart, GazinoPart, KarakolPart, GaleriPart, MotoGaleriPart, SilahPart, ModifiyePart, ParkPart, BelediyePart, VendorPart, TeskilatPart } from './venueParts';
+import { CafePart, BarPart, NetKafePart, SporPart, DepoPart } from './venueGameParts'; // v196
 import '../../styles/worldScreenChrome.css';
 import './Venue3D.css';
 import { occEnter, occKey } from '../../lib/occupancy';
@@ -40,6 +41,12 @@ const PARTS = {
   midyeci: VendorPart, // v154
   dondurmaci: VendorPart,
   teskilat: TeskilatPart, // v146
+  // v196 — şehirde açılan oyunun mekânları
+  cafe_mekan: CafePart,
+  bar_mekan: BarPart,
+  internet_mekan: NetKafePart,
+  spor_mekan: SporPart,
+  depo_mekan: DepoPart,
 };
 
 // motorun konuşma balonu süresi (houseEngine say: 9 sn) + iki konuşma arası sessizlik

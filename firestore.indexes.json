@@ -213,6 +213,20 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "houses",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "listable",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "popN",
+          "order": "DESCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [

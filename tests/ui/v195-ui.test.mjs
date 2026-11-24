@@ -44,7 +44,7 @@ test('ömür / tamir: VehicleCard ikiz sabitleri kaldırıldı, itemRules\'tan g
 
 test('çete yasaklı madde: istemci sabiti sunucudan (3.750 = üye başına 3 adet); rehber güncel', () => {
   assert.equal(GANG_RULES.CONTRABAND_ORDER_PER_MEMBER, GANG.CONTRABAND_ORDER_PER_MEMBER);
-  assert.equal(GANG_RULES.CONTRABAND_ORDER_PER_MEMBER, 3750);
+  assert.equal(GANG_RULES.CONTRABAND_ORDER_PER_MEMBER, 3000); // v196
   const g = src('components/GuideScreen/guideContent.js');
   assert.match(g, /her üye için 3 adet/);
   assert.doesNotMatch(g, /üye sayısı × 1\.250/);

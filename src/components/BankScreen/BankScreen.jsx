@@ -398,11 +398,11 @@ function InvestmentsTab({ player, prices, busy, error, run }) {
     { key: 'diamond', icon: 'elmas', name: 'Elmas', color: '#19e8ff', pct: prices.diamondChangePct, reversed: diamondReversedRegime, points: diamondPoints, price: prices.diamondPrice ?? 0, holdings: diamondHoldings, value: diamondValue, cost: diamondCostBasis, allLabel: 'Tüm Elmasları Sat' },
     { key: 'stock', icon: 'hisse', name: 'Hisse Senedi', color: '#ffd23f', pct: prices.stockChangePct, reversed: stockReversedRegime, points: stockPoints, price: prices.stockPrice ?? 0, holdings: stockHoldings, value: stockValue, cost: stockCostBasis, allLabel: 'Tüm Hisseleri Sat' },
     { key: 'crypto', icon: 'kripto', name: 'Kripto', color: '#ff2e8c', pct: prices.cryptoChangePct, reversed: cryptoReversedRegime, points: cryptoPoints, price: prices.cryptoPrice ?? 0, holdings: cryptoHoldings, value: cryptoValue, cost: cryptoCostBasis, allLabel: 'Tüm Kriptoları Sat' },
-  ];
+  ].filter((a) => a.key !== 'stock' || stockHoldings > 0); // v196: hisse senedi yatırımı kalktı (elinde kalan satılabilir)
   const parts = [
     { k: 'Faiz', v: bankBalance, c: '#2fd47a' },
     { k: 'Elmas', v: diamondValue, c: '#19e8ff' },
-    { k: 'Hisse', v: stockValue, c: '#ffd23f' },
+    ...(stockValue > 0 ? [{ k: 'Hisse', v: stockValue, c: '#ffd23f' }] : []),
     { k: 'Kripto', v: cryptoValue, c: '#ff2e8c' },
   ];
 

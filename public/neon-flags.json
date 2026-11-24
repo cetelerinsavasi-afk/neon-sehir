@@ -1,1 +1,4 @@
-{ "readStats": true, "minBuild": 195 }
+{
+  "readStats": true,
+  "minBuild": 196
+}

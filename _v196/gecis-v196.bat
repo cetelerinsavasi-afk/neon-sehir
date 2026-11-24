@@ -39,6 +39,6 @@ if "%S%"=="0" goto :eof
 goto menu
 
 :git
-powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; try { $r = Invoke-RestMethod -TimeoutSec 600 -Uri ('%U%&' + '%~1'); $j = $r | ConvertTo-Json -Depth 8; Write-Host $j -ForegroundColor Green; $j | Out-File -Encoding utf8 -FilePath ('%~dp0gecis-son.txt') } catch { Write-Host ('HATA: ' + $_.Exception.Message) -ForegroundColor Red; try { $s = New-Object IO.StreamReader($_.Exception.Response.GetResponseStream()); Write-Host $s.ReadToEnd() -ForegroundColor Red } catch {} }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; try { $r = Invoke-RestMethod -TimeoutSec 600 -Uri ('%U%&' + '%~1'); $j = $r | ConvertTo-Json -Depth 8; Write-Host $j -ForegroundColor Green; $j | Out-File -Encoding utf8 -FilePath ('%~dp0gecis-son.txt') } catch { $m = 'HATA: ' + $_.Exception.Message; if ($_.ErrorDetails -and $_.ErrorDetails.Message) { $m = $m + ' | ' + $_.ErrorDetails.Message }; Write-Host $m -ForegroundColor Red; $m | Out-File -Encoding utf8 -FilePath ('%~dp0gecis-son.txt') }"
 echo   (cikti ayrica _v196\gecis-son.txt dosyasinda - Claude'a gonderebilirsin)
 exit /b

@@ -1,6 +1,5 @@
 import SoygunTab from './SoygunTab';
 import SuspicionTab from './SuspicionTab';
-import VisitTab from './VisitTab';
 import './MekanlarScreen.css';
 
 // MekanlarScreen — eskiden "Soygun" tek başına alt-bar sekmesiydi (bkz.
@@ -13,9 +12,9 @@ import './MekanlarScreen.css';
 const TABS = [
   { key: 'soygun', label: '💰 Soygun' },
   { key: 'suphe', label: '🕵️ Şüphe' },
-  { key: 'ziyaret', label: '🚶 Ziyaret' },
 ];
 
+// eslint-disable-next-line no-unused-vars
 export default function MekanlarScreen({ onHeistRun = null, tab, onTabChange, initialHeistTarget, onClose, onVisitVenue, onVisitHouse, onVisitHq = null }) {
   return (
     <div className="mekanlar-screen-backdrop" onClick={onClose}>
@@ -41,7 +40,7 @@ export default function MekanlarScreen({ onHeistRun = null, tab, onTabChange, in
 
         {tab === 'soygun' && <SoygunTab initialTarget={initialHeistTarget} onRun={onHeistRun} />}
         {tab === 'suphe' && <SuspicionTab />}
-        {tab === 'ziyaret' && <VisitTab onVisitVenue={onVisitVenue} onVisitHouse={onVisitHouse} onVisitHq={onVisitHq} />}
+        {/* v196: Ziyaret sekmesi kalktı (evler şehirde: Müstakil › Evler) */}
       </div>
     </div>
   );

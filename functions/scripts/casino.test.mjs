@@ -62,14 +62,14 @@ test('rulet: Rulet.html ile aynı ödemeler, bahis doğrulama', () => {
   assert.equal(rouletteMaxNetWin({ red: 100, black: 100 }), 0);
 });
 
-test('piyango: 100 bilet → kazanana 8.100, devlete 900 + 100, gazinoya 900', () => {
+test('v196 piyango: 100 bilet → biletin tamamı havuza, kazanana 10.000, vergi yok', () => {
   const tickets = 100;
   const pool = tickets * (LOTTERY_TICKET - GAME_LOTTERY_CUT);
-  const cut = tickets * GAME_LOTTERY_CUT;
-  assert.equal(pool, 9000);
+  assert.equal(GAME_LOTTERY_CUT, 0);
+  assert.equal(pool, 10000);
   const w = splitLotteryTax(pool);
-  assert.deepEqual([w.net, w.tax], [8100, 900]);
-  assert.deepEqual(splitCasinoCut(cut), { tax: 100, rest: 900 });
+  assert.deepEqual([w.net, w.tax], [10000, 0]);
+  assert.ok(splitCasinoCut);
 });
 
 test('index.js: slot 1.600 + yeni semboller, rulet sunucuda, piyango 90/10, ücretsiz slot yok', () => {

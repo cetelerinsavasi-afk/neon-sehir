@@ -82,7 +82,8 @@ export const GANG = {
   // v39 (ESKİ): kazanan çetenin kendi gücünün %1'i. Artık yalnızca tek seferlik
   // v39 geçişinde (ensureRouteLimitV39) kullanılır; yeni savaşları etkilemez.
   TRADE_ORDER_LIMIT_RATIO: 0.01,
-  TRADE_ROUTE_BUY_RATIO: 0.5, // mağaza (yasaklı madde: Amazor) fiyatının yarısı
+  TRADE_ROUTE_BUY_RATIO: 0.25, // v196: silah / araba mağaza fiyatının %25'i (yasaklı madde: CONTRABAND_ORDER_PRICE)
+  CONTRABAND_ORDER_PRICE: 1000, // v196: yasaklı madde adet sipariş fiyatı
   ROUTE_HOLD_DAYS: 21, // kazanan yolu 21 gün elinde tutar
   // v67: sipariş Pzt–Cmt, 00:00–12:00 arası. Tır siparişten sonraki ilk 3 saatlik
   // dilimde (03·06·09·12) yola çıkar, o gecenin 00:00'ında depoya varır.
@@ -105,7 +106,7 @@ export const GANG = {
   // v127: 1.250 → 2.500 (ör. 5 üyeli çete günde 12.500 altınlık = 10 adet)
   // v195: 2.500 → 3.750 = üye başına 3 adet (adet fiyatı 1.250 = Amazor 2.500 × TRADE_ROUTE_BUY_RATIO 0,5;
   //       ör. 10 üyeli çete günde 37.500 altınlık = 30 adet). Yol tutan çetenin savaş limiti değişmedi.
-  CONTRABAND_ORDER_PER_MEMBER: 3750,
+  CONTRABAND_ORDER_PER_MEMBER: 3000, // v196: üye × 3.000 = üye başına 3 adet (1.000'den)
 
   // --- Depo (ONAYLI) --- her alım +100 kapasite, ömürsüz, satılamaz
   DEPOT_PRICE: 100_000,

@@ -893,7 +893,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     if (v.type === 'camii') list.push({ id: 'npc_imam_sehir', name: 'İmam', x: 0, z: -5.75, lines: ['Namaza gelin.', 'Cemaatle kılınan namaz daha faziletlidir.'], av: { clothing: 'robe', clothColor: '#f4f1e8', hat: 'kufi', hatColor: '#ffffff', facialHair: 'full', hairColor: '#3b2a1a', neckAcc: 'none', pantsColor: '#f4f1e8' } });
     list.forEach((n) => {
       const p = fromRoom(v, n.x, n.z);
-      venueNpcDefs.push({ id: n.id, name: n.name, av: n.av, x: p.x, z: p.z, y: 0.16 + (v.y0 || 0), lines: n.lines || [], left: Boolean(n.left), venue: v, quiet: Boolean(gk && ['camii', 'banka', 'karakol', 'belediye'].includes(gk)) });
+      const route = Array.isArray(n.route) ? n.route.map(([rx, rz]) => fromRoom(v, rx, rz)) : null; // v196 bot garson
+      venueNpcDefs.push({ id: n.id, name: n.name, av: n.av, x: p.x, z: p.z, y: 0.16 + (v.y0 || 0), lines: n.lines || [], left: Boolean(n.left), venue: v, route, quiet: Boolean(gk && ['camii', 'banka', 'karakol', 'belediye'].includes(gk)) });
     });
     // istasyonlar: oyunun mekânlarında (camii, banka, karakol) oyunun panelleri; markette alışveriş + ATM
     const stations = gk && ['camii', 'banka', 'karakol', 'belediye'].includes(gk) ? GAME_VENUES[gk]?.stations || {} : v.type === 'benzinlik' ? NEW_VENUES.market.stations : {};
@@ -1212,9 +1213,46 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     if (i < 0 || j < 0 || i >= GW || j >= GH) return true;
     return grid[j * GW + i] === 1;
   };
+  // v196 — 3 KATLI EV: şehirdeki ev binası (world/houseFloors.js). Ayak yüksekliği kat-farkında; çarpışma
+  // eşyalar + kat boşlukları; içerideki eşyalar o an "evinde olunan" belgeden (setHome) gelir.
+  const EV = W.venues.find((q) => q.type === 'ev' && q.ml) || null;
+  let evY = 0.16; // oyuncunun ayak yüksekliği (blockedAt yükseklik bilmez)
+  let evHome = null; // { id, ownerUid, items, surf, door, … }
+  let evDesign = null; // tasarımda: { f, sel, add } | null
+  // garajdaki araç: ev sahibinin favorisi (yoksa en pahalısı) — oyunun araç modeli (buildVehicle)
+  let evCar = null;
+  function evSetGarageCar(key) {
+    if (!EV?.garageSpot) return;
+    if (evCar?.key === key) return;
+    if (evCar?.obj) evCar.obj.removeFromParent();
+    if (EV.garageCar) EV.garageCar.visible = !key;
+    evCar = { key, obj: null };
+    if (!key) return;
+    try {
+      const car = buildVehicle(key);
+      const g = car?.root;
+      if (!g?.isObject3D) return;
+      g.position.set(EV.garageSpot.x, 0.17, EV.garageSpot.z);
+      g.rotation.y = 0; // burnu garaj ağzına (+z)
+      EV.root.add(g);
+      evCar.obj = g;
+      if (EV.garageCar) EV.garageCar.visible = false;
+    } catch {
+      if (EV.garageCar) EV.garageCar.visible = true;
+    }
+  }
+  const evLocal = (x, z) => {
+    if (!EV) return null;
+    const p = toRoom(EV, x, z);
+    return Math.abs(p.x) < 9 && Math.abs(p.z) < 7 ? p : null;
+  };
   let walkHint = -1;
   const blockedAt = (x, z, r = PLAYER_R) => {
     if (W.garages.length && W.garageBlock(x, z, r)) return true;
+    if (EV) {
+      const ep = evLocal(x, z);
+      if (ep && EV.ml.blocked(ep.x, ep.z, Math.min(r, 0.3), evY)) return true;
+    }
     const m = W.modeAt(x, z);
     if (m === 'city') return cellBlocked(x - r, z - r) || cellBlocked(x + r, z - r) || cellBlocked(x - r, z + r) || cellBlocked(x + r, z + r) || cellBlocked(x, z);
     return W.outerWalkBlocked(x, z, Math.min(r, 0.3), m, walkHint);
@@ -1566,6 +1604,13 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   // v157: zemin = şehirde kaldırım / kumsal / iskele / deniz tabanı / mekân odası; dışarıda
   // otoyol, köprü (curY: köprü üstü mü altı mı), köy yolu, cep, arazi; kasabada düz
   function groundY(x, z, hint = -1, curY = null) {
+    if (EV) {
+      const ep = evLocal(x, z);
+      if (ep) {
+        const g = EV.ml.groundAt(ep.x, ep.z, curY ?? 0.16);
+        if (g != null) return g;
+      }
+    }
     if (heights.length) {
       const h = heightAt(x, z);
       if (h != null) return h;
@@ -1726,6 +1771,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     f.vendor = n.vendor;
     f.venue = n.venue || null; // etiketi sadece o mekânın içindeyken görünür
     f.quiet = Boolean(n.quiet); // konuşmayı mekân katmanı (VenueLayer) yönetir
+    if (n.route) f.route = n.route; // v196: devriye (bot garson)
     return f;
   });
   // v151 — meslek görselleri (hedef işareti, bot yolcular, şüpheli araç) — sadece şoförde
@@ -2097,7 +2143,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         f.moving = p.v > 0.35 || (st.m === 1 && p.v > 0.05);
         f.run = st.r === 1;
         f.facingLeft = st.l === 1;
-        f.y += (standY(f.x, f.z, -1, f.y) - f.y) * Math.min(1, dt * 10);
+        f.y += (standY(f.x, f.z, -1, st.y ?? f.y) - f.y) * Math.min(1, dt * 10);
         if (st.p === 's') {
           f.sitting = true;
           f.seatY = st.sy ?? 0.5;
@@ -2105,6 +2151,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         }
       }
       if (show && isoV && W.inVenueRoom(f.x, f.z) !== isoV) show = false; // v158: karargahtayken sadece içerdekiler
+      if (show && EV && (r.st.hm || (curVenue?.ml && evLocal(f.x, f.z))) && (r.st.hm || null) !== (curVenue?.ml ? evHome?.id || null : null)) show = false; // v196: herkes kendi evinde (ayrı oda)
       f.group.visible = show;
       if (show) {
         f.sink = waters.length ? sinkAt(f.x, f.z) : 0;
@@ -3159,6 +3206,39 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     }
     return { x, z };
   }
+  // v196 — evin içinde dokunuş: ışın oda yereline çevrilir; tasarımda eşya seçilir / yer bildirilir,
+  // yürürken dokunulan katın zeminine merdivenlerden geçen rota kurulur
+  const evInv = new THREE.Matrix4();
+  function evTap() {
+    const ml = curVenue.ml;
+    const root = ml.groups[0].parent;
+    root.updateMatrixWorld(true);
+    evInv.copy(root.matrixWorld).invert();
+    const o = ray.ray.origin.clone().applyMatrix4(evInv);
+    const d = ray.ray.direction.clone().transformDirection(evInv);
+    if (evDesign) {
+      const objs = [];
+      [0, 1, 2].forEach((f) => {
+        if (f <= evDesign.f) objs.push(ml.furnKit(f).group);
+      });
+      const hit = ray.intersectObjects(objs, true).find((h) => h.object.userData.evIdx != null && ml.items[h.object.userData.evIdx]?.f === evDesign.f);
+      const g = ml.pick(o, d);
+      onEvent?.({ type: 'homeTap', idx: hit ? hit.object.userData.evIdx : null, x: g?.x ?? null, z: g?.z ?? null, f: g ? ml.level(g.y + 0.2) : null });
+      return true;
+    }
+    const g = ml.pick(o, d);
+    if (!g) return false;
+    if (self.seat) standUp();
+    const pts = ml.route({ x: toRoom(curVenue, self.x, self.z).x, z: toRoom(curVenue, self.x, self.z).z, y: me.y }, g).map(([x, z]) => fromRoom(curVenue, x, z));
+    self.path = pts;
+    self.target = pts.shift();
+    self.repath = 0;
+    self.stuckT = 0;
+    const end = fromRoom(curVenue, g.x, g.z);
+    ring.position.set(end.x, g.y + 0.03, end.z);
+    ring.visible = true;
+    return true;
+  }
   function walkTo(x0, z0) {
     const { x, z } = hqTarget(x0, z0);
     const f = freeNear(x, z);
@@ -3184,6 +3264,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     // v150: oyuncuya dokunmak profil AÇMAZ (yürürken sürekli birine dokunuluyordu) —
     // profiller yandaki 👥 Yakındakiler listesinden açılır. Dokunuş yürümeye gider.
     void onPlayerTap;
+    if (curVenue?.ml && evTap()) return; // v196: evin içi (katlar, merdiven, tasarım)
     if (self.seat) standUp();
     // önce bir binaya dokunduysa kapısına yürü
     // v157.3: girilebilir mekânların kabuğu dokunuşu yutmaz — mekânın içine / arkasına dokununca
@@ -3489,9 +3570,12 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       curVenue.low.forEach((k) => (k.group.visible = true));
       curVenue.lowInner.forEach((g) => (g.visible = true));
       curVenue.stubs.forEach((g) => (g.visible = false));
+      if (curVenue.ml) curVenue.ml.reset(curVenue);
     }
+    const wasEv = Boolean(curVenue?.ml);
     curVenue = v;
     zoneKey = '__venue__';
+    if (wasEv !== Boolean(v?.ml)) onEvent?.({ type: 'home', inside: Boolean(v?.ml) }); // v196: evin içine girildi / çıkıldı
   }
   // v158 — YALITILMIŞ İÇ MEKÂN (çete karargahı): içerideyken şehir / dış dünya hiç çizilmez,
   // karargah ayrı bir mekân gibi durur (haritadaki tasarım hatalarından etkilenmez, çok daha hafif).
@@ -3532,6 +3616,12 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     const m = 0.05;
     // [ön, sağ, arka, sol]: kamera duvarın arkasına geçince o duvar kesilir, yerinde alçak kök kalır
     const hide = [cp.z > hd + m, cp.x > hw + m, cp.z < -hd - m, cp.x < -hw - m];
+    if (v.ml) {
+      // v196: 3 katlı ev — bulunulan katın kameraya bakan duvarları alçalır; tasarımda seçilen katın üstü gizli
+      if (evDesign) v.ml.designView(v, evDesign.f, hide);
+      else v.ml.cut(v, v.ml.level(me.y), hide);
+      return;
+    }
     v.low.forEach((k, i) => (k.group.visible = !hide[i]));
     v.lowInner.forEach((g, i) => (g.visible = !hide[i]));
     v.stubs.forEach((g, i) => (g.visible = hide[i]));
@@ -3698,6 +3788,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       }
     }
     const moving = Math.hypot(vx, vz) > 0.0005;
+    evY = me.y; // v196: kat-farkında çarpışma
     if (moving) {
       const want = Math.hypot(vx, vz);
       const got = moveSmart(vx, vz, dt);
@@ -3708,7 +3799,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         if (self.stuckT > 0.35) {
           self.stuckT = 0;
           const fin = self.path?.length ? self.path[self.path.length - 1] : self.target;
-          const p = (self.repath = (self.repath || 0) + 1) <= 3 ? findPath(self.x, self.z, fin.x, fin.z) : null;
+          const p = (self.repath = (self.repath || 0) + 1) <= 3 && !(EV && evLocal(self.x, self.z)) ? findPath(self.x, self.z, fin.x, fin.z) : null; // v196: evin içinde 2B yol yok
           if (p && p.length) {
             self.path = p;
             self.target = p.shift();
@@ -4036,7 +4127,10 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         if (h.length) dist = Math.max(1.2, h[0].distance - 0.4);
       }
       want = head.clone().addScaledVector(dir, dist);
-      if (curVenue) {
+      if (curVenue?.ml) {
+        const v = curVenue;
+        v.ml.camClamp(want, (x, z) => toRoom(v, x, z), (x, z) => fromRoom(v, x, z), evDesign ? v.ml.floors[evDesign.f] + 0.2 : me.y);
+      } else if (curVenue) {
         const v = curVenue;
         const lp = toRoom(v, want.x, want.z);
         const wp = fromRoom(v, clamp(lp.x, -VROOM.W / 2 - 3.5, VROOM.W / 2 + 3.5), clamp(lp.z, -VROOM.D / 2 - 3.5, VROOM.D / 2 + 3.5));
@@ -4181,7 +4275,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     setVenue((!driving || myCar?.v.walker) && !self.ride && !heist?.active ? W.inVenueRoom(self.x, self.z, -0.1) : null); // v157.4: binekle mekâna girilir
     if (LAZY_INT) lazyInteriors(dt);
     {
-      const want = curVenue?.isolated && view !== '2d' ? curVenue : null;
+      const want = (curVenue?.isolated || curVenue?.ml) && view !== '2d' ? curVenue : null; // v196: ev içi de yalıtılmış (şehir çizilmez)
       if (want !== isoV) setIso(want);
     }
     W.venues.forEach((v) => {
@@ -4210,6 +4304,26 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       n.hideLabel = Boolean(n.venue) && n.venue !== curVenue;
       if (!near) return;
       n.moving = false;
+      // v196: devriye yolu olan NPC (cafe / bar bot garsonu) noktadan noktaya yürür, her noktada biraz bekler
+      if (n.route?.length > 1) {
+        if (n.routeWait > 0) n.routeWait -= dt;
+        else {
+          const tg = n.route[n.routeI || 0];
+          const dx = tg.x - n.x;
+          const dz = tg.z - n.z;
+          const d = Math.hypot(dx, dz);
+          if (d < 0.15) {
+            n.routeI = ((n.routeI || 0) + 1) % n.route.length;
+            n.routeWait = 1.5 + Math.random() * 2.5;
+          } else {
+            const st = Math.min(d, dt * 1.1);
+            n.x += (dx / d) * st;
+            n.z += (dz / d) * st;
+            n.facingLeft = dx < 0;
+            n.moving = true;
+          }
+        }
+      }
       n.update(dt, camera, now);
     });
     if (harac) stepHarac(dt, now);
@@ -5393,6 +5507,79 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       first = true;
     },
     walkTo,
+    // v196 — 3 KATLI EV ----------------------------------------------------------------------
+    hasHome: () => Boolean(EV),
+    homeInside: () => Boolean(curVenue?.ml),
+    homeLevel: () => (EV ? EV.ml.level(me.y) : 0),
+    homeId: () => evHome?.id || null,
+    // Evler listesi: şu an hangi evde kaç kişi var (görülen oyuncuların ağ kaydından — ek okuma yok)
+    homeOccupancy() {
+      const out = {};
+      remotes.forEach((r) => {
+        const h = r.st?.hm;
+        if (h) out[h] = (out[h] || 0) + 1;
+      });
+      return out;
+    },
+    // içerisi kimin evi: { id, items, surf, door, garageCar } — null = boş ev (kapı önü)
+    setHome(home) {
+      if (!EV) return;
+      evHome = home || null;
+      EV.ml.setItems(home?.items || []);
+      EV.ml.setSurfaces(home?.surf || {});
+      this.homeDoor?.(home?.door?.t || 'ahsap');
+      evSetGarageCar(home?.garageCar || null);
+    },
+    homeSetItems(items) {
+      if (!EV) return;
+      EV.ml.setItems(items);
+      if (evHome) evHome.items = items;
+    },
+    // ana kapı türü (ahşap / beyaz / çift / salon) — konum aynı, açılır kapı yenisiyle değişir
+    homeDoor(t) {
+      if (!EV || !EV.doors?.[0]) return;
+      const key = `door_${t || 'ahsap'}`;
+      const old = EV.doors[0];
+      if (old.userData.doorKey === key || (!old.userData.doorKey && key === 'door_ahsap')) return;
+      const kit = EV.low[0];
+      const n = kit.item(key, old.position.x, old.position.z, 0, 0, { solid: false, y: 0.02 });
+      if (!n) return;
+      n.position.copy(old.position);
+      n.rotation.copy(old.rotation);
+      n.userData.doorKey = key;
+      n.traverse((o) => o.userData.doorVoid && (o.visible = false));
+      if (old.parent && n.parent !== old.parent) old.parent.add(n);
+      old.removeFromParent();
+      const tk = ticks.find((q) => q.obj === old);
+      if (tk) {
+        tk.obj = n;
+        tk.ctl = n.userData.ctl;
+      } else if (n.userData.ctl?.tick) ticks.push({ obj: n, ctl: n.userData.ctl });
+      EV.doors[0] = n;
+    },
+    homeGarage: (key) => evSetGarageCar(key || null),
+    homePlace: (it, x, z) => (EV ? EV.ml.place(it, x, z) : false),
+    homeSelect: (idx) => EV?.ml.select(idx),
+    homeDesign(f) {
+      evDesign = f == null ? null : { f: Math.max(0, Math.min(2, f | 0)) };
+      if (!evDesign && EV) EV.ml.select(null);
+    },
+    // kapının iç tarafına (giriş katı) ışınlan — "Evine git" / ziyaret
+    homeSpawn() {
+      if (!EV) return;
+      if (driving) exitCar();
+      if (self.seat) standUp();
+      const p = fromRoom(EV, EV.ml.door.x, EV.ml.door.z - 0.6);
+      self.x = p.x;
+      self.z = p.z;
+      me.y = 0.16;
+      evY = 0.16;
+      self.camYaw = EV.ry;
+      self.target = null;
+      self.path = null;
+      ring.visible = false;
+      first = true;
+    },
     // v157 — girilebilir mekânlar / dış dünya
     venueType: () => (curVenue ? curVenue.type : null),
     venueTypes: () => W.venues.map((v) => v.type),
@@ -5713,6 +5900,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         st.et = lastEmote.et;
       }
       if (me.holding) st.h = me.holding;
+      // v196: evin içinde — hangi evdeyim (ayrı oda) + kat yüksekliği
+      if (curVenue?.ml && evHome) {
+        st.hm = evHome.id;
+        st.y = Math.round(me.y * 100) / 100;
+      }
       return st;
     },
     getNetCar() {

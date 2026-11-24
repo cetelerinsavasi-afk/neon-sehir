@@ -157,7 +157,7 @@ test('v146 polis teşkilatı: polis kod adı + varsayılan tip + takma kimlik; y
   await assert.rejects(h.act('ajan', { op: 'photoShot', houseId: 'game_teskilat' }), /fotoğraf çekilmez/);
 });
 
-test('v146 evi sat: alış fiyatı geri, satın alınmış mobilyalar envantere, kasa geri, ev silinir; işletme satılamaz', async () => {
+test('v146 evi sat: alış fiyatı geri, satın alınmış mobilyalar envantere, kasa geri, ev silinir; işletme satılamaz', { skip: 'v196: oyuncu evi / işletmesi / mobilya pazarı kalktı' }, async () => {
   const h = setup();
   const { houseId } = await h.act('zengin', { op: 'buy' });
   h.S(`houses/${houseId}`, { ...h.G(`houses/${houseId}`), items: [it('a', 'sofa2', { p: 1 }), it('b', 'sofa2', { p: 1 }), it('c', 'lamp')] });
@@ -182,7 +182,7 @@ test('v146 evi sat: alış fiyatı geri, satın alınmış mobilyalar envantere,
   await assert.rejects(h.act('zengin', { op: 'sellHouse', houseId: b, confirm: true }), /Sadece ev/);
 });
 
-test('v146 çete mobilyası pazarda: yetkili çete envanterinden ilan koyar, satılınca para çete kasasına; çete kapanınca karargah ve ilanlar silinir', async () => {
+test('v146 çete mobilyası pazarda: yetkili çete envanterinden ilan koyar, satılınca para çete kasasına; çete kapanınca karargah ve ilanlar silinir', { skip: 'v196: oyuncu evi / işletmesi / mobilya pazarı kalktı' }, async () => {
   const h = setup();
   await h.act('zengin', { op: 'hqEnsure' });
   h.S('houseInventories/gang_g1', { items: { sofa2: 2 }, walls: [], floors: [] });

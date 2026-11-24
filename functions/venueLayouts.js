@@ -897,6 +897,13 @@ export const VENUES = {
       { id: 'npc_dondurmaci', name: 'Dondurmacı Hasan', x: 3.5, z: -3.3, av: AV.dondurmaci, station: 'dd_cart', act: 'vendor', lines: ['Maraş dondurması, kesmelik!', 'Al bakalım… yok, kaçtı! 😄', 'Kaymaklı mı, çikolatalı mı?', 'Maçtan çıkan soluğu burada alır.', 'Külah mı, kâse mi?'] },
     ],
   },
+  // v196 — şehirde açılan oyunun mekânları (3D iç mekân şehirde, world/venues.js). Hafif: konum kaydı yok.
+  // houseId: venueEnsure'un dokunacağı ayrı belge (ticaret belgeleri houses/game_* — functions/v196Shared.js).
+  cafe_mekan: { houseId: 'vn_cafe', name: 'Neon Cafe', icon: '☕', loc: 'cafe', light: true, v: 1, wall: 'boya_krem', floor: 'parke_mese', items: [], npcs: [], stations: {} },
+  bar_mekan: { houseId: 'vn_bar', name: 'Neon Bar', icon: '🍸', loc: 'bar', light: true, v: 1, wall: 'boya_antrasit', floor: 'parke_mese', items: [], npcs: [], stations: {} },
+  internet_mekan: { houseId: 'vn_internet', name: 'Neon İnternet Kafe', icon: '🖥️', loc: 'internet_kafe', light: true, v: 1, wall: 'boya_antrasit', floor: 'parke_mese', items: [], npcs: [], stations: {} },
+  spor_mekan: { houseId: 'vn_spor', name: 'Neon Spor Salonu', icon: '🏋️', loc: 'spor', light: true, v: 1, wall: 'boya_gri', floor: 'parke_mese', items: [], npcs: [], stations: {} },
+  depo_mekan: { houseId: 'vn_depo', name: 'Liman & Depo', icon: '📦', loc: 'liman', light: true, v: 1, wall: 'beton_duvar', floor: 'parke_mese', items: [], npcs: [], stations: {} },
 };
 
 // v145 — seyyar satıcı verisi (harita kimliği → mekân, ürün, menü) ayrı küçük dosyada:

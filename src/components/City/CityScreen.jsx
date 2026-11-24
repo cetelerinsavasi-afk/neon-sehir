@@ -39,7 +39,7 @@ import { vehicleCatalog, vehicleKindOfId } from '../../data/vehicleCatalog.js';
 import { VehicleKindTabs } from '../VehicleGalleryScreen/VehicleGalleryScreen';
 import '../VehicleGalleryScreen/VehicleGalleryScreen.css';
 import mapImg from '../../assets/sehir-haritasi.webp';
-import { HOUSE_PRODUCTS, HOUSE_PRICE } from '../../../functions/houseCatalogData.js';
+import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import { BIZ_TYPES } from '../../../functions/businessCatalogData.js';
 import { VENUES } from '../../../functions/venueLayouts.js';
 import { VENDORS, VENDOR_COST } from '../../../functions/vendorData.js';
@@ -66,8 +66,9 @@ import SaleToast from '../ShadyDeal/SaleToast';
 import { EMOTES } from '../HouseScreen/figureFx.js'; // v191
 import { createCityEngine } from './cityEngine.js';
 import { prepareCityWorld } from './world/outerWorld.js';
-import CityBizList from './CityBizList';
-import CityHouseList from './CityHouseList';
+import FactoryWorkButton from '../FactoryScreen/FactoryWorkButton'; // v196 Çalış butonu
+import HomePanel from './HomePanel'; // v196 3 katlı ev
+import './HomePanel.css';
 import VenueLayer from '../Venue3D/VenueLayer';
 import { IS_MOBILE_DEVICE } from '../../lib/photoCache';
 import { OPEN_DM_EVENT, setCityPhoneHost } from '../../lib/chatsappNav';
@@ -103,19 +104,19 @@ const IN_CITY_REGIONS = { fabrika: '🏭 Fabrika', yaris_pisti: '🏁 Yarış Pi
 // istenen işletmeye gidilir (biz), oyunun tek mekânlarında işlemler içeride yapılır (game),
 // soyulabilen mekânda "Soygun yap" içeride çıkar (heist).
 const VENUE_UI = {
-  bar: { biz: 'bar', label: '🍸 Barlar' },
-  cafe: { biz: 'cafe', label: '☕ Cafeler' },
-  netkafe: { biz: 'internet', label: '🖥️ İnternet kafeler', heist: 'internet_kafe' },
-  spor: { biz: 'spor', label: '🏋️ Spor salonları' },
-  galeri: { biz: 'galeri', label: '🚗 Araba galerileri', heist: 'araba_galerisi' },
-  motogaleri: { biz: 'motogaleri', label: '🏍️ Motor galerileri' }, // v177: camiinin arkası, içine girilmez
-  silah: { biz: 'silahci', label: '🔫 Silahçılar', heist: 'silah_magazasi' },
-  modifiye: { biz: 'modifiye', label: '🔧 Modifiye garajları' },
-  casino: { biz: 'gazino', label: '🎰 Gazinolar', heist: 'casino' },
-  liman: { biz: 'depo', label: '📦 Depolar' },
+  // v196 — haritadaki bütün mekânlar oyunun: kapı açılır, içeri yürünür, panel üstte açılır
+  bar: { game: 'bar_mekan' },
+  cafe: { game: 'cafe_mekan' },
+  netkafe: { game: 'internet_mekan', heist: 'internet_kafe' },
+  spor: { game: 'spor_mekan' },
+  galeri: { game: 'araba_galerisi' }, // soygun düğmesi mekânın içinde (GaleriPart)
+  motogaleri: { game: 'motor_galerisi' },
+  silah: { game: 'silah_magazasi', heist: 'silah_magazasi' },
+  modifiye: { game: 'modifiye_garaji' },
+  casino: { game: 'gazino' },
+  liman: { game: 'depo_mekan' },
   fabrika: { inCity: 'fabrika', label: '🏭 Fabrika', heist: 'fabrika' },
   ev: { region: 'ev', label: '🏠 Evler' },
-  ofis: { region: 'ofis', label: '🏢 Ofisler' }, // v157.4
   banka: { game: 'banka', heist: 'banka' },
   camii: { game: 'camii' },
   karakol: { game: 'karakol' },
@@ -423,6 +424,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const blockedRef = useRef(isBlocked);
   blockedRef.current = isBlocked;
   const [ready, setReady] = useState(false);
+  const [homeInside, setHomeInside] = useState(false); // v196: 3 katlı evin içindeyim
+  const homeEvtRef = useRef(null);
   // v167 — açılış sırası: 1 = diğer oyuncular + altın / şüphe + görevler, 2 = telefon, yayın, seçim, yakındakiler
   const bootWorld = useBootStage(1);
   const bootLive = useBootStageAfter(2, 1600); // v171: yayın / seçim düğmeleri en son (dinleyicileri var)
@@ -615,7 +618,6 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const [place, setPlace] = useState(null);
   const [spot, setSpot] = useState(null);
   const [bizOpen, setBizOpen] = useState(false);
-  const [houseBuy, setHouseBuy] = useState(null); // v157.8: Evler listesinden "Ev al" penceresi
   const [loadPct, setLoadPct] = useState(0);
   // v157.9: telefon yan çevrilince (alçak + geniş ekran) yatay düzen — yan sütunlar alt çubuğun yanına iner
   const isLand = () => typeof window !== 'undefined' && window.innerWidth > window.innerHeight && window.innerHeight < 560;
@@ -803,6 +805,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         onReady: () => setReady(true),
         onPlayerTap: (id) => setCard(id),
         onEvent: (e) => {
+          if (e.type === 'home') setHomeInside(e.inside); // v196
+          if (e.type === 'homeTap') homeEvtRef.current?.(e);
           if (e.type === 'crash') jobRef.current?.crash(e.speed);
           // v193: çarpınca 💥 yazısı yerine kısa bir ekran kenarı kızarması (sertliğe göre); kıvılcım / sarsıntı motorda
           if (e.type === 'crash' && e.speed > 7 && Date.now() - lastCrash > 600) {
@@ -1463,7 +1467,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const uiVenue = venue || shopDoorVenue;
   const vui = !driving && !riding ? VENUE_UI[uiVenue] || null : null;
   const fleetJob = !driving && !riding ? FLEET_VENUE[uiVenue] || (atTirLot ? 'tir' : null) : null; // v177
-  const guideFab = !guest && uiVenue === 'fabrika' && currentOnboardingTaskId(player) === 1; // v178: fabrika görevi
+  // v196: Rıza Amca'nın fabrika görevi = alttaki Çalış butonu (ok gerekmez)
+  const atFactory = !guest && uiVenue === 'fabrika' && !driving && !riding;
   const animalNear = !driving && !riding ? stableNear : null; // v177: 'at' | 'deve'
   const bikeShopNear = !driving && !riding && atBikeShop; // v177
   // v177 — kiralık bisiklet: kirala (1 dk peşin) → bisiklet yanına gelir; süre takibi aşağıdaki efektte
@@ -1914,18 +1919,11 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                   </button>
                 </div>
               )}
-              {vui && (vui.biz || vui.region || vui.inCity || vui.heist) && (
+              {vui && (vui.inCity || vui.heist) && (
                 <div className="cs-venue-bar">
-                  {(vui.biz || vui.region) && (
-                    <button className={`cs-venue-btn${bizOpen ? ' on' : ''}`} onClick={() => (guest ? setAskSignIn(true) : setBizOpen((v) => !v))}>
-                      {vui.label} <i>{bizOpen ? '▲' : '▼'}</i>
-                    </button>
-                  )}
                   {vui.inCity && (
-                    <button className={`cs-venue-btn${guideFab && vui.inCity === 'fabrika' ? ' cs-guided' : ''}`} onClick={() => (guest ? setAskSignIn(true) : setPanel({ kind: 'region', region: vui.inCity }))}>
+                    <button className="cs-venue-btn" onClick={() => (guest ? setAskSignIn(true) : setPanel({ kind: 'region', region: vui.inCity }))}>
                       {vui.label}
-                      {/* v178: Rıza Amca'nın fabrika görevinde düğmeyi gösteren ok (görev bitince kalkar) */}
-                      {guideFab && vui.inCity === 'fabrika' && <span className="cs-guide-arrow" aria-hidden="true" />}
                     </button>
                   )}
                   {vui.heist && HEIST_LABELS[vui.heist] && (
@@ -1935,92 +1933,12 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                   )}
                 </div>
               )}
-              {vui && (vui.biz || vui.region) && bizOpen && !guest && (
-                <div className="cs-biz-panel">
-                  <div className="cs-biz-head">
-                    <b>{vui.label}</b>
-                    {vui.region === 'ev' && (
-                      <button className="hh-buy" onClick={() => setHouseBuy({ name: '', busy: false, err: null })}>
-                        Ev al <span>+</span>
-                      </button>
-                    )}
-                    {vui.biz && BIZ_TYPES[vui.biz] && (
-                      <button
-                        className="hh-buy"
-                        onClick={() => {
-                          setBizOpen(false);
-                          onOpenBiz?.({ type: vui.biz, buy: true });
-                        }}
-                      >
-                        + {BIZ_TYPES[vui.biz].label} aç
-                      </button>
-                    )}
-                  </div>
-                  {vui.biz ? (
-                    <CityBizList
-                      type={vui.biz}
-                      onPick={(pick) => {
-                        setBizOpen(false);
-                        onOpenBiz?.(pick);
-                      }}
-                    />
-                  ) : (
-                    <CityHouseList
-                      mode={vui.region}
-                      onPick={(id) => {
-                        setBizOpen(false);
-                        onOpenHouse?.(id, vui.region);
-                      }}
-                    />
-                  )}
-                </div>
-              )}
             </div>
           )}
-          {houseBuy && (
-            <div className="hs-modal-bg" onClick={() => !houseBuy.busy && setHouseBuy(null)}>
-              <div className="hs-modal hh-buy-modal" onClick={(e) => e.stopPropagation()}>
-                <div className="hh-buy-hero">🏡</div>
-                <b className="hh-buy-title">Yeni Ev</b>
-                <div className="hh-price-row">
-                  <span>Fiyat</span>
-                  <b>
-                    <span className="gold-coin-icon" style={{ width: 14, height: 14 }} /> {HOUSE_PRICE.toLocaleString('tr-TR')}
-                  </b>
-                </div>
-                <div className="hh-price-row">
-                  <span>Altının</span>
-                  <b className={gold < HOUSE_PRICE ? 'neg' : ''}>
-                    <span className="gold-coin-icon" style={{ width: 14, height: 14 }} /> {fmt(gold)}
-                  </b>
-                </div>
-                <input className="hh-input" value={houseBuy.name} maxLength={30} placeholder="Ev adı (isteğe bağlı)" onChange={(e) => setHouseBuy((b) => ({ ...b, name: e.target.value }))} />
-                {houseBuy.err && <p className="hs-err">{houseBuy.err}</p>}
-                <div className="hh-modal-row">
-                  <button className="hs-btn ghost" disabled={houseBuy.busy} onClick={() => setHouseBuy(null)}>Vazgeç</button>
-                  <button
-                    className="hs-btn gold"
-                    disabled={houseBuy.busy || gold < HOUSE_PRICE}
-                    onClick={async () => {
-                      if (houseBuy.busy) return;
-                      const name = houseBuy.name.trim();
-                      setHouseBuy((b) => ({ ...b, busy: true, err: null }));
-                      try {
-                        const r = await houseAction({ op: 'buy', ...(name ? { name } : {}) });
-                        setHouseBuy(null);
-                        setBizOpen(false);
-                        if (r?.data?.houseId) onOpenHouse?.(r.data.houseId, 'ev');
-                      } catch (err) {
-                        setHouseBuy((b) => (b ? { ...b, busy: false, err: err?.message || 'Ev satın alınamadı.' } : b));
-                      }
-                    }}
-                  >
-                    {houseBuy.busy ? 'Alınıyor…' : gold < HOUSE_PRICE ? 'Yetersiz altın' : 'Satın Al'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* v196 — fabrikaya giren herkes: alt ortada Çalış (günde 1 kez 5.000) */}
+          {atFactory && <FactoryWorkButton flash={flash} />}
+          {/* v196 — 3 katlı ev: Evler · Tasarla · Ayarlar */}
+          {!guest && uid && <HomePanel eng={engineRef.current} uid={uid} inside={homeInside} flash={flash} evtRef={homeEvtRef} Sheet={Sheet} />}
           {/* v157 — oyunun mekânları (camii, banka, karakol, belediye): işlemler içeride */}
           {gameVenueKey && !guest && VENUES[gameVenueKey] && (
             <div className={`cs-venue-layer${venue && VENUE_UI[venue]?.game === gameVenueKey ? '' : ' away'}`}>

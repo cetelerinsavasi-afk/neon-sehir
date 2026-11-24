@@ -29,6 +29,8 @@ export function createMarketActions(core, trade) {
   }
 
   async function listDepotItem(ctx, data) {
+    // v196: çete 2. el ilanı kalktı (mallar otomatik satılıyor)
+    if (data !== '__v195__') core.fail('failed-precondition', '🚚 Çete 2. el ilanı kalktı: tır ulaşınca mallar otomatik satılır.');
     const key = String(data.itemKey || '');
     const qty = posInt(data.qty, 'Adet');
     const unitPrice = posInt(data.unitPrice, 'Fiyat');

@@ -42,6 +42,7 @@ export const resignFromFactory = () => httpsCallable(functions, 'resignFromFacto
 export const triggerAllMining = () => httpsCallable(functions, 'triggerAllMining')();
 
 export const runFactoryMachines = () => httpsCallable(functions, 'runFactoryMachines')();
+export const factoryWork = () => httpsCallable(functions, 'factoryWork')(); // v196: Çalış butonu (günde 1 kez 5.000)
 
 export const fireEmployee = (machineId) =>
   httpsCallable(functions, 'fireEmployee')({ machineId });

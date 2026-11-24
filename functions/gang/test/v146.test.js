@@ -19,7 +19,7 @@ test('v146: zümrüt bağışı kasanın zümrüdüne gider, 50.000 prestij veri
   assert.match(e.message, /zümrüt/);
 });
 
-test('v146: ucuz çete ilanı 3 günde otomatik satılır; eski (7 günlük) ilanın süresi bir kez 3 güne çekilir', async () => {
+test('v146: ucuz çete ilanı 3 günde otomatik satılır; eski (7 günlük) ilanın süresi bir kez 3 güne çekilir', { skip: 'v196: çete 2. el ilanı kalktı' }, async () => {
   const h = await createHarness();
   const G = await setupGang(h, { members: 1, name: 'Tüccar' });
   await h.db.doc(`gangWorlds/test/gangs/${G.gangId}/private/depot`).set({ items: { 'araba:2': 3 }, capacity: 1000, usedUnits: 60, reservedUnits: 0 });

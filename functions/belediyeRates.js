@@ -64,40 +64,36 @@ export const RATE_GROUPS = [
     id: 'makine',
     title: 'Makine Alım Vergileri',
     unit: '%',
-    items: [pct('mkKripto', 'Kripto (Mining) Makinesi', 5, 1, 10), pct('mkTamir', 'Tamir Malzemesi Makinesi', 5, 1, 10), pct('mkAraba', 'Araba Geliştirme Makinesi', 5, 1, 10), pct('mkSilah', 'Silah Geliştirme Makinesi', 5, 1, 10)],
+    // v196: tamir / silah / araba (ve yasaklı madde) makineleri kalktı → Elmas Makinesi eklendi
+    items: [pct('mkKripto', 'Kripto (Mining) Makinesi', 5, 1, 10), pct('mkElmas', 'Elmas Makinesi', 5, 1, 10)],
   },
-  { m: 'sanayi', id: 'isci', title: 'İşçi Maaş Vergisi', unit: '%', items: [pct('fisci', 'Fabrika İşçisi Maaş Vergisi')] },
+  // v196: İşçi Maaş Vergisi kalktı (işçi sistemi yok)
   {
     m: 'ticaret',
     id: 'isletme',
     title: 'İşletme Vergileri',
     unit: '%',
     items: [
+      // v196: oyunun mekânları — brüt gelirin bu oranı belediyeye, %50 masraf, kalanı hissedarlara.
+      // Kumarhane ve Ofis Kazançları kalktı (gazino vergi ödemez, ofis yok).
       pct('isSilahci', 'Silahçı'),
+      pct('isGaleri', 'Araba Galerisi'),
+      pct('isMotoGaleri', 'Motor Galerisi'),
       pct('isModifiye', 'Modifiye'),
-      pct('isKumar', 'Kumarhane (gazino)'),
       pct('isSpor', 'Spor Salonu'),
       pct('isKafe', 'Kafe'),
       pct('isBar', 'Bar'),
       pct('isInternet', 'İnternet Kafe'),
-      pct('isOfis', 'Ofis Kazançları'),
     ],
   },
-  { m: 'ticaret', id: 'piyango', title: 'Piyango Vergisi', unit: '%', items: [pct('piyango', 'Piyango Kazancı')] },
+  // v196: Piyango Vergisi kalktı (bilet 100, tamamı havuza, kazanç vergisiz)
   // v176 — Neon Borsa: hisse gelirleri TOPLANIRKEN kesilir (al-satta vergi yok)
   { m: 'ticaret', id: 'hisse', title: 'Hisse Senedi Gelir Vergisi', unit: '%', items: [pct('hisse', 'Hisse Senedi Gelir Vergisi')] },
   // v177 — taksi / otobüs / tır / ambulans gelirleri (motokurye hariç)
   { m: 'ticaret', id: 'sofor', title: 'Şoförlük Gelir Vergisi', unit: '%', items: [pct('sofor', 'Şoförlük (taksi, otobüs, tır, ambulans)')] },
   // v132: 2. el satış vergisi kaldırıldı (araç / silah / malzeme 2. el satışları vergisiz)
-  {
-    m: 'ticaret',
-    id: 'sifir',
-    title: 'Sıfır Satış Kâr Vergileri',
-    unit: '%',
-    // v130: silahçı / galeri stoktan satış — sadece KÂRDAN (satış − alış) vergi
-    // v132: en az %1'e inebilir
-    items: [pct('sfAraba', 'Sıfır Araba Satış Kâr Vergisi', 10, 1, 20), pct('sfSilah', 'Sıfır Silah Satış Kâr Vergisi', 10, 1, 20)],
-  },
+  // v196: Sıfır Satış Kâr Vergileri kalktı — galeri / silahçı satışı mekân vergisine (İşletme Vergileri) giriyor,
+  // aynı satıştan iki kez vergi alınmaz.
   {
     m: 'guvenlik',
     id: 'polis',
@@ -140,21 +136,25 @@ export const DEFAULT_RATES = Object.freeze(Object.fromEntries(RATE_ITEMS.map((it
 // İşletme türü → oran anahtarı (functions/businessCatalogData.js BIZ_TYPES)
 export const BIZ_RATE_KEY = {
   silahci: 'isSilahci',
+  galeri: 'isGaleri', // v196
+  motogaleri: 'isMotoGaleri', // v196
   modifiye: 'isModifiye',
-  gazino: 'isKumar',
   spor: 'isSpor',
   cafe: 'isKafe',
   bar: 'isBar',
   internet: 'isInternet',
-  ofis: 'isOfis',
+  // v196: gazino / depo vergi ödemez; ofis yok (eski kayıtlar 0)
+  gazino: null,
+  depo: null,
+  ofis: null,
   // v127: sinema / stüdyo / mescit oyundan kalktı, hepsi "ofis" altında birleşti —
   // eski kayıtlarda kalan türler de Ofis oranını kullanır
-  sinema: 'isOfis',
-  studyo: 'isOfis',
-  mescit: 'isOfis',
+  sinema: null,
+  studyo: null,
+  mescit: null,
 };
 // Fabrika makinesi türü → oran anahtarı
-export const MACHINE_RATE_KEY = { mining: 'mkKripto', tamirMalzemesi: 'mkTamir', arabaGelistirme: 'mkAraba', silahUpgrade: 'mkSilah' };
+export const MACHINE_RATE_KEY = { mining: 'mkKripto', elmas: 'mkElmas' }; // v196
 // Polis rütbesi (kodda eski İstihbarat kimlikleri) → oran anahtarı
 export const POLICE_RATE_KEY = { baskan: 'polGenel', sef: 'polAmir', uzman: 'polBaskom', ajan: 'polKomiser', muhbir: 'polMemur' };
 // Belediye koltuğu → maaş anahtarı
@@ -189,8 +189,8 @@ export function resolveRates(ratesDoc, dayKey, pending = null) {
 const fracOf = (rates, id) => Math.max(0, Number(rates?.[id] ?? DEFAULT_RATES[id]) || 0) / 100;
 export const rateFrac = fracOf;
 export const bizRateKey = (type) => BIZ_RATE_KEY[type] || null;
-export const bizRateFrac = (rates, type) => (BIZ_RATE_KEY[type] ? fracOf(rates, BIZ_RATE_KEY[type]) : 0.1);
-export const machineRateFrac = (rates, type) => fracOf(rates, MACHINE_RATE_KEY[type] || 'mkTamir');
+export const bizRateFrac = (rates, type) => (Object.prototype.hasOwnProperty.call(BIZ_RATE_KEY, type) ? (BIZ_RATE_KEY[type] ? fracOf(rates, BIZ_RATE_KEY[type]) : 0) : 0.1);
+export const machineRateFrac = (rates, type) => fracOf(rates, MACHINE_RATE_KEY[type] || 'mkKripto');
 // 2. el: item türü (weapon / vehicle / diğer)
 export const resaleRateKey = (kind) => (kind === 'weapon' || kind === 'silah' ? 'ikSilah' : kind === 'vehicle' || kind === 'araba' ? 'ikAraba' : 'ikMalzeme');
 // v132: 2. el satışlar vergisiz (eski kayıtlarda kalan oran yok sayılır)
@@ -198,7 +198,9 @@ export const resaleRateKey = (kind) => (kind === 'weapon' || kind === 'silah' ? 
 export const resaleRateFrac = (rates, kind) => 0;
 // v130: sıfır (stoktan) satış kâr vergisi — kind 'weapon' | 'vehicle'
 export const newSaleRateKey = (kind) => (kind === 'vehicle' || kind === 'araba' ? 'sfAraba' : 'sfSilah');
-export const newSaleRateFrac = (rates, kind) => fracOf(rates, newSaleRateKey(kind));
+// v196: sıfır satış kâr vergisi kalktı (mekân vergisine girdi) — eski çağrılar 0 alır
+// eslint-disable-next-line no-unused-vars
+export const newSaleRateFrac = (rates, kind) => 0;
 export const FACTORY_BRACKET_FROM = [0, 100_000, 1_000_000, 10_000_000];
 export function factoryRateFrac(rates, gross) {
   const g = Math.max(0, Number(gross) || 0);

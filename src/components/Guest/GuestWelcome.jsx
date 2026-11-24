@@ -14,7 +14,7 @@ const SEEN_KEY = 'neon.guestWelcome.v1';
 
 export const GUEST_PERKS = [
   ['🚗', 'Araba al, modifiye et, yarışlara katıl'],
-  ['🏭', 'Fabrikada çalış, iş kur, borsada hisse al'],
+  ['🏭', 'Fabrikada çalış, fabrika kur, borsada mekân hissesi al'],
   ['🏴', 'Çete kur, soygun planla, belediye seçimine gir'],
   ['💬', 'Diğer oyuncularla sohbet et, arkadaş edin'],
 ];

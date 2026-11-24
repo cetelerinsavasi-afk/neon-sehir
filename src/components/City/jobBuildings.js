@@ -228,7 +228,7 @@ function signTex(stop) {
   return t;
 }
 
-// --- v154 TAKSİ DURAĞI (şehrin doğu dış halkası, stadyumun karşısı) ------------------------
+// --- v154 TAKSİ DURAĞI (v196: eski Ofisler binasının yerinde, evin karşısı) -----------------
 // Girilmez; yola bakan kulübe + tabela + sıra bekleyen 3 sarı taksi. Sunucu/Firestore yok.
 export function buildTaksiDuragi(kit, lot) {
   const { w, d } = lot;

@@ -32,6 +32,8 @@
 import { ownListingStock } from './autoSupply.js'; // v186
 import { BIZ_TYPES, ALL_BIZ_KEYS, bizDayKey, prevDayKey, bizOpenAllDay } from './businessCatalogData.js';
 import { taxLedgerWrite } from './tax.js';
+import { statWrite } from './stateTreasury.js';
+import { VENUE_SHARE_TYPES, VENUE_CO_SK, venueIncomeSplit } from './v196Shared.js';
 import { STOCK_KIND, clampStockPrice, stockQty } from './shopStockRules.js'; // v195 pasif → teklifler
 import { VEHICLE_CATALOG, WEAPON_CATALOG } from './catalogData.js';
 import { vehicleShopOf } from './fleet.js';
@@ -42,7 +44,8 @@ export const BIZ_INCOME_KINDS = ['service', 'sale', 'material', 'labor', 'menu',
 // Oyunun kendi işletmeleri de kazancına göre sıralanır (en üstte durmak zorunda
 // değil). Gelirleri businessDaily/game_{tür}_{gün} altında tutulur; sıra
 // gameVenues/{tür}.bizRank'e yazılır (spor için ayrıca houses/game_spor).
-export const GAME_VENUE_TYPES = ['silahci', 'galeri', 'motogaleri', 'modifiye', 'spor']; // v177 motor galerisi
+// v196: haritadaki bütün mekânlar oyunun — gelir paylaşımlı 8 tür (casino / depo hariç)
+export const GAME_VENUE_TYPES = VENUE_SHARE_TYPES;
 export const gameVenueId = (type) => `game_${type}`;
 export const GAME_VENUE_OWNER = '__game__';
 
@@ -59,7 +62,7 @@ export function stockCidsOf(type) {
   return [];
 }
 
-export function createBusiness({ db, FieldValue, HttpsError = null, now = () => Date.now(), log = console }) {
+export function createBusiness({ db, FieldValue, HttpsError = null, now = () => Date.now(), log = console, venueTaxFrac = () => 0.1 }) {
   const dailyRef = (houseId, dayKey) => db.collection('businessDaily').doc(`${houseId}_${dayKey}`);
   // v195: pasif mekân geliri — işlem (transaction) iptal edilir, hiçbir yazma işlenmez
   const passiveFail = () => {
@@ -139,9 +142,19 @@ export function createBusiness({ db, FieldValue, HttpsError = null, now = () => 
   }
   // Oyunun dükkânının geliri (sadece sıralama için). YAZMA.
   // v130: taxSource / stat — oyunun silahçısı / galerisinin kâr vergisi ('sifir')
-  function recordGameIncomeTx(tx, { type, amount, kind, customerUid, products, materialsUsed, atMs, tax = 0, taxSource = 'isletme', stat = null }) {
+  // v196 — OYUNUN MEKÂNI: brüt gelir = 50 masraf (oyundan çıkar) + belediye vergisi (brüt × mekânın oranı)
+  // + kalan → mekân hissedarları (Neon Borsa gelir sayacı hs_<kod>, gece borsa.hourly dağıtır).
+  // Satış başına yeni belge YOK: mevcut günlük kayıt (businessDaily/game_{tür}_{gün}) + stateLedger
+  // parçası (artırım). Çağıranın verdiği tax / stat yok sayılır (çift vergi olmasın).
+  function recordGameIncomeTx(tx, { type, amount, kind, customerUid, products, materialsUsed, atMs }) {
     if (!GAME_VENUE_TYPES.includes(type)) return null;
-    return recordIncomeTx(tx, { houseId: gameVenueId(type), h: { biz: { type }, ownerUid: GAME_VENUE_OWNER }, amount, kind, customerUid, products, materialsUsed, atMs, tax, taxSource, stat });
+    const t = atMs ?? now();
+    const sp = venueIncomeSplit(amount, venueTaxFrac(type, t));
+    if (!sp.gross) return sp;
+    const stat = { [`hs_${VENUE_CO_SK[type]}`]: sp.share, [`isl_${type}_ciro`]: sp.gross, [`isl_${type}_n`]: 1 };
+    recordIncomeTx(tx, { houseId: gameVenueId(type), h: { biz: { type }, ownerUid: GAME_VENUE_OWNER }, amount: sp.gross, kind, customerUid, products, materialsUsed, atMs: t, tax: sp.tax, taxSource: 'isletme', stat });
+    if (!(sp.tax > 0)) statWrite(tx, db, FieldValue, { atMs: t, stat });
+    return sp;
   }
 
   // Gün kapanışı: türün gün sınırı geçtiyse dünkü kazanca göre sıra yazılır.

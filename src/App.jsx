@@ -63,7 +63,6 @@ const ProfileFullScreen = lazyScreen(() => import('./components/ProfileFullScree
 const HouseHub = lazyScreen(() => import('./components/HouseScreen/HouseHub'));
 // v92 Faz 8 — mekânlar 3D (giriş yapmamış oyuncu eski 2D mekânı görür)
 const VenueHouseScreen = lazyScreen(() => import('./components/Venue3D/VenueHouseScreen'));
-const BusinessHub = lazyScreen(() => import('./components/BusinessHub/BusinessHub'));
 const MotorGalleryScreen = lazyScreen(() => import('./components/MotorGallery/MotorGalleryScreen')); // v177
 // v173 — AÇILIŞTAN 2-3 SN SONRAKİ "YÜKLEME YUVARLAĞI": bu küçük halka da tam ekran sayfalar gibi
 // yükleniyordu; dosyası inerken bütün ekranı karartan dönen yuvarlak çıkıyordu (anlık donma hissi).
@@ -407,9 +406,10 @@ function GameShell() {
     // v77: işletme türleri (Spor Salonu, Cafe, Bar, İnternet Kafe, Silah
     // Mağazası, Araba Galerisi, Modifiye Garajı) → o türdeki aktif dükkânlar +
     // "[tür] aç". Oyunun kendi dükkânı (silah/galeri/modifiye) listenin en üstünde.
+    // v196: oyuncu işletmeleri kalktı — mekân türüne dokununca şehirdeki oyun mekânının kapısına gidilir
     const bizType = BIZ_BY_REGION[regionMeta?.id];
     if (bizType) {
-      setBusinessView({ type: bizType });
+      openCity(regionMeta.id);
       return;
     }
     // Henüz yapılmamış mekanlar (Belediye): kısa bir "Çok yakında" mesajı.
@@ -564,7 +564,7 @@ function GameShell() {
     closeFn(false);
     if (visitReturnPending) {
       setVisitReturnPending(false);
-      setMekanlarTab('ziyaret');
+      setMekanlarTab('soygun');
       setHeistTarget(null);
     }
   };
@@ -832,25 +832,9 @@ function GameShell() {
             setHouseView(null);
             if (fromVisit) {
               setVisitReturnPending(false);
-              setMekanlarTab('ziyaret');
+              setMekanlarTab('soygun');
               setHeistTarget(null);
             }
-          }}
-        />
-        </GangAlertsContext.Provider>
-      )}
-      {businessView && (
-        <GangAlertsContext.Provider value={gangAlerts}>
-        <BusinessHub
-          type={businessView.type}
-          initialHouseId={businessView.houseId || null}
-          autoGame={Boolean(businessView.autoGame)}
-          initialOpenAsk={Boolean(businessView.openAsk)}
-          onClose={() => setBusinessView(null)}
-          onOpenGameVenue={(t) => {
-            const open = { silahci: setWeaponShopOpen, galeri: setDealershipOpen, motogaleri: setMotorShopOpen, modifiye: setTuningGarageOpen, gazino: setCasinoOpen }[t || businessView.type];
-            setBusinessView(null);
-            open?.(true);
           }}
         />
         </GangAlertsContext.Provider>
@@ -1081,18 +1065,12 @@ function GameShell() {
             const region = BIZ_TYPES[type]?.region || 'ev';
             setCityCovered(true); // v157.9: şehir arkada bekler
             setCityReturn(region);
-            // v157.8: listenin sağ üstündeki "+ … aç" → işletme açma penceresi doğrudan açılır
-            if (buy) {
-              setBusinessView({ type, openAsk: true });
-              return;
-            }
-            if (game) {
-              const open = { silahci: setWeaponShopOpen, galeri: setDealershipOpen, motogaleri: setMotorShopOpen, modifiye: setTuningGarageOpen, gazino: setCasinoOpen }[type];
-              if (open) open(true);
-              else setBusinessView({ type, autoGame: true });
-              return;
-            }
-            setBusinessView({ type, houseId });
+            // v196: sadece oyunun mekânları (oyuncu işletmesi / açma penceresi yok)
+            void buy;
+            void game;
+            void houseId;
+            const open = { silahci: setWeaponShopOpen, galeri: setDealershipOpen, motogaleri: setMotorShopOpen, modifiye: setTuningGarageOpen, gazino: setCasinoOpen }[type];
+            if (open) open(true);
           }}
           onOpenHeist={(t) => {
             setCity(null);

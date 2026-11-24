@@ -15,6 +15,7 @@ import { gameVenue, NEW_VENUES } from './layouts.js';
 import './newItems.js';
 import * as J from '../jobBuildings.js';
 import { makeCoach } from './otogar.js';
+import { buildHouseFloors, HOUSE_EXT_H } from './houseFloors.js'; // v196
 import { surfaceTexture, wallDef, floorDef } from '../../HouseScreen/houseTextures.js';
 
 const PI = Math.PI;
@@ -41,7 +42,9 @@ function archWindow(kit, x, y, z, w, h, ry, color = '#ffcf7a', inten = 1.6) {
 // --- ortak kabuk ---------------------------------------------------------------------
 // ext: (kit, w, h, d, x, y, z) → dış duvar kutusu çizer
 // vitrin: ön duvar kapının iki yanında cam (dükkânlar) — sokaktan içerisi görünür
-function shell(parts, { ext, extH, venue, doorKey, vitrine = false, ceil = '#1a1b20' }) {
+// v196: noCeil (tavan yok), noHigh (üst kütle yok), ownWalls (dış duvar + iç yüzleri kendisi çizer — 3 katlı ev)
+function shell(parts, { ext, extH, venue, doorKey, vitrine = false, ceil = '#1a1b20', noCeil = false, noHigh = false, ownWalls = false }) {
+  if (ownWalls) ext = () => {};
   const base = parts.base;
   const [DW, DH] = DOOR_SIZE[doorKey] || [1.9, 2.3];
   // oda kayması: kabuk + iç gruplar birlikte kayar
@@ -91,7 +94,7 @@ function shell(parts, { ext, extH, venue, doorKey, vitrine = false, ceil = '#1a1
   parts.doors.push(door);
   // dışarıdan kamera binanın içine girmesin
   base.blocker(W + 2 * T, extH, D + 2 * T, RX, 0, RZ).userData.venueShell = true;
-  ext(hi, W + 2 * T, extH - LOWH, D + 2 * T, 0, LOWH, RZ);
+  if (!noHigh) ext(hi, W + 2 * T, extH - LOWH, D + 2 * T, 0, LOWH, RZ);
   // çarpışma: kapı boşluğu açık. v157.1: çarpışma boşluğu kapıdan 0,35 m geniş (her yanda) —
   // dar kapıdan girmek çok zordu; görünen kapı/duvar aynı
   const cdl = dl - 0.35;
@@ -112,6 +115,7 @@ function shell(parts, { ext, extH, venue, doorKey, vitrine = false, ceil = '#1a1
   const w = wallDef(venue.wall);
   const wm = (len, h = ROOM.H) => new THREE.MeshStandardMaterial({ map: w.mural ? surfaceTexture(w, len / (ROOM.H * 2), h / ROOM.H) : surfaceTexture(w, len / w.rep, h / w.rep), roughness: w.rough ?? 0.9 });
   const wallPlane = (k, len, h, x, y, z, ry) => {
+    if (ownWalls) return null;
     const o = new THREE.Mesh(new THREE.PlaneGeometry(len, h), wm(len, h));
     o.position.set(x, y, z);
     o.rotation.y = ry;
@@ -142,7 +146,7 @@ function shell(parts, { ext, extH, venue, doorKey, vitrine = false, ceil = '#1a1
     wallPlane(0, b - a, ROOM.H + Y0 - 2.9, (a + b) / 2, (2.9 + ROOM.H + Y0) / 2, fzIn, PI);
   });
   // tavan + kök duvarlar
-  inner.mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshStandardMaterial({ color: ceil, roughness: 0.9 }), 0, ROOM.H + Y0, 0, 0, { cast: false, rx: PI / 2 });
+  if (!noCeil) inner.mesh(new THREE.PlaneGeometry(W, D), new THREE.MeshStandardMaterial({ color: ceil, roughness: 0.9 }), 0, ROOM.H + Y0, 0, 0, { cast: false, rx: PI / 2 });
   const STUB = 0.45;
   parts.stubs = [0, 1, 2, 3].map(() => {
     const g = new THREE.Group();
@@ -767,7 +771,22 @@ export function buildBarVenue(lot) {
   stringLights(P.base, [[-BW / 2, 3.4, FRONT + 2.2], [-BW / 2, 3.0, d / 2 - 0.5], [BW / 2, 3.0, d / 2 - 0.5], [BW / 2, 3.4, FRONT + 2.2]], '#ffcf7a');
   P.base.pool(0, d / 2 - 3, '#ffab4a', 14, 0.15, 0.45);
   P.base.light(0, 3, d / 2 - 3, '#ffbf6a', 8, 12);
+  terraceRail(P, d); // v196
   return finish(P, 'bar', NEW_VENUES.bar, { x: 0, z: FRONT + 1.2 });
+}
+
+
+// v196 — cafe / bar terası: masalı alanı ayıran alçak bölme (saksılar + kısa korkuluk) — ev çitinden farklı
+function terraceRail(P, d, gap = 1.6) {
+  const z1 = d / 2 - 0.6;
+  const z0 = FRONT + 0.6;
+  for (let x = -BW / 2 + 0.5; x <= BW / 2 - 0.5; x += 1.6) {
+    if (Math.abs(x - DOOR.x) < gap) continue; // giriş ağzı
+    P.base.item('planter', x, z1, 0, 0, { solid: true });
+  }
+  for (const x of [-BW / 2 - 0.2, BW / 2 + 0.2]) {
+    for (let z = z0 + 0.8; z < z1; z += 1.8) P.base.item('planter', x, z, 2, 0, { solid: true });
+  }
 }
 
 // --- CAFE (beyaz tuğla, ahşap ön yüz, yeşil tente, teras) ------------------------------
@@ -794,6 +813,7 @@ export function buildCafeVenue(lot) {
   P.base.item('menuboard', 3.2, FRONT + 0.6, 0, 0);
   P.base.pool(0, d / 2 - 3.5, '#ffd59a', 14, 0.15, 0.45);
   P.base.light(0, 3, d / 2 - 3.5, '#ffe3b8', 8, 12);
+  terraceRail(P, d); // v196
   return finish(P, 'cafe', NEW_VENUES.cafe, { x: 0, z: FRONT + 1.3 });
 }
 
@@ -804,28 +824,11 @@ export function buildEvVenue(lot) {
   DOOR.x = 5; // kapı garaj tarafında (taş yol ikisine birden çıkar)
   const P = newParts('ev');
   P.base.floor('cim', w, d, 0, 0);
-  const extH = 6;
-  shell(P, { ext: wallExt('boya_krem'), extH, venue: NEW_VENUES.ev, doorKey: 'door_ahsap', ceil: '#f4f1ea' });
-  // beşik çatı (sırt önden arkaya)
-  const roof = new THREE.Shape();
-  roof.moveTo(-BW / 2 - 0.5, 0);
-  roof.lineTo(BW / 2 + 0.5, 0);
-  roof.lineTo(0, 3.6);
-  roof.closePath();
-  const rf = P.high.mesh(new THREE.ExtrudeGeometry(roof, { depth: BD + 1, bevelEnabled: false }), M('#3b2a26', 0.8), 0, extH, RZ - BD / 2 - 0.5);
-  rf.castShadow = true;
-  P.high.box(0.9, 2.6, 0.9, M('#5a4a44', 0.8), 4, extH + 1.5, RZ - 2);
-  // pencereler (iki kat) + denizlikler
-  for (const f of [0, 1]) {
-    for (let i = 0; i < 4; i++) {
-      const x = -6.9 + i * 4.6;
-      if (f === 0 && !offDoor(x, 0.8, 0)) continue;
-      const k = f ? P.high : P.low[0];
-      k.mesh(new THREE.PlaneGeometry(1.5, 1.5), glowMat('#ffcf8a', 1.2), x, 1.9 + f * 2.8, FRONT + 0.02, 0, { cast: false });
-      k.box(1.8, 0.12, 0.3, M('#e8e1d4', 0.6), x, 1.05 + f * 2.8, FRONT + 0.15, { cast: false });
-    }
-  }
-  P.low[0].box(2.6, 0.2, 1.4, M('#3b2a26', 0.8), DOOR.x, 2.7, FRONT + 0.7);
+  // v196: 3 katlı ev — kabuk sadece kapı / çarpışma / zemin; duvarlar, katlar, çatı houseFloors.js
+  const venue = { ...NEW_VENUES.ev, items: [], npcs: [], stations: {} };
+  shell(P, { ext: wallExt('boya_krem'), extH: HOUSE_EXT_H, venue, doorKey: 'door_ahsap', ceil: '#f4f1ea', noCeil: true, noHigh: true, ownWalls: true });
+  const [dw, dh] = DOOR_SIZE.door_ahsap;
+  buildHouseFloors(P, { RX, RZ, T, doorX: DOOR.x, doorW: dw, doorH: dh });
   P.base.light(RX + DOOR.x, 2.5, FRONT + 1.2, '#ffcf8a', 5, 8);
   // GARAJ (araba ve yaya girer): üç duvar + çatı, önü açık, kepenk yukarıda
   const gx0 = RX + BW / 2 + 0.6;
@@ -860,7 +863,9 @@ export function buildEvVenue(lot) {
   gdoor.scale.set((gw - 1.1) / 2.8, (gH - 0.6) / 2.55, 1); // açıklığı tam kapatsın
   gdoor.traverse((o) => o.userData.doorVoid && (o.visible = false)); // açılınca garajın içi görünsün
   P.garage = { obj: gdoor, hw: (gw - 1.1) / 2, open: 0, shell: GK.group, gw, gd };
-  P.base.item('car_classic', gcx, gcz - 0.4, 0, 6);
+  // v196: garajda ev sahibinin favori aracı (yoksa en pahalısı) — motor yerleştirir (setGarageCar)
+  P.garageSpot = { x: gcx, z: gcz - 0.4 };
+  P.garageCar = P.base.item('car_classic', gcx, gcz - 0.4, 0, 6, { dyn: true });
   P.base.item('tires', gx1 - 0.9, gz0 + 0.9, 0, 0);
   P.base.item('toolwall', gcx, gz0 + 0.26, 0, 0, { solid: false });
   P.base.light(gcx, 2.8, gcz, '#fff1d6', 4, 8);
@@ -889,10 +894,12 @@ export function buildEvVenue(lot) {
     P.base.item('fence', -E, z, 2, 0);
     if (z < gz0 - 0.4 || z > gz1 + 1) P.base.item('fence', E, z, 2, 0);
   }
-  // bahçe: ağaç + mangal
-  P.base.item('tree', -E + 2.0, Z - 2.0, 0, 0);
-  P.base.item('mangal', -E + 5.2, Z - 2.2, 0, 0);
-  return finish(P, 'ev', NEW_VENUES.ev, { x: DOOR.x, z: FRONT + 1.2 });
+  // bahçe (v196): iki meyve ağacı, kamelya, mangal
+  P.base.item('fruittree', -E + 1.8, Z - 1.5, 0, 0);
+  P.base.item('fruittree', -E + 1.8, FRONT + 1.5, 3, 0);
+  P.base.item('gazebo', -E + 5.6, (FRONT + Z) / 2, 0, 0);
+  P.base.item('mangal', -E + 9.4, Z - 1.6, 0, 0);
+  return finish(P, 'ev', venue, { x: DOOR.x, z: FRONT + 1.2 });
 }
 
 // --- LİMAN & DEPO (beton blok depo, kepenkler, konteyner istifleri) ---------------------

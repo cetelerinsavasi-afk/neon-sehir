@@ -16,6 +16,9 @@ export const MONEY_SOURCES = {
   aksesuar: { icon: '🐾', label: 'Aksesuar & evcil hayvan' },
   referans: { icon: '🎁', label: 'Davet ödülü' },
   fabrika: { icon: '🏭', label: 'Fabrika' },
+  fabrikaCalis: { icon: '👷', label: 'Fabrikada çalış' }, // v196
+  v196: { icon: '🏙️', label: 'v196 geçiş iadesi' }, // v196: ev / işletme / makine iadeleri
+  mekanHisse: { icon: '📈', label: 'Mekân hissesi' }, // v196
   fabrikaHisse: { icon: '📈', label: 'Fabrika hissesi' },
   piyango: { icon: '🎟️', label: 'Piyango' },
   sampiyona: { icon: '🏆', label: 'Şampiyona ödülü' },

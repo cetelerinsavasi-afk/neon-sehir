@@ -106,7 +106,7 @@ test('geçiş: malzeme + makine ilanları iade, işletme envanteri taşınır, y
   assert.equal([...db._store.keys()].filter((k) => k.startsWith('factories/fab/machines/')).length, 1);
 });
 
-test('işletme kapatma: kalanların kullanamayacağı malzeme varsa kapanmaz; durum ekranı önceden söyler', async () => {
+test('işletme kapatma: kalanların kullanamayacağı malzeme varsa kapanmaz; durum ekranı önceden söyler', { skip: 'v196: oyuncu evi / işletmesi / mobilya pazarı kalktı' }, async () => {
   const { db, S } = mkdb();
   const clock = { now: Date.UTC(2026, 9, 7, 9) };
   const now = () => clock.now;
@@ -165,7 +165,7 @@ test('index.js: Mağaza alıcı/satıcı kontrolü, malzeme vergisi yok, makine 
   }
 });
 
-test('istemci (v124 4b): 2. el sadece araç+silah, Mağaza ayrı, fabrikada Mağaza (v128), hisse satışı kapalı', () => {
+test('istemci (v124 4b): 2. el sadece araç+silah, Mağaza ayrı, fabrikada Mağaza (v128), hisse satışı kapalı', { skip: 'v196: malzeme pazarı / fabrika mağazası kalktı' }, () => {
   const rd = (p) => fs.readFileSync(new URL(`../../src/${p}`, import.meta.url), 'utf8');
   const mk = rd('components/MarketplaceScreen/MarketplaceScreen.jsx');
   const cats = mk.slice(mk.indexOf('const CATEGORIES = ['), mk.indexOf('];', mk.indexOf('const CATEGORIES = [')));

@@ -71,13 +71,15 @@ import { splitSalaryTax, splitLotteryTax, SALARY_TAX_RATE, LOTTERY_TAX_RATE } fr
 import fsV123 from 'node:fs';
 
 test('v123: maaş ve piyango vergisi %10 — net + vergi = brüt; devlet kasasında ayrı kalemler', async () => {
-  assert.equal(SALARY_TAX_RATE, 0.1);
-  assert.equal(LOTTERY_TAX_RATE, 0.1);
-  assert.deepEqual(splitSalaryTax(5000), { gross: 5000, tax: 500, net: 4500 });
-  assert.deepEqual(splitSalaryTax(1005), { gross: 1005, tax: 100, net: 905 });
-  assert.deepEqual(splitSalaryTax(9), { gross: 9, tax: 0, net: 9 });
-  assert.deepEqual(splitSalaryTax(0), { gross: 0, tax: 0, net: 0 });
-  assert.deepEqual(splitLotteryTax(123_456), { gross: 123_456, tax: 12_345, net: 111_111 });
+  assert.equal(SALARY_TAX_RATE, 0); // v196
+  assert.equal(LOTTERY_TAX_RATE, 0); // v196
+  // v196: işçi maaş vergisi ve piyango vergisi kalktı; futbolcu / menajer vergisi sürüyor
+  assert.deepEqual(splitSalaryTax(5000), { gross: 5000, tax: 0, net: 5000 });
+  assert.deepEqual(splitSalaryTax(5000, 'futbolcu'), { gross: 5000, tax: 500, net: 4500 });
+  assert.deepEqual(splitSalaryTax(1005, 'menajer'), { gross: 1005, tax: 100, net: 905 });
+  assert.deepEqual(splitSalaryTax(9, 'futbolcu'), { gross: 9, tax: 0, net: 9 });
+  assert.deepEqual(splitSalaryTax(0, 'futbolcu'), { gross: 0, tax: 0, net: 0 });
+  assert.deepEqual(splitLotteryTax(123_456), { gross: 123_456, tax: 0, net: 123_456 });
   assert.ok(STATE_IN.vergi_maas && STATE_IN.vergi_piyango);
   const clock = { now: ms('2026-10-22') };
   const db = new FakeFirestore({ clock: () => clock.now });
@@ -95,18 +97,12 @@ test('v123: maaş ve piyango vergisi %10 — net + vergi = brüt; devlet kasası
   assert.equal(r.today.in.vergi_piyango, 12_345);
 });
 
-test('v123 index.js: fabrika işçisi, menajer maaşı ve piyango kazancı vergilendirilir; SMS vergiyi söyler', () => {
+test('v123 · v196 index.js: menajer maaşı vergilendirilir; işçi maaşı yok; piyango vergisiz, SMS vergi demez', () => {
   const src = fsV123.readFileSync(new URL('../index.js', import.meta.url), 'utf8');
-  const fab = src.slice(src.indexOf('export const produceAtFactory'), src.indexOf('export const resignFromFactory'));
-  assert.ok(fab.includes("workerTax = splitSalaryTax(salary, 'isci')"));
-  assert.ok(fab.includes('increment(workerTax.net)'), 'işçiye net');
-  assert.ok(fab.includes("source: 'maas'"));
-  assert.ok(fab.includes('increment(-ownerPay)'), 'patron yine tam maaşı öder');
+  assert.ok(!src.includes("workerTax = splitSalaryTax(salary, 'isci')"), 'v196: işçi maaşı yok');
   const man = src.slice(src.indexOf('menajer maaşından %10 vergi'), src.indexOf('menajer maaşından %10 vergi') + 2600);
   assert.ok(man.includes('increment(mTax.net)') && man.includes("source: 'maas'") && man.includes('mTaxNote'));
   const lot = src.slice(src.indexOf('async function resolveStuckLotteryAndChampionship'), src.indexOf('async function resolveStuckLotteryAndChampionship') + 6000);
-  assert.ok(lot.includes('splitLotteryTax(lottery.jackpot, lotRates)'), 'v127: piyango gününün oranı');
-  assert.ok(lot.includes("source: 'piyango'"));
-  assert.ok(/pctText\(lotteryTaxRate\(lotRates\)\)\} piyango vergisi/.test(lot), 'SMS bilgilendirir (v127: güncel oran)');
-  assert.ok(lot.includes('splitIncomeForDebt(\n            winnerSnap.data()?.debtToState,\n            lotTax.net'), 'borç kesintisi net üzerinden');
+  assert.ok(!/piyango vergisi \(/.test(lot), 'v196: SMS vergi demez');
+  assert.ok(lot.includes('hepsi hesabına yattı'));
 });

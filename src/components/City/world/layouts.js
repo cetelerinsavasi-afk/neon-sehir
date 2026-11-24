@@ -70,7 +70,7 @@ export const NEW_VENUES = {
       it('cf_pl2', 'plants', -8.3, 6.3),
     ],
     stations: { cf_cnt: [{ act: 'cafe', label: '☕ Sipariş ver' }] },
-    npcs: [{ id: 'npc_barista', name: 'Barista Can', x: -2.2, z: -6.6, av: P.barista, station: 'cf_cnt', lines: ['Türk kahvesi mi filtre mi?', 'Pasta da taze geldi.', 'Afiyet olsun!'] }],
+    npcs: [{ id: 'npc_bot_cafe', name: '🤖 Garson Bot', x: 0, z: 2, av: { gender: 'erkek', build: 'zayif', skin: '#b8c4d6', hairStyle: 'short', hairColor: '#22d3ee', clothing: 'vest', clothColor: '#f4f1e8', neckAcc: 'bow', pantsColor: '#1a1a1a' }, route: [[-5, -2], [4, 1.5], [0, 6.2], [-4.5, 9.6], [4.5, 9.6], [0, 6.2]], lines: ['Siparişin hemen geliyor.', 'Masalar dışarıda da var.', 'Ne alırdınız?', 'Afiyet olsun!'] }, { id: 'npc_barista', name: 'Barista Can', x: -2.2, z: -6.6, av: P.barista, station: 'cf_cnt', lines: ['Türk kahvesi mi filtre mi?', 'Pasta da taze geldi.', 'Afiyet olsun!'] }],
   },
   // --- BAR -------------------------------------------------------------------------------
   bar: {
@@ -101,7 +101,7 @@ export const NEW_VENUES = {
       it('br_pl', 'plantb', -8.3, -6.3),
     ],
     stations: { br_bar: [{ act: 'bar', label: '🍸 Bar' }], br_pool: [{ act: 'pool', label: '🎱 Bilardo' }] },
-    npcs: [{ id: 'npc_barmen2', name: 'Barmen Selim', x: -1.0, z: -6.6, av: AV.barmen, station: 'br_bar', lines: ['Ne içersin?', 'Bu akşam müzik bizden.', 'Bilardo masası boş, buyur.'] }],
+    npcs: [{ id: 'npc_bot_bar', name: '🤖 Garson Bot', x: 0, z: 2, av: { gender: 'erkek', build: 'zayif', skin: '#b8c4d6', hairStyle: 'short', hairColor: '#22d3ee', clothing: 'vest', clothColor: '#f4f1e8', neckAcc: 'bow', pantsColor: '#1a1a1a' }, route: [[-5, -2], [4, 1.5], [0, 6.2], [-4.5, 9.6], [4.5, 9.6], [0, 6.2]], lines: ['Siparişin hemen geliyor.', 'Masalar dışarıda da var.', 'Ne alırdınız?', 'Afiyet olsun!'] }, { id: 'npc_barmen2', name: 'Barmen Selim', x: -1.0, z: -6.6, av: AV.barmen, station: 'br_bar', lines: ['Ne içersin?', 'Bu akşam müzik bizden.', 'Bilardo masası boş, buyur.'] }],
   },
   // --- İNTERNET KAFE ---------------------------------------------------------------------
   netkafe: {
@@ -175,7 +175,7 @@ export const NEW_VENUES = {
       it('fb_ex', 'extinguisher', 9, -2, 6),
       it('fb_clk', 'clock', 0, -7),
     ],
-    stations: { fb_kv1: [{ act: 'factory', label: '🏭 Vardiyaya başla' }] },
+    stations: { fb_kv1: [{ act: 'factory', label: '🏭 Fabrika' }] },
     npcs: [{ id: 'npc_usta', name: 'Usta Kemal', x: -2.6, z: -2.4, av: AV.usta, station: 'fb_kv1', lines: ['Bant durmasın!', 'Kask tak, öyle gir.', 'Vardiya sekizde biter.'] }],
   },
   // --- EV — sadece ALTINLA alınan, en ucuz eşyalar; duvar/zemin bedava olanlar ---------------
