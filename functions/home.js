@@ -13,7 +13,7 @@
 // duvar kuralları: functions/homeGeometry.js (istemciyle ortak).
 // Kendi evindeki setler (mikser, yayıncı seti…) sadece sahibine açık; evden para kazanılmaz.
 // =============================================================================
-import { V196_GONE_TEXT, isRemovedKey, WALL_ITEM_KEYS, CEIL_ITEM_KEYS, CATALOG_KEYS, REMOVED_DOOR_TYPES } from './v196Shared.js';
+import { V196_FLAG_DOC, V196_GONE_TEXT, isRemovedKey, WALL_ITEM_KEYS, CEIL_ITEM_KEYS, CATALOG_KEYS, REMOVED_DOOR_TYPES } from './v196Shared.js';
 import { ITEM_PRICES, surfacePrice, FREE_SURFACES, SURFACE_KEYS } from './houseCatalogData.js';
 import { DOOR_TYPES } from './houseDoor.js';
 import { checkPlacement, homeIdOf, isHomeId, uidOfHome, MAX_HOME_ITEMS, HOME_LIST_MIN_ITEMS, HOME_IDLE_DAYS, cleanWin } from './homeGeometry.js';
@@ -57,6 +57,7 @@ export function homeListable(h) {
 }
 
 export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() }) {
+  const oldInvRef = (uid) => db.collection('houseInventories').doc(uid); // v198: eski envanter (kurtarma)
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
   };
@@ -77,6 +78,7 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
     listable: false,
     popDay: null,
     popN: 0,
+    inv198: true, // v198: yeni evde eski envanter kurtarması gerekmez
     ownerSeenAtMs: now(),
     createdAtMs: now(),
     updatedAtMs: now(),
@@ -135,8 +137,31 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
       }
       const h = s.data();
       if (!own && h.locked) fail('permission-denied', '🔒 Bu ev ziyaretçilere kapalı.');
+      // v198 — KAYIP EŞYA KURTARMA (oyuncu başına bir kez): v196'dan sonra eski ev ekranından kaydedilen
+      // eşyalar eski envantere (houseInventories/{uid}) gitmişti — kişisel evin envanterine taşınır.
+      const old = own && !h.inv198 ? await tx.get(oldInvRef(uid)) : null;
+      // sadece büyük geçişten SONRA yazılmış eski envanter (geçişte iade edilenler tekrar verilmez)
+      const flag = old?.exists ? await tx.get(db.doc(V196_FLAG_DOC)) : null;
+      const appliedAt = Number(flag?.exists ? flag.data()?.appliedAtMs || 0 : 0);
       if (own) {
         const patch = {};
+        if (!h.inv198) {
+          patch.inv198 = true;
+          const o = old?.exists && appliedAt > 0 && Number(old.data()?.updatedAtMs || 0) > appliedAt ? old.data() || {} : {};
+          const it0 = o.items && typeof o.items === 'object' ? o.items : {};
+          const add = Object.entries(it0).filter(([k, n]) => CATALOG_KEYS.has(k) && Number.isInteger(n) && n > 0);
+          const walls = (Array.isArray(o.walls) ? o.walls : []).filter((x) => typeof x === 'string');
+          const floors = (Array.isArray(o.floors) ? o.floors : []).filter((x) => typeof x === 'string');
+          if (add.length || walls.length || floors.length) {
+            const inv = { items: { ...(h.inv?.items || {}) }, walls: [...(h.inv?.walls || [])], floors: [...(h.inv?.floors || [])] };
+            add.forEach(([k, n]) => (inv.items[k] = (inv.items[k] || 0) + n));
+            walls.forEach((w) => !inv.walls.includes(w) && inv.walls.push(w));
+            floors.forEach((f) => !inv.floors.includes(f) && inv.floors.push(f));
+            patch.inv = inv;
+            h.inv = inv;
+            tx.delete(oldInvRef(uid));
+          }
+        }
         if (t - Number(h.ownerSeenAtMs || 0) > SEEN_EVERY_MS) patch.ownerSeenAtMs = t;
         const same = (h.garage?.id || null) === (car?.id || null) && JSON.stringify(h.garage?.mods || null) === JSON.stringify(car?.mods || null);
         if (!same) {

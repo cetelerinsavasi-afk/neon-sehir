@@ -26,6 +26,8 @@ import { HQ_CACHE } from './world/venues.js';
 import { Kit } from './kit.js';
 import { CATALOG_MAP } from '../HouseScreen/houseCatalog.js'; // v198: evdeki eşya eylemleri (kit.js zaten yüklüyor)
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
+import { ANIMAL_BY_KEY } from '../../../functions/animalData.js'; // v198: evdeki hayvanlar
+import { botAvatar, botDefaults, botJobOf, botLabel, cleanBotConfig } from '../../../functions/botData.js'; // v198: evdeki botlar
 import { createMap } from './world/map.js';
 import { applyImpact, findContact, impactParams, yawInertia, spring, airPitch } from './carImpact.js'; // v193 çarpma + uçuş
 import { geo as rsGeo, fromPad } from './world/roadsideGeo.js';
@@ -1319,8 +1321,65 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       if (evCar.obj) evCar.obj.visible = true;
     }
   }
+  // v198 — EVDEKİ HAYVANLAR VE BOTLAR: eski ev ekranında platformun üstünde hayvan / bot dururdu
+  // (housePets, houseBots); şehirdeki evde sadece platform çiziliyordu. Hayvan: oyunun evcil hayvan
+  // çizimi (PetFollower, tasmasız) platformun üstünde; bot: ayarlarındaki görünüşle (bots[eşya]) NPC.
+  // Konum herkesin cihazında — Firestore'a yazma yok.
+  let evFigs = [];
+  function evFigsClear() {
+    evFigs.forEach((o) => {
+      if (o.pet) o.pet.dispose();
+      if (o.fig) {
+        const i = npcs.indexOf(o.fig);
+        if (i >= 0) npcs.splice(i, 1);
+        o.fig.group.removeFromParent();
+        o.fig.label?.remove();
+        o.fig.mat?.dispose();
+        o.fig.plane?.geometry?.dispose();
+      }
+    });
+    evFigs = [];
+  }
+  function evFigsBuild() {
+    evFigsClear();
+    if (!EV || !evHome || evDesign) return;
+    EV.root.updateMatrixWorld(true);
+    (evHome.items || []).forEach((it) => {
+      if (it.p !== 1) return;
+      const a = ANIMAL_BY_KEY[it.k];
+      if (!a && it.k !== 'bot') return;
+      const p = fromRoom(EV, it.x, it.z);
+      const y = EV.ml.floors[it.f] ?? 0.16;
+      if (a) {
+        try {
+          const pet = new PetFollower(scene, { id: a.art, leash: false });
+          pet.leash.visible = false;
+          evFigs.push({ pet, x: p.x, y: y + 0.06, z: p.z });
+        } catch {
+          /* çizim yoksa platform kalır */
+        }
+      } else {
+        // eski ev ekranındaki botla aynı: görünüş / ad / sözler bots[eşya] ayarından (yoksa varsayılan)
+        const raw = evHome.bots?.[it.i] || null;
+        const cfg = cleanBotConfig(raw);
+        const f = new Fig(scene, layer, { id: `evbot_${it.i}`, name: botLabel(botDefaults(cfg).name), npc: true, lazy: true, avatar: botAvatar(cfg) });
+        f.x = p.x;
+        f.z = p.z;
+        f.y = y + 0.05;
+        f.lines = raw ? (cfg.l || []).filter(Boolean) : botJobOf(cfg).lines || [];
+        f.venue = EV;
+        npcs.push(f);
+        evFigs.push({ fig: f });
+      }
+    });
+  }
   // evdeki koltuklar (satın alınmış oturulabilir eşyalar) şehrin oturma listesine eklenir / çıkarılır
   function evSeats() {
+    try {
+      evFigsBuild(); // v198
+    } catch {
+      /* yoksay */
+    }
     for (let i = seats.length - 1; i >= 0; i--) if (seats[i].ev) seats.splice(i, 1);
     for (let i = zones.length - 1; i >= 0; i--) if (zones[i].ev) zones.splice(i, 1);
     EV.root.updateMatrixWorld(true);
@@ -3440,6 +3499,20 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     ring.visible = true;
     return true;
   }
+  // v198 — MEKÂNIN / EVİN İÇİNDEYKEN DIŞARIYA DOKUNMA: yanlışlıkla duvarın ötesine / evin köşesine
+  // dokununca avatar dışarı yürümeye başlıyordu. İçerideyken dışarıdaki bir noktaya sadece kapının önüne
+  // (≈4 m) dokununca gidilir; başka yere dokunuş yok sayılır.
+  function tapAllowed(x, z) {
+    const v = curVenue;
+    if (!v || isoV) return true;
+    const lp = toRoom(v, x, z);
+    const hw = v.ml ? 9.2 : VROOM.W / 2 + 0.3;
+    const hd = v.ml ? 7.2 : VROOM.D / 2 + 0.3;
+    if (Math.abs(lp.x) <= hw && Math.abs(lp.z) <= hd) return true; // içeride
+    const dz = zones.find((q) => q.kind === 'door' && q.id === `vdoor_${v.type}`);
+    if (!dz) return true;
+    return Math.hypot(x - dz.x, z - dz.z) < 4;
+  }
   function handleTap(e) {
     if (driving) return;
     if (storyLock) return; // v168.1: senaryo sahnesi — dokunuş yürütmez (sürükleyince kamera döner)
@@ -3471,14 +3544,14 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     if (hits.length && hits[0].distance < gd) {
       const zn = hits[0].object.userData.zone;
       if (zn) {
-        walkTo(zn.x, zn.z);
+        if (tapAllowed(zn.x, zn.z)) walkTo(zn.x, zn.z);
         return;
       }
       const p = hits[0].point;
-      walkTo(p.x, p.z);
+      if (tapAllowed(p.x, p.z)) walkTo(p.x, p.z);
       return;
     }
-    if (hitGround) walkTo(gp.x, gp.z);
+    if (hitGround && tapAllowed(gp.x, gp.z)) walkTo(gp.x, gp.z);
   }
   function onDown(e) {
     if (paused) return; // v157.9: ortak tuval başka ekrandayken (karargah düzenleme) şehir dokunuş almaz
@@ -4672,6 +4745,19 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         }
       }
       n.update(dt, camera, now);
+    });
+    // v198: evdeki hayvanlar platformlarının üstünde (yakındaysa çizilir)
+    evFigs.forEach((o) => {
+      if (!o.pet) return;
+      const near = (o.x - camera.position.x) ** 2 + (o.z - camera.position.z) ** 2 < 40 * 40;
+      o.pet.sprite.visible = near;
+      if (!near) return;
+      o.pet.x = o.x;
+      o.pet.y = o.y;
+      o.pet.z = o.z;
+      o.pet.update(dt, now, { x: o.x, y: o.y, z: o.z, facingLeft: false, moving: false }, 0, null);
+      o.pet.sprite.position.set(o.x, o.y, o.z);
+      o.pet.leash.visible = false;
     });
     if (harac) stepHarac(dt, now);
     me.sink = waters.length ? sinkAt(me.x, me.z) : 0;
@@ -6078,6 +6164,11 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     homeDesign(f) {
       const was = evDesign;
       evDesign = f == null ? null : { f: Math.max(0, Math.min(2, f | 0)) };
+      try {
+        evFigsBuild(); // v198: tasarımda hayvan / bot gizli (platform görünür), çıkınca geri
+      } catch {
+        /* yoksay */
+      }
       me.group.visible = !evDesign; // tasarımda avatar gizli
       if (evDesign && !was) {
         dCam.yaw = 0;

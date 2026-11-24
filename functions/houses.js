@@ -1461,6 +1461,10 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     if (Object.prototype.hasOwnProperty.call(home.ops, p.op)) return home.ops[p.op](uid, p);
     // v196 — oyuncu evi / işletmesi satın alma, açma, satma kalktı (mobilya pazarı devam: envanter kişisel evde)
     if (['buy', 'bizOpen', 'bizIntent', 'bizClose', 'sellHouse'].includes(p.op) && !String(p.houseId || '').startsWith('hq')) fail('failed-precondition', V196_GONE_TEXT);
+    // v198: kişisel ev (home_…) SADECE şehirdeki Tasarla ile (home.js) düzenlenir. Eski ev ekranının kaydı /
+    // satın alması bu belgeye yazılırsa eşyalar eski envantere (houseInventories) gidiyor ve oyuncunun
+    // evinde de, envanterinde de görünmüyordu.
+    if (['save', 'checkout', 'take', 'botSet', 'petSet', 'music'].includes(p.op) && String(p.houseId || '').startsWith('home_')) fail('failed-precondition', 'Evini şehirde, evinin içinde Tasarla ile düzenleyebilirsin.');
     switch (p.op) {
       case 'buy':
         return buy(uid, p);

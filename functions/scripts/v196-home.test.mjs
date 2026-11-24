@@ -231,3 +231,30 @@ test('ev: günlük ziyaret sayacı hesap başına (aynı hesapla spam yok)', asy
   await w.home.enter('veli', { homeId: homeIdOf('ali') });
   assert.equal(w.G(`houses/${homeIdOf('ali')}`).popN, 1, 'yeni gün: tekrar 1');
 });
+
+// v198 — eski envantere (houseInventories/{uid}) geçişten sonra düşmüş eşyalar kişisel eve taşınır (bir kez)
+test('ev: kayıp eşya kurtarma — geçişten sonraki eski envanter eve taşınır, öncesi taşınmaz', async () => {
+  const w = world();
+  w.S('migrations/v196', { appliedAtMs: w.clock.now - 1000 });
+  w.S('houseInventories/ali', { items: { sofa3: 2, chairm: 1 }, walls: ['tugla'], floors: [], updatedAtMs: w.clock.now - 10 });
+  await w.home.enter('ali', {}); // ev kuruluyor (henüz yok)
+  const { inv198: _a, ...oldA } = w.G(`houses/${homeIdOf('ali')}`); // v198 öncesi ev (bayrak yok)
+  void _a;
+  w.S(`houses/${homeIdOf('ali')}`, oldA);
+  await w.home.enter('ali', {});
+  const h = w.G(`houses/${homeIdOf('ali')}`);
+  assert.equal(h.inv.items.sofa3, 2);
+  assert.equal(h.inv.items.chairm, 1);
+  assert.ok(h.inv.walls.includes('tugla'));
+  assert.equal(w.G('houseInventories/ali'), undefined, 'eski belge silindi');
+  await w.home.enter('ali', {});
+  assert.equal(w.G(`houses/${homeIdOf('ali')}`).inv.items.sofa3, 2, 'ikinci kez eklenmez');
+  // geçişten ÖNCEKİ eski envanter (iade edilmiş) taşınmaz
+  w.S('houseInventories/veli', { items: { sofa3: 5 }, updatedAtMs: w.clock.now - 5000 });
+  await w.home.enter('veli', {});
+  const { inv198: _v, ...oldV } = w.G(`houses/${homeIdOf('veli')}`);
+  void _v;
+  w.S(`houses/${homeIdOf('veli')}`, oldV);
+  await w.home.enter('veli', {});
+  assert.equal(w.G(`houses/${homeIdOf('veli')}`).inv?.items?.sofa3, undefined);
+});

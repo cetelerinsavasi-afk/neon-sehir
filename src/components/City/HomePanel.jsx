@@ -93,6 +93,32 @@ function clearDraft(id) {
     /* yok */
   }
 }
+// v198 — SAHİPLİK KORUMASI. Satın alınan eşyalar evden "gidiyordu": ↶ Geri al, satın almadan önceki
+// hâli (eşyalar "deneme", p yok) geri getiriyordu; kaydedince sunucu satın alınmış eşyaları evden alıp
+// envantere koyuyordu (deneme kopyası da İptal ile siliniyordu). Artık her liste, sahip olunan sayıya göre
+// düzeltilir: sahip olunan eşya hep "senin" (p: 1), sahip olunmayan hep deneme. owned: { anahtar: toplam
+// (evde konan + envanter) }. Döner: { items, inv } (inv = sahip olunup konmayanlar).
+export function normalizeOwned(list, owned) {
+  const left = { ...(owned || {}) };
+  const items = list.map((x) => ({ ...x }));
+  items.forEach((it) => {
+    if (it.p === 1 && (left[it.k] || 0) > 0) left[it.k] -= 1;
+    else delete it.p;
+  });
+  items.forEach((it) => {
+    if (it.p !== 1 && (left[it.k] || 0) > 0) {
+      it.p = 1;
+      left[it.k] -= 1;
+    }
+  });
+  Object.keys(left).forEach((k) => !left[k] && delete left[k]);
+  return { items, inv: left };
+}
+const ownedOf = (items, inv) => {
+  const o = { ...(inv || {}) };
+  (items || []).forEach((x) => x.p === 1 && (o[x.k] = (o[x.k] || 0) + 1));
+  return o;
+};
 // taslağı sunucudaki sahipliğe göre düzelt: sahip olunmayan "alınmış" eşya denemeye döner, envanter yeniden sayılır
 function applyDraft(home, d) {
   const owned = { ...(home.inv?.items || {}) };
@@ -340,6 +366,8 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
   // v197 — karargah tasarımındaki gibi: 👁️ göz (deneme eşyaları gerçek gör), ↶ geri al (tavan / zemin modu yok)
   const [realLook, setRealLook] = useState(false);
   const undoRef = useRef([]);
+  // v198: sunucuya göre sahip olunan toplam (evde konan + envanter) — kayıt / satın alma / pazarla güncellenir
+  const ownedRef = useRef(ownedOf(home.items, home.inv?.items));
   const baseRef = useRef(home.updatedAtMs || 0); // v197: taslağın dayandığı sunucu sürümü (kaydedince güncellenir)
   const savedRef = useRef(false); // v197: bu oturumda kaydedildi / satın alındı → çıkışta ev yeniden yüklenir (bayat sepet olmasın)
   useEffect(() => {
@@ -522,11 +550,20 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
     eng.homeWindows(next);
   };
   const payload = (list = items) => ({ op: 'homeSave', items: list.map(({ i, k, x, z, r, c, f: fl, p }) => ({ i, k, x, z, r, c, f: fl, ...(p ? { p } : {}) })), surf, win });
-  const save = async (list) => {
+  const save = async (list0) => {
     setBusy(true);
     try {
+      // v198: gönderilen listede satın alınmış eşya asla "deneme"ye düşmez
+      const n = normalizeOwned(list0 || st.current.items, ownedRef.current);
+      const list = n.items;
+      if (JSON.stringify(list) !== JSON.stringify(list0 || st.current.items)) {
+        setItems(list);
+        setInv(n.inv);
+        eng.homeSetItems(list);
+      }
       const r = await houseAction(payload(list));
       if (r.data?.inv) setSInv(r.data.inv);
+      if (r.data?.inv?.items) ownedRef.current = ownedOf(list, r.data.inv.items);
       if (r.data?.updatedAtMs) baseRef.current = r.data.updatedAtMs;
       setDirty(false);
       clearDraft(home.id);
@@ -562,7 +599,9 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
       });
       if (r.data?.inv?.items) setInv({ ...r.data.inv.items });
       if (r.data?.updatedAtMs) baseRef.current = r.data.updatedAtMs;
-      const owned = items.map((it) => ({ ...it, p: 1 }));
+      const owned = st.current.items.map((it) => ({ ...it, p: 1 }));
+      ownedRef.current = ownedOf(owned, r.data?.inv?.items || st.current.inv);
+      undoRef.current = []; // v198: satın almadan önceki hâllere geri dönülmez
       setItems(owned);
       eng.homeSetItems(owned);
       setPanel(null);
@@ -616,6 +655,8 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
     try {
       await houseAction({ op: 'furnList', k, v });
       setInv((m) => ({ ...m, [k]: Math.max(0, (m[k] || 0) - 1) }));
+      ownedRef.current = { ...ownedRef.current, [k]: Math.max(0, (ownedRef.current[k] || 0) - 1) }; // v198
+      undoRef.current = [];
       flash(`🏷️ ${CATALOG_MAP[k]?.name || 'Mobilya'} pazara kondu.`);
     } catch (e) {
       flash(errText(e));
@@ -629,6 +670,7 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
     try {
       await houseAction({ op: 'furnBuy', id: b.b.id, expect: { t: b.b.t, v: b.b.v } });
       setInv((m) => ({ ...m, [b.k]: (m[b.k] || 0) + 1 }));
+      ownedRef.current = { ...ownedRef.current, [b.k]: (ownedRef.current[b.k] || 0) + 1 }; // v198
       setBuyAsk(null);
       setTab('envanter');
       flash(`📦 ${CATALOG_MAP[b.k]?.name || 'Mobilya'} envanterine geldi.`);
@@ -641,11 +683,13 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
   const undo = () => {
     const last = undoRef.current.pop();
     if (!last) return flash('Geri alınacak bir şey yok.');
-    setItems(last.items);
-    setInv(last.inv);
+    // v198: geri alınan hâl satın almadan önceyse eşyalar yine "senin" kalır (evden gitmez)
+    const n = normalizeOwned(last.items, ownedRef.current);
+    setItems(n.items);
+    setInv(n.inv);
     setDirty(true);
     setSel(null);
-    eng.homeSetItems(last.items);
+    eng.homeSetItems(n.items);
   };
   const invList = Object.entries(inv)
     .filter(([k, n]) => n > 0 && CATALOG_MAP[k])

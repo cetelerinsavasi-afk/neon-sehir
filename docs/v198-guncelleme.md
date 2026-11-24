@@ -40,3 +40,15 @@ v196'da evler ve mekânlar şehrin içine taşındı ama eski ev / mekân ekran�
 ## Testler
 - `functions/scripts/v196-home.test.mjs`: ziyaret sayacı hesap başına.
 - `functions/scripts/v147-cityphoto.test.mjs`: iç kamera alanları korunur.
+
+## Satın alınan eşyaların evden gitmesi (v198 ek)
+**Sebep:** Tasarla'daki ↶ Geri al, satın almadan önceki hâli (eşyalar "deneme") geri getiriyordu. Kaydedince sunucu "bu eşyalar artık evde konmuş satın alınmış eşya değil" sayıp onları evden alıp envantere koyuyordu; deneme kopyaları da Sepet › İptal ile siliniyordu → oyuncu için eşya "kayboluyordu". Ayrıca satın alma isteğinin cevabı (internet / uygulama kapanması) gelmezse aynı şey oluyordu.
+**Düzeltme (HomePanel.jsx `normalizeOwned`):** her kayıtta ve geri almada liste, sunucudaki sahip olunan sayıya göre düzeltilir — sahip olunan eşya hep "senin", olmayan hep deneme. Satın almadan sonra geri al geçmişi silinir. Eşyalar hiçbir yolla silinmiyordu: kaybolan eşyalar oyuncunun **Envanter**'inde duruyor, oradan tekrar konabilir.
+
+## Kökten: aynı evi iki farklı düzenleyici kaydediyordu (v198 ek 2)
+- **Satın alınan eşyalar evde de envanterde de yok:** kişisel ev (houses/home_…) iki yoldan düzenlenebiliyordu: şehirdeki Tasarla (yeni sistem, envanter ev belgesinde) ve eski ev ekranı (HouseScreen — Mekanlar › Ziyaret, eski bağlantılar). Eski ekranın kaydı eşyaları **eski envantere** (houseInventories/{uid}) yazıyordu → oyuncu hiçbir yerde göremiyordu.
+  - Sunucu: kişisel ev artık eski ev işlemleriyle (save / checkout / take / botSet / petSet / music) kaydedilemez (`houses.js`).
+  - İstemci: kişisel ev eski ev ekranında açılmaz (`HouseHub.jsx`).
+  - **Kurtarma:** oyuncu evine ilk girişinde, büyük geçişten (v196) SONRA eski envantere düşmüş eşyalar kişisel evin envanterine taşınır (bir kez, `inv198` bayrağı; geçişte iade edilenler tekrar verilmez). Test: `v196-home.test.mjs`.
+- **Hayvan ve bot eşyaları:** şehirdeki evde sadece platform çiziliyordu; eski ekrandaki gibi platformun üstünde hayvan (oyunun evcil hayvan çizimi) ve bot (ayarındaki görünüş / ad / sözler) durur. Tasarla'da gizlenir (platform seçilebilsin).
+- **İçerideyken dışarıya dokunma:** mekânın / evin içindeyken duvarın ötesine ya da evin köşesine dokununca avatar dışarı yürüyordu. Artık içeriden dışarıya sadece kapının önüne (≈4 m) dokununca gidilir.

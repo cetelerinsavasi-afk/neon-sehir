@@ -72,6 +72,20 @@ export default function HouseHub({ onClose, initialHouseId = null, mode = null }
     loadHouseScreen().catch(() => {});
   }, []);
 
+  // v198: kişisel ev (home_…) eski ev ekranında AÇILMAZ — iki ayrı düzenleyici aynı evi kaydedince
+  // satın alınan eşyalar eski envantere düşüp kayboluyordu. Ev şehirde, evin içinde.
+  if (houseId && String(houseId).startsWith('home_')) {
+    return (
+      <div className="hs-root">
+        <div className="hs-loading">
+          <p>🏠 Evlere şehirden girilir: haritada Ev ya da Müstakil Evler.</p>
+          <button className="hs-btn gold" onClick={() => (initialHouseId ? onClose() : setHouseId(null))}>
+            Tamam
+          </button>
+        </div>
+      </div>
+    );
+  }
   if (houseId) {
     const loader = (
       <div className="hs-root">
