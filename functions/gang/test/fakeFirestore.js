@@ -185,22 +185,35 @@ class QuerySnapshot {
   }
 }
 
+// v196: collectionGroup, startAfter, select, orderBy('__name__') (belge kimliği)
+const fieldOf = (row, field) => (field === '__name__' ? row.path.split('/').pop() : getPath(row.entry.data, field));
 class Query {
-  constructor(db, collPath, filters = [], orders = [], lim = null) {
+  constructor(db, collPath, filters = [], orders = [], lim = null, opts = {}) {
     this._db = db;
     this._path = collPath;
     this._filters = filters;
     this._orders = orders;
     this._limit = lim;
+    this._group = opts.group || false;
+    this._after = opts.after;
+  }
+  _o() {
+    return { group: this._group, after: this._after };
   }
   where(field, op, value) {
-    return new Query(this._db, this._path, [...this._filters, { field, op, value }], this._orders, this._limit);
+    return new Query(this._db, this._path, [...this._filters, { field, op, value }], this._orders, this._limit, this._o());
   }
   orderBy(field, dir = 'asc') {
-    return new Query(this._db, this._path, this._filters, [...this._orders, { field, dir }], this._limit);
+    return new Query(this._db, this._path, this._filters, [...this._orders, { field, dir }], this._limit, this._o());
   }
   limit(n) {
-    return new Query(this._db, this._path, this._filters, this._orders, n);
+    return new Query(this._db, this._path, this._filters, this._orders, n, this._o());
+  }
+  startAfter(v) {
+    return new Query(this._db, this._path, this._filters, this._orders, this._limit, { ...this._o(), after: v });
+  }
+  select() {
+    return this;
   }
   _match(data) {
     return this._filters.every(({ field, op, value }) => {
@@ -231,22 +244,35 @@ class Query {
     const prefix = this._path + '/';
     const out = [];
     for (const [path, entry] of this._db._store) {
-      if (!path.startsWith(prefix)) continue;
-      const rest = path.slice(prefix.length);
-      if (rest.includes('/')) continue;
+      if (this._group) {
+        const seg = path.split('/');
+        if (seg.length % 2 !== 0 || seg[seg.length - 2] !== this._path) continue;
+      } else {
+        if (!path.startsWith(prefix)) continue;
+        const rest = path.slice(prefix.length);
+        if (rest.includes('/')) continue;
+      }
       if (!this._match(entry.data)) continue;
       // orderBy alanı olmayan belgeler sorgudan düşer (Firestore davranışı)
-      if (this._orders.some((o) => getPath(entry.data, o.field) === undefined)) continue;
+      if (this._orders.some((o) => o.field !== '__name__' && getPath(entry.data, o.field) === undefined)) continue;
       out.push({ path, entry });
     }
     out.sort((a, b) => {
       for (const o of this._orders) {
-        const c = cmp(getPath(a.entry.data, o.field), getPath(b.entry.data, o.field));
+        const c = cmp(fieldOf(a, o.field), fieldOf(b, o.field));
         if (c !== 0) return o.dir === 'desc' ? -c : c;
       }
       return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
     });
-    return this._limit == null ? out : out.slice(0, this._limit);
+    let rows = out;
+    if (this._after !== undefined && this._orders.length) {
+      const o = this._orders[0];
+      rows = rows.filter((r) => {
+        const c = cmp(fieldOf(r, o.field), this._after);
+        return o.dir === 'desc' ? c < 0 : c > 0;
+      });
+    }
+    return this._limit == null ? rows : rows.slice(0, this._limit);
   }
   async get() {
     await this._db._yield();
@@ -418,6 +444,9 @@ export class FakeFirestore {
   }
   collection(path) {
     return new CollectionReference(this, path);
+  }
+  collectionGroup(name) {
+    return new Query(this, name, [], [], null, { group: true });
   }
   doc(path) {
     return new DocumentReference(this, path);

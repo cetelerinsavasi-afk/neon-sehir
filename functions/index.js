@@ -88,6 +88,8 @@ import { createBorsa, borsaCoOfVendor, borsaIncomeStatKey, borsaCompanyStatKey, 
 import { createFleet, SOFOR_TAX_RATE_ID, canResell, NO_RESALE_TEXT } from './fleet.js'; // v177 ticari araçlar
 import { createStable } from './stable.js'; // v177 at / deve / bisiklet
 import { newVehicleDoc } from './shop.js';
+import { createV196Migration } from './v196Migration.js'; // v196 tek seferlik geçiş
+import { createClosing } from './v196Closing.js'; // v196 kapanış modu
 import { addDayKey as rateAddDayKey } from './belediyeRates.js';
 import { policeBustSplit, heistStateEntries, heistStat, crimeLockedBySuspicion, CRIME_LOCK_TEXT, CRIME_LOCK_TEAM_TEXT, BELEDIYE_CRIME_TEXT, BELEDIYE_CRIME_TEAM_TEXT } from './policeRules.js';
 
@@ -340,6 +342,11 @@ const fleet = createFleet({
 const stable = createStable({ db, FieldValue: admin.firestore.FieldValue, HttpsError, goldTag, statWrite, newVehicleDoc, dayKey: (ms) => stateDayKey(ms) });
 // v132: silahçı / galeri stoğu çete deposu ilanlarından da alınır (çete sistemi aşağıda kurulunca bağlanır)
 const shopGangSource = { current: null };
+// v196 kapanış modu: yönlendiricinin op'u kapalı listedeyse reddedilir (v196Closing tanımı aşağıda; çağrı anında hazır)
+const v196Guarded = (kind) => (fn) => onCall(async (request) => {
+  await v196Closing.guardOp(kind, request?.data?.op);
+  return fn(request);
+});
 const shop = createShop({
   gangSource: shopGangSource,
   extraOps: { ...venue.ops, ...gym.ops, ...homeOffice.ops, ...office.ops, ...depo.ops, ...casino.ops, ...sixSocial.ops, ...jobs.ops, ...fleet.ops, ...stable.ops },
@@ -347,7 +354,7 @@ const shop = createShop({
   FieldValue: admin.firestore.FieldValue,
   HttpsError,
   requireAuth: (request) => requireAuth(request),
-  onCall,
+  onCall: v196Guarded('shop'),
   splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
   business,
   advanceOnboardingStep: (uid, n) => advanceOnboardingStep(uid, n),
@@ -367,7 +374,7 @@ const houses = createHouses({
   FieldValue: admin.firestore.FieldValue,
   HttpsError,
   requireAuth: (request) => requireAuth(request),
-  onCall,
+  onCall: v196Guarded('house'),
   isAdmin: (uid) => ADMIN_UIDS.includes(uid),
   assertCanSpeak: (uid, content) => moderation.assertCanSpeak(uid, content),
   isFriend: async (a, b) => {
@@ -1557,6 +1564,7 @@ export const buyFactoryMachine = onCall(async (request) => {
   const uid = requireAuth(request);
   const { machineType } = request.data || {};
   const expect = request.data?.expect == null ? NaN : Number(request.data.expect); // v169 (eski istemci göndermez)
+  await v196Closing.assertOpen(); // v196 kapanış modu
   if (machineType === 'yasakliMadde') {
     throw new HttpsError('failed-precondition', 'Yasaklı madde makineleri kaldırıldı — yasaklı madde ticareti artık çeteler üzerinden.');
   }
@@ -2895,6 +2903,74 @@ export const runV195MigrationNow = onRequest({ timeoutSeconds: 540, memory: '1Gi
     res.status(200).json(r);
   } catch (err) {
     console.error('v195 geçiş', err);
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
+// v196 — BÜYÜK GEÇİŞ (functions/v196Migration.js). Gizli anahtarlı adres; ASLA istemciden / girişte çağrılmaz.
+// …/runV196MigrationNow?secret=MAINTENANCE_SECRET&op=
+//   close          → kapanış modu (yeni ev/işletme, pazar, stok, fiyat, makine, hisse senedi alımı kapanır)
+//   backup         → Firestore yedeği başlatır (gs://<bucket>/v196-yedek/<zaman>; bucket= ile değiştirilebilir)
+//   backupStatus   → yedek bitti mi (bitince apply'a izin verilir)
+//   backupManual&path=gs://…  → gcloud ile elle alınmış yedeği kaydeder (docs/v196-guncelleme.md)
+//   dryRun         → değişiklik yapmadan rapor (migrations/v196Report); rapor kimliği döner
+//   apply&approve=<rapor kimliği> → gerçek geçiş (sayfalı; partial:true dönerse tekrar çağır)
+//   status         → bayrak + rapor özeti
+const v196Migration = createV196Migration({
+  db,
+  FieldValue: admin.firestore.FieldValue,
+  catalogs: { WEAPON_CATALOG, VEHICLE_CATALOG },
+  recursiveDelete: (ref) => db.recursiveDelete(ref),
+});
+const v196Closing = createClosing({ db, HttpsError });
+async function v196Backup(bucketOverride) {
+  const { v1 } = await import('@google-cloud/firestore');
+  const client = new v1.FirestoreAdminClient();
+  const projectId = process.env.GCLOUD_PROJECT || JSON.parse(process.env.FIREBASE_CONFIG || '{}').projectId;
+  const bucket = bucketOverride || JSON.parse(process.env.FIREBASE_CONFIG || '{}').storageBucket || `${projectId}.appspot.com`;
+  const path = `gs://${String(bucket).replace(/^gs:\/\//, '')}/v196-yedek/${new Date().toISOString().replace(/[:.]/g, '-')}`;
+  const [op] = await client.exportDocuments({ name: client.databasePath(projectId, '(default)'), outputUriPrefix: path, collectionIds: [] });
+  await v196Migration.recordBackup({ path, operation: op.name });
+  return { ok: true, path, operation: op.name };
+}
+async function v196BackupStatus() {
+  const f = (await db.doc('migrations/v196').get()).data() || {};
+  if (!f.backup?.operation) return { ok: Boolean(f.backup?.ok), backup: f.backup || null };
+  if (f.backup.ok) return { ok: true, backup: f.backup };
+  const { v1 } = await import('@google-cloud/firestore');
+  const client = new v1.FirestoreAdminClient();
+  const [op] = await client.operationsClient.getOperation({ name: f.backup.operation });
+  if (!op.done) return { ok: false, running: true, backup: f.backup };
+  const failed = Boolean(op.error && op.error.code);
+  await v196Migration.markBackupDone(!failed, failed ? String(op.error.message || op.error.code) : null);
+  return { ok: !failed, done: true, error: failed ? op.error.message : null, path: f.backup.path };
+}
+export const runV196MigrationNow = onRequest({ timeoutSeconds: 540, memory: '2GiB', maxInstances: 1 }, async (req, res) => {
+  if (!req.query.secret || req.query.secret !== MAINTENANCE_SECRET) {
+    res.status(403).json({ error: 'Yetkisiz.' });
+    return;
+  }
+  const op = String(req.query.op || 'status');
+  try {
+    let r;
+    if (op === 'close') r = await v196Migration.close();
+    else if (op === 'backup') r = await v196Backup(req.query.bucket ? String(req.query.bucket) : null);
+    else if (op === 'backupStatus') r = await v196BackupStatus();
+    else if (op === 'backupManual') r = String(req.query.path || '').startsWith('gs://') ? await v196Migration.recordBackup({ path: String(req.query.path), manual: true }) : { ok: false, error: 'path=gs://… gerekli' };
+    else if (op === 'dryRun') {
+      // elmas + hisse senedi fiyatı bir kez okunur, rapora yazılır; apply aynı değerleri kullanır
+      const prices = await getCurrentPrices();
+      r = await v196Migration.dryRun({ prices: { diamondPrice: prices.diamondPrice, stockPrice: prices.stockPrice } });
+    } else if (op === 'apply') {
+      const hm = new Date(Date.now() + 3 * 3600_000).toISOString().slice(11, 16);
+      if ((hm >= '23:30' || hm < '00:40') && req.query.force !== '1') r = { ok: false, error: `Saat ${hm}: gece işleriyle çakışmasın diye 00:40'tan sonra tekrar aç.` };
+      else r = await v196Migration.apply({ approve: String(req.query.approve || '') });
+    } else r = await v196Migration.status();
+    v196Closing.reset();
+    console.log(JSON.stringify({ v196Migration: { op, r: { ...r, top50: undefined } } }));
+    res.status(200).json(r);
+  } catch (err) {
+    console.error('v196 geçiş', err);
     res.status(500).json({ ok: false, error: err?.message || String(err) });
   }
 });
@@ -4978,6 +5054,7 @@ export const buyInvestment = onCall(async (request) => {
   if (!INVESTMENT_PRICE_FIELD[assetType]) {
     throw new HttpsError('invalid-argument', 'Geçersiz yatırım aracı.');
   }
+  if (assetType === 'stock') await v196Closing.assertOpen(); // v196 kapanış modu
   if (!Number.isInteger(goldAmount) || goldAmount <= 0) {
     throw new HttpsError('invalid-argument', 'Geçersiz altın miktarı.');
   }
@@ -8947,6 +9024,7 @@ const stream = createStream({
 });
 export const streamAction = onCall(async (request) => {
   const uid = requireAuth(request);
+  await v196Closing.guardOp('stream', request.data?.op); // v196 kapanış modu
   return stream.action(uid, request.data || {});
 });
 const cosmetics = createCosmetics({ db, FieldValue: admin.firestore.FieldValue, HttpsError });
@@ -10268,6 +10346,7 @@ const MACHINE_SALE_TEXT = 'Makine satışı kaldırıldı — fabrikalar hep aç
 export const createListing = onCall(async (request) => {
   const uid = requireAuth(request);
   const { itemType, itemId, materialType, quantity, machineType, price, unitPrice } = request.data || {};
+  if (itemType === 'material') await v196Closing.assertOpen(); // v196 kapanış modu
 
   const userSnap = await db.collection('users').doc(uid).get();
   const sellerName = userSnap.data()?.displayName || 'Oyuncu';
