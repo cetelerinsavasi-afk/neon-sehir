@@ -34,3 +34,10 @@ Yükleme: kök klasördeki **`deploy-push.bat`** (temizlik → derleme → testl
 ## Okuma / yazma
 - Garaj: ek okuma yok (oyuncu belgesi zaten dinleniyor). ❤️'de ve eve girişte (değiştiyse) 1 alan yazılır.
 - Spor: değişmedi (üyelik + 3 adım).
+
+## v197 — ek (24.11 akşam)
+- **Yarış NİTRO çubuğu:** HUD'da sol (süre + mini harita) ve sağ (hız) sütunlar sabit 132 px'ti; telefonda orta sütun ~0'a düşüp çubuk görünmüyordu. Yan sütunlar içerik kadar, orta en az 110 px (360 px ekranda çubuk ~150 px; tarayıcıda denendi). Dar ekranda süre / hız yazısı biraz küçüldü.
+- **Antrenman / lobi araç resimleri:** üstten (kuşbakışı) çizim yerine aracın gerçek 3D modeli (`CarThumb` → `CarImg`, oyunun her yerindeki resimle aynı).
+- **Tavan / zemin modu düğmeleri kalktı** (karargah ve ev). Evde tavan eşyası (avize) hâlâ seçilir: dokunulan yerde yer / duvar eşyası yoksa tavandaki.
+- **Ev duvar kaplaması 4 kenarda aynı ölçekte:** çatı katının üçgen alınlıklarında doku metre başına 3 kat sıktı (2 duvar küçük, 2 duvar büyük tuğla). Alınlık UV'si diğer duvarlarla aynı ölçeğe alındı; çatı katının kesit dibi de kendi katının kaplamasını kullanıyor (1. katınkini gösteriyordu). Tarayıcıda yan yana çizilip karşılaştırıldı.
+- **Bar taburesi (ve kafe masası, bar masası, manken, gitar standı) tabanı halının altında kalıyordu:** ince taban (0–3 cm) halının (1,1–1,3 cm) içine gömülüyordu; taban halının üstüne alındı.

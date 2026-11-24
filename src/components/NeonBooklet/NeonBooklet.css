@@ -1,5 +1,5 @@
 /* v197 — Polis / İmam kitapçığı (yeni tasarım) */
-.nb-bg {
+.nbk-bg {
   position: fixed;
   inset: 0;
   z-index: 200;
@@ -12,7 +12,7 @@
   padding: 18px;
   animation: nb-fade 0.16s ease-out;
 }
-.nb {
+.nbk {
   --nb-acc: #19e8ff;
   --nb-acc2: #3a7bff;
   --nb-soft: rgba(25, 232, 255, 0.22);
@@ -36,19 +36,19 @@
   gap: 12px;
   animation: nb-pop 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
-.nb-imam {
+.nbk-imam {
   --nb-acc: #2fe08a;
   --nb-acc2: #ffd23f;
   --nb-soft: rgba(47, 224, 138, 0.22);
   --nb-mid: rgba(47, 224, 138, 0.45);
   --nb-soft2: rgba(255, 210, 63, 0.3);
 }
-.nb-head {
+.nbk-head {
   display: flex;
   align-items: center;
   gap: 12px;
 }
-.nb-badge {
+.nbk-badge {
   flex: none;
   width: 48px;
   height: 48px;
@@ -60,25 +60,25 @@
   border: 1px solid var(--nb-mid);
   box-shadow: 0 0 18px var(--nb-soft);
 }
-.nb-head-main {
+.nbk-head-main {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
-.nb-head-main small {
+.nbk-head-main small {
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--nb-acc);
 }
-.nb-head-main b {
+.nbk-head-main b {
   font-size: 19px;
   line-height: 1.15;
 }
-.nb-x {
+.nbk-x {
   flex: none;
   width: 38px;
   height: 38px;
@@ -88,11 +88,11 @@
   color: inherit;
   font-size: 15px;
 }
-.nb-dots {
+.nbk-dots {
   display: flex;
   gap: 6px;
 }
-.nb-dots button {
+.nbk-dots button {
   flex: 1;
   height: 5px;
   padding: 0;
@@ -100,14 +100,14 @@
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.12);
 }
-.nb-dots button.seen {
+.nbk-dots button.seen {
   background: var(--nb-mid);
 }
-.nb-dots button.on {
+.nbk-dots button.on {
   background: var(--nb-acc);
   box-shadow: 0 0 10px var(--nb-acc);
 }
-.nb-body {
+.nbk-body {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -116,7 +116,7 @@
   gap: 8px;
   min-height: 150px;
 }
-.nb-body li {
+.nbk-body li {
   display: flex;
   gap: 10px;
   align-items: flex-start;
@@ -128,18 +128,18 @@
   line-height: 1.45;
   animation: nb-in 0.22s ease-out both;
 }
-.nb-body li i {
+.nbk-body li i {
   flex: none;
   font-style: normal;
   font-size: 15px;
   line-height: 1.35;
 }
-.nb-nav {
+.nbk-nav {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.nb-count {
+.nbk-count {
   flex: none;
   min-width: 46px;
   text-align: center;
@@ -147,7 +147,7 @@
   font-weight: 800;
   opacity: 0.6;
 }
-.nb-btn {
+.nbk-btn {
   flex: 1;
   min-height: 44px;
   border-radius: 14px;
@@ -157,12 +157,12 @@
   background: rgba(255, 255, 255, 0.05);
   color: inherit;
 }
-.nb-btn.go {
+.nbk-btn.go {
   border-color: transparent;
   background: linear-gradient(135deg, var(--nb-acc), var(--nb-acc2));
   color: #07101a;
 }
-.nb-btn:disabled {
+.nbk-btn:disabled {
   opacity: 0.35;
 }
 @keyframes nb-fade {
@@ -175,5 +175,5 @@
   from { opacity: 0; transform: translateX(-6px); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .nb-bg, .nb, .nb-body li { animation: none; }
+  .nbk-bg, .nbk, .nbk-body li { animation: none; }
 }

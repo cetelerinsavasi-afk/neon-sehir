@@ -1,32 +1,19 @@
-import { useEffect, useRef } from 'react';
-import { carStats, statBars, RACE_CAR_LOOKS, VEHICLE_MAX_LEVEL, vehicleRaceLevel } from '../../../functions/raceSim.js';
-import { drawCarTop } from './raceDraw';
+import { carStats, statBars, VEHICLE_MAX_LEVEL, vehicleRaceLevel } from '../../../functions/raceSim.js';
+import CarImg from '../VehicleCard/CarImg';
 import './CarStats.css';
 
 // =============================================================================
 // v78 — Araç yarış göstergeleri: HIZ / İVME / NİTRO çubukları + üstten araç
-// çizimi. Galeri, araç kartı, Atölye ve yarış lobisinde ortak kullanılır.
+// resmi (v197: gerçek 3D model). Galeri, araç kartı, Atölye ve yarış lobisinde ortak kullanılır.
 //   <CarStatBars catalogId level next? />  next: bir sonraki seviyenin
 //   kazandıracağı kısım açık renkle gösterilir (geliştirmeye teşvik).
 // =============================================================================
 
 export { vehicleRaceLevel, VEHICLE_MAX_LEVEL };
 
-export function CarThumb({ catalogId, className = '' }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    const cv = ref.current;
-    if (!cv) return;
-    const k = RACE_CAR_LOOKS[catalogId] || RACE_CAR_LOOKS[1];
-    const x = cv.getContext('2d');
-    x.setTransform(1, 0, 0, 1, 0, 0);
-    x.clearRect(0, 0, cv.width, cv.height);
-    x.translate(cv.width / 2, cv.height / 2 + 4);
-    x.rotate(Math.PI / 2);
-    x.scale(1.9, 1.9);
-    drawCarTop(x, k);
-  }, [catalogId]);
-  return <canvas ref={ref} className={`car-thumb ${className}`} width="300" height="192" aria-hidden="true" />;
+// v197: üstten (kuşbakışı) çizim yerine aracın gerçek 3D modeli (oyunun her yerindeki araç resmiyle aynı)
+export function CarThumb({ catalogId, mods = null, className = '' }) {
+  return <CarImg catalogId={catalogId} mods={mods} className={`car-thumb ${className}`} alt="" />;
 }
 
 const ROWS = [

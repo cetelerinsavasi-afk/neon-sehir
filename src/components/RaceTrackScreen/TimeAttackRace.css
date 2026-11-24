@@ -395,3 +395,31 @@
   pointer-events: none;
   white-space: nowrap;
 }
+
+/* v197: NİTRO çubuğu dar telefonlarda sol (süre + mini harita) ve sağ (hız) sütunlar sabit 132 px
+   olduğu için orta sütun ~0'a düşüyor, çubuk görünmüyordu → yan sütunlar içerik kadar, orta en az 110 px */
+.ta-hud .tl,
+.ta-hud .tr {
+  width: auto;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.ta-hud .tc {
+  flex: 1 1 110px;
+  min-width: 110px;
+}
+.ta-hud .nb {
+  height: 12px;
+  border-color: #2f3a7a;
+}
+@media (max-width: 420px) {
+  .ta-root .tm {
+    font-size: 19px;
+  }
+  .ta-hud .sp {
+    font-size: 34px;
+  }
+  .ta-hud {
+    gap: 8px;
+  }
+}

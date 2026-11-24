@@ -275,20 +275,15 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
   const [winSel, setWinSel] = useState(null);
   const [sInv, setSInv] = useState(() => home.inv || null);
   const best = useFurnBest(tab === 'pazar');
-  // v197 — karargah tasarımındaki gibi: 👁️ göz (deneme eşyaları gerçek gör), tavan modu, ↶ geri al
+  // v197 — karargah tasarımındaki gibi: 👁️ göz (deneme eşyaları gerçek gör), ↶ geri al (tavan / zemin modu yok)
   const [realLook, setRealLook] = useState(false);
-  const [ceilMode, setCeilMode] = useState(false);
   const undoRef = useRef([]);
   const savedRef = useRef(false); // v197: bu oturumda kaydedildi / satın alındı → çıkışta ev yeniden yüklenir (bayat sepet olmasın)
   useEffect(() => {
     eng.homeRealLook?.(realLook);
   }, [eng, realLook]);
-  useEffect(() => {
-    eng.homeCeilMode?.(ceilMode);
-  }, [eng, ceilMode]);
   useEffect(() => () => {
     eng.homeRealLook?.(false);
-    eng.homeCeilMode?.(false);
   }, [eng]);
   const st = useRef({});
   st.current = { items, inv, f, sel };
@@ -569,7 +564,7 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
       </div>
       {setOpen && settings(() => setSetOpen(false))}
 
-      {/* v197 — karargahtaki gibi: GÖZ (deneme eşyaları gerçek haliyle) + TAVAN MODU */}
+      {/* v197 — karargahtaki gibi: GÖZ (deneme eşyaları gerçek haliyle) */}
       <button
         className={`hs-eye-btn hm-eye${realLook ? ' on' : ''}`}
         onClick={() => {
@@ -583,21 +578,6 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
           <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
           <circle cx="12" cy="12" r="3.2" fill={realLook ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" />
           {!realLook && <path d="M4 20 20 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />}
-        </svg>
-      </button>
-      <button
-        className={`hs-eye-btn hs-ceil-btn hm-eye${ceilMode ? ' on' : ''}`}
-        onClick={() => {
-          setCeilMode((v) => !v);
-          setSel(null);
-          flash(ceilMode ? 'Tavan modu kapandı.' : '💡 Tavan modu: sadece tavan eşyaları (avize, pervane) seçilir.');
-        }}
-        title="Tavan modu: tavan eşyalarını düzenle"
-        aria-pressed={ceilMode}
-      >
-        <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true">
-          <path d="M12 2.8 20.5 7.4v9.2L12 21.2 3.5 16.6V7.4z" fill="currentColor" fillOpacity={ceilMode ? 0.22 : 0.08} stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-          <path d="M3.5 7.4 12 12l8.5-4.6M12 12v9.2" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
         </svg>
       </button>
 

@@ -1244,7 +1244,6 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   // v197: karargah tasarımıyla aynı mekanik — önce dokunarak seç, seçiliyi sürükle; seçili olmayan
   // eşyanın üstünden sürüklemek kamerayı çevirir. Tavan modu: sadece tavan eşyaları seçilir.
   let evSel = null; // seçili eşya sırası (React'tan homeSelect)
-  let evCeil = false; // tavan modu
   // garajdaki araç: ev sahibinin favorisi (yoksa en pahalısı) — oyunun araç modeli (buildVehicle)
   // v197: herkes garajda KENDİ favori aracını görür (kimin evinde olursa olsun, dışarıdan da);
   // araç yoksa garaj boş. Garajdaki araca binilip gezilir (garageDrive).
@@ -3315,7 +3314,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       [0, 1, 2].forEach((f) => {
         if (f <= evDesign.f) objs.push(ml.furnKit(f).group);
       });
-      const hit = ray.intersectObjects(objs, true).find((h) => evPickable(h.object.userData.evIdx));
+      // v197: tavan modu yok — önce yerdeki / duvardaki eşya, yoksa tavan eşyası (avize) seçilir
+      const hits0 = ray.intersectObjects(objs, true).filter((h) => evPickable(h.object.userData.evIdx));
+      const hit = hits0.find((h) => !ml.isCeil(h.object.userData.evIdx)) || hits0[0];
       const g = ml.pick(o, d);
       // pencereye dokunuş (eşya seçilmediyse): zeminden önce değiyorsa pencere
       if (!hit) {
@@ -3439,12 +3440,12 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       }
     }
   }
-  // v197: tasarımda dokunulabilir eşya — bu kattaki; tavan modunda sadece tavan eşyaları, değilken tavan eşyaları hariç
+  // v197: tasarımda dokunulabilir eşya — bu kattaki
   function evPickable(idx) {
     if (idx == null || !curVenue?.ml || !evDesign) return false;
     const it = curVenue.ml.items[idx];
     if (!it || it.f !== evDesign.f) return false;
-    return curVenue.ml.isCeil(idx) === evCeil;
+    return true;
   }
   // ekran noktasının altındaki kat zemini (ev modelinin yereli; ml.place ile aynı)
   function evFloorLocal(e) {
@@ -5922,11 +5923,6 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     },
     // v197: göz — deneme (satın alınmamış) eşyaları gerçek haliyle göster (sadece tasarımda, sadece sen)
     homeRealLook: (on) => EV?.ml.setRealLook(Boolean(on)),
-    // v197: tavan modu — sadece tavan eşyaları seçilir / taşınır
-    homeCeilMode(on) {
-      evCeil = Boolean(on);
-      dDrag = null;
-    },
     homeDesign(f) {
       const was = evDesign;
       evDesign = f == null ? null : { f: Math.max(0, Math.min(2, f | 0)) };
@@ -5945,7 +5941,6 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
         EV.ml.select(null);
         EV.ml.setRealLook(false);
         evSel = null;
-        evCeil = false;
       }
       dDrag = null;
     },

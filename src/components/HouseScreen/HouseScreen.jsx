@@ -335,7 +335,6 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
     layerRef.current = v;
     setLayerState(v);
   }, []);
-  const setCeil = useCallback((on) => setLayer(on ? 'ceil' : null), [setLayer]);
   // kategori / eşya → katman (Tavanlar → tavan, Zemin Parçaları → zemin, diğerleri kapalı)
   const layerOfCat = (k) => (k === 'tavan' ? 'ceil' : k === 'zemin_parca' ? 'floor' : null);
   // v101.1 — sunucudaki son duvar/zemin/kapı (her biri AYRI karşılaştırılır) ve
@@ -1927,35 +1926,7 @@ export default function HouseScreen({ houseId, onExit, onOpenHeist, onSwitchHous
               </svg>
             </button>
           )}
-          {/* v114 — TAVAN MODU: tavan eşyalarını seç/taşı (göz butonunun yanında) */}
-          {canDesign && mode === 'build' && (
-            <button
-              className={`hs-eye-btn hs-ceil-btn${ceilMode ? ' on' : ''}`}
-              onClick={() => setCeil(!ceilMode)}
-              title="Tavan modu: tavan eşyalarını düzenle"
-              aria-pressed={ceilMode}
-            >
-              <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true">
-                <path d="M12 2.8 20.5 7.4v9.2L12 21.2 3.5 16.6V7.4z" fill="currentColor" fillOpacity={ceilMode ? 0.22 : 0.08} stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-                <path d="M3.5 7.4 12 12l8.5-4.6M12 12v9.2" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-                <path d="M3.5 16.6 12 12M20.5 16.6 12 12M12 2.8V12" fill="none" stroke="currentColor" strokeWidth="1" strokeOpacity="0.45" strokeDasharray="1.6 1.6" />
-              </svg>
-            </button>
-          )}
-          {/* v132 — ZEMİN MODU: zemin parçalarını seç/taşı (tavan modunun altında) */}
-          {canDesign && mode === 'build' && (
-            <button
-              className={`hs-eye-btn hs-floor-btn${floorMode ? ' on' : ''}`}
-              onClick={() => setLayer(floorMode ? null : 'floor')}
-              title="Zemin modu: zemin parçalarını düzenle"
-              aria-pressed={floorMode}
-            >
-              <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true">
-                <path d="M12 7.2 21 12l-9 4.8L3 12z" fill="currentColor" fillOpacity={floorMode ? 0.28 : 0.1} stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
-                <path d="M7.5 9.6 16.5 14.4M16.5 9.6 7.5 14.4" fill="none" stroke="currentColor" strokeWidth="1" strokeOpacity="0.55" />
-              </svg>
-            </button>
-          )}
+          {/* v197: tavan / zemin modu düğmeleri kalktı (tavan ve zemin eşyaları artık düzenlenmiyor) */}
           {ceilNote > 0 && layer && mode === 'build' && <CeilNote key={ceilNote} floor={floorMode} onDone={() => setCeilNote(0)} />}
 
           {/* v92 Faz 8 — oyunun 3D mekânı: menü, NPC'ler, istasyon panelleri */}

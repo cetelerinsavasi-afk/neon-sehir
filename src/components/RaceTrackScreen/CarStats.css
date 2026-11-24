@@ -4,6 +4,7 @@
   width: 100%;
   height: auto;
   aspect-ratio: 150 / 96;
+  object-fit: cover;
   border-radius: 9px;
   background: radial-gradient(circle at 50% 60%, #1b2148, #090b19);
 }

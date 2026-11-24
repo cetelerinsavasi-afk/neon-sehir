@@ -19,22 +19,22 @@ export default function NeonBooklet({ pages, onClose, theme = 'police', badge, t
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose, pages.length]);
   return createPortal(
-    <div className="nb-bg" onClick={onClose}>
-      <div className={`nb nb-${theme}`} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
-        <div className="nb-head">
-          <span className="nb-badge" aria-hidden="true">{badge}</span>
-          <div className="nb-head-main">
+    <div className="nbk-bg" onClick={onClose}>
+      <div className={`nbk nbk-${theme}`} onClick={(e) => e.stopPropagation()} role="dialog" aria-label={title}>
+        <div className="nbk-head">
+          <span className="nbk-badge" aria-hidden="true">{badge}</span>
+          <div className="nbk-head-main">
             <small>{title}</small>
             <b>{cur.title}</b>
           </div>
-          <button className="nb-x" onClick={onClose} aria-label="Kapat">✕</button>
+          <button className="nbk-x" onClick={onClose} aria-label="Kapat">✕</button>
         </div>
-        <div className="nb-dots" role="tablist">
+        <div className="nbk-dots" role="tablist">
           {pages.map((p, i) => (
             <button key={p.title} className={i === page ? 'on' : i < page ? 'seen' : ''} onClick={() => setPage(i)} aria-label={p.title} />
           ))}
         </div>
-        <ul className="nb-body" key={page}>
+        <ul className="nbk-body" key={page}>
           {cur.body.map((line, i) => (
             <li key={i} style={{ animationDelay: `${i * 40}ms` }}>
               <i aria-hidden="true">{cur.icon || '•'}</i>
@@ -42,13 +42,13 @@ export default function NeonBooklet({ pages, onClose, theme = 'police', badge, t
             </li>
           ))}
         </ul>
-        <div className="nb-nav">
-          <button className="nb-btn ghost" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>← Önceki</button>
-          <span className="nb-count">{page + 1} / {pages.length}</span>
+        <div className="nbk-nav">
+          <button className="nbk-btn ghost" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>← Önceki</button>
+          <span className="nbk-count">{page + 1} / {pages.length}</span>
           {last ? (
-            <button className="nb-btn go" onClick={onClose}>Anladım ✓</button>
+            <button className="nbk-btn go" onClick={onClose}>Anladım ✓</button>
           ) : (
-            <button className="nb-btn go" onClick={() => setPage((p) => p + 1)}>Sonraki →</button>
+            <button className="nbk-btn go" onClick={() => setPage((p) => p + 1)}>Sonraki →</button>
           )}
         </div>
       </div>

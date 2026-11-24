@@ -533,10 +533,10 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
   railing(w1[1], EF + T + 0.12, -6.5, F1 - 0.05, EF + T + 0.12, TF - 0.5, F1 - 0.05, railM);
   // kesitte duvar dipleri (kameraya bakan duvar alçalınca)
   const dipM = M('#23242a', 0.8);
-  const dip = (g, side, y, a0, a1) => {
+  const dip = (g, side, y, a0, a1, mat = wallMs[1]) => {
     const n = [[0, -1], [-1, 0], [0, 1], [1, 0]][side];
     const at = [TF - 0.01, EF - 0.01, -TF + 0.01, -EF + 0.01][side];
-    wallPlane(g, wallMs[1], wRep, a0, a1, y, y + 0.45, at, n);
+    wallPlane(g, mat, wRep, a0, a1, y, y + 0.45, at, n);
     const w = a1 - a0;
     const c = (a0 + a1) / 2;
     if (n[0] === 0) box(g, w + 0.3, 0.06, 0.3, dipM, c, y + 0.45, at + n[1] * 0.15, 0, false);
@@ -569,7 +569,12 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
     o.position.z = sgn * (TF + T);
     if (sgn < 0) o.rotation.y = PI;
     g.add(o);
-    const inn = new THREE.Mesh(shapeWithHole(innerPts), wallMs[2]);
+    // v197: üçgen alınlığın UV'si metre cinsindendi (diğer duvarlar metre / wRep) → kaplama burada wRep kat
+    // küçük görünüyordu (çatı katında 2 duvar küçük tuğla, 2 duvar büyük). Diğer duvarlarla aynı ölçek:
+    const innGeo = shapeWithHole(innerPts);
+    const iuv = innGeo.attributes.uv;
+    for (let k = 0; k < iuv.count; k++) iuv.setXY(k, iuv.getX(k) / wRep, iuv.getY(k) / wRep);
+    const inn = new THREE.Mesh(innGeo, wallMs[2]);
     inn.position.z = sgn * (TF - 0.01);
     if (sgn > 0) inn.rotation.y = PI;
     g.add(inn);
@@ -592,8 +597,8 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
     g.add(mul);
     box(g, W2 + 2 * T + 0.24, 0.22, 0.12, trimM, 0, GP - 0.22, sgn * (TF + T + 0.06), 0, false);
   }
-  dip(w2dip[0], 0, F2, -QP, QP);
-  dip(w2dip[2], 2, F2, -QP, QP);
+  dip(w2dip[0], 0, F2, -QP, QP, wallMs[2]); // v197: çatı katının kesit dibi kendi katının kaplamasıyla
+  dip(w2dip[2], 2, F2, -QP, QP, wallMs[2]);
   wallPlane(k2, wallMs[2], wRep, -TF, TF, F2, pe, QP, [-1, 0]);
   wallPlane(k2, wallMs[2], wRep, -TF, TF, F2, pe, -QP, [1, 0]);
   roof(roofG, { roofM, ceilM, trimM, T });

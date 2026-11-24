@@ -365,7 +365,8 @@ function stoolBar(g, ctx) {
   C(g, 0.2, 0.18, 0.08, 0, 0.78, 0, seat, null, 28);
   C(g, 0.025, 0.025, 0.74, 0, 0.38, 0, CHROME());
   TOR(g, 0.16, 0.012, 0, 0.3, 0, CHROME(), [Math.PI / 2, 0, 0]);
-  C(g, 0.2, 0.22, 0.03, 0, 0.015, 0, CHROME());
+  // v197: taban halının (y 0,011–0,013) üstünde kalsın — eskiden 0–0,03 arasıydı, halıya gömülüyordu
+  C(g, 0.2, 0.22, 0.035, 0, 0.0325, 0, CHROME());
 }
 function gamingChair(g, ctx) {
   const acc = M(tintHex(ctx, '#ff2d8a'), 0.5);
@@ -2732,7 +2733,7 @@ function cafeTable(g, ctx) {
   const top = M(tintHex(ctx, '#e8e4dc'), 0.25);
   C(g, 0.38, 0.38, 0.04, 0, 0.74, 0, top, null, 32);
   C(g, 0.03, 0.03, 0.72, 0, 0.36, 0, BLACK());
-  C(g, 0.2, 0.22, 0.03, 0, 0.015, 0, BLACK());
+  C(g, 0.2, 0.22, 0.035, 0, 0.0325, 0, BLACK()); // v197: halının üstünde
   [-1, 1].forEach((s) => {
     const ch = new THREE.Group();
     ch.position.set(s * 0.62, 0, 0);
@@ -2776,7 +2777,7 @@ function clothesRack(g, ctx) {
 }
 function mannequin(g, ctx) {
   const skin = M('#e8e4dc', 0.3);
-  C(g, 0.18, 0.2, 0.03, 0, 0.015, 0, BLACK());
+  C(g, 0.18, 0.2, 0.035, 0, 0.0325, 0, BLACK()); // v197: halının üstünde
   C(g, 0.015, 0.015, 0.8, 0, 0.42, 0, CHROME());
   SP(g, 0.11, 0, 1.68, 0, skin, 0.9, 1.15, 0.95);
   C(g, 0.045, 0.05, 0.1, 0, 1.53, 0, skin);
@@ -2793,7 +2794,7 @@ function barTable(g, ctx) {
   const top = M(tintHex(ctx, '#1b1b1d'), 0.3, 0.2);
   C(g, 0.35, 0.35, 0.04, 0, 1.08, 0, top, null, 32);
   C(g, 0.04, 0.04, 1.06, 0, 0.53, 0, CHROME());
-  C(g, 0.25, 0.28, 0.04, 0, 0.02, 0, CHROME());
+  C(g, 0.25, 0.28, 0.04, 0, 0.035, 0, CHROME()); // v197: halının üstünde
   LATHE(g, [[0, 0], [0.03, 0], [0.005, 0.01], [0.005, 0.08], [0.05, 0.14], [0.045, 0.14], [0, 0.1]], M('#ffffff', 0.05, 0.1, { transparent: true, opacity: 0.5 }), 0.1, 1.1, 0);
 }
 function stageMic(g, ctx) {
@@ -3212,7 +3213,7 @@ function pingpong(g) {
   });
 }
 function guitar(g) {
-  C(g, 0.15, 0.2, 0.03, 0, 0.015, 0, BLACK());
+  C(g, 0.15, 0.2, 0.035, 0, 0.0325, 0, BLACK()); // v197: halının üstünde
   TUBE(g, [0, 0.02, -0.1], [0, 0.85, -0.15], 0.012, BLACK());
   const body = M('#b8141e', 0.25, 0.2);
   SP(g, 0.18, 0, 0.42, 0.02, body, 1, 1.0, 0.25);
