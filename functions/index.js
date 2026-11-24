@@ -2481,7 +2481,8 @@ export const runV196MigrationNow = onRequest({ timeoutSeconds: 540, memory: '2Gi
       const hm = new Date(Date.now() + 3 * 3600_000).toISOString().slice(11, 16);
       if ((hm >= '23:30' || hm < '00:40') && req.query.force !== '1') r = { ok: false, error: `Saat ${hm}: gece işleriyle çakışmasın diye 00:40'tan sonra tekrar aç.` };
       else r = await v196Migration.apply({ approve: String(req.query.approve || '') });
-    } else r = await v196Migration.status();
+    } else if (op === 'fixGift') r = await v196Migration.fixGift(); // v196.1 hediye hisse onarımı
+    else r = await v196Migration.status();
     v196Closing.reset();
     console.log(JSON.stringify({ v196Migration: { op, r: { ...r, top50: undefined } } }));
     res.status(200).json(r);
@@ -9611,7 +9612,7 @@ const MACHINE_SALE_TEXT = 'Makine satışı kaldırıldı — fabrikalar hep aç
 export const createListing = onCall(async (request) => {
   const uid = requireAuth(request);
   const { itemType, itemId, materialType, quantity, machineType, price, unitPrice } = request.data || {};
-  if (itemType === 'material') await v196Closing.assertOpen(); // v196 kapanış modu
+  if (itemType === 'material') throw new HttpsError('failed-precondition', 'Malzeme pazarı kalktı — malzeme artık mekânda, tamir / geliştirme ücretinin içinde.'); // v196
 
   const userSnap = await db.collection('users').doc(uid).get();
   const sellerName = userSnap.data()?.displayName || 'Oyuncu';

@@ -146,7 +146,8 @@ test('apply: iadeler, defter = rapor, ikinci çalıştırma hiçbir şey değiş
   // hediye hisse: silahçı (kapanıştan önce) → 10 hisse, hak kazanmış (b = 0)
   const co = VENUE_CO_ID.silahci;
   assert.equal(ali.borsa[co].u, 10_000_000);
-  assert.equal(ali.borsa[co].b, 0);
+  assert.equal(ali.borsa[co].b ?? 0, 0);
+  assert.equal(ali.borsa[co].v, 2, 'borsa yeni biçimi');
   assert.equal(w.G('borsa/piyasa').co[co].u, 10_000_000);
   assert.equal(w.G('borsa/piyasa').co[co].h, 1);
   assert.equal(w.G('factories/ali').dm.n, 2);
@@ -261,4 +262,26 @@ test('v196 kuralları: tür başına 10 hisse, stok alış fiyatından, malzeme 
   assert.ok(!Object.keys(p.lines).some((k) => /vergi|tax/i.test(k)), 'geçişte vergi yok');
   const g = [...plan.gangs.values()][0];
   assert.equal(g.kasa, V196_ITEM_PRICES[removed].v);
+});
+
+test('v196.1: hediye hisse borsa biçiminde (v:2) yazılır; eski kayıtlar fixGift ile onarılır; geçişten sonra kapanış biter', async () => {
+  const { holdState } = await import('../borsa.js');
+  const { createClosing } = await import('../v196Closing.js');
+  const db = new FakeFirestore({ yieldEvery: false });
+  const S = (p, d) => db._store.set(p, { data: d, version: 1 });
+  S('users/ali', { borsa: { [VENUE_CO_ID.galeri]: { u: 10_000_000, a: '0', pq: '0', b: 0, bd: null, c: 0, gift: true } } });
+  S(`${V196_PAYOUTS}/ali`, { uid: 'ali', shares: { galeri: 10 } });
+  assert.equal(holdState(db._get('users/ali'), VENUE_CO_ID.galeri).u, 0, 'onarımdan önce 0 görünüyordu');
+  const m = createV196Migration({ db, FieldValue, catalogs: { WEAPON_CATALOG, VEHICLE_CATALOG } });
+  const r = await m.fixGift();
+  assert.equal(r.fixed, 1);
+  assert.equal(holdState(db._get('users/ali'), VENUE_CO_ID.galeri).u, 10_000_000);
+  assert.equal((await m.fixGift()).fixed, 0, 'ikinci kez dokunmaz');
+  class E extends Error {}
+  S('migrations/v196', { closing: true, closingAtMs: 1, appliedAtMs: 2 });
+  const c = createClosing({ db, HttpsError: E });
+  await c.assertOpen(); // geçişten sonra açık
+  c.reset();
+  S('migrations/v196', { closing: true, closingAtMs: 1 });
+  await assert.rejects(() => c.assertOpen());
 });

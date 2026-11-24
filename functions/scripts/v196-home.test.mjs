@@ -118,19 +118,25 @@ test('ev: kilitli ev girilmez ve listelenmez; 10 eşya kuralı; 20 gün girmeyen
   assert.ok(L.homes.some((x) => x.id === homeIdOf('veli')));
 });
 
-test('ev: garajda favori araç — seçilmemişse bir kez en pahalısı; seçilen kendi aracı olmalı', async () => {
+test('ev: garajda favori araç — yoksa en pahalı kullanılabilir; ilandaki / haczedilen sayılmaz; modifiye taşınır', async () => {
   const w = world();
   w.S('vehicles/v1', { ownerId: 'ali', catalogId: 1 });
-  w.S('vehicles/v2', { ownerId: 'ali', catalogId: 4 });
+  w.S('vehicles/v2', { ownerId: 'ali', catalogId: 4, mods: { paint: '#ff0000' } });
+  w.S('vehicles/v9', { ownerId: 'ali', catalogId: 10, listed: true });
   w.S('vehicles/v3', { ownerId: 'veli', catalogId: 3 });
   await w.home.enter('ali', {});
-  assert.equal(w.G(`houses/${homeIdOf('ali')}`).garageCar, 4);
+  let h = w.G(`houses/${homeIdOf('ali')}`);
+  assert.equal(h.garageCar, 4);
+  assert.deepEqual(h.garage.mods, { paint: '#ff0000' });
   await w.home.settings('ali', { vehicleId: 'v1' });
+  assert.equal(w.G('users/ali').favVehicleId, 'v1');
+  await w.home.enter('ali', {});
   assert.equal(w.G(`houses/${homeIdOf('ali')}`).garageCar, 1);
   await assert.rejects(() => w.home.settings('ali', { vehicleId: 'v3' }), /senin değil/);
-  await w.home.enter('veli', {});
-  assert.equal(w.G(`houses/${homeIdOf('veli')}`).garageCar, 3);
-  await w.home.enter('can', {}).catch(() => {});
+  // favori satıldı → en pahalıya döner
+  w.S('vehicles/v1', { ownerId: 'veli', catalogId: 1 });
+  await w.home.enter('ali', {});
+  assert.equal(w.G(`houses/${homeIdOf('ali')}`).garageCar, 4);
 });
 
 test('ev: ana kapı türü — kalkan kapı ve garaj kapısı seçilemez', async () => {

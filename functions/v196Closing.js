@@ -23,7 +23,9 @@ export function createClosing({ db, HttpsError, now = () => Date.now() }) {
     try {
       const s = await db.doc(V196_FLAG_DOC).get();
       const d = s.exists ? s.data() : {};
-      v = { closing: d.closing === true || Boolean(d.appliedAtMs), closingAtMs: Number(d.closingAtMs) || null };
+      // geçiş uygulanınca (appliedAtMs) kapanış biter: kalkan işlemler zaten yönlendiricilerde kibarca reddedilir,
+      // makine alımı gibi süren işlemler yeniden açılır
+      v = { closing: d.closing === true && !d.appliedAtMs, closingAtMs: Number(d.closingAtMs) || null, applied: Boolean(d.appliedAtMs) };
     } catch (err) {
       // okunamazsa önceki değer korunur (yoksa açık sayılmaz)
       if (cache) return cache.v;

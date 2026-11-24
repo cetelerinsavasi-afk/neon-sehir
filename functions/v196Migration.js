@@ -34,6 +34,7 @@ export const MATERIAL_MACHINE_TYPES = ['tamirMalzemesi', 'silahUpgrade', 'arabaG
 const RETIRED_YASAKLI_MACHINE_VALUE = 100_000; // MACHINE_TYPES.yasakliMadde.price (v38'de emekli)
 export const MATERIAL_BUYOUT_RATIO_V196 = 0.75;
 const BORSA_UNITS = 1_000_000;
+const BORSA_HOLD_V = 2; // borsa.js holdDoc biçimi (v alanı olmayan kayıt ESKİ biçim sayılır → 0 hisse görünürdü)
 const BATCH_MAX = 380;
 const TIME_BUDGET_MS = 470_000;
 const GAME_OWNER = '__game__';
@@ -667,7 +668,7 @@ export function createV196Migration({ db, FieldValue, catalogs, log = console, n
         for (const [t, n] of Object.entries(p.shares)) {
           const co = VENUE_CO_ID[t];
           const A = String(piyasa.co?.[co]?.A || '0');
-          userPatch[`borsa.${co}`] = { u: n * BORSA_UNITS, a: A, pq: '0', b: 0, bd: null, c: 0, gift: true };
+          userPatch[`borsa.${co}`] = { v: BORSA_HOLD_V, u: n * BORSA_UNITS, a: A, pq: '0', c: 0, gift: true };
           const inc = (coInc[co] ||= { u: 0, h: 0 });
           inc.u += n * BORSA_UNITS;
           inc.h += 1;
@@ -814,5 +815,29 @@ export function createV196Migration({ db, FieldValue, catalogs, log = console, n
     return { ok: true, flag: f, report: rep ? { reportId: rep.reportId, createdAtMs: rep.createdAtMs, totals: rep.totals, applied: rep.applied || null } : null, payouts };
   }
 
-  return { scan, close, dryRun, apply, status, recordBackup, markBackupDone };
+  // v196.1 onarım: ilk geçişte hediye hisseler 'v' alanı olmadan yazıldı → borsa eski biçim sanıp 0 gösteriyordu.
+  // Defterdeki (payouts) her oyuncunun hediye kayıtlarına v:2 eklenir. Tekrar çalışması zararsız.
+  async function fixGift() {
+    const rows = await db.collection(V196_PAYOUTS).get();
+    let fixed = 0;
+    let checked = 0;
+    for (const d of rows.docs) {
+      const shares = d.data()?.shares || {};
+      const cos = Object.keys(shares).map((t) => VENUE_CO_ID[t]).filter(Boolean);
+      if (!cos.length) continue;
+      checked += 1;
+      const us = await db.collection('users').doc(d.id).get();
+      if (!us.exists) continue;
+      const borsa = us.data()?.borsa || {};
+      const patch = {};
+      for (const co of cos) if (borsa[co] && borsa[co].v == null && borsa[co].gift) patch[`borsa.${co}.v`] = BORSA_HOLD_V;
+      if (Object.keys(patch).length) {
+        await us.ref.update(patch);
+        fixed += 1;
+      }
+    }
+    return { ok: true, checked, fixed };
+  }
+
+  return { scan, close, dryRun, apply, status, recordBackup, markBackupDone, fixGift };
 }

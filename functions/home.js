@@ -81,19 +81,27 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
     updatedAtMs: now(),
   });
 
-  // Garajdaki araç: sahibin seçtiği (garageCar = katalog no); hiç seçilmemişse BİR KEZ en pahalı aracı
-  // bulunur ve yazılır (0 = aracı yok). Sonraki girişlerde ek okuma yok.
-  async function bestCarOf(uid) {
-    const snap = await db.collection('vehicles').where('ownerId', '==', uid).limit(30).get();
-    let best = 0;
+  // Garajdaki araç (sadece sahibine çizilir): favori (users.favVehicleId) kullanılabilirse o; değilse
+  // (satılmış, ilanda, haczedilmiş, ömrü bitmiş) en pahalı kullanılabilir araç. Ev belgesine kimlik + katalog +
+  // modifiye yazılır; sonraki girişlerde yalnızca o aracın belgesi okunur (1 okuma), geçerliyse sorgu yok.
+  const usable = (uid, v) => Boolean(v && v.ownerId === uid && !v.listed && !v.seizedByBank && !v.mortgaged && !(Number(v.lifeDays) <= 0 && v.lifeDays != null));
+  const carOf = (id, v) => ({ id, cid: Number(v.catalogId) || 0, mods: v.mods && typeof v.mods === 'object' ? v.mods : null });
+  async function resolveCar(uid, h, favId) {
+    const want = favId || h?.garage?.id || null;
+    if (want) {
+      const s = await db.collection('vehicles').doc(String(want)).get();
+      if (s.exists && usable(uid, s.data())) return carOf(s.id, s.data());
+    }
+    const snap = await db.collection('vehicles').where('ownerId', '==', uid).limit(40).get();
+    let best = null;
     let bp = -1;
     for (const d of snap.docs) {
       const v = d.data();
-      if (v.seizedByBank) continue;
+      if (!usable(uid, v)) continue;
       const pr = Number(VEHICLE_CATALOG[v.catalogId]?.price || 0);
       if (pr > bp) {
         bp = pr;
-        best = Number(v.catalogId) || 0;
+        best = carOf(d.id, v);
       }
     }
     return best;
@@ -106,17 +114,17 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
     const own = uidOfHome(id) === uid;
     const t = now();
     let out = null;
-    let car = null;
+    let car;
     if (own) {
-      const cur = await ref(id).get();
-      if (!cur.exists || cur.data().garageCar === undefined) car = await bestCarOf(uid);
+      const [cur, us] = await Promise.all([ref(id).get(), userRef(uid).get()]);
+      car = await resolveCar(uid, cur.exists ? cur.data() : null, us.data()?.favVehicleId || null);
     }
     await db.runTransaction(async (tx) => {
       const s = await tx.get(ref(id));
       if (!s.exists) {
         if (!own) fail('not-found', 'Ev bulunamadı.');
         const us = await tx.get(userRef(uid));
-        const h = { ...fresh(uid, us.data()), garageCar: car ?? 0 };
+        const h = { ...fresh(uid, us.data()), garage: car || null, garageCar: car?.cid || 0 };
         tx.set(ref(id), h);
         out = { id, ...h, created: true };
         return;
@@ -126,7 +134,11 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
       if (own) {
         const patch = {};
         if (t - Number(h.ownerSeenAtMs || 0) > SEEN_EVERY_MS) patch.ownerSeenAtMs = t;
-        if (h.garageCar === undefined && car != null) h.garageCar = patch.garageCar = car;
+        const same = (h.garage?.id || null) === (car?.id || null) && JSON.stringify(h.garage?.mods || null) === JSON.stringify(car?.mods || null);
+        if (!same) {
+          h.garage = patch.garage = car || null;
+          h.garageCar = patch.garageCar = car?.cid || 0;
+        }
         if (Object.keys(patch).length) tx.update(ref(id), patch);
       } else {
         const d = dayKeyOf(t);
@@ -255,14 +267,14 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
       if (!HOME_DOOR_TYPES.includes(String(p.doorType))) fail('invalid-argument', 'Bu kapı ana kapı olamaz.');
       patch['door.t'] = String(p.doorType);
     }
-    // garajdaki araç: oyuncunun kendi aracı (vehicles/{id}) ya da 0 (boş garaj)
+    // garajdaki araç = favori araç (users.favVehicleId — profildeki kalp ile aynı alan)
+    let fav;
     if (p.vehicleId != null) {
-      if (p.vehicleId === 0) patch.garageCar = 0;
-      else {
-        const vs = await db.collection('vehicles').doc(String(p.vehicleId)).get();
-        if (!vs.exists || vs.data().ownerId !== uid) fail('permission-denied', 'Bu araç senin değil.');
-        patch.garageCar = Number(vs.data().catalogId) || 0;
-      }
+      const vs = await db.collection('vehicles').doc(String(p.vehicleId)).get();
+      if (!vs.exists || vs.data().ownerId !== uid) fail('permission-denied', 'Bu araç senin değil.');
+      fav = vs.id;
+      patch.garage = carOf(vs.id, vs.data());
+      patch.garageCar = patch.garage.cid;
     }
     if (!Object.keys(patch).length) fail('invalid-argument', 'Değişiklik yok.');
     await db.runTransaction(async (tx) => {
@@ -271,6 +283,7 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
       const h = s.data();
       const locked = patch.locked ?? h.locked;
       tx.update(ref(id), { ...patch, listable: homeListable({ locked, itemCount: h.itemCount }), updatedAtMs: now() });
+      if (fav) tx.update(userRef(uid), { favVehicleId: fav });
     });
     return { ok: true, ...patch };
   }
