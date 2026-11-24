@@ -5,6 +5,7 @@ import { useGang, useGangAction } from './GangContext';
 import { AmountInput, Btn, Sheet } from './ui';
 import { fmt } from './gangConstants';
 import { GAME_DEPO_ID, GAME_DEPO_PRICES, depoPricesOf } from '../../../functions/depo.js';
+import { isBizPassive } from '../../../functions/bizPassive.js'; // v195
 
 // v124 — Çete deposundaki yasaklı maddeyi bir DEPOYA anında sat (gang action
 // 'sellToDepo', functions/gang/actions/trade.js). Depolar alış fiyatına göre
@@ -28,7 +29,8 @@ export default function DepoSellSheet({ free, onClose }) {
     (async () => {
       try {
         const snap = await getDocs(query(collection(db, 'houses'), where('bizType', '==', 'depo'), limit(60)));
-        const houses = snap.docs.filter((d) => !d.data().bizGame);
+        // v195: pasif depo (sahibi 20 gün girmedi) gösterilmez — görünümü de okunmaz
+        const houses = snap.docs.filter((d) => !d.data().bizGame && !isBizPassive(d.data()));
         const views = await Promise.all(houses.map((d) => getDoc(doc(db, 'depotView', d.id)).catch(() => null)));
         const list = houses.map((d, i) => {
           const h = d.data();

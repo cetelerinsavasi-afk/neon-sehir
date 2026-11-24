@@ -32,6 +32,7 @@
 // =============================================================================
 
 import { goldTag } from './moneyLog.js';
+import { isBizPassive, BIZ_PASSIVE_TEXT } from './bizPassive.js'; // v195
 
 export const DEPO_TYPE = 'depo';
 export const GAME_DEPO_ID = 'game_depo';
@@ -221,7 +222,7 @@ export function createDepo({ db, FieldValue, HttpsError, splitIncomeForDebt, bus
         ids.forEach((hid, i) => {
           const [hs, ds] = snaps[i];
           const h = hs.exists ? { id: hid, ...hs.data() } : null;
-          const open = h && h.biz?.type === DEPO_TYPE;
+          const open = h && h.biz?.type === DEPO_TYPE && !isBizPassive(h); // v195: pasif depo satmaz (teklifi silinir)
           const d = ds.exists ? ds.data() : {};
           const stockN = open ? Math.max(0, Math.floor(Number(d[CONTRABAND]) || 0)) : 0;
           const prices = open ? depoPricesOf(h) : null;
@@ -283,6 +284,7 @@ export function createDepo({ db, FieldValue, HttpsError, splitIncomeForDebt, bus
     let result = null;
     await db.runTransaction(async (tx) => {
       const dep = await readDepot(tx, depotId);
+      if (!dep.game && isBizPassive(dep.h)) fail('failed-precondition', BIZ_PASSIVE_TEXT); // v195
       const [us, is] = await Promise.all([tx.get(userRef(uid)), tx.get(invRef(uid))]);
       if (!us.exists) fail('failed-precondition', 'Oyuncu bulunamadı.');
       if (!dep.game && dep.h.ownerUid === uid) fail('failed-precondition', 'Kendi deponla ticaret yapamazsın — malı / altını Envanter’den ekle ya da çek.');
@@ -395,6 +397,7 @@ export function createDepo({ db, FieldValue, HttpsError, splitIncomeForDebt, bus
   // OKUMA: readDepotForSale · YAZMA: writeDepotSale (çetenin kasası çağıranda)
   async function readDepotForSale(tx, depotId) {
     const dep = await readDepot(tx, depotId);
+    if (!dep.game && isBizPassive(dep.h)) fail('failed-precondition', BIZ_PASSIVE_TEXT); // v195: pasif depo mal almaz
     return dep;
   }
   function writeDepotSale(tx, dep, qty) {

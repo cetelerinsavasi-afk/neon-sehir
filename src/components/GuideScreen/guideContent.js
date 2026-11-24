@@ -200,7 +200,7 @@ export const CATS = [
       kicker: 'Yolu tutan, şehri tutar.',
       lines: [
         L('🛣️', 'Yolu kazanan çete o malı mağazanın yarı fiyatına getirir.'),
-        L('💊', 'Yasaklı maddeyi her çete getirebilir: günde 00:00’daki üye sayısı × 1.250 altınlık. Yolu tutan çetenin hakkına eklenir.'),
+        L('💊', 'Yasaklı maddeyi her çete getirebilir: günde 00:00’daki her üye için 3 adet (üye başına 3.750 altınlık). Yolu tutan çetenin hakkına eklenir.'),
         L('🚚', 'Tır 100.000 altın, 21 gün yaşar. Sipariş verilince bir sonraki 3 saatlik dilimde yola çıkar, o gece 00:00\'da depoya varır.'),
         L('📦', 'Siparişi Pazar–Cuma 00:00–12:00 arası Baba ve Sağ Kol verir.'),
         L('💣', 'Yoldaki tır herkesin hedefi. Yola çıktıktan sonraki 6 saat ihbar, sabotaj ve operasyon zamanı; ardından saldırı başlar ve 24:00’e kadar sürer.'),

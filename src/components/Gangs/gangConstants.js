@@ -1,3 +1,5 @@
+import { GANG as SERVER_GANG } from '../../../functions/gang/config.js'; // v195
+
 // İstemci tarafı sabitler — functions/gang/config.js ile senkron tutulmalı.
 // Buradaki değerler SADECE gösterim içindir; tüm kurallar sunucuda doğrulanır.
 export const RANK_LABELS = {
@@ -58,7 +60,8 @@ export const GANG_RULES = {
   TRUCK_PRICE: 100_000,
   TRUCK_LIFE_DAYS: 21,
   TRUCK_CAPACITY: { araba: 10, silah: 10, yasakliMadde: 100 },
-  CONTRABAND_ORDER_PER_MEMBER: 2500, // v127: her çete günde 00:00'daki üye × 2.500 altınlık yasaklı madde (v125: 1.250)
+  // v195: tek kaynak functions/gang/config.js — üye × 3.750 altın = üye başına 3 adet (v127: 2.500, v125: 1.250)
+  CONTRABAND_ORDER_PER_MEMBER: SERVER_GANG.CONTRABAND_ORDER_PER_MEMBER,
   DEPOT_PRICE: 100_000,
   DEPOT_STEP: 100,
   UNIT_SIZE: { araba: 10, silah: 10, yasakliMadde: 1 },

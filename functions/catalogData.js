@@ -15,7 +15,7 @@ export const VEHICLE_CATALOG = {
   8: { name: 'Track-Spec Süper Spor', gearLevel: 5, baseTank: 100, price: 600000, storage: 5, turboCount: 3 },
   9: { name: 'GT Yarış Arabası', gearLevel: 5, baseTank: 150, price: 800000, storage: 5, turboCount: 2 },
   10: { name: 'Üstün Cabrio', gearLevel: 5, baseTank: 150, price: 1000000, storage: 5, turboCount: 3 },
-  // v151 — TİCARİ araçlar (meslek: İşe başla). Tamir / geliştirme YOK, modifiye VAR, 20 gün ömür.
+  // v151 — TİCARİ araçlar (meslek: İşe başla). Modifiye VAR. v195: 10 gün ömür + 10 tamir (her tamir +1 gün), geliştirme YOK.
   11: { name: 'Tır', kind: 'ticari', job: 'tir', gearLevel: 1, baseTank: 400, price: 500000, storage: 200, turboCount: 0 },
   12: { name: 'Otobüs', kind: 'ticari', job: 'otobus', gearLevel: 1, baseTank: 300, price: 200000, storage: 30, turboCount: 0 },
   13: { name: 'Taksi', kind: 'ticari', job: 'taksi', gearLevel: 3, baseTank: 100, price: 100000, storage: 5, turboCount: 0 },

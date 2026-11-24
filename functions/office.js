@@ -21,6 +21,7 @@ import { HOUSE_PRODUCTS, HOUSE_TAKEABLES } from './houseCatalogData.js';
 import { bizTax, taxLedgerWrite } from './tax.js';
 import { goldTag } from './moneyLog.js';
 import { createHq, isHqHouse } from './hq.js'; // v146 karargah: ücretli ürün geliri vergisiz çete kasasına
+import { isBizPassive, BIZ_PASSIVE_TEXT } from './bizPassive.js'; // v195
 import {
   OFFICE_FURN,
   OFFICE_BANDS,
@@ -44,7 +45,7 @@ const PRESENCE_ACTIVE_MS = 2 * 60 * 1000;
 const HELD_MS = 120_000;
 const isId = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
 
-export function createOffice({ db, FieldValue, HttpsError, splitIncomeForDebt, now = () => Date.now() }) {
+export function createOffice({ db, FieldValue, HttpsError, splitIncomeForDebt, business = null, now = () => Date.now() }) {
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
   };
@@ -70,6 +71,8 @@ export function createOffice({ db, FieldValue, HttpsError, splitIncomeForDebt, n
   function chargeTx(tx, { houseId, h, uid, us, os, amount, kind, product, spent, dayKey, t, tag }) {
     // v146 — karargah: gelir VERGİSİZ, doğrudan çete kasasına
     const gangHq = isHqHouse(h);
+    // v195: pasif ofis / işletme (sahibi 20 gün girmedi) para kazanamaz — işlem iptal (yazmalar işlenmez)
+    if (!gangHq && isBizPassive(h)) fail('failed-precondition', BIZ_PASSIVE_TEXT);
     const tax = gangHq ? 0 : bizTax(amount, 'ofis'); // v127: oran Ticaret Bakanlığı (Ofis Kazançları)
     tx.update(userRef(uid), { gold: FieldValue.increment(-amount), goldTag: goldTag(tag || 'ofisAlis') });
     tx.set(spendRef(houseId, uid, dayKey), { houseId, uid, dayKey, amount: FieldValue.increment(amount), updatedAtMs: t }, { merge: true });
@@ -189,6 +192,8 @@ export function createOffice({ db, FieldValue, HttpsError, splitIncomeForDebt, n
       if (kind === 'ofis' && (h0.privacy || 'public') !== 'public') patch.privacy = 'public';
       if (isHqHouse(h0)) patch.kind = 'karargah';
       tx.update(houseRef(houseId), patch);
+      // v195: yeni ofis pasiflik kontrol dizinine (bizIdle/ofis) girer — sadece ofis OLDUĞU an (1 yazma)
+      if (patch.kind === 'ofis' && h0.kind !== 'ofis') business?.registerOfficeTx?.(tx, houseId, h0.ownerUid);
       result = { ok: true, office, kind, active: activeOfficeKeys(h1) };
     });
     return result;

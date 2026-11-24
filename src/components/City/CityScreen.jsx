@@ -27,6 +27,7 @@ const AMCA_ID = AMCA.id;
 import { FUEL_PRICE, GAS_MARKET_MENU } from '../../../functions/gasStation.js';
 import { GAS_STATION, FAR_DEPOT, LIMAN_BAY, OTOGARS, DEPOTS } from '../../../functions/cityJobsData.js';
 import { FLEET, countsAsOwned } from '../../../functions/fleet.js'; // v177 ticari araçlar
+import { vehicleLifeCap, VEHICLE_WEAPON_MAX_REPAIRS } from '../../../functions/itemRules.js'; // v195
 import { ANIMALS, animalPrice, BIKE_RENT } from '../../../functions/stable.js'; // v177 at / deve / bisiklet
 import { BIKE_SHOP } from './cityLayout.js';
 import { stableAt } from './world/roadsideGeo.js';
@@ -144,6 +145,7 @@ const atTirLotOf = (x, z) => TIR_LOTS.some((p) => Math.hypot(x - p.x, z - p.z) <
 export function FleetSheet({ job, uid, gold, onClose }) {
   const f = FLEET[job];
   const c = vehicleCatalog.find((x) => x.id === f.cid);
+  const FLEET_CAP = vehicleLifeCap(f.cid);
   const [mine, setMine] = useState(undefined);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
@@ -151,7 +153,7 @@ export function FleetSheet({ job, uid, gold, onClose }) {
     try {
       const s = await getDocs(query(collection(db, 'vehicles'), where('ownerId', '==', uid), where('catalogId', '==', f.cid)));
       const list = s.docs.map((d) => ({ id: d.id, ...d.data() })).filter(countsAsOwned);
-      list.sort((a, b) => (b.lifeDays ?? 20) - (a.lifeDays ?? 20));
+      list.sort((a, b) => (b.lifeDays ?? FLEET_CAP) - (a.lifeDays ?? FLEET_CAP));
       setMine(list[0] || null);
     } catch {
       setMine(null);
@@ -172,7 +174,9 @@ export function FleetSheet({ job, uid, gold, onClose }) {
       setBusy(false);
     }
   };
-  const life = mine ? Math.max(0, Number(mine.lifeDays ?? 20)) : 20;
+  // v195: ticari 10 gün + 10 tamir hakkı (her tamir +1 gün) — tavan tek kaynaktan (itemRules)
+  const life = mine ? Math.max(0, Number(mine.lifeDays ?? FLEET_CAP)) : FLEET_CAP;
+  const repairsLeft = mine ? Math.max(0, VEHICLE_WEAPON_MAX_REPAIRS - Number(mine.repairsUsed || 0)) : VEHICLE_WEAPON_MAX_REPAIRS;
   return (
     <Sheet title={`${f.icon} ${f.label}`} onClose={onClose} closeLabel="Kapat">
       <div className="cs-fleet">
@@ -181,11 +185,12 @@ export function FleetSheet({ job, uid, gold, onClose }) {
         {mine && (
           <>
             <b className="cs-fleet-name">{mine.customName || c.name}{mine.listed ? ' · 🏷️ ilanda' : ''}</b>
-            <div className="cs-fleet-life" title={`${life} / 20 gün`}>
-              <i style={{ width: `${(life / 20) * 100}%` }} className={life <= 3 ? 'low' : ''} />
+            <div className="cs-fleet-life" title={`${life} / ${FLEET_CAP} gün`}>
+              <i style={{ width: `${Math.min(100, (life / FLEET_CAP) * 100)}%` }} className={life <= 3 ? 'low' : ''} />
             </div>
             <div className="cs-fleet-stats">
               <span>⏳ <b>{life}</b> gün</span>
+              <span>🔧 <b>{repairsLeft}</b>/{VEHICLE_WEAPON_MAX_REPAIRS}</span>
               <span>💰 <b>{fmt(mine.jobEarned || 0)}</b></span>
             </div>
           </>
@@ -194,7 +199,8 @@ export function FleetSheet({ job, uid, gold, onClose }) {
           <>
             <b className="cs-fleet-name">{c.name}</b>
             <div className="cs-fleet-stats">
-              <span>⏳ <b>20</b> gün</span>
+              <span>⏳ <b>{FLEET_CAP}</b> gün</span>
+              <span>🔧 <b>{VEHICLE_WEAPON_MAX_REPAIRS}</b> tamir</span>
               <span>👥 <b>{c.seats}</b></span>
             </div>
             <button className="v3-btn primary cs-fleet-buy" disabled={busy || gold < c.price} onClick={buy}>

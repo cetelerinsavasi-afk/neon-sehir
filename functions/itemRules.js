@@ -9,17 +9,29 @@
 
 import { VEHICLE_CATALOG, WEAPON_CATALOG } from './catalogData.js';
 import { vehicleRaceLevel, VEHICLE_MAX_LEVEL } from './raceSim.js';
-import { canRepairVehicle } from './vehicleKinds.js';
+import { canRepairVehicle, canUpgradeVehicle, isMotorId } from './vehicleKinds.js';
 
-// --- Ömür + tamir (v58 değerleri) ---------------------------------------------
-export const VEHICLE_WEAPON_INITIAL_LIFE_DAYS = 20; // araç ömür tavanı
+// --- Ömür + tamir ------------------------------------------------------------------
+// v195: araba (1-10) + ticari (11-15) → 10 gün ömür, 10 tamir, her tamir +1 gün
+//       (eskiden araba 20 gün / +2, ticari 20 gün tamirsiz). Motorlar (21-27) DEĞİŞMEDİ:
+//       20 gün, tamirsiz → ayrı tavan MOTOR_LIFE_DAYS. Silah değişmedi (10 gün / +1).
+export const VEHICLE_WEAPON_INITIAL_LIFE_DAYS = 10; // araba + ticari ömür tavanı (v195: 20 → 10)
 export const VEHICLE_WEAPON_MAX_REPAIRS = 10; // araç VE silah tamir hakkı
-export const REPAIR_LIFE_BONUS_DAYS = 2; // araç tamiri +2 gün
+export const REPAIR_LIFE_BONUS_DAYS = 1; // araç tamiri +1 gün (v195: 2 → 1)
+export const MOTOR_LIFE_DAYS = 20; // v195: motor / bisiklet / at / deve ömür tavanı (tamir yok)
 export const WEAPON_INITIAL_LIFE_DAYS = 10; // silah ömür tavanı
 export const WEAPON_REPAIR_LIFE_BONUS_DAYS = 1; // silah tamiri +1 gün
 
-export function lifeCapOf(kind) {
-  return kind === 'weapon' ? WEAPON_INITIAL_LIFE_DAYS : VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
+// Aracın katalog numarası (sayı ya da { catalogId } belgesi)
+const cidOf = (x) => (x != null && typeof x === 'object' ? x.catalogId : x);
+// Bir aracın ömür tavanı: motor 20, araba / ticari 10. Katalog no bilinmiyorsa araba sayılır.
+export function vehicleLifeCap(catalogIdOrItem) {
+  const cid = cidOf(catalogIdOrItem);
+  return cid != null && isMotorId(cid) ? MOTOR_LIFE_DAYS : VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
+}
+// kind: 'weapon' | 'vehicle' · v195: araçta katalog no (ya da belge) verilirse motor 20 sayılır
+export function lifeCapOf(kind, catalogIdOrItem = null) {
+  return kind === 'weapon' ? WEAPON_INITIAL_LIFE_DAYS : vehicleLifeCap(catalogIdOrItem);
 }
 export function repairBonusOf(kind) {
   return kind === 'weapon' ? WEAPON_REPAIR_LIFE_BONUS_DAYS : REPAIR_LIFE_BONUS_DAYS;
@@ -31,8 +43,8 @@ export function repairRequiredQty(price) {
 
 // 2. el satış değeri oranı: (kalanTamirHakkı × bonus + kalanÖmür) / azami
 export function valueRatioOf(item, kind = 'vehicle') {
-  const cap = lifeCapOf(kind);
-  // v151: ticari araç / motor tamir edilemez → değer sadece kalan ömre bağlı
+  const cap = lifeCapOf(kind, item);
+  // v151: motor tamir edilemez → değer sadece kalan ömre bağlı (v195: ticari artık tamir hakkını da sayar)
   if (kind === 'vehicle' && item?.catalogId != null && !canRepairVehicle(item.catalogId)) {
     return Math.max(0, Math.min(1, Math.max(0, item?.lifeDays ?? cap) / cap));
   }
@@ -61,7 +73,8 @@ export function itemListingBand(itemType, item) {
   if (itemType === 'vehicle') {
     const base = VEHICLE_CATALOG[item?.catalogId]?.price || 0;
     // v78: araç seviyesi (1-3) — eski vites/depo geliştirmeleri seviyeye sayılır
-    const mult = canRepairVehicle(item?.catalogId) ? vehicleRaceLevel(item) : 1;
+    // v195: seviye çarpanı sadece geliştirilebilen araçta (araba); ticari / motor ×1
+    const mult = canUpgradeVehicle(item?.catalogId) ? vehicleRaceLevel(item) : 1;
     raw = base * mult * valueRatioOf(item, 'vehicle');
   } else if (itemType === 'weapon') {
     const base = WEAPON_CATALOG[item?.catalogId]?.price || 0;
@@ -84,7 +97,7 @@ export function itemListingFields(itemType, itemId, item) {
       vehicleGearUpgraded: Boolean(item.gearUpgraded),
       vehicleTankUpgraded: Boolean(item.tankUpgraded),
       vehicleRaceLevel: vehicleRaceLevel(item),
-      vehicleLifeDays: item.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS,
+      vehicleLifeDays: item.lifeDays ?? vehicleLifeCap(item),
       vehicleRepairsUsed: item.repairsUsed || 0,
       // v150: ilanda araç modifiyeli haliyle görünür
       ...(item.mods && typeof item.mods === 'object' && Object.keys(item.mods).length ? { vehicleMods: item.mods } : {}),
@@ -166,11 +179,12 @@ export function clampWorkshopPrice(material, p) {
 export function workshopJob({ itemType, item, action, upgradeType }) {
   if (!item) return { block: 'type' };
   if (item.listed) return { block: 'listed' };
-  // v151: ticari araç ve motorda tamir / geliştirme yok (sadece modifiye)
-  if (itemType === 'vehicle' && (action === 'repair' || action === 'upgrade') && !canRepairVehicle(item.catalogId)) return { block: 'noWork', material: action === 'repair' ? 'tamirMalzemesi' : 'arabaGelistirme', qty: 0 };
+  // v151: motorda tamir / geliştirme yok (sadece modifiye) · v195: ticari tamir olur, geliştirilmez
+  if (itemType === 'vehicle' && action === 'repair' && !canRepairVehicle(item.catalogId)) return { block: 'noWork', material: 'tamirMalzemesi', qty: 0 };
+  if (itemType === 'vehicle' && action === 'upgrade' && !canUpgradeVehicle(item.catalogId)) return { block: 'noWork', material: 'arabaGelistirme', qty: 0 };
   if (action === 'repair') {
     const price = itemType === 'weapon' ? weaponLivePrice(item) : vehicleLivePrice(item);
-    const cap = lifeCapOf(itemType);
+    const cap = lifeCapOf(itemType, item);
     const out = { material: 'tamirMalzemesi', qty: repairRequiredQty(price) };
     if ((item.repairsUsed || 0) >= VEHICLE_WEAPON_MAX_REPAIRS) return { ...out, block: 'repairs' };
     if ((item.lifeDays ?? cap) >= cap) return { ...out, block: 'full' };

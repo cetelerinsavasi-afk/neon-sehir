@@ -895,7 +895,7 @@ export function createClock(core, actions) {
     });
   }
 
-  // v125: 00:00'daki üye sayısı → bugünün yasaklı madde sipariş hakkı (üye × 1.250).
+  // v125: 00:00'daki üye sayısı → bugünün yasaklı madde sipariş hakkı (üye × CONTRABAND_ORDER_PER_MEMBER — v195: 3.750 = 3 adet).
   // Üye düşmeleri (pasiflik) ve sayı düzeltmesi (refreshGangRoster) bu adımdan ÖNCE.
   async function snapshotOrderBase(ctx, gangId) {
     const stateRef = ctx.ref.gangState(gangId);

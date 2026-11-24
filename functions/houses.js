@@ -23,6 +23,7 @@
 //     olmayan eşyayı "satın alınmış" diye koyamaz.
 // =============================================================================
 
+import { isBizPassive } from './bizPassive.js'; // v195
 import { sanitizeOverlay, overlayText } from './photoOverlay.js';
 import {
   HOUSE_PRICE,
@@ -1391,7 +1392,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
       const snap = await q.limit(100).get();
       const list = snap.docs
         .map((d) => ({ id: d.id, h: d.data() }))
-        .filter(({ h }) => !h.bizGame && guestPublic(h))
+        .filter(({ h }) => !h.bizGame && guestPublic(h) && !isBizPassive(h)) // v195: pasif mekân listede yok
         .map(({ id, h }) => ({
           id,
           name: String(h.name || (isOffice ? 'Ofis' : BIZ_TYPES[type]?.label) || '').slice(0, 40),

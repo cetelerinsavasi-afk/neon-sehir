@@ -3,7 +3,8 @@
 //    mağaza (yasaklı madde: Amazor) fiyatının yarısına sipariş edebilir.
 //    Günlük sipariş limiti = yolu kazanırken kullanılan gücün %1'i (altın) — v39.
 //  - v125: YASAKLI MADDE her çete için açık: günlük limit = 00:00'daki üye sayısı ×
-//    1.250 (yolu tutan çete için savaş limitine EKLENİR).
+//    GANG.CONTRABAND_ORDER_PER_MEMBER (v195: 3.750 = üye başına 3 adet; yolu tutan çete için
+//    savaş limitine EKLENİR).
 //  - v67: Sipariş Pzt–Cmt 00:00–12:00; sadece Mafya Babası + Sağ Kol.
 //  - Tır siparişten sonraki ilk 3 saatlik dilimde (03·06·09·12) yola çıkar,
 //    aynı gecenin 00:00'ında depoya ulaşır. Her tıra günde tek sefer.
@@ -39,7 +40,8 @@ export function createTradeActions(core, treasury) {
   }
 
   // v125: günlük sipariş limiti = (yol sahibiyse savaştan kazanılan limit) + (yasaklı maddede
-  // 00:00'daki üye sayısı × 1.250). 00:00 kaydı yoksa (güncellemenin ilk günü) o anki üye sayısı.
+  // 00:00'daki üye sayısı × GANG.CONTRABAND_ORDER_PER_MEMBER — v195: 3.750 = 3 adet). 00:00 kaydı yoksa
+  // (güncellemenin ilk günü) o anki üye sayısı.
   function orderLimitOf({ holder, route, isContraband, state, gang, dateKey }) {
     const routePart = holder ? Number(route?.dailyOrderLimit || 0) : 0;
     if (!isContraband) return routePart;

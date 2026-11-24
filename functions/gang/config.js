@@ -99,11 +99,13 @@ export const GANG = {
   TRUCK_PRICE: 100_000,
   TRUCK_LIFE_DAYS: 21, // gün (sefer değil); v108: son gününde de sipariş verilebilir (ömrü 0 olunca verilemez)
   TRUCK_CAPACITY: { araba: 10, silah: 10, yasakliMadde: 100 }, // tek tür ürün
-  // v125: her çete (yolu olmasa da) günde ÜYE SAYISI × 1.250 altınlık yasaklı madde
+  // v125: her çete (yolu olmasa da) günde ÜYE SAYISI × 1.250 altınlık yasaklı madde (v195: × 3.750 — aşağıda)
   // sipariş edebilir (00:00'daki üye sayısı — gangState.orderBase). Yasaklı madde
   // yolunu tutan çetenin limiti = savaştan kazandığı limit + bu hak.
   // v127: 1.250 → 2.500 (ör. 5 üyeli çete günde 12.500 altınlık = 10 adet)
-  CONTRABAND_ORDER_PER_MEMBER: 2500,
+  // v195: 2.500 → 3.750 = üye başına 3 adet (adet fiyatı 1.250 = Amazor 2.500 × TRADE_ROUTE_BUY_RATIO 0,5;
+  //       ör. 10 üyeli çete günde 37.500 altınlık = 30 adet). Yol tutan çetenin savaş limiti değişmedi.
+  CONTRABAND_ORDER_PER_MEMBER: 3750,
 
   // --- Depo (ONAYLI) --- her alım +100 kapasite, ömürsüz, satılamaz
   DEPOT_PRICE: 100_000,

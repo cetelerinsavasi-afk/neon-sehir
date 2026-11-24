@@ -137,7 +137,8 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
   }
 
   // Salona ödeme (oyunun salonu → oyundan çıkar). YAZMA. ownerSnap önceden okunmalı.
-  function payGymTx(tx, { gymId, h, ownerSnap, amount, customerUid, kind, atMs, products }) {
+  // v195 — prepaid: pasiflikten önce ödenmiş üyelik (emanetteki para) — kullanıcı kararı: sahibine gider
+  function payGymTx(tx, { gymId, h, ownerSnap, amount, customerUid, kind, atMs, products, prepaid = false }) {
     if (amount <= 0) return;
     // v77 vergi · v127: oran Ticaret Bakanlığı (Spor Salonu) — ödeme gününün oranı
     const tax = bizTax(amount, 'spor', ratesFor(rateDayKey(atMs ?? now())));
@@ -147,7 +148,7 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
     }
     const { goldDelta, debtDelta } = splitIncomeForDebt(ownerSnap?.data()?.debtToState, amount - tax);
     tx.update(userRef(h.ownerUid), { gold: FieldValue.increment(goldDelta), goldTag: goldTag('spor'), debtToState: FieldValue.increment(debtDelta) });
-    business?.recordIncomeTx(tx, { houseId: gymId, h, amount, kind, customerUid, atMs, products, tax });
+    business?.recordIncomeTx(tx, { houseId: gymId, h, amount, kind, customerUid, atMs, products, tax, allowPassive: prepaid });
   }
 
   // Bonus: dünkü kazanç < en çok kazanan salonun (oyunun dahil) yarısı (ya da 0)
@@ -270,6 +271,7 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
     await db.runTransaction(async (tx) => {
       const h = await txGym(tx, gymId);
       if (isGameGym(h)) fail('failed-precondition', 'gym-closed'); // v132: oyunun salonu kapalı
+      business?.assertBizOpen?.(h); // v195: pasif salon üyelik satamaz
       if (!(await txPresent(tx, uid, gymId))) fail('failed-precondition', 'not-present');
       const openSnaps = await Promise.all(open.docs.map((d) => tx.get(d.ref)));
       const [fs, us, ms, os] = await Promise.all([tx.get(fbRef(uid)), tx.get(userRef(uid)), tx.get(memRef(uid, dayKey)), isGameGym(h) ? null : tx.get(userRef(h.ownerUid))]);
@@ -390,7 +392,7 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
       if (rps?.exists) tx.update(rps.ref, { power: to });
       // emanetteki ödeme salona (ödeme gününün gelirine)
       if (hs.exists && hs.data().biz?.type === 'spor' && !isGameGym(hs.data()) && hs.data().ownerUid === m.ownerUid) {
-        payGymTx(tx, { gymId: m.gymId, h: hs.data(), ownerSnap: os, amount: m.price, customerUid: uid, kind: 'service', atMs: m.paidAtMs, products: { üyelik: 1 } });
+        payGymTx(tx, { gymId: m.gymId, h: hs.data(), ownerSnap: os, amount: m.price, customerUid: uid, kind: 'service', atMs: m.paidAtMs, products: { üyelik: 1 }, prepaid: true });
       } else if (m.game && m.price > 0) {
         business?.recordGameIncomeTx?.(tx, { type: 'spor', amount: m.price, kind: 'service', customerUid: uid, atMs: m.paidAtMs, products: { üyelik: 1 }, tax: bizTax(m.price, 'spor', ratesFor(rateDayKey(m.paidAtMs || t))) });
       } else if (m.ownerUid && os && m.price > 0) {

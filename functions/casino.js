@@ -36,6 +36,7 @@
 // =============================================================================
 
 import { goldTag } from './moneyLog.js';
+import { isBizPassive, BIZ_PASSIVE_TEXT } from './bizPassive.js'; // v195
 import { taxLedgerWrite, splitLotteryTax, ratesFor, casinoTaxRate, lotteryTaxRate, pctText } from './tax.js';
 import { bizDayKey } from './businessCatalogData.js';
 import {
@@ -156,8 +157,12 @@ export function createCasino({ db, FieldValue, HttpsError, splitIncomeForDebt, n
     if (cust.length) patch.cust = Object.fromEntries(cust.map((u) => [u, true]));
     tx.set(dailyRef(casinoId, dayKey), patch, { merge: true });
   }
+  // müşteri işlemleri (slot / rulet / piyango / 10 Numara masası) bunu çağırır
   const assertNotOwner = (c, uid) => {
     if (c.ownerUid === uid) fail('failed-precondition', CASINO_TEXT.own);
+    // v195: pasif gazino (sahibi 20 gün girmedi) para kazanamaz — oyun açılmaz. Açık masa / çekiliş
+    // pasiflikten önce ödendiği için tamamlanır (kullanıcı kararı).
+    if (isBizPassive(c.h)) fail('failed-precondition', BIZ_PASSIVE_TEXT);
   };
 
   // ---- SLOT ----------------------------------------------------------------------------

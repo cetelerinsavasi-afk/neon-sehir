@@ -263,6 +263,8 @@ export default function NewspaperScreen() {
     events.find((e) => e.type === 'football_cup_final');
   const newSeasonEvent = events.find((e) => e.type === 'football_new_season');
   const onboardingPoliceRuleEvent = events.find((e) => e.type === 'onboarding_police_rule');
+  // v195 — genel oyun duyurusu (sunucu logNewsEvent('duyuru', { message }); ör. araç ömrü güncellemesi)
+  const announceEvents = useMemo(() => events.filter((e) => e.type === 'duyuru' && e.message), [events]);
 
   // columnPiece — köşe yazısı metni, sadece gerçek puan tablosu farkından.
   const columnPiece = useMemo(() => {
@@ -299,6 +301,7 @@ export default function NewspaperScreen() {
     if (onboardingPoliceRuleEvent) {
       lines.push(`Resmi bir duyuru geldi. ${onboardingPoliceRuleEvent.message}`);
     }
+    announceEvents.forEach((e) => lines.push(`Duyuru: ${e.message}`));
     if (seasonEndEvent) {
       const champ = seasonEndEvent.topThree?.find((t) => t.rank === 1)?.teamName;
       lines.push(champ ? `Lig sezonu sona erdi, şampiyon ${champ} oldu.` : 'Lig sezonu sona erdi.');
@@ -349,7 +352,7 @@ export default function NewspaperScreen() {
     lines.push('Neon TV Haber\'de bugünlük bu kadar, bizi izlediğiniz için teşekkürler.');
     return lines.join(' ');
   }, [
-    onboardingPoliceRuleEvent, seasonEndEvent, cupFinalEvent, newSeasonEvent, biggestHeist, heistEvents.length,
+    onboardingPoliceRuleEvent, announceEvents, seasonEndEvent, cupFinalEvent, newSeasonEvent, biggestHeist, heistEvents.length,
     stoppedCount, arrestCount, arrestFine, columnPiece, matchEvents.length, cupMatchEvents.length, bulletin,
     champYesterday, lotteryYesterday,
   ]);

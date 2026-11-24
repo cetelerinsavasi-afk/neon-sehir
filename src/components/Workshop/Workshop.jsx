@@ -4,12 +4,12 @@ import { usePlayer } from '../../hooks/usePlayer';
 import { useWeapons } from '../../hooks/useWeapons';
 import { useVehicles } from '../../hooks/useVehicles';
 import { canModify } from '../../../functions/fleet.js';
+import { canRepairVehicle, canUpgradeVehicle } from '../../../functions/vehicleKinds.js';
 import { useInventory } from '../../hooks/useInventory';
 import { shopAction } from '../../services/gameActions';
 import { weaponCatalog } from '../../data/weaponCatalog';
 import { vehicleDisplayName } from '../VehicleCard/VehicleCard';
 import CarImg from '../VehicleCard/CarImg';
-import { isCarCatalogId } from '../../data/vehicleCatalog';
 import { modCost, modDefaults } from '../../../functions/vehicleMods.js';
 import {
   WORKSHOP_ITEM_TYPE,
@@ -19,6 +19,7 @@ import {
   workshopCost,
   lifeCapOf,
   VEHICLE_WEAPON_MAX_REPAIRS,
+  MOTOR_LIFE_DAYS,
   WEAPON_MAX_LEVEL,
   weaponPowerAtLevel,
 } from '../../../functions/itemRules.js';
@@ -107,10 +108,13 @@ export default function Workshop({ shop, onClose }) {
   useEffect(() => {
     setMsg(null);
   }, [item?.id, tab]);
-  // v151: ticari araç / motor seçilince doğrudan Modifiye sekmesi
-  const workable = isWeapon || isCarCatalogId(item?.catalogId);
+  // v151: motor seçilince doğrudan Modifiye sekmesi · v195: ticari tamir olur (geliştirme yok)
+  const repairable = isWeapon || canRepairVehicle(item?.catalogId);
+  const upgradable = isWeapon || canUpgradeVehicle(item?.catalogId);
   useEffect(() => {
-    if (item && !workable && tab !== 'mod') setTab('mod');
+    if (!item) return;
+    if (tab === 'repair' && !repairable) setTab('mod');
+    else if (tab === 'upgrade' && !upgradable) setTab(repairable ? 'repair' : 'mod');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item?.id]);
   // ürün/sekme değişince o anki fiyat "görülmüş" sayılır; panel açıkken
@@ -126,7 +130,7 @@ export default function Workshop({ shop, onClose }) {
   const poor = gold < payable;
 
   // ---- ürün bilgileri ---------------------------------------------------------------
-  const cap = item ? lifeCapOf(itemType) : 0;
+  const cap = item ? lifeCapOf(itemType, item) : 0;
   const life = item ? Math.max(0, item.lifeDays ?? cap) : 0;
   const repairsLeft = VEHICLE_WEAPON_MAX_REPAIRS - (item?.repairsUsed || 0);
   const level = isWeapon ? item?.level || 1 : vehicleRaceLevel(item);
@@ -147,7 +151,13 @@ export default function Workshop({ shop, onClose }) {
   else if (job?.block === 'repairs') block = { text: `Tamir hakkı bitti (${VEHICLE_WEAPON_MAX_REPAIRS}/${VEHICLE_WEAPON_MAX_REPAIRS} kullanıldı). Bu ${kindName} artık tamir edilemez.` };
   else if (job?.block === 'full') block = { ok: true, text: 'Ömrü zaten tam dolu, tamire gerek yok.' };
   else if (job?.block === 'maxLevel') block = { ok: true, text: `En yüksek seviyede (${maxLevel}/${maxLevel}). Daha fazla geliştirilemez.` };
-  else if (job?.block === 'noWork') block = { ok: true, text: `Ticari araç ve motorlarda ${isRepair ? 'tamir' : 'geliştirme'} yok (ömrü 20 gün). Görünümünü 🎨 Modifiye sekmesinden değiştirebilirsin.` };
+  else if (job?.block === 'noWork')
+    block = {
+      ok: true,
+      text: isRepair
+        ? `Motorlarda tamir yok (ömrü ${MOTOR_LIFE_DAYS} gün). Görünümünü 🎨 Modifiye sekmesinden değiştirebilirsin.`
+        : 'Ticari araç ve motorlar geliştirilemez. Görünümünü 🎨 Modifiye sekmesinden değiştirebilirsin.',
+    };
   else if (job?.block === 'listed') block = { text: 'Bu ürün ilanda/vitrinde. Önce ilandan kaldır.' };
   else if (job?.block) block = { text: 'Bu işlem bu ürün için yapılamaz.' };
 

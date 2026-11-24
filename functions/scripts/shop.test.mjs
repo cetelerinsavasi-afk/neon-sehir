@@ -78,7 +78,7 @@ function weapon(h, id, owner, extra = {}) {
 }
 function vehicle(h, id, owner, extra = {}) {
   const c = VEHICLE_CATALOG[2]; // Şehir Hatchback: 10.000 → tamir 100, geliştirme 20 malzeme
-  h.S(`vehicles/${id}`, { ownerId: owner, catalogId: 2, model: c.name, baseGalleryValue: c.price, gearLevel: c.gearLevel, baseTank: c.baseTank, tankBonus: 0, lifeDays: 10, repairsUsed: 0, ...extra });
+  h.S(`vehicles/${id}`, { ownerId: owner, catalogId: 2, model: c.name, baseGalleryValue: c.price, gearLevel: c.gearLevel, baseTank: c.baseTank, tankBonus: 0, lifeDays: 5, repairsUsed: 0, ...extra }); // v195: tavan 10
 }
 const inv = (h, uid, k) => h.G(`users/${uid}/inventory/${k}`)?.quantity || 0;
 
@@ -201,7 +201,7 @@ test('atölye (oyunun dükkânı): %130, sınırsız malzeme; v124: müşterinin
   await assert.rejects(h.act('ali', { op: 'workshop', shop: 'game', shopType: 'modifiye', itemId: 'v1', action: 'upgrade', upgradeType: 'level', ownQty: 0, expect: 0 }), /job-maxLevel/);
   // tamir: 100 malzeme × 13 = 1.300
   await h.act('ali', { op: 'workshop', shop: 'game', shopType: 'modifiye', itemId: 'v1', action: 'repair', ownQty: 0, expect: 1300 });
-  assert.equal(h.G('vehicles/v1').lifeDays, 12);
+  assert.equal(h.G('vehicles/v1').lifeDays, 6, 'v195: araç tamiri +1 gün');
   // başkasının aracı
   vehicle(h, 'v2', 'veli');
   await assert.rejects(h.act('ali', { op: 'workshop', shop: 'game', shopType: 'modifiye', itemId: 'v2', action: 'repair', ownQty: 0, expect: 1300 }), /not-owner/);

@@ -462,30 +462,30 @@ test('v67: 09:00 siparişi → 12:00 kalkış → 18:00e kadar sabotaj → 18:00
   assert.equal(depotOf(h, A.gangId).items.yasakliMadde, 30);
 });
 
-test('v125 · v127: her çete yasaklı madde sipariş edebilir — günlük limit 00:00\'daki üye × 2.500; yol sahibine savaş limitine eklenir', async () => {
+test('v125 · v127 · v195: her çete yasaklı madde sipariş edebilir — günlük limit 00:00\'daki üye × 3.750 (üye başına 3 adet); yol sahibine savaş limitine eklenir', async () => {
   const h = await createHarness();
   const G = await setupTradeGang(h);
   const members = h.get(`gangs/${G.gangId}`).memberCount;
   assert.ok(members >= 2);
   const { truckId } = await h.act(G.baba, 'buyTruck');
   const statePath = `gangWorlds/test/gangs/${G.gangId}/private/state`;
-  // 00:00 kaydı: 4 üye → 10.000 altın = 8 adet (sonradan katılan sayılmaz) · v127: üye başı 2.500
+  // 00:00 kaydı: 4 üye → 15.000 altın = 12 adet (sonradan katılan sayılmaz) · v195: üye başı 3.750 (adet 1.250)
   await h.db.doc(statePath).set({ orderBase: { dateKey: '2026-09-21', members: 4 } }, { merge: true });
-  const over = await h.fails(G.baba, 'placeOrder', { truckId, product: 'yasakliMadde', items: { yasakliMadde: 9 } });
-  assert.match(over.message, /10\.000/);
-  const r = await h.act(G.baba, 'placeOrder', { truckId, product: 'yasakliMadde', items: { yasakliMadde: 8 } });
-  assert.equal(r.cost, 10_000);
+  const over = await h.fails(G.baba, 'placeOrder', { truckId, product: 'yasakliMadde', items: { yasakliMadde: 13 } });
+  assert.match(over.message, /15\.000/);
+  const r = await h.act(G.baba, 'placeOrder', { truckId, product: 'yasakliMadde', items: { yasakliMadde: 12 } });
+  assert.equal(r.cost, 15_000);
   await h.act(G.baba, 'cancelOrder', { orderId: `${truckId}_2026-09-21` });
   // yasaklı madde yolunu tutan çete: savaş limiti + üye hakkı
   await h.giveRoute(G.gangId, 'yasakliMadde', 10_000);
-  const r2 = await h.act(G.baba, 'placeOrder', { truckId, product: 'yasakliMadde', items: { yasakliMadde: 16 } });
-  assert.equal(r2.cost, 20_000, '10.000 + 4 × 2.500');
+  const r2 = await h.act(G.baba, 'placeOrder', { truckId, product: 'yasakliMadde', items: { yasakliMadde: 20 } });
+  assert.equal(r2.cost, 25_000, '10.000 + 4 × 3.750');
   // 00:00 kaydı yoksa (güncelleme günü) o anki üye sayısı
   await h.db.doc(statePath).set({ orderBase: { dateKey: '2026-09-20', members: 99 } }, { merge: true });
   await h.act(G.baba, 'cancelOrder', { orderId: `${truckId}_2026-09-21` });
-  const lim = await h.fails(G.baba, 'placeOrder', { truckId, product: 'yasakliMadde', items: { yasakliMadde: 8 + 2 * members + 1 } });
+  const lim = await h.fails(G.baba, 'placeOrder', { truckId, product: 'yasakliMadde', items: { yasakliMadde: 8 + 3 * members + 1 } });
   assert.match(lim.message, /limit/);
-  await h.act(G.baba, 'placeOrder', { truckId, product: 'yasakliMadde', items: { yasakliMadde: 8 + 2 * members } });
+  await h.act(G.baba, 'placeOrder', { truckId, product: 'yasakliMadde', items: { yasakliMadde: 8 + 3 * members } });
   // gece 00:00: üye sayısı kaydedilir
   await h.tickTo('2026-09-22', '00:10');
   assert.deepEqual(h.state(G.gangId).orderBase, { dateKey: '2026-09-22', members });

@@ -14,6 +14,8 @@
 //     prices: { katalogId: satış fiyatı }, updatedAtMs }
 // =============================================================================
 
+import { WEAPON_INITIAL_LIFE_DAYS, vehicleLifeCap } from './itemRules.js';
+
 // v177: motor galerisi de araç (vehicle) stoğu tutar; hangi aracı kimin sattığı fleet.js vehicleShopOf
 export const STOCK_KIND = { silahci: 'weapon', galeri: 'vehicle', motogaleri: 'vehicle' };
 export const STOCK_COST_FRAC = 0.75;
@@ -66,16 +68,17 @@ export const stockQty = (stockDoc, cid) => Math.max(0, Math.floor(Number(stockDo
 // (para ilan sahibine; ürün dükkânın stoğuna girer). Çete deposundaki ürünler her
 // zaman sıfırdır. Yoksa oyunun mağazasından alış fiyatıyla alınır.
 // =============================================================================
-const WEAPON_LIFE_CAP = 10; // itemRules.WEAPON_INITIAL_LIFE_DAYS
-const VEHICLE_LIFE_CAP = 20; // itemRules.VEHICLE_WEAPON_INITIAL_LIFE_DAYS
+// v195: tavanlar tek kaynaktan (itemRules) — araba / ticari 10, motor 20, silah 10
+const WEAPON_LIFE_CAP = WEAPON_INITIAL_LIFE_DAYS;
 // Ürün belgesi (weapons / vehicles)
 export function isPristineItem(kind, it) {
   if (!it) return false;
   if (Number(it.repairsUsed || 0) !== 0) return false;
   if (kind === 'weapon') return Number(it.lifeDays ?? WEAPON_LIFE_CAP) >= WEAPON_LIFE_CAP && Number(it.level || 1) === 1;
   if (it.mortgaged || it.seizedByBank) return false;
+  const cap = vehicleLifeCap(it);
   return (
-    Number(it.lifeDays ?? VEHICLE_LIFE_CAP) >= VEHICLE_LIFE_CAP &&
+    Number(it.lifeDays ?? cap) >= cap &&
     !it.gearUpgraded &&
     !it.tankUpgraded &&
     !(Number(it.tankBonus || 0) > 0) &&
@@ -88,7 +91,7 @@ export function isPristineListing(l) {
   if (!l || l.sold || l.shopHouseId) return false;
   if (l.itemType === 'weapon') return Number(l.weaponLifeDays ?? -1) >= WEAPON_LIFE_CAP && Number(l.weaponRepairsUsed || 0) === 0 && Number(l.weaponLevel || 1) === 1;
   if (l.itemType === 'vehicle') {
-    return Number(l.vehicleLifeDays ?? -1) >= VEHICLE_LIFE_CAP && Number(l.vehicleRepairsUsed || 0) === 0 && !l.vehicleGearUpgraded && !l.vehicleTankUpgraded && !(Number(l.vehicleRaceLevel || 1) > 1);
+    return Number(l.vehicleLifeDays ?? -1) >= vehicleLifeCap(l.vehicleCatalogId) && Number(l.vehicleRepairsUsed || 0) === 0 && !l.vehicleGearUpgraded && !l.vehicleTankUpgraded && !(Number(l.vehicleRaceLevel || 1) > 1);
   }
   return false;
 }

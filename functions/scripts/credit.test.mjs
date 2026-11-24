@@ -28,13 +28,15 @@ function setup() {
     'goldTag', 
     'db', 'admin', 'HttpsError', 'onCall', 'onSchedule', 'requireAuth', 'VEHICLE_CATALOG', 'WEAPON_CATALOG', 'valueRatioOf',
     'AMAZOR_PRICES', 'VEHICLE_WEAPON_INITIAL_LIFE_DAYS', 'computeFactoryValue', 'computeFutbolTeamValue', 'getCurrentPrices', 'advanceOnboardingStep',
+    'vehicleLifeCap', // v195: araçta ömür tavanı (motor 20, araba / ticari 10)
     code
   )(
     goldTag, 
     db, admin, HttpsError, (fn) => fn, (_o, fn) => fn, (r) => r.auth.uid,
     { araba: { price: 100_000 } }, { tabanca: { price: 10_000 } }, () => 1,
     { tamirMalzemesi: 10, yasakliMadde: 2500 }, 20,
-    () => 200_000, async () => 300_000, async () => ({ cryptoPrice: 1 }), async () => {}
+    () => 200_000, async () => 300_000, async () => ({ cryptoPrice: 1 }), async () => {},
+    () => 20
   );
   S('users/u1', { displayName: 'Ali', gold: 5000 });
   S('vehicles/v1', { ownerId: 'u1', catalogId: 'araba', lifeDays: 10 }); // 50.000

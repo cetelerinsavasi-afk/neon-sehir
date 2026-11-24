@@ -24,7 +24,7 @@ import { VehicleKindTabs } from '../VehicleGalleryScreen/VehicleGalleryScreen';
 import '../VehicleGalleryScreen/VehicleGalleryScreen.css';
 import { canResell } from '../../../functions/fleet.js'; // v177: bisiklet / at / deve 2. elde satılmaz
 import { itemListingBand } from '../../../functions/itemRules.js'; // v166: 2. el fiyat aralığı sunucuyla birebir
-import { canRepairVehicle } from '../../../functions/vehicleKinds.js';
+import { canRepairVehicle, canUpgradeVehicle } from '../../../functions/vehicleKinds.js';
 import { weaponCatalog } from '../../data/weaponCatalog';
 import { MAX_REPAIRS, vehicleDisplayName, lifeCapOf, repairBonusOf } from '../VehicleCard/VehicleCard';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
@@ -68,7 +68,7 @@ const MARKET_TYPES = new Set(TABS.map((t) => t.id));
 // zaten itemType olarak bunları kullanıyor), sadece görsel/etiket farklı.
 // v124 — "Sıfır": ömrü tam dolu VE tamir hakkı hiç kullanılmamış araç / silah ilanı
 function isBrandNewListing(l) {
-  if (l.itemType === 'vehicle') return Number(l.vehicleLifeDays ?? -1) >= lifeCapOf('vehicle') && Number(l.vehicleRepairsUsed || 0) === 0;
+  if (l.itemType === 'vehicle') return Number(l.vehicleLifeDays ?? -1) >= lifeCapOf('vehicle', l.vehicleCatalogId) && Number(l.vehicleRepairsUsed || 0) === 0;
   if (l.itemType === 'weapon') return Number(l.weaponLifeDays ?? -1) >= lifeCapOf('weapon') && Number(l.weaponRepairsUsed || 0) === 0;
   return false;
 }
@@ -88,7 +88,8 @@ const AD_DURATION_MS = 24 * 60 * 60 * 1000;
 const AMAZOR_PRICES = { tamirMalzemesi: 10, silahUpgrade: 100, arabaGelistirme: 500, yasakliMadde: 2500 };
 const MACHINE_PRICES = { tamirMalzemesi: 100000, silahUpgrade: 50000, arabaGelistirme: 50000, yasakliMadde: 100000 };
 
-// v58: silahta tavan 10 gün / tamir +1, araçta 20 / +2 (bkz. VehicleCard lifeCapOf)
+// v58: silahta tavan 10 gün / tamir +1 · v195: araba + ticari 10 gün / +1, motor 20 gün tamirsiz
+// (tek kaynak: functions/itemRules.js lifeCapOf)
 
 // MATERIAL_QUICK_AMOUNTS — KULLANICI REVİZESİ (Amazor/Liman/2. el sitesi
 // hepsinde aynı): "1 ve 5 butonunu kaldıralım, 1000 butonu ekleyelim,
@@ -153,7 +154,8 @@ function materialUnitPriceRange(materialType) {
 // Değer = mağaza fiyatı × seviye × (kalan ömür birimi / toplam ömür birimi).
 // Kalan ömür birimi = kalan gün + kalan tamir hakkı × tamirin verdiği gün:
 //   • Silah: 10 gün + 10 tamir × 1 gün = 20 birim → her gün değerin 1/20'si düşer
-//   • Araç : 20 gün + 10 tamir × 2 gün = 40 birim → her gün değerin 1/40'ı düşer
+//   • Araba / ticari (v195): 10 gün + 10 tamir × 1 gün = 20 birim → her gün değerin 1/20'si düşer
+//   • Motor: 20 gün, tamir yok → her gün değerin 1/20'si düşer
 // Ömrü ve tamir hakları tam bir ürün = mağaza fiyatı × seviye (100.000'lik
 // silah seviye 1: 100.000 · seviye 2: 200.000 · seviye 3: 300.000; araç da aynı).
 // İlan fiyat sınırı (en yüksek fiyat) da aynı formül (bkz. functions/itemRules.js
@@ -161,17 +163,19 @@ function materialUnitPriceRange(materialType) {
 function estimateValue({ kind, catalogId, repairsUsed, lifeDays, level }) {
   const catalog = kind === 'vehicle' ? vehicleCatalog : weaponCatalog;
   const base = catalog.find((x) => x.id === catalogId)?.price || 0;
-  // v166: tamir edilemeyen araç (motor / bisiklet / at / ticari) — sunucuyla aynı: seviye yok, tamir hakkı sayılmaz
+  // v166: tamir edilemeyen araç (motor / bisiklet / at) — sunucuyla aynı: tamir hakkı sayılmaz
+  // v195: ticari tamir olur (hakkı sayılır) ama geliştirilemez → seviye çarpanı sadece arabada
   const noRepair = kind === 'vehicle' && catalogId != null && !canRepairVehicle(catalogId);
-  const lvl = noRepair ? 1 : Math.max(1, Math.min(3, Number(level) || 1));
+  const noLevel = kind === 'vehicle' && catalogId != null && !canUpgradeVehicle(catalogId);
+  const lvl = noLevel ? 1 : Math.max(1, Math.min(3, Number(level) || 1));
   const max = base * lvl;
-  const cap = lifeCapOf(kind);
+  const cap = lifeCapOf(kind, catalogId);
   const bonus = noRepair ? 0 : repairBonusOf(kind);
   const total = cap + MAX_REPAIRS * bonus;
   const life = Math.max(0, Math.min(cap, lifeDays ?? cap));
   const left = life + Math.max(0, MAX_REPAIRS - (repairsUsed || 0)) * bonus;
   const pct = Math.max(0, Math.min(1, left / total));
-  return { value: Math.round(max * pct), pct, max, left, total, level: lvl, noLevel: noRepair };
+  return { value: Math.round(max * pct), pct, max, left, total, level: lvl, noLevel };
 }
 const vehicleLevelOf = (raceLevel, gearUp, tankUp) => (Number.isInteger(raceLevel) && raceLevel >= 1 ? raceLevel : 1 + (gearUp ? 1 : 0) + (tankUp ? 1 : 0));
 function estimateOfListing(l) {
@@ -224,7 +228,7 @@ function cannotAfford(listing, gold) {
 
 function listingCeilingPrice(listing) {
   if (listing.itemType === 'vehicle') {
-    // v166: sunucunun ilan tavanıyla aynı formül (tamir edilemeyen at / motor / ticari dahil)
+    // v166: sunucunun ilan tavanıyla aynı formül (tamir edilemeyen at / motor; v195: ticari tamirli, seviyesiz)
     return itemListingBand('vehicle', {
       catalogId: listing.vehicleCatalogId,
       lifeDays: listing.vehicleLifeDays,
@@ -433,7 +437,7 @@ function SellForm({ onCreated, onClose, initialItemType }) {
                   >
                     <CarImg className="market-item-photo" catalogId={v.catalogId} mods={v.mods || null} alt={vehicleDisplayName(v)} />
                     <span className="market-item-name">{vehicleDisplayName(v)}</span>
-                    {vk === 'araba' ? <ListingCarStats vehicle={v} /> : <LifeOnly lifeDays={v.lifeDays} />}
+                    {vk === 'araba' ? <ListingCarStats vehicle={v} /> : <LifeOnly lifeDays={v.lifeDays} catalogId={v.catalogId} />}
                   </button>
                 );
               })}
@@ -534,8 +538,8 @@ function SellForm({ onCreated, onClose, initialItemType }) {
 // sellerLabel: v125 — Mağaza'da satıcı adı yerine fabrika / işletme adı
 // v177 — ticari ve motorlarda hız / ivme / nitro yok: sadece kalan ömür
 const isCarId = (id) => vehicleKindOfId(id) === 'araba';
-function LifeOnly({ lifeDays }) {
-  const cap = lifeCapOf('vehicle');
+function LifeOnly({ lifeDays, catalogId }) {
+  const cap = lifeCapOf('vehicle', catalogId);
   const life = Math.max(0, Math.min(cap, Number(lifeDays ?? cap)));
   return (
     <div className="market-life-only">
@@ -566,7 +570,7 @@ function ListingCard({ listing, isMine, busy, onCancel, onBuy, noGold = false, s
   // Eski (ömür sisteminden önce açılmış) ilanlarda vehicleLifeDays/
   // weaponLifeDays alanı olmayabilir — bu durumda tam ömür (INITIAL_LIFE_DAYS/
   // INITIAL_LIFE_DAYS) varsayıyoruz, böylece bar HER araç/silah ilanında görünür.
-  const lifeCap = lifeCapOf(listing.itemType === 'weapon' ? 'weapon' : 'vehicle');
+  const lifeCap = lifeCapOf(listing.itemType === 'weapon' ? 'weapon' : 'vehicle', listing.vehicleCatalogId);
   const lifeDays = isLifeItem
     ? (listing.itemType === 'vehicle' ? listing.vehicleLifeDays : listing.weaponLifeDays) ?? lifeCap
     : null;
@@ -596,8 +600,9 @@ function ListingCard({ listing, isMine, busy, onCancel, onBuy, noGold = false, s
           {!isMine && <span className="market-seller"> · {sellerLabel || listing.sellerName}</span>}
         </span>
         {isLifeItem && <EstimateLine est={estimateOfListing(listing)} />}
-        {lifeDays != null && listing.itemType === 'vehicle' && !isCarId(listing.vehicleCatalogId) && <LifeOnly lifeDays={lifeDays} />}
-        {lifeDays != null && !(listing.itemType === 'vehicle' && !isCarId(listing.vehicleCatalogId)) && (
+        {/* v195: tamirsiz araç (motor) sadece ömür; ticari artık tamir hakkıyla birlikte */}
+        {lifeDays != null && listing.itemType === 'vehicle' && !canRepairVehicle(listing.vehicleCatalogId) && <LifeOnly lifeDays={lifeDays} catalogId={listing.vehicleCatalogId} />}
+        {lifeDays != null && !(listing.itemType === 'vehicle' && !canRepairVehicle(listing.vehicleCatalogId)) && (
           <div className="market-listing-life-row">
             <span className="market-listing-life-label">
               Ömür: {lifeDays} / {lifeCap} gün · Tamir hakkı: {MAX_REPAIRS - repairsUsed}/

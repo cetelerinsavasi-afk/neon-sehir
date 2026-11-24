@@ -59,8 +59,9 @@ import { vehicleShopOf, canModify } from './fleet.js'; // v177: galeri → araba
 import { itemListingTimeFields, batchesOf, consumeBatches, nextExpireAtMs, materialTtl } from './listingBatches.js';
 import { planAutoSupply, planGameSupply, ownListingStock, AUTO_SUPPLY_MAT_NAMES } from './autoSupply.js';
 import { VEHICLE_CATALOG, WEAPON_CATALOG } from './catalogData.js';
-import { VEHICLE_WEAPON_INITIAL_LIFE_DAYS, WEAPON_INITIAL_LIFE_DAYS } from './itemRules.js';
+import { WEAPON_INITIAL_LIFE_DAYS, vehicleLifeCap } from './itemRules.js';
 import { newSaleTax } from './tax.js';
+import { isBizPassive } from './bizPassive.js'; // v195 pasif mekân
 import { STOCK_KIND, STOCK_ADD_MAX, stockUnitCost, stockPriceBand, validStockPrice, clampStockPrice, stockUnitPaid, stockQty, isPristineItem, isPristineListing, sourceOrder, bestStockPrice } from './shopStockRules.js';
 
 // v130 — oyunun mağazasındakiyle AYNI yeni ürün belgesi (index.js buyWeapon / buyVehicle de kullanır)
@@ -95,7 +96,7 @@ export function newVehicleDoc(uid, catalogId, FieldValue) {
     turboCount: e.turboCount,
     mortgaged: false,
     seizedByBank: false,
-    lifeDays: VEHICLE_WEAPON_INITIAL_LIFE_DAYS,
+    lifeDays: vehicleLifeCap(catalogId), // v195: araba / ticari 10, motor 20
     repairsUsed: 0,
     purchasedAt: FieldValue.serverTimestamp(),
   };
@@ -374,7 +375,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       // ürün güncellemesi (eski repairItem / upgradeWeapon / upgradeVehicle ile aynı)
       let patch;
       if (action === 'repair') {
-        const cap = lifeCapOf(itemType);
+        const cap = lifeCapOf(itemType, item);
         patch = { lifeDays: Math.min(cap, (item.lifeDays ?? cap) + repairBonusOf(itemType)), repairsUsed: (item.repairsUsed || 0) + 1 };
       } else if (itemType === 'weapon') {
         const level = (item.level || 1) + 1;
@@ -407,7 +408,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
         return Number.isFinite(r) && r > 0 ? r : 0;
       };
       ids = qs.docs
-        .filter((d) => !d.data().bizGame && d.data().biz?.type === type && d.data().ownerUid)
+        .filter((d) => !d.data().bizGame && d.data().biz?.type === type && d.data().ownerUid && !isBizPassive(d.data())) // v195: pasif atlanır
         .sort((a, b) => Number(rk(a) === 0) - Number(rk(b) === 0) || rk(b) - rk(a) || a.id.localeCompare(b.id))
         .slice(0, 8)
         .map((d) => d.id);
@@ -416,7 +417,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
     for (const id of ids) {
       const hs = await tx.get(houseRef(id));
       const h = hs.exists ? hs.data() : null;
-      if (h && !h.bizGame && h.biz?.type === type && h.ownerUid && h.ownerUid !== excludeUid) return { houseId: id, h, cacheWrite };
+      if (h && !h.bizGame && h.biz?.type === type && h.ownerUid && h.ownerUid !== excludeUid && !isBizPassive(h)) return { houseId: id, h, cacheWrite };
     }
     return { houseId: null, h: null, cacheWrite };
   }
@@ -783,10 +784,13 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
   }
 
   // ---- v132 OYUNUN MAĞAZASI (Silah Mağazası / Araba Galerisi) -------------------------
-  // Stoğu olan oyuncu dükkânlarının en ucuzu satılır; fiyat eşitse dünkü kazanç
-  // sırasında en altta olan (en az kazanan; sırası yoksa en alt sayılır) kazanır.
+  // Stoğu olan oyuncu dükkânlarının en ucuzu satılır. v195 eşitlik sırası:
+  //   1) fiyat eşitse BUGÜN en az kazanan (bizDayKey(tür) — gizli businessDaily/{ev}_{gün}.revenue;
+  //      sadece en ucuz fiyatta 2+ geçerli aday varsa ve sadece o adaylar için okunur, en fazla 12)
+  //   2) o da eşitse dünkü kazanç sırasında en altta olan (bizRank; sırası yoksa en alt sayılır)
+  // Pasif (20 gün girmeyen sahibin) dükkânı aday olmaz (teklifi dizinden silinir).
   // Hiçbir dükkânda yoksa oyunun kendisi satar (eski davranış). Ekranda sadece fiyat
-  // farklı görünür; satıcı belli olmaz.
+  // farklı görünür; satıcı belli olmaz. Kazanç tutarı herkese açık belgeye YAZILMAZ.
   //   expect: istemcinin gösterdiği fiyat (eski istemci göndermez → en ucuz fiyattan)
   const RANK_LAST = Number.MAX_SAFE_INTEGER;
   const rankOf = (h) => (Number.isFinite(Number(h?.bizRank)) && Number(h.bizRank) > 0 ? Number(h.bizRank) : RANK_LAST);
@@ -822,12 +826,22 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
           const st = h && h.biz?.type === type ? stockOf(ss, type) : null;
           const qty = st ? stockQty(st, cid) : 0;
           const real = st && qty > 0 ? clampStockPrice(e.price, st.prices?.[cid]) : 0;
-          if (!real || real !== pr) fixes.push([hid, real]);
+          // v195: pasif dükkân aday olmaz — teklifi dizinden kaldırılır (giriş yapınca stoktan geri yazılır)
+          if (!real || real !== pr || isBizPassive(h)) fixes.push([hid, isBizPassive(h) ? 0 : real]);
           // v149: alıcının kendi dükkânı atlanır (kendi dükkânından alışveriş yok)
           else if (h.ownerUid !== uid) valid.push({ hid, h, st });
         });
         if (valid.length) {
-          valid.sort((a, b) => rankOf(b.h) - rankOf(a.h) || a.hid.localeCompare(b.hid));
+          // v195: eşit fiyatta bugünün en az kazananı. İşlemin okuma kümesine katılmaz (db.getAll):
+          // o dükkânlardaki başka satışlar bu alımı yeniden denetmesin; sıralama için anlık değer yeter.
+          const today = new Map();
+          if (valid.length > 1) {
+            const day = bizDayKey(type, now());
+            const refs = valid.map((v) => db.collection('businessDaily').doc(`${v.hid}_${day}`));
+            const ds = typeof db.getAll === 'function' ? await db.getAll(...refs) : await Promise.all(refs.map((r) => r.get()));
+            ds.forEach((d, i) => today.set(valid[i].hid, Math.max(0, Number(d.exists ? d.data()?.revenue : 0) || 0)));
+          }
+          valid.sort((a, b) => (today.get(a.hid) || 0) - (today.get(b.hid) || 0) || rankOf(b.h) - rankOf(a.h) || a.hid.localeCompare(b.hid));
           pick = { ...valid[0], price: pr };
           break;
         }
@@ -974,7 +988,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       const item = is.data();
       if (item.listed) fail('failed-precondition', 'listed');
       if (itemType === 'vehicle' && (item.mortgaged || item.seizedByBank)) fail('failed-precondition', 'mortgaged');
-      if ((item.lifeDays ?? lifeCapOf(itemType)) <= 0) fail('failed-precondition', 'life0');
+      if ((item.lifeDays ?? lifeCapOf(itemType, item)) <= 0) fail('failed-precondition', 'life0');
       if (itemType === 'weapon' && pre.data()?.profession === 'polis') {
         const mine = await tx.get(db.collection('weapons').where('ownerId', '==', uid));
         const usable = mine.docs.filter((d) => !d.data().listed).length;
@@ -1053,7 +1067,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       const penalty = removePenalty(item);
       if (penalty && !p.confirmPenalty) fail('failed-precondition', 'remove-penalty');
       if (listing) tx.update(listing.ref, { sold: true, cancelled: true, expireAtMs: FieldValue.delete() });
-      const cur = item.lifeDays ?? lifeCapOf(itemType);
+      const cur = item.lifeDays ?? lifeCapOf(itemType, item);
       const life = penalty ? Math.max(0, cur - 1) : cur;
       tx.update(itemRef, {
         listed: false,
@@ -1107,7 +1121,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       tx.get(db.collection('vehicles').where('shopHouseId', '==', houseId)),
       tx.get(listingsRef.where('shopHouseId', '==', houseId).where('sold', '==', false)),
     ]);
-    const pack = (snap, kind) => snap.docs.map((d) => ({ ref: d.ref, life: d.data().lifeDays ?? lifeCapOf(kind), penalty: removePenalty(d.data()) }));
+    const pack = (snap, kind) => snap.docs.map((d) => ({ ref: d.ref, life: d.data().lifeDays ?? lifeCapOf(kind, d.data()), penalty: removePenalty(d.data()) }));
     // v130: stok — ödenen tutar sahibine iade edilir, belge silinir
     const ss = await tx.get(stockRef(houseId));
     const stock = ss.exists ? { ref: ss.ref, refund: Object.values(ss.data().paid || {}).reduce((a, n) => a + Math.max(0, Math.round(Number(n) || 0)), 0), kind: STOCK_KIND[ss.data().type] || null, cids: Object.keys(ss.data().items || {}) } : null;

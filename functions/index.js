@@ -19,6 +19,8 @@ import { createHouses } from './houses.js';
 import { createCityPhoto, cityRtdbUrl } from './cityPhoto.js'; // v147 şehir fotoğrafı
 import { cleanSixImage, SIX_IMG_TYPES } from './sixImage.js'; // v160.2 Sixtagram fotoğraf görseli
 import { createBusiness } from './business.js';
+import { createV195Migration } from './v195Migration.js'; // v195 tek seferlik ömür geçişi
+import { isBizPassive } from './bizPassive.js'; // v195
 import { newSaleTax, resaleTax, factoryTax, factoryTaxRate, taxLedgerWrite, taxStatWrite, splitSalaryTax, splitLotteryTax, machineTax, loadRates, ratesFor, pctText, lotteryTaxRate, transferTax } from './tax.js';
 import { createBelediye } from './belediye.js'; // v127
 import { createPolitics } from './politics.js'; // v136 seçim sistemi
@@ -43,6 +45,7 @@ import {
   VEHICLE_WEAPON_INITIAL_LIFE_DAYS,
   VEHICLE_WEAPON_MAX_REPAIRS,
   WEAPON_INITIAL_LIFE_DAYS,
+  vehicleLifeCap,
   lifeCapOf,
   repairBonusOf,
   repairRequiredQty,
@@ -239,13 +242,14 @@ export const socialAction = social.socialAction;
 // v66 — 3D Ev (herkese açık: satın alma, envanter, sepet, davet). Ayrıntı functions/houses.js
 // v77 — İşletmeler: günlük rapor/sıralama (business) + silahçı/modifiye/galeri
 // (shop: atölye + vitrin). shop'un kapanış kancaları houses'a verilir.
-const business = createBusiness({ db, FieldValue: admin.firestore.FieldValue });
+const business = createBusiness({ db, FieldValue: admin.firestore.FieldValue, HttpsError }); // v195: pasif mekân geliri iptal
 // v100 — Ofisler: ücretli mobilyalar (functions/office.js)
 const office = createOffice({
   db,
   FieldValue: admin.firestore.FieldValue,
   HttpsError,
   splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
+  business, // v195: pasif ofis kontrol dizini
 });
 const venue = createVenue({
   db,
@@ -900,6 +904,7 @@ const VALID_MACHINES = Object.keys(MACHINE_TYPES);
 // Ömür bittiğinde VE 10 tamir hakkının tamamı kullanıldığında ürün
 // hurdaya çıkarılır (silinir + SMS). Her tamir ömrü +2 gün uzatır
 // (orijinal 20 günü aşmaz) ve tamir hakkını 1 azaltır. 2. el satış fiyat
+// [v195: araba + ticari 10 gün, tamir +1 gün; motor 20 gün tamirsiz — functions/itemRules.js]
 // aralığı (min/max), ömür oranıyla (kalanÖmür/20) doğru orantılı düşer.
 // (Kullanıcı revizesi: max ömür 30 → 20 güne düşürüldü, tamir bonusu 3 → 2
 // güne düşürüldü; bkz. migrations/vehicleWeaponLifeCap20.)
@@ -1170,9 +1175,11 @@ export const initializePlayer = onCall(async (request) => {
   const userRef = db.collection('users').doc(uid);
   const privateRef = userRef.collection('private').doc('meta');
   let isNewPlayer = false;
+  let bizPassive = false; // v195: 20 gün girmediği için mekânları pasif mi? (zaten okunan belgeden)
 
   await db.runTransaction(async (tx) => {
     const snap = await tx.get(userRef);
+    bizPassive = Boolean(snap.exists && snap.data()?.bizPassive);
     if (snap.exists) return; // zaten var, dokunma
 
     isNewPlayer = true;
@@ -1203,6 +1210,15 @@ export const initializePlayer = onCall(async (request) => {
     await privateRef.set({ lastSeenAtMs: Date.now(), lastSeenDay: istanbulDateKey() }, { merge: true });
   } catch (err) {
     console.error('lastSeen yazılamadı', err?.message || err);
+  }
+  // v195 — 20 gün girmeyen oyuncunun pasif mekânları girişte otomatik açılır (bayrak yoksa ek iş yok).
+  // Giriş kaydı yukarıda yazıldı; açma başarısız olursa bayrak kalır, bir sonraki girişte yeniden denenir.
+  if (bizPassive) {
+    try {
+      await business.reactivateOwner(uid);
+    } catch (err) {
+      console.error('pasif mekânlar açılamadı', uid, err?.message || err);
+    }
   }
 
   return { ok: true, isNewPlayer };
@@ -2854,6 +2870,35 @@ export const runChampV2MigrationNow = onRequest({ timeoutSeconds: 540 }, async (
   }
 });
 
+// v195 — TEK SEFERLİK: araba + ticari ömür 20 → 10 (bayrak migrations/vehicleLifeCap10; functions/v195Migration.js).
+// Kullanım (deploy'dan SONRA, bir kez): …/runV195MigrationNow?secret=MAINTENANCE_SECRET
+// Gece ömür azaltma (00:00) ile çakışmasın diye 23:45–00:30 arası reddeder. Tekrar açmak zararsız
+// (bayrak varsa hiçbir şey okunmaz). ASLA girişte / App.jsx'ten çağrılmaz.
+export const runV195MigrationNow = onRequest({ timeoutSeconds: 540, memory: '1GiB', maxInstances: 1 }, async (req, res) => {
+  if (!req.query.secret || req.query.secret !== MAINTENANCE_SECRET) {
+    res.status(403).json({ error: 'Yetkisiz.' });
+    return;
+  }
+  const hm = new Date(Date.now() + 3 * 3600_000).toISOString().slice(11, 16);
+  if ((hm >= '23:45' || hm < '00:30') && req.query.force !== '1') {
+    res.status(409).json({ ok: false, error: `Saat ${hm}: gece ömür azaltmasıyla çakışmasın diye 00:30'dan sonra tekrar aç.` });
+    return;
+  }
+  try {
+    const mig = createV195Migration({
+      db,
+      FieldValue: admin.firestore.FieldValue,
+      announce: (message) => logNewsEvent('duyuru', { message, key: 'v195_vehicle_life' }),
+    });
+    const r = await mig.run({ force: req.query.again === '1' });
+    console.log(JSON.stringify({ v195Migration: r }));
+    res.status(200).json(r);
+  } catch (err) {
+    console.error('v195 geçiş', err);
+    res.status(500).json({ ok: false, error: err?.message || String(err) });
+  }
+});
+
 // v130 — Kullanım: …/runShopV130MigrationNow?secret=MAINTENANCE_SECRET
 export const runShopV130MigrationNow = onRequest({ timeoutSeconds: 540 }, async (req, res) => {
   if (!req.query.secret || req.query.secret !== MAINTENANCE_SECRET) {
@@ -3887,7 +3932,7 @@ async function runDailyResetBody(dateKey, dr) {
           // v115: 2. elde satılıktayken (oyuncu ilanı ya da anında satış sonrası
           // sistem ilanı) ömür azalmaz — ilan kalkınca kaldığı yerden devam eder.
           if (item.listed) return;
-          const currentLife = item.lifeDays ?? lifeCapOf(collName === 'weapons' ? 'weapon' : 'vehicle');
+          const currentLife = item.lifeDays ?? lifeCapOf(collName === 'weapons' ? 'weapon' : 'vehicle', item);
           const newLife = Math.max(0, currentLife - 1);
           const repairsUsed = item.repairsUsed || 0;
           if (newLife <= 0 && repairsUsed >= VEHICLE_WEAPON_MAX_REPAIRS) {
@@ -5098,7 +5143,7 @@ export const takeVehicleLoan = onCall(async (request) => {
         '2. el satışta olan bir araca kredi çekemezsin.'
       );
     }
-    const vehicleLife = vehicle.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
+    const vehicleLife = vehicle.lifeDays ?? vehicleLifeCap(vehicle);
     if (!(vehicleLife > termDays)) {
       throw new HttpsError(
         'failed-precondition',
@@ -5225,7 +5270,7 @@ async function computeCreditScore(uid) {
   vehiclesSnap.forEach((d) => {
     const v = d.data();
     if (v.mortgaged || v.seizedByBank || v.listed) return;
-    if ((v.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS) <= 0) return;
+    if ((v.lifeDays ?? vehicleLifeCap(v)) <= 0) return;
     const base = VEHICLE_CATALOG[v.catalogId]?.price || 0;
     const mult = v.gearUpgraded && v.tankUpgraded ? 3 : v.gearUpgraded || v.tankUpgraded ? 2 : 1;
     vehicles += Math.floor((base * mult * valueRatioOf(v)) / 2);
@@ -8118,6 +8163,7 @@ export const migrateArabaGelistirmeUnification = onCall(async (request) => {
 // ömrü olanları düşürür — zaten 29 ya da altında olanlara dokunmaz. Her
 // oturum açmış oyuncu tetikleyebilir, zararsızdır (sadece aşırı yüksek
 // ömür değerlerini yeni tavana çeker).
+const LEGACY_LIFE_CAP_20 = 20; // v195: eski ömür geçişlerinin (50→30→20) son tavanı — değiştirme
 async function runVehicleWeaponLifeCapMigration() {
   // BUG DÜZELTMESİ: bu fonksiyon önceden App.jsx tarafından HER oturum
   // açılışında çağrılıyordu ve kendi içinde bir "zaten çalıştı mı" kontrolü
@@ -8130,6 +8176,9 @@ async function runVehicleWeaponLifeCapMigration() {
   const migrationRef = db.collection('migrations').doc('vehicleWeaponLifeCap');
   const migrationSnap = await migrationRef.get();
   if (migrationSnap.exists) return;
+  // v195: eski geçiş kendi (tarihî) tavanıyla donduruldu — VEHICLE_WEAPON_INITIAL_LIFE_DAYS artık 10
+  // (araba / ticari); bayrak eksik olsa bile motorlar ve silahlar 10'a çekilmesin.
+  const VEHICLE_WEAPON_INITIAL_LIFE_DAYS = LEGACY_LIFE_CAP_20;
 
   for (const collName of ['vehicles', 'weapons']) {
     const snap = await db.collection(collName).get();
@@ -8204,6 +8253,7 @@ async function runVehicleWeaponLifeCap20Migration() {
   const migrationRef = db.collection('migrations').doc('vehicleWeaponLifeCap20');
   const migrationSnap = await migrationRef.get();
   if (migrationSnap.exists) return;
+  const VEHICLE_WEAPON_INITIAL_LIFE_DAYS = LEGACY_LIFE_CAP_20; // v195: tarihî tavan (bkz. yukarıdaki not)
 
   for (const collName of ['vehicles', 'weapons']) {
     const snap = await db.collection(collName).get();
@@ -9013,7 +9063,7 @@ async function getVehicleForRace(uid, vehicleId) {
       'Bu araç şu an 2. el sitesinde satışta, yarışa bu araçla giremezsin.'
     );
   }
-  const lifeDays = vehicle.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
+  const lifeDays = vehicle.lifeDays ?? vehicleLifeCap(vehicle);
   if (!(lifeDays > 0)) {
     throw new HttpsError(
       'failed-precondition',
@@ -9903,7 +9953,7 @@ async function doCreateChampionshipRace(request) {
     const mine = await db.collection('vehicles').where('ownerId', '==', uid).get();
     const raceable = mine.docs
       .map((d) => d.data())
-      .filter((v) => Number(v.catalogId) === catalogId && !v.listed && !v.seizedByBank && (v.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS) > 0);
+      .filter((v) => Number(v.catalogId) === catalogId && !v.listed && !v.seizedByBank && (v.lifeDays ?? vehicleLifeCap(v)) > 0);
     const best = raceable.reduce((m, v) => Math.max(m, vehicleRaceLevel(v)), 0);
     if (vehicleRaceLevel(vehicle) < best) {
       throw new HttpsError('failed-precondition', 'Bu modelden daha yüksek seviyeli araban var — şampiyonaya onunla katılabilirsin.');
@@ -10319,7 +10369,7 @@ export const createListing = onCall(async (request) => {
       if (v.listed) {
         throw new HttpsError('failed-precondition', 'Bu araç zaten listelenmiş.');
       }
-      const vehicleLifeDays = v.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
+      const vehicleLifeDays = v.lifeDays ?? vehicleLifeCap(v);
       if (vehicleLifeDays <= 0) {
         throw new HttpsError(
           'failed-precondition',
@@ -10573,7 +10623,7 @@ export const instantSellListing = onCall(async (request) => {
         throw new HttpsError('failed-precondition', 'Bu araç şu an satılamaz.');
       }
       if (!canResell(v.catalogId)) throw new HttpsError('failed-precondition', NO_RESALE_TEXT); // v177
-      const vehicleLifeDays = v.lifeDays ?? VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
+      const vehicleLifeDays = v.lifeDays ?? vehicleLifeCap(v);
       if (vehicleLifeDays <= 0) {
         throw new HttpsError(
           'failed-precondition',
@@ -10770,7 +10820,7 @@ export const cancelListing = onCall(async (request) => {
       if (itemSnap.exists) {
         const patch = { listed: false };
         if (penalty) {
-          const cap = lifeCapOf(listing.itemType);
+          const cap = lifeCapOf(listing.itemType, itemSnap.data());
           patch.lifeDays = Math.max(0, (itemSnap.data().lifeDays ?? cap) - 1);
           penalized = true;
         }
@@ -12314,7 +12364,9 @@ async function futbolActiveLeagueCount() {
 // açıldığında ÜST ligler otomatik +20.000 artar, yeni (en alt) lig
 // otomatik 20.000'den başlar (kullanıcının istediği "kademeli artış" zaten
 // bu formülün doğal sonucu).
-const FUTBOL_TRANSFER_SUPPORT_UNIT = 20000; // 20.000 × (lig sayısı - lig sırası + 1)
+// v195: birim 20.000 → 40.000 (×2). Tavan (×5) ve bot / oto-bot kasa tavanı (futbolTreasuryCap =
+// futbolTransferSupportCap, kullanıcı kuralı "birebir aynı") bununla birlikte otomatik ikiye katlanır.
+const FUTBOL_TRANSFER_SUPPORT_UNIT = 40000; // 40.000 × (lig sayısı - lig sırası + 1)
 const FUTBOL_TRANSFER_SUPPORT_CAP_MULT = 5; // tavan = günlük miktarın 5 katı
 
 function futbolTransferSupportDaily(tier, leagueCount) {
@@ -15518,7 +15570,7 @@ async function assignFutbolBotTraining() {
       const price = gymPriceOf(h);
       return { id: d.id, h, price, bonus };
     })
-    .filter((g) => g.h.biz?.type === 'spor');
+    .filter((g) => g.h.biz?.type === 'spor' && !isBizPassive(g.h)); // v195: pasif salon (sahibi 20 gün girmedi) seçilmez
   // v132: oyunun salonu kapalı — oyuncu salonu varken botlar da oraya gitmez
   if (gyms.some((g) => !g.h.bizGame)) gyms = gyms.filter((g) => !g.h.bizGame);
   if (!gyms.length) return;
@@ -15549,7 +15601,7 @@ async function assignFutbolBotTraining() {
       const [ts, gs] = await Promise.all([tx.get(teamDoc.ref), tx.get(db.collection('houses').doc(g.id))]);
       const t = ts.data();
       const gh = gs.exists ? gs.data() : null;
-      if (!t || (t.treasury || 0) < cost || !gh || gh.biz?.type !== 'spor') return;
+      if (!t || (t.treasury || 0) < cost || !gh || gh.biz?.type !== 'spor' || isBizPassive(gh)) return;
       const ownerSnap = gh.bizGame ? null : await tx.get(db.collection('users').doc(gh.ownerUid));
       gym.payGymTx(tx, { gymId: g.id, h: gh, ownerSnap, amount: cost, customerUid: `team_${teamDoc.id}`, kind: 'team', atMs: Date.now(), products: { 'takım:bot': trainingIds.length } });
       const slots = {};

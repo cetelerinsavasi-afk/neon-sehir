@@ -4,6 +4,17 @@ import { renameVehicle } from '../../services/gameActions';
 import { CarStatBars, vehicleRaceLevel } from '../RaceTrackScreen/CarStats';
 import CarImg from './CarImg';
 import './VehicleCard.css';
+import {
+  VEHICLE_WEAPON_INITIAL_LIFE_DAYS,
+  VEHICLE_WEAPON_MAX_REPAIRS,
+  REPAIR_LIFE_BONUS_DAYS,
+  WEAPON_INITIAL_LIFE_DAYS,
+  WEAPON_REPAIR_LIFE_BONUS_DAYS,
+  MOTOR_LIFE_DAYS,
+  lifeCapOf,
+  repairBonusOf,
+} from '../../../functions/itemRules.js';
+import { canRepairVehicle, canUpgradeVehicle } from '../../../functions/vehicleKinds.js';
 
 // VehicleCard — Profil (HomeScreen) VE Modifiye Garajı (GarageScreen)
 // TARAFINDAN ORTAK kullanılan tek bir bileşen. İkisinin "birebir aynı"
@@ -11,26 +22,20 @@ import './VehicleCard.css';
 // çıkarıldı — iki yerde ayrı ayrı tutulursa zamanla birbirinden
 // sapabilirdi.
 
-export const INITIAL_LIFE_DAYS = 20;
-export const MAX_REPAIRS = 10;
-export const REPAIR_LIFE_BONUS_DAYS = 2;
-// v58: silahların azami ömrü 10 gün, her tamir +1 gün (araçlar değişmedi).
-// Sunucudaki ikizi: functions/index.js WEAPON_INITIAL_LIFE_DAYS.
-export const WEAPON_INITIAL_LIFE_DAYS = 10;
-export const WEAPON_REPAIR_LIFE_BONUS_DAYS = 1;
-export function lifeCapOf(kind) {
-  return kind === 'weapon' ? WEAPON_INITIAL_LIFE_DAYS : INITIAL_LIFE_DAYS;
-}
-export function repairBonusOf(kind) {
-  return kind === 'weapon' ? WEAPON_REPAIR_LIFE_BONUS_DAYS : REPAIR_LIFE_BONUS_DAYS;
-}
-// v58: ömrü doluyken tamir düğmesi pasif
+// v195: ömür / tamir sabitleri artık TEK KAYNAKTAN (functions/itemRules.js) — eskiden burada
+// ikizi duruyordu (araç 20 gün / +2). Araba + ticari 10 gün, 10 tamir, her tamir +1 gün;
+// motor / bisiklet / at / deve 20 gün (tamirsiz); silah 10 gün / +1.
+export const INITIAL_LIFE_DAYS = VEHICLE_WEAPON_INITIAL_LIFE_DAYS;
+export const MAX_REPAIRS = VEHICLE_WEAPON_MAX_REPAIRS;
+export { REPAIR_LIFE_BONUS_DAYS, WEAPON_INITIAL_LIFE_DAYS, WEAPON_REPAIR_LIFE_BONUS_DAYS, MOTOR_LIFE_DAYS, lifeCapOf, repairBonusOf };
+// v58: ömrü doluyken tamir düğmesi pasif · v195: araçta tavan katalog numarasına göre (motor 20)
 export function isLifeFull(item, kind = 'vehicle') {
-  return (item?.lifeDays ?? lifeCapOf(kind)) >= lifeCapOf(kind);
+  const cap = lifeCapOf(kind, item);
+  return (item?.lifeDays ?? cap) >= cap;
 }
 
 export function lifeRatio(item, kind = 'vehicle') {
-  const cap = lifeCapOf(kind);
+  const cap = lifeCapOf(kind, item);
   const life = item?.lifeDays ?? cap;
   return Math.max(0, Math.min(1, life / cap));
 }
@@ -68,19 +73,23 @@ export function vehicleRequiredQty(vehicle) {
 }
 
 export function LifeBar({ item, kind = 'vehicle' }) {
-  const cap = lifeCapOf(kind);
+  const cap = lifeCapOf(kind, item);
   const life = item?.lifeDays ?? cap;
   const repairsUsed = item?.repairsUsed || 0;
   const percent = Math.round(lifeRatio(item, kind) * 100);
+  // v195: motorda tamir yok — tamir hakkı yazılmaz
+  const repairable = kind === 'weapon' || item?.catalogId == null || canRepairVehicle(item.catalogId);
   return (
     <div className="vcard-life-row">
       <div className="vcard-life-label">
         <span>
           Ömür: {life} / {cap} gün
         </span>
-        <span>
-          Tamir hakkı: {MAX_REPAIRS - repairsUsed}/{MAX_REPAIRS}
-        </span>
+        {repairable && (
+          <span>
+            Tamir hakkı: {MAX_REPAIRS - repairsUsed}/{MAX_REPAIRS}
+          </span>
+        )}
       </div>
       <div className="vcard-life-bar">
         <div className="vcard-life-bar-fill" style={{ width: `${percent}%` }} />
@@ -92,7 +101,16 @@ export function LifeBar({ item, kind = 'vehicle' }) {
 // v77: Profilde sadece bilgi — tamir/geliştirme dükkânların "Tamir / Geliştirme"
 // ekranında (silah: Silahçı, araba: Modifiye Garajı). Yazıyla gösterilir.
 //   kind 'vehicle': slots=[vites, depo] · kind 'weapon': slots=[sv2, sv3]
-export function UpgradeCells({ slots, kind = 'vehicle' }) {
+export function UpgradeCells({ slots, kind = 'vehicle', catalogId = null }) {
+  // v195: ticari araç ve motor geliştirilemez (ticari tamir edilir)
+  if (kind === 'vehicle' && catalogId != null && !canUpgradeVehicle(catalogId)) {
+    return (
+      <span className="vcard-upinfo">
+        Geliştirme: <b>yok</b>
+        <small>{canRepairVehicle(catalogId) ? 'Tamir: Modifiye Garajı › Tamir' : 'Bu araç tamir / geliştirme almaz'}</small>
+      </span>
+    );
+  }
   if (kind === 'weapon') {
     const lv = 1 + slots.filter(Boolean).length;
     return (
@@ -182,7 +200,7 @@ export default function VehicleCard({ vehicle, locked = false }) {
         </span>
         <CarStatBars catalogId={vehicle.catalogId} level={vehicleRaceLevel(vehicle)} compact />
         <LifeBar item={vehicle} />
-        <UpgradeCells slots={[vehicleRaceLevel(vehicle) >= 2, vehicleRaceLevel(vehicle) >= 3]} kind="vehicle" />
+        <UpgradeCells slots={[vehicleRaceLevel(vehicle) >= 2, vehicleRaceLevel(vehicle) >= 3]} kind="vehicle" catalogId={vehicle.catalogId} />
       </div>
     </div>
   );

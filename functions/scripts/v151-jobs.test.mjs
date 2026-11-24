@@ -29,7 +29,8 @@ test('meslek: işi sunucu seçer, en kısa süreden önce bitmez, kazanç ortala
   await assert.rejects(ops.jobDone('u', { vehicleId: 't', runId: r.run.id, t: 1, hits: 0 }), /too-fast/);
   clock.t += r.run.par * 1000;
   const d = await ops.jobDone('u', { vehicleId: 't', runId: r.run.id, t: r.run.par, hits: 0 });
-  assert.ok(d.total > 3000 && d.total < 7000, `kazanç ${d.total}`);
+  // v195: tır ortalaması 6.000 → 9.000 (×1,5)
+  assert.ok(d.total > 4500 && d.total < 10500, `kazanç ${d.total}`);
   assert.equal((await db.doc('users/u').get()).data().gold, d.total);
   assert.equal(d.left, 4); // v157: tır şehir içi günde 5
   // aynı iş ikinci kez ödenmez
@@ -68,10 +69,16 @@ test('meslek: sadece sahibi, ticari araç, ilandaki araç çalışmaz', async ()
   await assert.rejects(ops.jobStart('u', { vehicleId: 'l' }), /listed/);
 });
 
-test('ticari / motor: tamir + geliştirme yok, 2. el değeri kalan ömre göre, modifiye kuralları', () => {
-  assert.equal(workshopJob({ itemType: 'vehicle', item: { catalogId: 12 }, action: 'repair' }).block, 'noWork');
+test('ticari / motor: v195 ticari tamir olur ama geliştirilmez; motorda ikisi de yok; 2. el değeri; modifiye kuralları', () => {
+  // v195: ticari 10 gün + 10 tamir (+1 gün) → ömrü dolu otobüs "full", eksikse tamir edilir
+  assert.equal(workshopJob({ itemType: 'vehicle', item: { catalogId: 12 }, action: 'repair' }).block, 'full');
+  assert.equal(workshopJob({ itemType: 'vehicle', item: { catalogId: 12, lifeDays: 6 }, action: 'repair' }).block, null);
+  assert.equal(workshopJob({ itemType: 'vehicle', item: { catalogId: 12 }, action: 'upgrade', upgradeType: 'level' }).block, 'noWork');
+  assert.equal(workshopJob({ itemType: 'vehicle', item: { catalogId: 21 }, action: 'repair' }).block, 'noWork');
   assert.equal(workshopJob({ itemType: 'vehicle', item: { catalogId: 21 }, action: 'upgrade', upgradeType: 'level' }).block, 'noWork');
-  assert.equal(itemListingBand('vehicle', { catalogId: 11, lifeDays: 10 }).max, 250_000);
+  // tır 500.000: ömür 10/10, tamir 10/10 → tam değer; 5 gün + 10 hak → (5+10)/20
+  assert.equal(itemListingBand('vehicle', { catalogId: 11, lifeDays: 10 }).max, 500_000);
+  assert.equal(itemListingBand('vehicle', { catalogId: 11, lifeDays: 5 }).max, 375_000);
   assert.equal(modProfile(11), 'truck');
   assert.equal(modProfile(23), 'moto');
   // tır: dorse tipi %3 (500.000 → 15.000), plaka %5

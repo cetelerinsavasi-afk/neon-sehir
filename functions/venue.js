@@ -245,7 +245,8 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       const { goldDelta, debtDelta } = splitIncomeForDebt(ws2.data()?.debtToState, salary);
       tx.update(userRef(o.waiterUid), { gold: FieldValue.increment(goldDelta), debtToState: FieldValue.increment(debtDelta), goldTag: goldTag('garson') });
     }
-    if (h) business?.recordIncomeTx(tx, { houseId: o.houseId, h, amount: price, kind: 'menu', customerUid: o.customerUid, products: { [o.product]: 1 }, tax, salary });
+    // v195: sipariş pasiflikten önce ödendi (emanet) → kullanıcı kararı: tamamlanır, para sahibine
+    if (h) business?.recordIncomeTx(tx, { houseId: o.houseId, h, amount: price, kind: 'menu', customerUid: o.customerUid, products: { [o.product]: 1 }, tax, salary, allowPassive: true });
     tx.set(db.collection('heldItems').doc(o.customerUid), {
       itemId: o.product,
       venue: 'ev',

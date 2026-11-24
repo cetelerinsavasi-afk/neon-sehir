@@ -4,6 +4,7 @@ import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { usePolledPresence } from './usePolledPresence';
 import { useCachedQuery } from '../lib/cachedQuery';
+import { isBizPassive } from '../../functions/bizPassive.js'; // v195
 
 // v77 — useBusinessList: bir türdeki açık işletmeler (houses.bizType == type)
 // ve içlerinde kaç kişi olduğu. Sıra: dünkü kazanç sırası (bizRank, sunucu
@@ -58,7 +59,8 @@ export function useBusinessList(type, { enabled = true, includeGame = false } = 
     const uid = user?.uid;
     const list = rows
       // v132: oyunun spor salonu kapalı (arka planda duruyor, listede görünmez)
-      .filter((h) => (includeGame || !h.bizGame) && !(h.bizGame && h.bizType === 'spor') && !(Number(h.kicked?.[uid] || 0) > now))
+      // v195: pasif mekân (sahibi 20 gün girmedi) listede görünmez — bayrak zaten okunan ev belgesinde (ek okuma yok)
+      .filter((h) => (includeGame || !h.bizGame) && !(h.bizGame && h.bizType === 'spor') && !(Number(h.kicked?.[uid] || 0) > now) && !isBizPassive(h))
       .map((h) => ({ ...h, people: counts[h.id] || 0, mine: h.ownerUid === uid }));
     const rank = (h) => (Number.isFinite(h.bizRank) && h.bizRank > 0 ? h.bizRank : Infinity);
     list.sort((a, b) => rank(a) - rank(b) || (a.biz?.openedAtMs || 0) - (b.biz?.openedAtMs || 0));

@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { usePolledPresence } from './usePolledPresence';
 import { useCachedQuery } from '../lib/cachedQuery';
 import { useYesterdayVisits } from './useYesterdayVisits';
+import { isBizPassive } from '../../functions/bizPassive.js'; // v195
 
 // v100 — Evler › Ofisler: ücretli mobilyası olan evler (kind 'ofis'). Göç bitene
 // kadar eski home ofisler (bizType mescit/sinema/stüdyo) da listelenir.
@@ -52,7 +53,8 @@ export function useOfficeList({ enabled = true } = {}) {
       .filter((h) => {
         if (seen.has(h.id)) return false;
         seen.add(h.id);
-        return !(Number(h.kicked?.[uid] || 0) > now);
+        // v195: pasif ofis (sahibi 20 gün girmedi) listede görünmez
+        return !(Number(h.kicked?.[uid] || 0) > now) && !isBizPassive(h);
       })
       .map((h) => ({ ...h, people: counts[h.id] || 0, yv: yv[h.id] || 0, mine: h.ownerUid === uid }))
       .sort((a, b) => b.people - a.people || b.yv - a.yv || (a.office?.sinceMs || a.biz?.openedAtMs || 0) - (b.office?.sinceMs || b.biz?.openedAtMs || 0));
