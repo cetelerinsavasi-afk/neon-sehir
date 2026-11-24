@@ -1,33 +1,29 @@
 import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
-import { useBizSpend } from '../../hooks/useVenueData';
 import { shopAction } from '../../services/gameActions';
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import HeldIcon from '../HouseScreen/HeldIcon';
-import { menuOf, menuPriceOf, MENU_DAILY_LIMIT } from '../../../functions/venue.js';
+import { menuOf, menuPriceOf } from '../../../functions/venue.js';
 import '../../styles/bizui.css';
 import './Venue.css';
 
 const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 
 // v77 — Cafe / Bar menüsü: dokununca anında alınır (eldeki ürün, 2 dk, ısmarlanabilir).
-// Günlük 10.000 sınırı oyuncuya önceden gösterilmez; aşılmak istenince uyarı çıkar.
+// v196: günlük harcama sınırı kalktı.
 export default function MenuPanel({ houseId, houseDoc, onClose, onBought }) {
   const { user } = useAuth();
   const { player } = usePlayer();
   const isOwner = houseDoc?.ownerUid === user?.uid;
-  const spent = useBizSpend(houseId, !isOwner);
   const [busy, setBusy] = useState(null);
   const [cue, setCue] = useState(null);
   const [stale, setStale] = useState({});
   const gold = Number(player?.gold || 0);
   const menu = Object.keys(menuOf(houseDoc?.items));
-  const left = MENU_DAILY_LIMIT - spent;
 
   const buy = async (k) => {
     const price = isOwner ? 0 : menuPriceOf(houseDoc, k);
-    if (!isOwner && price > left) return setCue({ k, kind: 'limit', n: Date.now() });
     if (!isOwner && gold < price) return setCue({ k, kind: 'gold', n: Date.now() });
     setBusy(k);
     try {
@@ -63,11 +59,6 @@ export default function MenuPanel({ houseId, houseDoc, onClose, onBought }) {
       {cue?.kind === 'gold' && <p className="bz-warn">Altının yetmiyor.</p>}
       {cue?.kind === 'err' && <p className="bz-warn">Satın alınamadı, tekrar dene.</p>}
       {Object.values(stale).some(Boolean) && <p className="bz-note">Bazı fiyatlar az önce değişti; yeni fiyatlara bakıp tekrar dokun.</p>}
-      {cue?.kind === 'limit' && (
-        <div className="vn-limit-warn cue-shake" key={cue.n}>
-          🔒 Bir mekânda günde en fazla {fmt(MENU_DAILY_LIMIT)} altın harcayabilirsin.
-        </div>
-      )}
       {menu.length === 0 && <p className="bz-note">Bu mekânın menüsü boş.</p>}
       <div className="vn-menu">
         {menu.map((k) => {

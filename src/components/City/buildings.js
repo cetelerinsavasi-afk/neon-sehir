@@ -100,7 +100,17 @@ export function tower(kit, { w, d, h, x = 0, z = 0, style = 'apt_warm', roof = '
     kit.box(0.12, 0.12, d + 0.34, gm, x + w / 2 + 0.15, h + 0.5, z, { cast: false });
     kit.box(0.12, 0.12, d + 0.34, gm, x - w / 2 - 0.15, h + 0.5, z, { cast: false });
   }
-  kit.mass(w, h, d, x, z);
+  if (hole) {
+    // v196: zemin kattaki oyuk (motor galerisi) yürünebilir — gövde arkada + iki yan ayak; oyuğun üstü sadece kamera engeli
+    const dz = hole.depth;
+    const zf = z + d / 2;
+    kit.mass(w, h, d - dz, x, z - dz / 2);
+    const lw = hole.x0 + w / 2;
+    const rw = w / 2 - hole.x1;
+    if (lw > 0.05) kit.mass(lw, h, dz, x - w / 2 + lw / 2, zf - dz / 2);
+    if (rw > 0.05) kit.mass(rw, h, dz, x + hole.x1 + rw / 2, zf - dz / 2);
+    kit.blocker(w, h - hole.h, dz, x, hole.h, zf - dz / 2);
+  } else kit.mass(w, h, d, x, z);
   return { top: h };
 }
 
@@ -1035,6 +1045,8 @@ function motoShowroom(kit, { x, zf, w, inside }) {
       kit.item(MOTO_SHOW[i], x + px, pz, rot, i, { y: FY + 0.1, solid: false });
     });
     kit.box(1.6, 1.0, 0.6, M('#2b2e36', 0.35, 0.4), x, FY, zb + 0.55, { cast: false });
+    kit.solid(x, zb + 0.55, 0.85, 0.35); // tezgâh
+    spots.forEach(([px, pz]) => kit.solid(x + px, pz, 0.75, 0.75)); // motorlu platformlar
     kit.box(1.7, 0.06, 0.7, glowMat(ORANGE, 1.6), x, FY + 1.0, zb + 0.55, { cast: false });
     kit.light(x, 2.3, zm, '#ffd2a8', 7, 9);
   }
@@ -1054,7 +1066,10 @@ function motoShowroom(kit, { x, zf, w, inside }) {
   // kapının iki yanında kaldırımda sergi motoru (tekerler kaldırımın üstünde)
   kit.item('moto_sport', x - 3.0, zf + 1.55, 7, 3, { y: SIDEWALK_Y });
   kit.item('moto_cross', x + 3.0, zf + 1.55, 1, 2, { y: SIDEWALK_Y });
-  kit.zone({ kind: 'shopDoor', venue: 'motogaleri', title: '🏍️ Neon Motor Galerisi', x, z: zf + 1.65, r: 2.4 });
+  // v196: cam cephe yürünmez, ortadaki kapıdan (1,4 m) girilir; satış düğmesi İÇERİDE
+  kit.solid(x - (hw + 0.7) / 2, zf + 0.03, (hw - 0.7) / 2, 0.08);
+  kit.solid(x + (hw + 0.7) / 2, zf + 0.03, (hw - 0.7) / 2, 0.08);
+  kit.zone({ kind: 'shopDoor', venue: 'motogaleri', title: '🏍️ Neon Motor Galerisi', x, z: inside ? zm + 0.6 : zf + 1.65, r: inside ? 2.6 : 2.4, inside });
 }
 
 // =============================================================================

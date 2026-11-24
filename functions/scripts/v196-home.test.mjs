@@ -199,3 +199,19 @@ test('mobilya pazarı (v196): envanter kişisel evde — ilan ver, iptal, başka
   const paid = band.t === 'gem' ? w.G('users/ali').emerald - 100 : w.G('users/ali').gold - 10_000_000;
   assert.equal(paid, band.min, 'para satıcıya (vergisiz)');
 });
+
+test('favori araç profilden (homeFav): garaj hemen güncellenir; başkasının aracı olmaz; kaldırınca en pahalı', async () => {
+  const w = world();
+  w.S('vehicles/c1', { ownerId: 'ali', catalogId: 1, lifeDays: 10 });
+  w.S('vehicles/c2', { ownerId: 'ali', catalogId: 2, lifeDays: 10 });
+  w.S('vehicles/v9', { ownerId: 'veli', catalogId: 3, lifeDays: 10 });
+  await w.home.enter('ali', {});
+  await assert.rejects(() => w.home.ops.homeFav('ali', { vehicleId: 'v9' }), /senin değil/);
+  const r = await w.home.ops.homeFav('ali', { vehicleId: 'c1' });
+  assert.equal(r.garage.id, 'c1');
+  assert.equal(w.G('users/ali').favVehicleId, 'c1');
+  assert.equal(w.G(`houses/${homeIdOf('ali')}`).garage.id, 'c1');
+  const r2 = await w.home.ops.homeFav('ali', { vehicleId: null });
+  assert.equal(w.G('users/ali').favVehicleId, undefined);
+  assert.ok(r2.garage, 'favori yoksa en pahalı kullanılabilir araç');
+});

@@ -969,8 +969,9 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
     zones.push({ kind: 'terrace', id: `teras_${v.type}`, venue: v.type, title: v.type === 'bar' ? '🍸 Bar bahçesi' : '☕ Cafe bahçesi', x: p.x, z: p.z, r: 9 });
   });
   // v196 — Müstakil evler bloğunun ön kaldırımı: "🏘️ Evler" (başkalarının evlerini gez)
+  // bloğun tamamı + çevresindeki kaldırımlar (dikdörtgen: hw / hd)
   city.lots.filter((l) => l.type === 'mustakil').forEach((l) => {
-    zones.push({ kind: 'evler', id: `evler_${l.i0}_${l.j0}`, title: '🏘️ Müstakil Evler', x: l.mx, z: l.mz + l.bd / 2 - 1.2, r: 14 });
+    zones.push({ kind: 'evler', id: `evler_${l.i0}_${l.j0}`, title: '🏘️ Müstakil Evler', x: l.mx, z: l.mz, hw: l.bw / 2 + 5, hd: l.bd / 2 + 5, r: 0 });
   });
   // statik geometriyi malzemeye + bölgeye göre birleştir (çizim çağrısı az olsun)
   mergeStatic(scene);
@@ -1709,6 +1710,12 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       const mz = zones.find((z) => z.kind === 'shopDoor' && z.venue === 'motogaleri');
       if (mz) return { x: mz.x + Math.sin(mz.out) * 1.4, z: mz.z + Math.cos(mz.out) * 1.4, yaw: mz.out, pitch: 0.36 };
     }
+    // v196: oyun açılışı — oyuncunun EVİNİN İÇİNDE (giriş katı, kapının iç tarafı), yüz odaya dönük
+    if (key === 'ev' && EV) {
+      EV.root.updateMatrixWorld(true);
+      const p = fromRoom(EV, EV.ml.door.x, EV.ml.door.z - 0.6);
+      return { x: p.x, z: p.z, yaw: EV.ry, pitch: 0.32, home: true };
+    }
     // v157: Kervankent / dış dünya noktası
     if (key && typeof key === 'object' && key.world && Number.isFinite(key.x) && Number.isFinite(key.z)) return { x: key.x, z: key.z, yaw: key.yaw ?? Math.PI };
     // v157.4: oyun açılışı — evin kapısının ÖNÜNDE (dışarıda), yüz yola dönük
@@ -1757,7 +1764,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   }
   // --- oyuncu --------------------------------------------------------------------
   const sp0 = spawnPoint(spawn);
-  let sp0f = freeNear(sp0.x, sp0.z) || sp0;
+  let sp0f = sp0.home ? sp0 : freeNear(sp0.x, sp0.z) || sp0;
   // v147.3: haritaya bırakılan nokta suya denk gelirse kıyıda doğ
   if (sinkAt(sp0f.x, sp0f.z) > 0) {
     for (let rr = 1; rr < 30; rr += 1) {
@@ -1778,7 +1785,8 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   const me = new Fig(scene, layer, { id: 'self', name, avatar, isSelf: true });
   me.x = self.x;
   me.z = self.z;
-  me.y = groundY(self.x, self.z);
+  me.y = sp0.home ? 0.16 : groundY(self.x, self.z);
+  if (sp0.home) evY = 0.16;
   let view = '3d';
   const top = { az: Math.PI / 4, el: 0.98, dist: 46 };
   const topCur = { ...top };
@@ -4496,12 +4504,18 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
       if (z.kind === 'hqIn' && curVenue) return; // v158: karargah kapısı — dışarıdayken
       if (z.kind === 'hqOut' && (!curVenue || curVenue.hqSlot !== z.slot)) return; // içerideyken
       if (z.y != null && Math.abs(me.y - z.y) > 1.6) return; // v196: evde başka kattaki cihaz
+      if (z.kind === 'evler') return; // aşağıda: başka bir bölgedeyken de (durak, seyyar) düğmesi çıkar
       const d = Math.hypot(z.x - self.x, z.z - self.z);
       if (d < z.r && d < bd) {
         best = z;
         bd = d;
       }
     });
+    // v196 — Müstakil Evler: bloğun her yanında (önündeki otobüs durağı / seyyar satıcı bölgesini ezmesin)
+    if (!curVenue && !driving) {
+      const ez = zones.find((z) => z.kind === 'evler' && Math.abs(self.x - z.x) < z.hw && Math.abs(self.z - z.z) < z.hd);
+      if (ez) best = best ? { ...best, id: `${best.id}+evler`, evlerNear: true } : ez;
+    }
     if (!driving && myCar && !self.seat) {
       const d = Math.hypot(myCar.x - self.x, myCar.z - self.z);
       if (d < myCar.v.len / 2 + 2.2 && (!best || d < bd)) {

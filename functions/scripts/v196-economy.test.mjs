@@ -103,7 +103,7 @@ test('atölye: tamir = ürün fiyatının %10\'u, geliştirme = tamamı; işçil
   await assert.rejects(() => w.act('ali', { op: 'stockAdd' }), /işletmeleri kapandı/);
 });
 
-test('cafe / bar: sabit menü, günlük 10.000 sınırı, gelir paylaşımı; oyuncu mekânı yok', async () => {
+test('cafe / bar: sabit menü, günlük harcama sınırı YOK (v196d), gelir paylaşımı; oyuncu mekânı yok', async () => {
   const w = world();
   await w.venue.venueEnsureGame();
   assert.ok(w.G('houses/game_cafe').bizGame);
@@ -111,8 +111,8 @@ test('cafe / bar: sabit menü, günlük 10.000 sınırı, gelir paylaşımı; oy
   assert.equal(r.price, 100);
   assert.equal(statSum(w.db, `hs_${VENUE_CO_SK.cafe}`), 40);
   await assert.rejects(() => w.act('ali', { op: 'menuBuy', houseId: 'game_bar', product: 'kahve', expect: 50 }), /price-changed/);
-  for (let i = 0; i < 20; i++) await w.act('ali', { op: 'menuBuy', houseId: 'game_bar', product: 'viski', expect: 500 });
-  await assert.rejects(() => w.act('ali', { op: 'menuBuy', houseId: 'game_bar', product: 'viski', expect: 500 }), /limit/);
+  for (let i = 0; i < 21; i++) await w.act('ali', { op: 'menuBuy', houseId: 'game_bar', product: 'viski', expect: 500 }); // 10.500 — sınır yok
+  assert.equal(w.db._store.has(`bizSpend/game_bar_ali_${'x'}`), false);
   w.S('houses/p1', { ownerUid: 'veli', biz: { type: 'cafe' }, items: [] });
   await assert.rejects(() => w.act('ali', { op: 'menuBuy', houseId: 'p1', product: 'kahve', expect: 100 }), /işletmeleri kapandı/);
   assert.equal(MENU_PRICES.cay, 50);

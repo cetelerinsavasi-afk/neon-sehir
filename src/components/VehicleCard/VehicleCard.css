@@ -189,3 +189,7 @@
   font-size: 10px;
   opacity: 0.6;
 }
+/* v196: favori araç kalbi (sağ üst köşe) */
+.vcard-card { position: relative; }
+.vcard-fav { position: absolute; top: 6px; right: 6px; width: 34px; height: 34px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.18); background: rgba(0, 0, 0, 0.45); font-size: 17px; line-height: 1; display: grid; place-items: center; padding: 0; cursor: pointer; z-index: 2; }
+.vcard-fav.on { border-color: rgba(255, 80, 110, 0.7); background: rgba(255, 60, 90, 0.18); }

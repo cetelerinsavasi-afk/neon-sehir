@@ -912,7 +912,7 @@ export function buildEvVenue(lot) {
   const gdoor = P.base.item('garagedoor', gcx, gz1 + 0.05, 0, 0, { solid: false, y: 0, scale: 1.0, dyn: true });
   gdoor.scale.set((gw - 1.1) / 2.8, (gH - 0.6) / 2.55, 1); // açıklığı tam kapatsın
   gdoor.traverse((o) => o.userData.doorVoid && (o.visible = false)); // açılınca garajın içi görünsün
-  P.garage = { obj: gdoor, hw: (gw - 1.1) / 2, open: 0, shell: GK.group, gw, gd };
+  P.garage = { obj: gdoor, hw: (gw - 1.1) / 2, open: 0, shell: GK.group, gw, gd, openR: 10 };
   // v196: garajda ev sahibinin favori aracı (yoksa en pahalısı) — motor yerleştirir (setGarageCar)
   P.garageSpot = { x: gcx, z: gcz - 0.4 };
   P.garageCar = P.base.item('car_classic', gcx, gcz - 0.4, 0, 6, { dyn: true });

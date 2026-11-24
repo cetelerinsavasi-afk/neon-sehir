@@ -86,6 +86,16 @@ Bitince: `gecis-v196.bat` → "Elle yedek kaydet" ve yolu yaz (`gs://neon-sehir.
 - **Mobilya pazarı devam ediyor:** Profil › 🛋️ Mobilyalar geri geldi. Oyuncunun mobilya envanteri artık kişisel evinde (`houses/home_{uid}.inv`); pazara koy / iptal / satın al buna göre (çete ilanları eskisi gibi karargah envanterinden). Pazardan alınan eşya evin envanterine düşer, tasarımda 📦 Envanter sekmesinden konur.
 - **Hız / telefon:** oyunun mekân belgeleri oturumda bir kez denetleniyor (her mekân girişinde ~10 okuma kalktı); tasarım rafı kapanınca küçük resim çizen ikinci WebGL bağlamı bırakılıyor; küçük resimler webp (bellek ↓); işçi makinesi dinleyicisi kalktı.
 
+### v196e — oyuncu bildirimleri (24.11 öğleden sonra)
+- **Ev tasarımı = eski (karargah) tasarım ekranı:** aynı arayüz — üstte kat seçici + ⚙️ + ✓ Bitti, Bakiye + 🛒 Sepet (İptal / Alışverişi Tamamla), seçili eşya çubuğu (renkler, ↺ ↻, ⧉ Bir tane daha, 📦 Envantere / 🗑 Kaldır, 🏷️ Sat), altta 🏬 Mağaza / 📦 Envanter / 🛒 Pazar rafı (resimli kartlar, altın simgesi). Satın alınmamış eşya yarı saydam (deneme); Bitti'de sepet doluysa "Satın al / Satın almadan çık" sorulur. Pazardan alınan eşya envantere gelir.
+- **Sürükle-bırak düzeldi** (eşya eski yerine dönüyordu: bırakma olayı arayüze iletilmiyordu).
+- **Oyun evin içinde açılır** (giriş katı, kapının iç tarafı).
+- **Evler düğmesi:** Müstakil Evler bloğunun her yanında çıkar (önündeki otobüs durağı / seyyar satıcı bölgesi artık ezmiyor).
+- **Favori araç profilden:** Profil › Araçlar'da kartın sağ üstündeki ❤️ (tek araç; tekrar dokununca kalkar). Evin garajı hemen güncellenir; ev ayarlarındaki araç seçimi kalktı. Evin garaj kapısı 10 m'den açılır (araç dışarıdan görünür).
+- **Cafe / bar günlük 10.000 harcama sınırı kalktı** (sayaç da tutulmuyor).
+- **Rıza Amca görev şeridi** görev değişince ~6 sn görünür, sonra kaybolur (ekranı kapatmaz).
+- **Motor galerisi yürünür:** vitrinin ortasındaki kapıdan içeri girilir; "🏍️ Satılık motorlar" düğmesi içeride çıkar.
+
 ## Bilinen eksikler / sorular
 - Eski kod (işletme / ofis / mobilya pazarı ekranları, firestore.rules'taki eski koleksiyonlar) girişleri kapalı ama dosyalar duruyor; karargah ekranı bunların bir kısmını hâlâ kullandığı için ayrı ve dikkatli bir temizlik sürümünde silinmeli.
 - Eski oyuncu evi testleri (`houses`, `business`, `furn-market`, çete `market`) kaldırıldı; kalan eski testlerden kalkan sistemi deneyenler gerekçeli olarak atlandı.

@@ -93,3 +93,13 @@
   .hm-dock { left: 50%; right: auto; width: 860px; transform: translateX(-50%); }
   .hm-dock .hm-items { grid-template-rows: repeat(2, auto); }
 }
+
+/* ============ v196: ev tasarımı = eski ev / karargah tasarım ekranı (aynı hs-* sınıfları) ============ */
+.hm-old .hs-top.hm-old-top { justify-content: space-between; pointer-events: auto; }
+.hm-old .hs-top.hm-old-top .hs-seg { flex: 1 1 auto; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.hm-old .hs-top.hm-old-top .hs-seg button { flex: 1 0 auto; white-space: nowrap; }
+.hm-old .hm-old-done { flex: none; padding: 8px 12px; }
+.hm-old .hs-shelf { bottom: calc(10px + var(--hs-safe-b)); }
+.hm-old .hs-selbar { bottom: calc(210px + var(--hs-safe-b)); }
+.hm-old .hs-shelf.closed ~ .hs-selbar, .hm-old:has(.hs-shelf.closed) .hs-selbar { bottom: calc(64px + var(--hs-safe-b)); }
+.hm-old .hs-selbar-actions .hm-on { background: #ffd23f; color: #141414; border-color: #ffd23f; }

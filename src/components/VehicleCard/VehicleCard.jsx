@@ -130,7 +130,7 @@ export function UpgradeCells({ slots, kind = 'vehicle', catalogId = null }) {
   );
 }
 
-export default function VehicleCard({ vehicle, locked = false }) {
+export default function VehicleCard({ vehicle, locked = false, fav = false, onFav = null }) {
   const displayName = vehicleDisplayName(vehicle);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(displayName);
@@ -160,6 +160,12 @@ export default function VehicleCard({ vehicle, locked = false }) {
     <div className={`vcard-card${locked ? ' cue-dim cue-lock' : ''}`}>
       {/* v150: fotoğraf yerine aracın modifiyeli 3D hali */}
       <CarImg className="vcard-photo" catalogId={vehicle.catalogId} mods={vehicle.mods || null} alt={displayName} />
+      {/* v196: favori araç (evin garajında durur) — tek araç seçilir */}
+      {onFav && (
+        <button type="button" className={`vcard-fav${fav ? ' on' : ''}`} title={fav ? 'Favori araç (garajında) — kaldırmak için dokun' : 'Favori yap: evinin garajında dursun'} aria-pressed={fav} onClick={() => onFav(vehicle)}>
+          {fav ? '❤️' : '🤍'}
+        </button>
+      )}
       <div className="vcard-body">
         {editingName ? (
           <div className="vcard-name-edit-row">

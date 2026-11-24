@@ -158,6 +158,26 @@ function route(a, b) {
 export const HOME_FLOOR_DEFAULT = 'parke_ceviz';
 export const HOME_WALL_DEFAULT = 'boya_krem';
 // ---- yapı parçaları -----------------------------------------------------------------------
+// deneme eşyası: malzemeler kopyalanıp yarı saydam (paylaşılan malzemeye dokunulmaz)
+const ghostCache = new WeakMap();
+function ghostify(o) {
+  o.traverse((q) => {
+    if (!q.isMesh || !q.material) return;
+    const one = (m) => {
+      let g = ghostCache.get(m);
+      if (!g) {
+        g = m.clone();
+        g.transparent = true;
+        g.opacity = Math.min(m.opacity ?? 1, 0.42);
+        g.depthWrite = false;
+        ghostCache.set(m, g);
+      }
+      return g;
+    };
+    q.material = Array.isArray(q.material) ? q.material.map(one) : one(q.material);
+    q.castShadow = false;
+  });
+}
 // v196: kat başına kaplama — her katın kendi malzemesi (noDedupe: birleştirmede ayrı kalır, kat katlar
 // birbirine karışmaz). Kaplama değişince yeni mesh kurulmaz; malzemenin dokusu yerinde değişir.
 function paintSurf(m, def, rough) {
@@ -609,6 +629,8 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
         o.traverse((q) => (q.userData.evIdx = idx));
         o.userData.evF = f;
         objByIdx[idx] = o;
+        // v196: satın alınmamış (deneme / sepetteki) eşya yarı saydam — eski evdeki gibi neyin yeni olduğu belli
+        if (it.p !== 1) ghostify(o);
       }
     });
   };

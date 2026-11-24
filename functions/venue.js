@@ -45,7 +45,7 @@ export const MENU_TYPES = ['cafe', 'bar', 'sinema'];
 export const WAITER_TYPES = ['cafe', 'bar'];
 export const MENU_PRICE = { def: 100, min: 10, max: 1000 };
 export const menuBand = (type) => (type === 'sinema' ? CINEMA_PRICE : MENU_PRICE);
-export const MENU_DAILY_LIMIT = 10_000;
+export const MENU_DAILY_LIMIT = 0; // v196: sınır yok (0 = sınırsız)
 // v141 — Şüphe › Kafe & Bar (2000 altın harcayınca -10 şüphe). v154: KALDIRILDI;
 // sabitler eski testler / ekranlar derlensin diye duruyor, hiçbir yerde kullanılmıyor.
 export const CAFE_CALM_TYPES = ['cafe', 'bar'];
@@ -172,14 +172,14 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       const waiter = ws?.exists ? ws.data() : null;
       const waiterHere = waiter && waiter.uid !== uid ? await txPresence(tx, waiter.uid, houseId) : null;
       // v154: Kafe & Bar şüphe düşürme kaldırıldı — harcama artık biriktirilmiyor (ek okuma yok)
-      const [us, ss] = await Promise.all([tx.get(userRef(uid)), tx.get(spendRef)]);
-      const spent = Number(ss?.exists ? ss.data().amount || 0 : 0);
+      // v196: cafe / bar günlük 10.000 harcama sınırı KALKTI (sayaç da tutulmuyor: okuma + yazma ↓)
+      const us = await tx.get(userRef(uid));
+      const spent = 0;
+      void spendRef;
       if (!isOwner) {
-        if (spent + price > MENU_DAILY_LIMIT) fail('failed-precondition', `limit:${spent}`);
         if (Number(us.data()?.gold || 0) < price) fail('failed-precondition', 'gold');
         const upd = { gold: FieldValue.increment(-price), goldTag: goldTag(h.biz.type === 'sinema' ? 'sinema' : 'menu') };
         tx.update(userRef(uid), upd);
-        tx.set(spendRef, { houseId, uid, dayKey, amount: FieldValue.increment(price), updatedAtMs: t }, { merge: true });
       }
       if (waiter && !waiterHere && waiter.uid !== uid) tx.delete(waiterRef(houseId)); // garson mekândan çıkmış → görev düşer
       if (!isOwner && waiterHere) {

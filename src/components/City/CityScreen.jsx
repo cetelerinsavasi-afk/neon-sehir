@@ -112,7 +112,7 @@ const VENUE_UI = {
   netkafe: { game: 'internet_mekan', heist: 'internet_kafe' },
   spor: { game: 'spor_mekan' },
   galeri: { game: 'araba_galerisi' }, // soygun düğmesi mekânın içinde (GaleriPart)
-  motogaleri: { openBiz: 'motogaleri', label: '🏍️ Motor Galerisi' }, // içine girilmez: kapıda düğme → oyunun motor galerisi
+  motogaleri: { openBiz: 'motogaleri', label: '🏍️ Satılık motorlar' }, // v196: vitrinin içine yürünür, düğme içeride
   silah: { game: 'silah_magazasi', heist: 'silah_magazasi' },
   modifiye: { game: 'modifiye_garaji' },
   casino: { game: 'gazino' },
@@ -813,7 +813,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         onPlayerTap: (id) => setCard(id),
         onEvent: (e) => {
           if (e.type === 'home') setHomeInside(e.inside); // v196
-          if (e.type === 'homeTap') homeEvtRef.current?.(e);
+          if (e.type === 'homeTap' || e.type === 'homeDrop') homeEvtRef.current?.(e); // v196: tasarımda dokunuş + sürükle-bırak
           if (e.type === 'crash') jobRef.current?.crash(e.speed);
           // v193: çarpınca 💥 yazısı yerine kısa bir ekran kenarı kızarması (sertliğe göre); kıvılcım / sarsıntı motorda
           if (e.type === 'crash' && e.speed > 7 && Date.now() - lastCrash > 600) {
@@ -1436,7 +1436,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     if (zone.kind === 'homePlay' && zone.chair && !homeStream) {
       list.push({ label: '🔴 Yayın aç', cls: 'take', on: () => setHomeStream({ chairId: zone.chair, houseId: engineRef.current?.homeId?.(), items: engineRef.current?.homeItems?.() || [] }) });
     }
-    if (zone.kind === 'evler' && !guest) list.push({ label: '🏘️ Evler', cls: 'take', on: () => setEvlerOpen(true) }); // v196
+    if ((zone.kind === 'evler' || zone.evlerNear) && !guest) list.push({ label: '🏘️ Evler', cls: 'take', on: () => setEvlerOpen(true) }); // v196
     if (zone.kind === 'park' && zone.act === 'bufe') list.push({ label: '🌭 Büfe', on: () => setPanel({ kind: 'bufe' }) });
     if (zone.kind === 'park' && zone.act === 'npc') list.push({ label: '🕶️ Şüpheli adam', on: () => setPanel({ kind: 'shady' }) });
     if (zone.kind === 'pist') list.push({ label: '🏁 Yarış Pisti', cls: 'take', free: true, on: () => openIn('yaris_pisti') });

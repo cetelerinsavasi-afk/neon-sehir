@@ -309,7 +309,27 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
     return { ok: true, homes: [...rows.values()] };
   }
 
+  // v196: favori araç PROFİLDEN (aracın kartındaki ❤️) — users.favVehicleId; evi varsa garaj hemen güncellenir.
+  // vehicleId null → favori kaldırılır (garajda en pahalı kullanılabilir araç).
+  async function fav(uid, p) {
+    const vid = p.vehicleId == null || p.vehicleId === '' ? null : String(p.vehicleId);
+    let car = null;
+    if (vid) {
+      const vs = await db.collection('vehicles').doc(vid).get();
+      if (!vs.exists || vs.data().ownerId !== uid) fail('permission-denied', 'Bu araç senin değil.');
+      car = usable(uid, vs.data()) ? carOf(vs.id, vs.data()) : null;
+    }
+    const hs = await ref(homeIdOf(uid)).get();
+    if (!car && hs.exists) car = await resolveCar(uid, { garage: null }, null);
+    const batch = db.batch();
+    batch.update(userRef(uid), { favVehicleId: vid || FieldValue.delete() });
+    if (hs.exists) batch.update(ref(homeIdOf(uid)), { garage: car || null, garageCar: car?.cid || 0 });
+    await batch.commit();
+    return { ok: true, favVehicleId: vid, garage: car || null };
+  }
+
   const ops = {
+    homeFav: fav,
     homeEnter: enter,
     homeSave: save,
     homeCheckout: checkout,

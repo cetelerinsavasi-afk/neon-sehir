@@ -1176,7 +1176,7 @@ export function finishCityWorld(W, scene) {
   };
   W.tickGarages = (dt, px, pz, walking) => {
     W.garages.forEach((g) => {
-      const want = Math.hypot(px - g.x, pz - g.z) < (walking ? 5 : 12) ? 1 : 0;
+      const want = Math.hypot(px - g.x, pz - g.z) < (walking ? g.openR || 5 : 12) ? 1 : 0; // v196: evin garajı daha uzaktan açılır (araç görünsün)
       if (want !== g.want) {
         g.want = want;
         g.obj.userData.ctl?.setOn?.(Boolean(want));

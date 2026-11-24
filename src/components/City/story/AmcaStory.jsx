@@ -876,6 +876,15 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, gang = null,
     onFlashButton?.(on ? (mode === 'pre' ? 'pre' : 'on') : false);
   }, [uid, mode, script, meeting, onFlashButton]);
 
+  // v196: görev şeridi (Rıza Amca) ekranda sürekli kalmaz — görev değişince / dokunulunca birkaç saniye görünür
+  const [chipFresh, setChipFresh] = useState(true);
+  const [chipKey, setChipKey] = useState('');
+  useEffect(() => {
+    if (!chipKey) return undefined;
+    setChipFresh(true);
+    const t = setTimeout(() => setChipFresh(false), 6500);
+    return () => clearTimeout(t);
+  }, [chipKey]);
   // v168.1: şehrin alttaki düğmeleri (Arabaya bin, Bağış yap…) açıkken görev şeridi ve replik onların ÜSTÜNE çıkar
   const [lift, setLift] = useState(0);
   useEffect(() => {
@@ -1213,7 +1222,10 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, gang = null,
   const meta = curTask ? TITLE_BY_ID[curTask.taskId] : null;
   const chipTitle = curTask?.title || meta?.title;
   const chipEmoji = curTask?.emoji || meta?.emoji;
-  const showChip = Boolean(chipTitle) && !meeting && !line && !chapter && !cine && !call && !fight && !script && !busy && (mode === 'new' || mode === 'after' || (mode === 'old' && oldTask));
+  useEffect(() => {
+    setChipKey(`${chipTitle || ''}|${mode}`); // yeni görev → şerit birkaç saniye görünür
+  }, [chipTitle, mode]);
+  const showChip = chipFresh && Boolean(chipTitle) && !meeting && !line && !chapter && !cine && !call && !fight && !script && !busy && (mode === 'new' || mode === 'after' || (mode === 'old' && oldTask));
   const nameOf = (w) => (w === 'me' ? 'Sen' : WHO[w]?.name || '');
   const avOf = (w) => (w === 'amca' ? R.amca?.st.avatar || AMCA_DARK : WHO[w]?.avatar);
   const showLine = line && (!busy || script);
