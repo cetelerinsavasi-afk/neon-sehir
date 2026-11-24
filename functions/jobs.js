@@ -15,6 +15,7 @@ import { JOBS, jobOf, jobPerf, jobReward, jobCountKey, jobDailyOf } from './vehi
 import { LIMAN_BAY, DEPOTS, HOSPITAL, BUS_STOPS, ROAD_SPOTS, manhattan, busRouteLen, KURYE_PICKUPS, KURYE_DROPS, KURYE_MIN_LEN, kuryeMul, OTOGARS, FAR_TIR_LEN, FAR_BUS_LEN, FAR_DEPOT, HWY_ENTRY } from './cityJobsData.js';
 import { goldTag } from './moneyLog.js';
 import { fleetOfJob, splitDriverIncome, isRetiredVehicle } from './fleet.js';
+import { vendorIncomeSplit } from './borsa.js';
 
 const isId = (v) => typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
 const dayKey = (ms = Date.now()) => new Date(ms + 3 * 3600_000).toISOString().slice(0, 10); // İstanbul günü
@@ -129,7 +130,7 @@ export function planJob(job, near = null, far = false) {
 
 // v177: stateWrite + taxFrac + companyStatKey verilirse taksi / otobüs / tır / ambulans gelirinden şoförlük
 // vergisi (Ticaret) ve %10 şirket payı kesilir (functions/fleet.js); motokurye kesintisiz.
-export function createJobs({ db, FieldValue, HttpsError, splitIncomeForDebt, stateWrite = null, taxFrac = null, companyStatKey = null, now = () => Date.now() }) {
+export function createJobs({ db, FieldValue, HttpsError, splitIncomeForDebt, stateWrite = null, taxFrac = null, vendorTaxFrac = null, companyTaxFrac = null, companyStatKey = null, now = () => Date.now() }) {
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
   };
@@ -209,7 +210,14 @@ export function createJobs({ db, FieldValue, HttpsError, splitIncomeForDebt, sta
       if (fl) {
         const sk = companyStatKey?.(fl.co);
         const vsk = fl.vendor && sk ? sk.slice(3) : null; // hs_kk → kk (seyyar satıcı ciro sayacı)
-        stateWrite(tx, db, FieldValue, { kind: 'in', cat: 'vergi_sofor', amount: cut.tax, atMs: now(), dayKey: day, stat: { ...(sk && cut.share ? { [sk]: cut.share } : {}), ...(vsk && cut.share ? { [`sy_${vsk}_ciro`]: cut.share, sy_siparis_n: 1 } : {}), [`sf_${job}_n`]: 1, [`sf_${job}_brut`]: total } });
+        // v200: satıcının sipariş parası satıcı geliri (seyyar satıcı vergisi) · v201: şirket payı şirket geliri (şirket
+        // vergisi) — ikisinde de %50 masraf + vergi, kalan hissedarlara
+        const frac = fl.vendor ? (vendorTaxFrac ? vendorTaxFrac(day) : 0) : companyTaxFrac ? companyTaxFrac(day) : 0;
+        const vs = cut.share ? vendorIncomeSplit(cut.share, frac) : null;
+        const toCo = vs ? vs.share : 0;
+        const sh = Math.floor(Math.random() * 8) * 2; // iki kalem ayrı parçalara (aynı işlemde aynı belgeye iki yazma olmasın)
+        stateWrite(tx, db, FieldValue, { kind: 'in', cat: 'vergi_sofor', amount: cut.tax, atMs: now(), dayKey: day, shard: sh, stat: { ...(sk && toCo ? { [sk]: toCo } : {}), ...(vsk && cut.share ? { [`sy_${vsk}_ciro`]: cut.share, sy_siparis_n: 1 } : {}), [`sf_${job}_n`]: 1, [`sf_${job}_brut`]: total } });
+        if (vs?.tax) stateWrite(tx, db, FieldValue, { kind: 'in', cat: fl.vendor ? 'vergi_seyyar' : 'vergi_sirket', amount: vs.tax, atMs: now(), dayKey: day, shard: sh + 1 });
       }
       return { ok: true, total, gross: total, tax: cut.tax, share: cut.share, net: cut.net, toDebt: cut.net - goldDelta, perf: { speed: Math.round(perf.speed * 100) / 100, dmg: Math.round(perf.dmg * 100) / 100 }, t: Math.round(t), hits, left: daily - nn, daily, far };
     });

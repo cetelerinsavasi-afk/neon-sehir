@@ -677,3 +677,7 @@ body.ns-city-open .ta-root { z-index: 96; }
 
 /* v199: yayındayken başın üstünde CANLI rozeti */
 .hs-live { margin: 0 auto 2px; width: max-content; padding: 1px 7px; border-radius: 9px; background: #e0223f; color: #fff; font-size: 10px; font-weight: 900; letter-spacing: 0.3px; box-shadow: 0 0 8px #e0223f99; }
+
+/* v200: evden çıkar düğmesi + gelen ısmarlama yazısı (küçük, dokununca kapanır) */
+.nearby-gift.nearby-kick { border-color: #ff5470; background: rgba(255, 84, 112, 0.14); color: #ffc2cc; }
+.cs-root .gift-toast { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 92px); z-index: 60; padding: 6px 12px; font-size: 12px; cursor: pointer; }

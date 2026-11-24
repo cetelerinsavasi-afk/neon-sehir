@@ -56,7 +56,7 @@ export function homeListable(h) {
   return Boolean(h && !h.locked && Number(h.itemCount || 0) >= HOME_LIST_MIN_ITEMS);
 }
 
-export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() }) {
+export function createHome({ db, FieldValue, HttpsError, rtdb = null, isBlockedBy = null, now = () => Date.now() }) {
   const oldInvRef = (uid) => db.collection('houseInventories').doc(uid); // v198: eski envanter (kurtarma)
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
@@ -379,7 +379,45 @@ export function createHome({ db, FieldValue, HttpsError, now = () => Date.now() 
     return { ok: true, favVehicleId: vid, garage: car || null };
   }
 
+  // v200 — EVDEN ÇIKAR: sadece kilitli (ziyaretçilere kapalı) evin sahibi, içerideki bir oyuncuyu tek tek çıkarır.
+  // Haber RTDB'den gider (cityBox/{uid}/k — Firestore okuması yok); çıkarılan kilitli eve tekrar giremez.
+  async function kick(uid, p) {
+    const target = String(p?.uid || '');
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(target) || target === uid) fail('invalid-argument', 'Geçersiz oyuncu.');
+    const s = await ref(homeIdOf(uid)).get();
+    if (!s.exists) fail('not-found', 'Önce evine gir.');
+    if (!s.data().locked) fail('failed-precondition', '🔓 Ev açıkken kimse çıkarılamaz. Önce evi kilitle.');
+    if (!rtdb) fail('unavailable', 'Şu an yapılamıyor.');
+    const rt = await rtdb();
+    await rt.ref(`cityBox/${target}/k`).set({ h: homeIdOf(uid), t: now() });
+    return { ok: true };
+  }
+
+  // v200 — ISMARLA (eski sistemdeki gibi): elindeki ürünü yakındaki oyuncuya verirsin. Ürünün süresi
+  // sıfırlanmaz (kalan süre aynen gider). Eli dolu olana verilemez (istemci karşının ağ kaydındaki
+  // eldeki ürüne bakar). Haber RTDB kutusundan (cityBox/{uid}/g) — Firestore'a yazılmaz.
+  async function gift(uid, p) {
+    const target = String(p?.uid || '');
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(target) || target === uid) fail('invalid-argument', 'Geçersiz oyuncu.');
+    const item = String(p?.i || '');
+    if (!/^[A-Za-z0-9_]{1,30}$/.test(item)) fail('invalid-argument', 'Elinde ısmarlayacak bir şey yok.');
+    const t = now();
+    const until = Math.floor(Number(p?.u) || 0);
+    if (!(until > t + 1000) || until > t + 125_000) fail('failed-precondition', 'Elindekinin süresi bitti.');
+    if (isBlockedBy) {
+      const [a, b] = await Promise.all([isBlockedBy(uid, target), isBlockedBy(target, uid)]);
+      if (a || b) fail('failed-precondition', 'Bu oyuncuya ısmarlanamıyor.');
+    }
+    if (!rtdb) fail('unavailable', 'Şu an yapılamıyor.');
+    const u = (await userRef(uid).get()).data();
+    const rt = await rtdb();
+    await rt.ref(`cityBox/${target}/g`).set({ f: uid, n: String(u?.displayName || 'Bir oyuncu').slice(0, 40), i: item, u: until, t });
+    return { ok: true };
+  }
+
   const ops = {
+    homeKick: kick,
+    cityGift: gift,
     homeFav: fav,
     homeEnter: enter,
     homeSave: save,

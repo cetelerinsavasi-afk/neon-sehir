@@ -92,6 +92,10 @@ export const RATE_GROUPS = [
   { m: 'ticaret', id: 'hisse', title: 'Hisse Senedi Gelir Vergisi', unit: '%', items: [pct('hisse', 'Hisse Senedi Gelir Vergisi')] },
   // v177 — taksi / otobüs / tır / ambulans gelirleri (motokurye hariç)
   { m: 'ticaret', id: 'sofor', title: 'Şoförlük Gelir Vergisi', unit: '%', items: [pct('sofor', 'Şoförlük')] },
+  // v200 — seyyar satıcı geliri (bağış, menü, ısmarlama, kurye siparişi): %50 masraf + bu vergi, kalan hissedarlara
+  { m: 'ticaret', id: 'seyyar', title: 'Seyyar Satıcı Vergisi', unit: '%', items: [pct('seyyar', 'Seyyar satıcı')] },
+  // v201 — şirketler (Hastane, Nakliye, Terminal, Taksi Durağı): %50 masraf + bu vergi, kalan hissedarlara
+  { m: 'ticaret', id: 'sirket', title: 'Şirket Vergisi', unit: '%', items: [pct('sirket', 'Hastane · Nakliye · Terminal · Taksi')] },
   // v132: 2. el satış vergisi kaldırıldı (araç / silah / malzeme 2. el satışları vergisiz)
   // v196: Sıfır Satış Kâr Vergileri kalktı — galeri / silahçı satışı mekân vergisine (İşletme Vergileri) giriyor,
   // aynı satıştan iki kez vergi alınmaz.

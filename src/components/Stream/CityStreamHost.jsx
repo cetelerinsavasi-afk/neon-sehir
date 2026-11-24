@@ -10,11 +10,12 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { streamAction } from '../../services/gameActions';
-import { StreamStartSheet, StreamHostPanel, StreamSummary } from './StreamHost';
+import { StreamStartSheet, StreamHostPanel, StreamSummary, StreamPlaySheet } from './StreamHost';
 import { streamBroadcast, clearGameFrame, closeStreamChannel, streamPose, streamSetOf, useStreamDoc } from './streamShared';
 import './Stream.css';
 
 const ArcadeHub = lazy(() => import('../Arcade/ArcadeHub'));
+const StreamCasinoSheet = lazy(() => import('../Casino/StreamCasino').then((m) => ({ default: m.StreamCasinoSheet }))); // v200
 const LEAVE_R = 2.2; // koltuktan bu kadar uzaklaşınca yayın kapanır
 
 export const streamErrText = (e) => {
@@ -35,6 +36,8 @@ export default function CityStreamHost({ eng, houseId, room, items, chairId, pri
   const [live, setLive] = useState(null); // { id }
   const [sum, setSum] = useState(null);
   const [arcade, setArcade] = useState(false);
+  const [playAsk, setPlayAsk] = useState(false); // v200: Oyna → oyun salonu / yarış / gazino
+  const [casino, setCasino] = useState(false);
   const statsRef = useRef({ viewers: 0, seen: 0 });
   const liveRef = useRef(null);
   liveRef.current = live;
@@ -118,13 +121,13 @@ export default function CityStreamHost({ eng, houseId, room, items, chairId, pri
   useEffect(() => {
     if (phase !== 'live' || !set) return undefined;
     const iv = setInterval(() => {
-      if (arcade) return; // oyun açıkken oyuncu yerinden oynamaz
+      if (arcade || casino) return; // oyun açıkken oyuncu yerinden oynamaz
       const lp = eng?.venueLocal?.();
       const vt = eng?.venueType?.();
       if (!lp || vt !== room || Math.hypot(lp.x - set.chair.x, lp.z - set.chair.z) > LEAVE_R) stop('stood');
     }, 700);
     return () => clearInterval(iv);
-  }, [phase, set, eng, room, stop, arcade]);
+  }, [phase, set, eng, room, stop, arcade, casino]);
   // ekran kapanırsa (mekândan çıkış, sayfa) yayın kapanır
   useEffect(() => () => {
     if (liveRef.current) {
@@ -152,13 +155,36 @@ export default function CityStreamHost({ eng, houseId, room, items, chairId, pri
           stopping={busy}
           onStopRequest={stop}
           onEnded={endLocal}
-          onPlay={() => setArcade(true)}
-          compact={arcade}
+          onPlay={() => setPlayAsk(true)}
+          compact={arcade || casino}
         />
       )}
       {arcade && (
         <Suspense fallback={null}>
           <ArcadeHub onClose={() => setArcade(false)} />
+        </Suspense>
+      )}
+      {playAsk && (
+        <StreamPlaySheet
+          onArcade={() => {
+            setPlayAsk(false);
+            setArcade(true);
+          }}
+          onRace={() => {
+            setPlayAsk(false);
+            // yarış pisti uygulama seviyesinde, yayının üstünde açılır (eski evdeki gibi); yayın arkada sürer
+            window.dispatchEvent(new CustomEvent('ns:stream-race'));
+          }}
+          onCasino={() => {
+            setPlayAsk(false);
+            setCasino(true);
+          }}
+          onClose={() => setPlayAsk(false)}
+        />
+      )}
+      {casino && (
+        <Suspense fallback={null}>
+          <StreamCasinoSheet onClose={() => setCasino(false)} onEnterTable={(tableId) => window.dispatchEvent(new CustomEvent('ns:open-table', { detail: tableId }))} />
         </Suspense>
       )}
     </>

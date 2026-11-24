@@ -151,7 +151,7 @@ const countOwned = (items) => {
 const ownsSurface = (inv, type, key) => FREE_SURFACES[type].includes(key) || (inv?.[type === 'wall' ? 'walls' : 'floors'] || []).includes(key);
 
 // deps: { db, FieldValue, HttpsError, requireAuth, onCall, isAdmin, assertCanSpeak, isFriend, now? }
-export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, isAdmin, assertCanSpeak, isFriend, now = () => Date.now(), bizHooks = {}, visits = null, officeMigrate = null }) {
+export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, isAdmin, assertCanSpeak, isFriend, now = () => Date.now(), bizHooks = {}, visits = null, officeMigrate = null, rtdb = null, isBlockedBy = null }) {
   const furn = createFurnMarket({ db, FieldValue, HttpsError, now }); // v132 mobilya pazarı
   const hq = createHq({ db, FieldValue, HttpsError, now, isAdmin }); // v146
   // v146 — polis teşkilatında polisin konum kaydı takma kimlikle (pa_{rosterId}) tutulur
@@ -172,7 +172,7 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
   };
   const houseRef = (id) => db.collection('houses').doc(id);
   const invRef = (uid) => db.collection('houseInventories').doc(uid);
-  const home = createHome({ db, FieldValue, HttpsError, now }); // v196
+  const home = createHome({ db, FieldValue, HttpsError, rtdb, isBlockedBy, now }); // v196 · v200: rtdb (evden çıkar, ısmarla)
   const fundRef = (houseId) => db.collection('houseFunds').doc(houseId); // v127 mobilya kasası
   const presenceRef = (uid) => db.collection('housePresence').doc(uid);
   const userRef = (uid) => db.collection('users').doc(uid);

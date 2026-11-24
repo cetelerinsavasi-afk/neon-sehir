@@ -1261,6 +1261,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   const dCam = { yaw: 0, pitch: 0.95, dist: 17, x: 0, z: 0 };
   let dDrag = null; // eşya sürükleme { idx, it, moved, off }
   let streamCam = null; // v199: yayın açıkken ana kamera (oda koordinatlı poz)
+  let heldUntil = 0; // v200: eldeki ürünün bitişi (ms)
   // v197: karargah tasarımıyla aynı mekanik — önce dokunarak seç, seçiliyi sürükle; seçili olmayan
   // eşyanın üstünden sürüklemek kamerayı çevirir. Tavan modu: sadece tavan eşyaları seçilir.
   let evSel = null; // seçili eşya sırası (React'tan homeSelect)
@@ -5934,9 +5935,13 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       me.liveEl.textContent = text || '';
       me.liveEl.style.display = text ? '' : 'none';
     },
-    setHolding(p) {
+    // v200: elde tutulan ürünün bitiş zamanı da tutulur (ısmarlayınca kalan süre aynen gider)
+    setHolding(p, untilMs = null) {
       me.setHolding(p);
+      heldUntil = p ? untilMs || Date.now() + 120_000 : 0;
     },
+    myHolding: () => (me.holding && heldUntil > Date.now() ? { p: me.holding, until: heldUntil } : null),
+    playerHolding: (id) => remotes.get(id)?.st?.h || null,
     // v198: evdeki eşyayı aç / kapat (ışık, TV, şömine…) — sadece bu cihazda
     homeToggle(idx) {
       const ctl = EV?.ml.objAt(idx)?.userData?.ctl;
@@ -6160,6 +6165,27 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     },
     homeItems: () => (evHome?.items || []).map((x) => ({ ...x })),
     homeId: () => evHome?.id || null,
+    // v200: uzaktaki oyuncu hangi evde (ağ kaydı st.hm; evde değilse null)
+    playerHome: (id) => {
+      const h = remotes.get(id)?.st?.hm;
+      return h && h !== '_' ? h : null;
+    },
+    // v200: evden çıkarıldı → kapının dışına
+    homeEject() {
+      if (!EV || curVenue !== EV) return false;
+      if (driving) exitCar();
+      if (self.seat) standUp();
+      const p = fromRoom(EV, EV.ml.door.x, 9.2);
+      self.x = p.x;
+      self.z = p.z;
+      me.y = groundY(p.x, p.z);
+      self.camYaw = EV.ry + Math.PI;
+      self.target = null;
+      self.path = null;
+      ring.visible = false;
+      first = true;
+      return true;
+    },
     homeSurfaces(surf) {
       if (!EV) return;
       EV.ml.setSurfaces(surf || {});

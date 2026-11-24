@@ -7,8 +7,8 @@
 //       otobüs   → Otogarların içinde ("🚌 Otobüs")
 //       ambulans → Hastanede ("🚑 Ambulans")
 //       tır      → Liman yükleme alanı / teslimat depolarında ("🚛 Tır")
-//     Fiyat oyunun galeri fiyatı. Satış bedelinin yarısı ilgili şirketin (Neon Borsa)
-//     o günkü gelirine yazılır, yarısı oyundan çıkar. 2. elden alınanlarda şirket payı yok.
+//     Fiyat oyunun galeri fiyatı. v201: satış bedelinin tamamı ilgili şirketin (Neon Borsa) geliri:
+//     %50 masraf + şirket vergisi (Ticaret), kalan hissedarlara. 2. elden alınanlarda şirket payı yok.
 //   • Bir oyuncu her ticari türden EN FAZLA 1 araç tutar (2. elden de alamaz). Ömrü bitmiş
 //     (hurda) ya da bankaya el konmuş araç sayılmaz; 2. elde ilanda olan sayılır.
 //   • Polis arabası oyundan kalktı (polislik mesleği değil, sadece para kazandıran araç görevi).
@@ -19,6 +19,7 @@
 //     galerilerindeki ticari araç stoğunun ödenen bedeli iade edilir. Hepsine SMS.
 // =============================================================================
 import { VEHICLE_CATALOG } from './catalogData.js';
+import { companyIncomeSplit } from './borsa.js';
 
 export const FLEET = {
   taksi: { job: 'taksi', cid: 13, co: 'taksi', label: 'Taksi', icon: '🚕', place: 'Taksi Durağı' },
@@ -31,7 +32,7 @@ export const FLEET_IDS = FLEET_JOBS.map((j) => FLEET[j].cid);
 export const POLICE_CAR_ID = 14;
 // satışı kapalı (oyundan kalkan) araçlar — katalogda durur (eski kayıtlar bozulmasın)
 export const RETIRED_VEHICLE_IDS = [POLICE_CAR_ID];
-export const FLEET_SALE_SHARE = 0.5; // satış bedelinin şirkete giden payı
+export const FLEET_SALE_SHARE = 1; // v201: satış bedelinin TAMAMI şirketin geliri (%50 masraf + şirket vergisi, kalan hissedarlara)
 export const FLEET_DRIVER_SHARE = 0.1; // şoför gelirinin şirkete giden payı
 export const SOFOR_TAX_RATE_ID = 'sofor';
 export const fleetOfCid = (cid) => FLEET_JOBS.map((j) => FLEET[j]).find((f) => f.cid === Number(cid)) || null;
@@ -90,7 +91,7 @@ export function splitDriverIncome(job, gross, taxFrac) {
 // =============================================================================
 // deps: { db, FieldValue, HttpsError, goldTag, statWrite, newVehicleDoc, companyStatKey(coId),
 //         dayKey(ms), now }
-export function createFleet({ db, FieldValue, HttpsError, goldTag, statWrite, newVehicleDoc, companyStatKey, dayKey, now = () => Date.now(), log = console }) {
+export function createFleet({ db, FieldValue, HttpsError, goldTag, statWrite, stateWrite = null, companyTaxFrac = null, newVehicleDoc, companyStatKey, dayKey, now = () => Date.now(), log = console }) {
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
   };
@@ -128,8 +129,12 @@ export function createFleet({ db, FieldValue, HttpsError, goldTag, statWrite, ne
       const ref = db.collection('vehicles').doc();
       id = ref.id;
       tx.set(ref, { ...newVehicleDoc(uid, f.cid, FieldValue), source: 'filo' });
-      // satış bedelinin yarısı şirketin bugünkü gelirine (gece hissedarlara dağıtılır)
-      statWrite(tx, db, FieldValue, { atMs: t, dayKey: dayKey(t), stat: { [companyStatKey(f.co)]: Math.round(price * FLEET_SALE_SHARE), [`filo_${f.job}_n`]: 1, [`filo_${f.job}_ciro`]: price } });
+      // v201: satış bedeli şirketin geliri → %50 masraf + şirket vergisi, kalan gece hissedarlara dağıtılır
+      const day = dayKey(t);
+      const sp = companyIncomeSplit(Math.round(price * FLEET_SALE_SHARE), companyTaxFrac ? companyTaxFrac(day) : 0);
+      const stat = { ...(sp.share ? { [companyStatKey(f.co)]: sp.share } : {}), [`filo_${f.job}_n`]: 1, [`filo_${f.job}_ciro`]: price };
+      if (stateWrite) stateWrite(tx, db, FieldValue, { kind: 'in', cat: 'vergi_sirket', amount: sp.tax, atMs: t, dayKey: day, stat });
+      else statWrite(tx, db, FieldValue, { atMs: t, dayKey: day, stat });
     });
     return { ok: true, job: f.job, price, vehicleId: id };
   }

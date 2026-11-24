@@ -90,6 +90,8 @@ export const STATE_IN = {
   seyyar_satis: 'Seyyar satıcı satışları', // v145 — Ticaret Bakanlığı (v176'dan beri yazılmıyor)
   seyyar_sahipsiz: 'Neon Borsa · o gün hissedarı olmayan şirketlerin geliri', // v176 Neon Borsa (v177: şirketler de)
   vergi_sofor: 'Vergi · Şoförlük gelirleri', // v177 (taksi, otobüs, tır, ambulans)
+  vergi_seyyar: 'Vergi · Seyyar satıcılar', // v200 (bağış, menü, kurye siparişi)
+  vergi_sirket: 'Vergi · Şirketler (hastane, nakliye, terminal, taksi)', // v201
   vergi_hisse: 'Vergi · Hisse senedi gelirleri', // v176 Neon Borsa (toplarken)
   benzinlik: 'Benzinlik satışları (benzin + market)', // v156 — Ticaret Bakanlığı
   bagis: 'Belediyeye bağışlar',

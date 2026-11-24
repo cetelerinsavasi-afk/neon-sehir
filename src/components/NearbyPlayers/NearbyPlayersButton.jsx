@@ -15,7 +15,8 @@ import './NearbyPlayersButton.css';
 //        v64: giftVenue ('park' | 'gazino') + myHolding (elindeki ürün) → "🎁 Ismarla"
 // v150: buttonClassName verilirse düğme ekranın kendi düğme sütununa (ör. şehir) oturur
 // v194: renderTrigger(open) verilirse 👥 düğmesi yerine o çizilir (şehirde üst çubuktaki "N kişi yakında")
-export default function NearbyPlayersButton({ others = [], collectionName, variant = 'ws', giftVenue = null, myHolding = null, buttonClassName = null, renderTrigger = null }) {
+// v200: rowActions(o) → satırın yanında ek düğmeler (şehirde 🎁 Ismarla, kilitli evde 🚪 Çıkar)
+export default function NearbyPlayersButton({ others = [], collectionName, variant = 'ws', giftVenue = null, myHolding = null, buttonClassName = null, renderTrigger = null, rowActions = null }) {
   const [open, setOpen] = useState(false);
   const [target, setTarget] = useState(null);
   const [giftBusy, setGiftBusy] = useState(null);
@@ -81,6 +82,7 @@ export default function NearbyPlayersButton({ others = [], collectionName, varia
                     {giftBusy === o.uid ? '…' : o.holding ? 'Eli dolu' : '🎁 Ismarla'}
                   </button>
                 )}
+                {rowActions && !isBlocked(o.uid) && rowActions(o, () => setOpen(false))}
                 </div>
               ))}
             </div>

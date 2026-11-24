@@ -273,3 +273,35 @@ test('v199: duvar eşyası bölme duvarının yüzünde geçerli, havada değil'
   const d2 = { i: 'd2', k: 'wall2', x: -3, z: 0, r: 2, f: 0 };
   assert.equal(pl({ i: 'p', k: 'painting', x: -3 + 0.08, z: 0.3, r: 2, f: 0 }, [d2]), null);
 });
+
+// v200 — evden çıkar: sadece kilitli evin sahibi; haber RTDB kutusuna
+test('v200: evden çıkar sadece kilitliyken, RTDB kutusuna yazılır', async () => {
+  const { db, S, clock } = world();
+  const box = {};
+  const rtdb = async () => ({ ref: (p) => ({ set: async (v) => (box[p] = v) }) });
+  const home = createHome({ db, FieldValue, HttpsError, rtdb, now: () => clock.now });
+  await home.ops.homeEnter('ali', {});
+  await assert.rejects(home.ops.homeKick('ali', { uid: 'veli' }), /kilitle/);
+  await home.ops.homeSettings('ali', { locked: true });
+  await home.ops.homeKick('ali', { uid: 'veli' });
+  assert.deepEqual(box['cityBox/veli/k'], { h: 'home_ali', t: clock.now });
+  await assert.rejects(home.ops.homeKick('ali', { uid: 'ali' }), /Geçersiz/);
+  await assert.rejects(home.ops.homeEnter('veli', { homeId: 'home_ali' }), /kapalı/);
+  void S;
+});
+
+// v200 — ısmarla: elindeki ürün kalan süresiyle karşıya (RTDB kutusu); süresi bitmiş / engelli olmaz
+test('v200: ısmarla elindekini kalan süresiyle verir', async () => {
+  const { db, clock } = world();
+  const box = {};
+  const rtdb = async () => ({ ref: (p) => ({ set: async (v) => (box[p] = v) }) });
+  const blocked = new Set(['veli>ali']);
+  const home = createHome({ db, FieldValue, HttpsError, rtdb, isBlockedBy: async (a, b) => blocked.has(`${a}>${b}`), now: () => clock.now });
+  const u = clock.now + 70_000;
+  await assert.rejects(home.ops.cityGift('ali', { uid: 'veli', i: 'cay', u }), /ısmarlanamıyor/);
+  blocked.clear();
+  await home.ops.cityGift('ali', { uid: 'veli', i: 'cay', u });
+  assert.deepEqual(box['cityBox/veli/g'], { f: 'ali', n: 'Ali', i: 'cay', u, t: clock.now });
+  await assert.rejects(home.ops.cityGift('ali', { uid: 'veli', i: 'cay', u: clock.now - 5 }), /süresi bitti/);
+  await assert.rejects(home.ops.cityGift('ali', { uid: 'ali', i: 'cay', u }), /Geçersiz/);
+});

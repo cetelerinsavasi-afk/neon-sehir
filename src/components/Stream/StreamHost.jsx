@@ -555,7 +555,7 @@ export function StreamPlaySheet({ onArcade, onRace, onCasino, onClose }) {
           {onCasino && (
             <button onClick={onCasino} className="wide">
               <span>🎰</span>
-              <b>Casinolar</b>
+              <b>Neon Gazino</b>
               <small>On Numara · Rulet · Slot</small>
             </button>
           )}

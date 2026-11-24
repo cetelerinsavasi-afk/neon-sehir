@@ -206,7 +206,7 @@ export default function HomePanel({ eng, uid, inside, flash, evtRef, Sheet, list
   }, [eng, own]);
   // üstteki uzun başlık panelinde ev adı + kat; ⚙️ Ayarlar o panelin en sağında (CityScreen)
   useEffect(() => {
-    onInfo?.(inside && home ? { name: home.name, owner: mine ? null : home.ownerName, floor: FLOOR_NAMES[lv], lv, mine, designing: mode === 'design' } : null);
+    onInfo?.(inside && home ? { id: home.id, locked: Boolean(home.locked), name: home.name, owner: mine ? null : home.ownerName, floor: FLOOR_NAMES[lv], lv, mine, designing: mode === 'design' } : null);
   }, [inside, home, mine, lv, onInfo, mode]);
   useEffect(() => {
     if (settingsReq && inside && mine) setMode('design');
@@ -223,7 +223,19 @@ export default function HomePanel({ eng, uid, inside, flash, evtRef, Sheet, list
     <>
 
       {(mode === 'list' || listOpen) && <HomeList Sheet={Sheet} eng={eng} own={own} onPick={goHome} onClose={() => { setMode(null); onListClose?.(); }} flash={flash} />}
-      {mode === 'design' && home && mine && <HomeDesign eng={eng} home={home} player={player} evtRef={evtRef} flash={flash} settings={(close) => (
+      {mode === 'design' && home && mine && <HomeDesign eng={eng} home={home} player={player} evtRef={evtRef} flash={flash} onLock={async (v) => {
+        if (busy) return;
+        setBusy(true);
+        try {
+          await houseAction({ op: 'homeSettings', locked: v });
+          setHome((h) => (h ? { ...h, locked: v, listable: false } : h));
+          flash(v ? '🔒 Ev kilitli: Evler listesinde görünmez, kimse giremez.' : '🔓 Ev açık.');
+        } catch (e) {
+          flash(errText(e));
+        } finally {
+          setBusy(false);
+        }
+      }} settings={(close) => (
         <HomeSettings Sheet={Sheet} home={home} busy={busy} onClose={close} onSave={async (patch) => {
           setBusy(true);
           try {
@@ -341,7 +353,7 @@ function Money({ gold = 0, gem = 0, small }) {
   );
 }
 const SHOP_ALL = SHOP_CATS;
-function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null }) {
+function HomeDesign({ eng, home, evtRef, flash, onDone, settings, onLock = null, player = null }) {
   const [setOpen, setSetOpen] = useState(false);
   const [draft0] = useState(() => {
     const d = readDraft(home);
@@ -730,6 +742,12 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, player = null 
             <button key={n} className={f === i ? 'on' : ''} onClick={() => { setF(i); setSel(null); setWinSel(null); }}>{n}</button>
           ))}
         </div>
+        {/* v200: kilit — kilitliyken Evler listesinde görünmez, kimse giremez; içeridekiler kalır (👥 listesinden tek tek çıkarılır) */}
+        {onLock && (
+          <button className={`hs-icon-btn hm-lock${home.locked ? ' on' : ''}`} onClick={() => onLock(!home.locked)} title={home.locked ? 'Ev kilitli — aç' : 'Ev açık — kilitle'} aria-pressed={Boolean(home.locked)}>
+            {home.locked ? '🔒' : '🔓'}
+          </button>
+        )}
         <button className="hs-icon-btn" onClick={() => setSetOpen(true)} title="Evin adı · kilit · kapı">⚙️</button>
         <button className="hs-btn gold hm-old-done" disabled={busy} onClick={finish}>✓ Bitti</button>
       </div>

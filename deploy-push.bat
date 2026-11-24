@@ -15,7 +15,7 @@ if not exist "package.json" goto yanlis
 if not exist ".git" goto yanlis
 
 set "MSG=%~1"
-if "%MSG%"=="" set "MSG=v199 (v198 dahil): bolme duvarina TV/tablo, merdiven rotasi mobilyayi dolasir, hayvan/bot tasarlada gorunur, evde serbest spor, oval yemek takimi, buyuk desensiz hali, siyah yatak odasi kulplari, yayin kamerasi acisi + CANLI rozeti, kurye x2 + vergi + %10 saticiya, motor 10 gun + 10 tamir, cete siparisi depo engeli kalkti, fabrika listesi, modifiye listesi; v198: kumarhane, evde piyano/davul/mikser/isik, oto tamirci, bellek sizintisi, esya kaybi kurtarma"
+if "%MSG%"=="" set "MSG=v201 (v200+v199+v198 dahil): tek gelir kurali (yarisi masraf + belediye vergisi, kalan hissedarlara, toplarken hisse vergisi) mekan/seyyar/sirket, yeni sirket vergisi, arac satisinin tamami sirket geliri; v200: yayinda yaris+gazino, ev kilidi + evden cikar, elindekini ismarla, seyyar satici vergisi; v199: bolme duvarina TV, merdiven rotasi, yayin kamerasi, kurye x2, motor 10+10; v198: kumarhane, evde piyano/davul, oto tamirci, bellek sizintisi"
 
 echo.
 echo ===== 1/6 gereksiz dosyalar temizleniyor =====
@@ -57,13 +57,13 @@ if errorlevel 1 (
 )
 
 echo.
-echo ===== 4/6 Firebase: fonksiyonlar (ONCE sunucu, sonra site) =====
+echo ===== 4/6 Firebase: fonksiyonlar + RTDB kurallari (ONCE sunucu, sonra site) =====
 REM Silinecek fonksiyon / indeks sorarsa N de.
-call firebase deploy --only functions
+call firebase deploy --only functions,database
 if errorlevel 1 (
   echo Ilk deneme basarisiz - 30 sn sonra bir kez daha...
   timeout /t 30 /nobreak >nul
-  call firebase deploy --only functions
+  call firebase deploy --only functions,database
   if errorlevel 1 (
     echo Firebase yuklenemedi. git push YAPILMADI ^(site degismedi^). Ciktiyi Claude'a gonder.
     goto son

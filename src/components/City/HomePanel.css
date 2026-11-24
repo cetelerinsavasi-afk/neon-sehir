@@ -113,3 +113,6 @@
 }
 .hm-old .hs-cartbar { right: 58px; }
 .hm-old .hm-eye { right: 10px; }
+
+/* v200: Tasarla'da kilit */
+.hm-lock.on { background: #ff547033; border-color: #ff5470; }

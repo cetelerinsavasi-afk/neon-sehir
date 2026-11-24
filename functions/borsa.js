@@ -84,31 +84,40 @@ export const BORSA_COS = [
   { id: 'kofteci', vendor: 'seyyar_satici_4', sk: 'kf', name: 'Köfteci' },
   { id: 'midyeci', vendor: 'seyyar_satici_5', sk: 'md', name: 'Midyeci' },
   { id: 'dondurmaci', vendor: 'seyyar_satici_6', sk: 'dd', name: 'Dondurmacı' },
-  // v177 — şirketler: gelir = o gün satılan yeni ticari aracın yarısı + şoför gelirlerinin %10'u
+  // v177 — şirketler: gelir = o gün satılan yeni ticari araç + şoför gelirlerinin %10'u (v201: %50 masraf + şirket vergisi düşülür)
   { id: 'hastane', sk: 'hn', name: 'Hastane', kind: 'sirket' },
   { id: 'nakliye', sk: 'nk', name: 'Nakliye', kind: 'sirket' },
   { id: 'terminal', sk: 'tm', name: 'Terminal', kind: 'sirket' },
   { id: 'taksi', sk: 'tk', name: 'Taksi Durağı', kind: 'sirket' },
   // v196 — oyunun mekânları: gelir = brüt − %50 masraf − belediye vergisi (business.recordGameIncomeTx).
-  // Gelir zaten vergilendiği için TOPLARKEN hisse gelir vergisi kesilmez (çift vergi yok).
+  // v201: toplarken hisse gelir vergisi her hissede (mekân dahil) kesilir.
   ...VENUE_SHARE_TYPES.map((t) => ({ id: VENUE_CO_ID[t], sk: VENUE_CO_SK[t], name: VENUE_CO_NAME[t], kind: 'mekan', venueType: t })),
 ];
-// v196: toplarken vergisi kesilen kısım (mekân hisseleri hariç). by: { co: altın }
-export const isTaxFreeCo = (id) => BORSA_CO_BY_ID[id]?.kind === 'mekan';
+// v201: hisse geliri TOPLANIRKEN her hissede (mekân, seyyar satıcı, şirket) hisse gelir vergisi kesilir.
+// (v196'da mekân hisseleri vergisizdi; artık her gelir önce %50 masraf + kendi vergisi, toplarken hisse vergisi.)
+export const isTaxFreeCo = () => false;
 export function collectTaxFrac(by, taxFrac) {
   let total = 0;
-  let taxable = 0;
-  for (const [id, v] of Object.entries(by || {})) {
-    const n = Math.max(0, Number(v) || 0);
-    total += n;
-    if (!isTaxFreeCo(id)) taxable += n;
-  }
-  return total > 0 ? (Math.max(0, Number(taxFrac) || 0) * taxable) / total : 0;
+  for (const v of Object.values(by || {})) total += Math.max(0, Number(v) || 0);
+  return total > 0 ? Math.max(0, Number(taxFrac) || 0) : 0;
 }
 export const BORSA_CO_IDS = BORSA_COS.map((c) => c.id);
 export const BORSA_CO_BY_ID = Object.fromEntries(BORSA_COS.map((c) => [c.id, c]));
 export const borsaCoOfVendor = (vendorId) => BORSA_COS.find((c) => c.vendor === vendorId) || null;
 export const isBorsaCo = (id) => typeof id === 'string' && Object.prototype.hasOwnProperty.call(BORSA_CO_BY_ID, id);
+// v200 — SEYYAR SATICI GELİRİ: oyunun mekânları gibi %50 masraf + belediyenin seyyar satıcı vergisi
+// (Ticaret, varsayılan %10), kalan kâr hissedarlara (hs_<kod>). Hisse gelir vergisi toplarken ayrıca kesilir.
+export function vendorIncomeSplit(amount, taxFrac) {
+  const gross = Math.max(0, Math.round(Number(amount) || 0));
+  const expense = Math.round(gross * 0.5);
+  const tax = Math.min(gross - expense, Math.round(gross * Math.max(0, Math.min(0.5, Number(taxFrac) || 0))));
+  return { gross, expense, tax, share: gross - expense - tax };
+}
+export const VENDOR_TAX_RATE_ID = 'seyyar';
+// v201 — ŞİRKETLER (Hastane, Nakliye, Terminal, Taksi Durağı): gelir = yeni ticari araç satışının TAMAMI + şoför
+// gelirlerinin %10'u; aynı kural: %50 masraf + belediyenin şirket vergisi (Ticaret), kalan hissedarlara.
+export const COMPANY_TAX_RATE_ID = 'sirket';
+export const companyIncomeSplit = vendorIncomeSplit;
 // buyFromVendor'un devlet defteri parçasına eklediği gelir sayacı
 export const borsaIncomeStatKey = (sk) => `hs_${sk}`;
 // v177: şirket kimliğinden gelir sayacı (fleet.js)
@@ -623,7 +632,7 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
         after[id] = { ...h, pq: h.pq - BigInt(g) * BORSA_Q }; // küsurat kalır, kaybolmaz
       }
       if (total <= 0) fail('failed-precondition', 'Toplanacak gelir yok.');
-      const r = splitCollect(total, collectTaxFrac(by, taxFrac(day)), user.debtToState); // v196: mekân hisseleri vergisiz
+      const r = splitCollect(total, collectTaxFrac(by, taxFrac(day)), user.debtToState); // v201: her hissede vergi
       const u = { gold: FieldValue.increment(r.pay), goldTag: goldTag('borsaGelir'), borsaSon: t };
       if (user.borsaUyari) u.borsaUyari = FieldValue.delete();
       if (r.toDebt) u.debtToState = FieldValue.increment(-r.toDebt);

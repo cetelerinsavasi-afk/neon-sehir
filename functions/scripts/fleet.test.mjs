@@ -7,7 +7,7 @@ import { createFleet, splitDriverIncome, lifeValue, galeriSells, vehicleShopOf, 
 import { createJobs } from '../jobs.js';
 import { newVehicleDoc } from '../shop.js';
 import { statWrite, stateWrite, stateDayKey } from '../stateTreasury.js';
-import { borsaCompanyStatKey } from '../borsa.js';
+import { borsaCompanyStatKey, vendorIncomeSplit } from '../borsa.js';
 import { goldTag } from '../moneyLog.js';
 import { JOBS } from '../vehicleKinds.js';
 
@@ -20,7 +20,7 @@ class HttpsError extends Error {
 function setup() {
   let t = Date.parse('2026-12-01T10:00:00+03:00');
   const db = new FakeFirestore({ clock: () => t });
-  const fleet = createFleet({ db, FieldValue, HttpsError, goldTag, statWrite, newVehicleDoc, companyStatKey: borsaCompanyStatKey, dayKey: (ms) => stateDayKey(ms), now: () => t, log: { log() {} } });
+  const fleet = createFleet({ db, FieldValue, HttpsError, goldTag, statWrite, stateWrite, companyTaxFrac: () => 0.1, newVehicleDoc, companyStatKey: borsaCompanyStatKey, dayKey: (ms) => stateDayKey(ms), now: () => t, log: { log() {} } });
   const user = (uid, gold, extra = {}) => db.doc(`users/${uid}`).set({ gold, ...extra });
   const u = async (uid) => (await db.doc(`users/${uid}`).get()).data();
   const veh = (id, ownerId, catalogId, extra = {}) => db.doc(`vehicles/${id}`).set({ ownerId, catalogId, lifeDays: 20, model: 'X', ...extra });
@@ -63,7 +63,7 @@ test('kurallar: galeri ticari satmaz, ömür değeri, şoför geliri bölüşüm
   assert.equal(JOBS.ambulans.avg, 5250);
 });
 
-test('durakdan taksi: 1 tane, şirkete satışın yarısı, hurda sayılmaz', async () => {
+test('durakdan taksi: 1 tane; v201 satışın tamamı şirket geliri (%50 masraf + şirket vergisi), hurda sayılmaz', async () => {
   const { db, fleet, user, u, veh, ledger } = setup();
   await user('a', 1_000_000);
   const r = await fleet.fleetBuy('a', { job: 'taksi' });
@@ -71,10 +71,12 @@ test('durakdan taksi: 1 tane, şirkete satışın yarısı, hurda sayılmaz', as
   assert.equal((await u('a')).gold, 900000);
   await assert.rejects(fleet.fleetBuy('a', { job: 'taksi' }), /Zaten bir taksi/);
   const L = await ledger();
-  assert.equal(L.stat.hs_tk, 50000);
-  // başka tür serbest
+  assert.equal(L.stat.hs_tk, 40000); // 100.000 → 50.000 masraf, 10.000 vergi, 40.000 hissedarlara
+  assert.equal(L.in.vergi_sirket, 10000);
+  // başka tür serbest — 500.000'lik tır: 250.000 masraf, 50.000 vergi, 200.000 hissedarlara
   await fleet.fleetBuy('a', { job: 'tir' });
-  assert.equal((await ledger()).stat.hs_nk, 250000);
+  assert.equal((await ledger()).stat.hs_nk, 200000);
+  assert.equal((await ledger()).in.vergi_sirket, 60000);
   // ömrü bitmiş (hurda) taksi engel değil
   await user('b', 1_000_000);
   await veh('old', 'b', 13, { lifeDays: 0 });
@@ -101,7 +103,7 @@ test('2. elden: aynı türden araç varken alınamaz', async () => {
 
 test('iş kazancı: şoförlük vergisi + şirket payı; v199 kurye: vergi + %10 seyyar satıcıya', async () => {
   const { db, user, u, veh, ledger, adv } = setup();
-  const jobs = createJobs({ db, FieldValue, HttpsError, splitIncomeForDebt: (d, a) => ({ goldDelta: a, debtDelta: 0 }), stateWrite, taxFrac: () => 0.1, companyStatKey: borsaCompanyStatKey, now: () => Date.parse('2026-12-01T10:00:00+03:00') + 0 });
+  const jobs = createJobs({ db, FieldValue, HttpsError, splitIncomeForDebt: (d, a) => ({ goldDelta: a, debtDelta: 0 }), stateWrite, taxFrac: () => 0.1, vendorTaxFrac: () => 0.1, companyTaxFrac: () => 0.1, companyStatKey: borsaCompanyStatKey, now: () => Date.parse('2026-12-01T10:00:00+03:00') + 0 });
   await user('a', 0);
   await veh('amb', 'a', 15);
   await veh('mot', 'a', 21);
@@ -115,7 +117,10 @@ test('iş kazancı: şoförlük vergisi + şirket payı; v199 kurye: vergi + %10
   assert.equal((await db.doc('vehicles/amb').get()).data().jobEarned, d.net);
   let L = await ledger();
   assert.equal(L.in.vergi_sofor, d.tax);
-  assert.equal(L.stat.hs_hn, d.share);
+  // v201: şoförün %10 payı şirket geliri → %50 masraf + şirket vergisi, kalan hissedarlara
+  const cs = vendorIncomeSplit(d.share, 0.1);
+  assert.equal(L.stat.hs_hn, cs.share);
+  assert.equal(L.in.vergi_sirket, cs.tax);
   // kurye
   const k = await jobs.ops.jobStart('a', { vehicleId: 'mot' });
   await db.doc('vehicles/mot').update({ 'job.run.at': 0 });
@@ -125,9 +130,12 @@ test('iş kazancı: şoförlük vergisi + şirket payı; v199 kurye: vergi + %10
   assert.equal(kd.tax + kd.share + kd.net, kd.gross);
   L = await ledger();
   assert.equal(L.in.vergi_sofor, d.tax + kd.tax);
-  // satıcının sipariş parası o seyyar satıcının hisse gelirine (hs_kk / hs_sm / …)
+  // v200: satıcının sipariş parası satıcı geliri: %50 masraf + seyyar satıcı vergisi, kalan o satıcının hissedarlarına
+  const vs = vendorIncomeSplit(kd.share, 0.1);
   const vend = ['hs_kk', 'hs_sm', 'hs_dn', 'hs_kf', 'hs_md', 'hs_dd'].reduce((a, k) => a + (L.stat[k] || 0), 0);
-  assert.equal(vend, kd.share);
+  assert.equal(vend, vs.share);
+  assert.equal(L.in.vergi_seyyar || 0, vs.tax);
+  assert.deepEqual(vendorIncomeSplit(100, 0.1), { gross: 100, expense: 50, tax: 10, share: 40 });
   adv(0);
   // polis arabasıyla iş yok
   await veh('pol', 'a', 14);

@@ -11,7 +11,9 @@
       ".write": false
     },
     "sixImg": {
-      ".indexOn": ["e"],
+      ".indexOn": [
+        "e"
+      ],
       "$postId": {
         ".read": "auth != null",
         ".write": false
@@ -390,6 +392,12 @@
     "mutes": {
       ".read": false,
       ".write": false
+    },
+    "cityBox": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid && !newData.exists()"
+      }
     }
   }
 }

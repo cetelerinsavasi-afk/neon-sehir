@@ -51,6 +51,7 @@ import ReportBlockSheet from '../ReportBlockSheet/ReportBlockSheet';
 import GuestWelcome from '../Guest/GuestWelcome'; // v192 — misafir karşılama
 import GuestSignInSheet from '../Guest/GuestSignInSheet';
 import NearbyPlayersButton from '../NearbyPlayers/NearbyPlayersButton';
+import GiftToast from '../NearbyPlayers/GiftToast';
 import OnboardingPanel from '../OnboardingPanel/OnboardingPanel';
 import PoliticsHomeButton from '../Politics/PoliticsHomeButton';
 import LiveStreamsButton from '../Stream/LiveStreamsButton';
@@ -72,7 +73,7 @@ import './HomePanel.css';
 import VenueLayer from '../Venue3D/VenueLayer';
 import { IS_MOBILE_DEVICE } from '../../lib/photoCache';
 import { OPEN_DM_EVENT, setCityPhoneHost } from '../../lib/chatsappNav';
-import { createCityNet } from './cityNet.js';
+import { createCityNet, watchCityBox, clearCityBox } from './cityNet.js';
 import { buildMapping } from './cityMapMath.js';
 import { setLiveCityEngine } from './cityPhotoHub.js';
 import { renderCityPhotoUrl } from './CityPhoto.jsx';
@@ -462,7 +463,9 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const [homeGym, setHomeGym] = useState(null); // v199: evde serbest çalışma (spor aleti)
   const [homeStream, setHomeStream] = useState(null); // v196: evden yayın { chairId, houseId, items }
   const homeInstrRef = useRef(null); // v198
-  const [homeInfo, setHomeInfo] = useState(null); // v196: { name, owner, floor, mine }
+  const [homeInfo, setHomeInfo] = useState(null); // v196: { name, owner, floor, mine } · v200: id, locked
+  const homeInfoRef = useRef(null);
+  homeInfoRef.current = homeInfo;
   const [homeSetReq, setHomeSetReq] = useState(0);
   // v167 — açılış sırası: 1 = diğer oyuncular + altın / şüphe + görevler, 2 = telefon, yayın, seçim, yakındakiler
   const bootWorld = useBootStage(1);
@@ -1259,10 +1262,10 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   };
 
   // --- eldeki ürün (2 dk) ------------------------------------------------------------------------
-  const holdFor = (product) => {
-    engineRef.current?.setHolding(product);
+  const holdFor = (product, ms = HOLD_MS) => {
+    engineRef.current?.setHolding(product, Date.now() + ms);
     clearTimeout(holdT.current);
-    holdT.current = setTimeout(() => engineRef.current?.setHolding(null), HOLD_MS);
+    holdT.current = setTimeout(() => engineRef.current?.setHolding(null), ms);
   };
 
   // --- seyyar satıcı (oyunun sunucu fonksiyonları) -----------------------------------------
@@ -1299,6 +1302,77 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       setBusy(null);
     }
   };
+  // v200 — ISMARLA (eski sistemdeki gibi): elindeki ürünü yakındaki oyuncuya ver (süre sıfırlanmaz; eli dolu olana verilmez)
+  const [giftBusy, setGiftBusy] = useState(null);
+  const [giftIn, setGiftIn] = useState(null); // { from, itemId } — gelen ısmarlama (dokununca kapanır)
+  const giveHeld = async (o) => {
+    const h = engineRef.current?.myHolding?.();
+    if (!h || giftBusy) return;
+    if (engineRef.current?.playerHolding?.(o.uid)) return flash('Bu oyuncunun elinde zaten bir şey var.');
+    setGiftBusy(o.uid);
+    try {
+      await houseAction({ op: 'cityGift', uid: o.uid, i: h.p, u: h.until });
+      clearTimeout(holdT.current);
+      engineRef.current?.setHolding(null);
+      flash(`🎁 ${o.displayName || 'Oyuncu'} için ${HOUSE_PRODUCTS[h.p]?.label || 'ikram'} ısmarladın.`);
+    } catch (e) {
+      flash(e?.message || 'Ismarlanamadı.');
+    } finally {
+      setGiftBusy(null);
+    }
+  };
+  const kickFromHome = async (o) => {
+    try {
+      await houseAction({ op: 'homeKick', uid: o.uid });
+      flash(`🚪 ${o.displayName || 'Oyuncu'} evden çıkarıldı.`);
+    } catch (e) {
+      flash(e?.message || 'Çıkarılamadı.');
+    }
+  };
+  const nearbyRowActions = (o) => {
+    const home = homeInfoRef.current;
+    const canKick = Boolean(home?.mine && home.locked && engineRef.current?.playerHome?.(o.uid) === home.id);
+    const mine = engineRef.current?.myHolding?.();
+    const theirs = engineRef.current?.playerHolding?.(o.uid);
+    return (
+      <>
+        <button type="button" className="nearby-gift" disabled={!mine || Boolean(theirs) || giftBusy === o.uid} title={!mine ? 'Elinde bir şey yok' : theirs ? 'Elinde zaten bir şey var' : 'Elindekini ısmarla'} onClick={() => giveHeld(o)}>
+          {giftBusy === o.uid ? '…' : theirs ? 'Eli dolu' : '🎁 Ismarla'}
+        </button>
+        {canKick && (
+          <button type="button" className="nearby-gift nearby-kick" onClick={() => kickFromHome(o)}>🚪 Çıkar</button>
+        )}
+      </>
+    );
+  };
+  // v200: kişisel kutu (RTDB) — biri ısmarladı / ev sahibi evden çıkardı
+  useEffect(() => {
+    if (!uid || guest) return undefined;
+    const seen = new Set();
+    const since = Date.now() - 60_000;
+    return watchCityBox(uid, (box) => {
+      const g = box.g;
+      if (g && !seen.has(`g${g.t}`)) {
+        seen.add(`g${g.t}`);
+        clearCityBox(uid, 'g');
+        const left = Number(g.u) - Date.now();
+        if (Number(g.t) > since && left > 1000 && !blockedRef.current?.(g.f)) {
+          holdFor(g.i, left); // kalan süre aynen (sıfırlanmaz)
+          setGiftIn({ from: g.n || 'Bir oyuncu', itemId: g.i, at: Date.now() });
+        }
+      }
+      const k = box.k;
+      if (k && !seen.has(`k${k.t}`)) {
+        seen.add(`k${k.t}`);
+        clearCityBox(uid, 'k');
+        if (Number(k.t) > since && engineRef.current?.homeInside?.() && engineRef.current?.homeId?.() === k.h) {
+          engineRef.current?.homeEject?.();
+          flash('🚪 Ev sahibi seni evden çıkardı.');
+        }
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid, guest]);
   const bufeBuy = async (it) => {
     if (busy) return;
     setBusy(it.id);
@@ -1790,6 +1864,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                   <NearbyPlayersButton
                     collectionName="city"
                     others={nearbyOthers}
+                    rowActions={guest ? null : nearbyRowActions}
                     renderTrigger={(open) => (
                       <button type="button" className="cs-nearby-link" onClick={open}>
                         👥 {online + 1} kişi yakında ›
@@ -2070,6 +2145,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
               <ArcadeHub onClose={() => setHomeArcade(false)} />
             </Suspense>
           )}
+          {giftIn && <GiftToast gift={giftIn} onDone={() => setGiftIn(null)} />}
           {homeGym && (
             <Suspense fallback={null}>
               <HomeGym

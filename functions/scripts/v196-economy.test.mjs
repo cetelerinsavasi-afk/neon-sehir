@@ -145,12 +145,13 @@ test('sabit fiyatlar: salon 1.000, depo 2.000 (güvenli satış 2.500 kalır), s
   assert.equal(GAME_LOTTERY_CUT, 0);
 });
 
-test('Borsa: 8 mekân hissesi; toplarken mekân payına hisse vergisi kesilmez; hediye hisse sınırı aşar ama hata yok', () => {
+test('Borsa: 8 mekân hissesi; v201 toplarken her hissede hisse vergisi; hediye hisse sınırı aşar ama hata yok', () => {
   const ids = BORSA_COS.filter((c) => c.kind === 'mekan').map((c) => c.id);
   assert.deepEqual(ids.sort(), Object.values(VENUE_CO_ID).sort());
-  assert.equal(collectTaxFrac({ [VENUE_CO_ID.bar]: 100 }, 0.1), 0);
+  assert.equal(collectTaxFrac({ [VENUE_CO_ID.bar]: 100 }, 0.1), 0.1);
   assert.equal(collectTaxFrac({ simitci: 100 }, 0.1), 0.1);
-  assert.equal(collectTaxFrac({ [VENUE_CO_ID.bar]: 50, simitci: 50 }, 0.1), 0.05);
+  assert.equal(collectTaxFrac({ [VENUE_CO_ID.bar]: 50, simitci: 50 }, 0.1), 0.1);
+  assert.equal(collectTaxFrac({}, 0.1), 0);
   // 10 hediye hisse, piyasada sadece 10 satılmış: alım sınırı dolu (0), ama negatif / hata yok
   assert.equal(buyRoom(10 * BORSA_UNITS, 10 * BORSA_UNITS), 0);
   // başkaları alınca yer açılır (S büyüdükçe)

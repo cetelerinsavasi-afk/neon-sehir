@@ -544,3 +544,25 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
   if (import.meta.env?.DEV) window.__cityNet = { api, dbg: () => ({ offline, failures, myCell, subs: [...subCells], lastSentAt, dead, shown: [...shownPlayers], prof: [...profiles.keys()], unsubs: [...unsubs.keys()], cells: Object.fromEntries([...cellPlayers].map(([c, v]) => [c, Object.keys(v)])) }) };
   return api;
 }
+
+// v200 — kişisel kutu: cityBox/{uid} = { g: ısmarlama { f, n, i, t }, k: evden çıkarılma { h, t } }.
+// Sadece sunucu yazar; sahibi okur ve okuduğunu siler. Tek küçük dinleyici (Firestore yok).
+export function watchCityBox(uid, cb) {
+  let off = () => {};
+  let dead = false;
+  rt()
+    .then(({ m, db }) => {
+      if (dead) return;
+      off = m.onValue(m.ref(db, `cityBox/${uid}`), (s) => cb(s.val() || {}), () => {});
+    })
+    .catch(() => {});
+  return () => {
+    dead = true;
+    off();
+  };
+}
+export function clearCityBox(uid, key) {
+  rt()
+    .then(({ m, db }) => m.remove(m.ref(db, `cityBox/${uid}/${key}`)))
+    .catch(() => {});
+}

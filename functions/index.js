@@ -84,7 +84,7 @@ import { VENUES } from './venueLayouts.js';
 import { VENDORS, VENDOR_COST as VENDOR_DAILY_COST } from './vendorData.js';
 import { goldTag, recordGoldChange, cleanupMoneyLog, realizeSale, realizeBankWithdraw } from './moneyLog.js';
 import { stateWrite, statWrite, closeStateDays, readStateReport, stateDayKey } from './stateTreasury.js';
-import { createBorsa, borsaCoOfVendor, borsaIncomeStatKey, borsaCompanyStatKey, BORSA_TAX_RATE_ID } from './borsa.js'; // v176 Neon Borsa
+import { createBorsa, borsaCoOfVendor, borsaIncomeStatKey, borsaCompanyStatKey, BORSA_TAX_RATE_ID, vendorIncomeSplit, VENDOR_TAX_RATE_ID, COMPANY_TAX_RATE_ID } from './borsa.js'; // v176 Neon Borsa
 import { createFleet, SOFOR_TAX_RATE_ID, canResell, NO_RESALE_TEXT } from './fleet.js'; // v177 ticari araçlar
 import { createStable } from './stable.js'; // v177 at / deve / bisiklet
 import { newVehicleDoc } from './shop.js';
@@ -326,6 +326,8 @@ const jobs = createJobs({
   // v177: şoförlük vergisi (Ticaret) + %10 şirket payı (Neon Borsa)
   stateWrite,
   taxFrac: (day) => rateFrac(ratesFor(day), SOFOR_TAX_RATE_ID),
+  vendorTaxFrac: (day) => rateFrac(ratesFor(day), VENDOR_TAX_RATE_ID), // v200
+  companyTaxFrac: (day) => rateFrac(ratesFor(day), COMPANY_TAX_RATE_ID), // v201
   companyStatKey: (co) => borsaCompanyStatKey(co),
 });
 // v177 — ticari araçlar: durak / terminal / hastane / yükleme alanından satın alma (shopAction op: fleetBuy)
@@ -335,6 +337,8 @@ const fleet = createFleet({
   HttpsError,
   goldTag,
   statWrite,
+  stateWrite, // v201: şirket vergisi
+  companyTaxFrac: (day) => rateFrac(ratesFor(day), COMPANY_TAX_RATE_ID),
   newVehicleDoc,
   companyStatKey: (co) => borsaCompanyStatKey(co),
   dayKey: (ms) => stateDayKey(ms),
@@ -369,6 +373,8 @@ export const recordVenueVisit = onCall(async (request) => {
 });
 const houses = createHouses({
   visits,
+  rtdb: () => cityDb(), // v200: evden çıkar + ısmarla bildirimi
+  isBlockedBy: (a, b) => moderation.isBlockedBy(a, b), // v200: ısmarla
   officeMigrate: (houseId) => office.migrateOne(houseId),
   bizHooks: combineBizHooks(shop.bizHooks, depo.bizHooks, casino.bizHooks), // v124: depo / gazino kapanınca kasası + malı sahibine
   db,
@@ -5607,11 +5613,16 @@ export const buyFromVendor = onCall(async (request) => {
     // v176: gelir artık devlete DEĞİL, Neon Borsa hissedarlarına (gece 00:00 sonrası dağıtılır —
     // functions/borsa.js). Aynı defter parçasına sadece sayaç yazılır (ek yazma yok):
     // sy_* analiz sayaçları + hs_<kod> (o günün dağıtılacak geliri).
+    // v200: %50 masraf + seyyar satıcı vergisi (Ticaret), kalan kâr hissedarlara
     const co = borsaCoOfVendor(vendorId);
-    statWrite(tx, db, admin.firestore.FieldValue, {
+    const split = vendorIncomeSplit(price, rateFrac(ratesFor(dateKey), VENDOR_TAX_RATE_ID));
+    stateWrite(tx, db, admin.firestore.FieldValue, {
+      kind: 'in',
+      cat: 'vergi_seyyar',
+      amount: split.tax,
       atMs: t,
       dayKey: dateKey,
-      stat: { sy_n: 1, [`sy_${sk}_n`]: 1, [`sy_${sk}_ciro`]: price, ...(isMenu ? { sy_menu_n: 1 } : { sy_gun_n: 1 }), ...(co ? { [borsaIncomeStatKey(co.sk)]: price } : {}) },
+      stat: { sy_n: 1, [`sy_${sk}_n`]: 1, [`sy_${sk}_ciro`]: price, ...(isMenu ? { sy_menu_n: 1 } : { sy_gun_n: 1 }), ...(co && split.share ? { [borsaIncomeStatKey(co.sk)]: split.share } : {}) },
     });
   });
 
