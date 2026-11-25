@@ -6,6 +6,7 @@ import { shopAction } from '../../services/gameActions';
 import { gymPriceOf, gymDeadlineMs } from '../../../functions/gym.js';
 import { futbolDayKey } from '../../../functions/businessCatalogData.js';
 import { bizErrText } from '../../lib/bizErrors';
+import { useSaleTax } from '../../hooks/useSaleTax'; // v202: Spor Salonu Vergisi fiyatın üstüne
 import { POS, EQUIP } from './gymMeta';
 import '../../styles/bizui.css';
 import './Gym.css';
@@ -23,7 +24,11 @@ export default function GymPanel({ houseId, houseDoc, onClose, onStarted }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState(null);
   const isOwner = !houseDoc?.bizGame && houseDoc?.ownerUid === user?.uid;
-  const price = isOwner ? 0 : gymPriceOf(houseDoc); // sahip kendi salonunda günde 1 kez ücretsiz
+  const basePrice = isOwner ? 0 : gymPriceOf(houseDoc); // sahip kendi salonunda günde 1 kez ücretsiz
+  // v202: oyunun salonunda Spor Salonu Vergisi fiyatın üstüne eklenir — ödenecek = ücret + vergi
+  const vat = useSaleTax(houseDoc?.bizGame || String(houseId || '').startsWith('game_') ? 'spor' : null);
+  const tax = vat.taxOf(basePrice);
+  const price = basePrice + tax;
   const gold = Number(player?.gold || 0);
   const bonus = !houseDoc?.bizGame && houseDoc?.gymBonusDay === futbolDayKey(Date.now());
   const [pos, setPos] = useState(null);
@@ -104,8 +109,20 @@ export default function GymPanel({ houseId, houseDoc, onClose, onStarted }) {
         <p className="bz-sec-title">🎟️ Üyelik</p>
         <div className="bz-row">
           <span>Günlük ücret</span>
-          <b>{isOwner ? 'Ücretsiz (senin salonun)' : `${fmt(price)} altın`}</b>
+          <b>{isOwner ? 'Ücretsiz (senin salonun)' : `${fmt(basePrice)} altın`}</b>
         </div>
+        {tax > 0 && (
+          <>
+            <div className="bz-row">
+              <span>%{vat.pct} spor salonu vergisi</span>
+              <b>{fmt(tax)} altın</b>
+            </div>
+            <div className="bz-row">
+              <span>Toplam</span>
+              <b>{fmt(price)} altın</b>
+            </div>
+          </>
+        )}
         <div className="bz-row">
           <span>Geçerli</span>
           <b>{hhmm(deadline)}&apos;a kadar</b>

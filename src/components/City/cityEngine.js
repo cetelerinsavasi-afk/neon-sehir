@@ -911,11 +911,13 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     const list = [...(v.venue.npcs || [])];
     (v.venue.bots || []).forEach((b) => list.push({ id: b.i, name: b.cfg.n, x: b.x, z: b.z, lines: b.cfg.l, av: { gender: b.cfg.g, skin: b.cfg.s, hairColor: b.cfg.h, clothing: 'vest', clothColor: '#f4f1e8', neckAcc: 'bow', pantsColor: '#1a1a1a' } }));
     // v197: oyundaki imam (imamState) — imam yoksa NPC gizli; varsa adı + avatarıyla görünür (venueNpcSet)
+    // v202: dilenci köşesindeki 3 minder — bugünün dilencileri (oyuncular) oturur; boş yer gizli (venueNpcSet)
+    if (v.type === 'camii') for (let i = 0; i < 3; i++) list.push({ id: `npc_dil${i}`, off: true, sit: 0.14, name: 'Dilenci', x: -7.8 + i, z: 5.6, lines: [] });
     if (v.type === 'camii') list.push({ id: 'npc_imam', off: true, name: 'İmam', x: 0, z: -5.75, lines: ['Namaza gelin.', 'Cemaatle kılınan namaz daha faziletlidir.'], av: { clothing: 'robe', clothColor: '#f4f1e8', hat: 'kufi', hatColor: '#ffffff', facialHair: 'full', hairColor: '#3b2a1a', neckAcc: 'none', pantsColor: '#f4f1e8' } });
     list.forEach((n) => {
       const p = fromRoom(v, n.x, n.z);
       const route = Array.isArray(n.route) ? n.route.map(([rx, rz]) => fromRoom(v, rx, rz)) : null; // v196 bot garson
-      venueNpcDefs.push({ id: n.id, off: Boolean(n.off), name: n.name, av: n.av, x: p.x, z: p.z, y: 0.16 + (v.y0 || 0), lines: n.lines || [], left: Boolean(n.left), venue: v, route, quiet: Boolean(gk && STATION_GAME_KEYS.includes(gk)) });
+      venueNpcDefs.push({ id: n.id, off: Boolean(n.off), ...(n.sit ? { sit: n.sit } : {}), name: n.name, av: n.av, x: p.x, z: p.z, y: 0.16 + (v.y0 || 0), lines: n.lines || [], left: Boolean(n.left), venue: v, route, quiet: Boolean(gk && STATION_GAME_KEYS.includes(gk)) });
     });
     // istasyonlar: oyunun mekânlarında (camii, banka, karakol) oyunun panelleri; markette alışveriş + ATM
     const stations = gk && STATION_GAME_KEYS.includes(gk) ? GAME_VENUES[gk]?.stations || {} : v.type === 'benzinlik' ? NEW_VENUES.market.stations : v.type === 'netkafe' ? NEW_VENUES.netkafe.stations : v.type === 'spor' ? gymStations(v) : CITY_MENU_KEY[v.type] ? menuStations(v) : {}; // v196: internet kafe — bilgisayar / konsol / yayın seti · v198: spor aletleri
@@ -1346,9 +1348,9 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   // v199: hayvan / bot platformu (eşyanın kendisi) sadece Tasarla'da görünür; normalde sadece hayvan / bot
   function evPadsVis() {
     if (!EV || !evHome) return;
-    (evHome.items || []).forEach((it, idx) => {
+    (evHome.items || []).forEach((it) => {
       if (!ANIMAL_BY_KEY[it.k] && it.k !== 'bot') return;
-      const o = EV.ml.objAt(idx);
+      const o = EV.ml.objById(it.i); // v202: kimlikle
       if (o) o.visible = Boolean(evDesign);
     });
   }
@@ -1399,17 +1401,33 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     EV.root.updateMatrixWorld(true);
     EV.ml.seatList().forEach((st) => {
       const p = fromRoom(EV, st.x, st.z);
-      seats.push({ x: p.x, y: st.y, z: p.z, yaw: EV.ry + st.yaw, taken: false, tier: false, ev: true, item: st.i, itemKey: st.k });
+      const def = CATALOG_MAP[st.k];
+      // v202: duşakabin ayakta (stand) — "🚿 Duş al" / "🚪 Duştan çık", içindeyken su akar
+      seats.push({ x: p.x, y: st.y, z: p.z, yaw: EV.ry + st.yaw, taken: false, tier: false, ev: true, item: st.i, itemKey: st.k, ...(def?.stand ? { stand: true, label: def.seatLabel || '🚿 Duş al', exitLabel: def.exitLabel || '🚪 Duştan çık' } : {}) });
+    });
+    // v202: evdeki lambaların / şöminenin ışığı şehrin ışık havuzuna (aç / kapat ışığı da söndürür)
+    for (let i = lights.length - 1; i >= 0; i--) if (lights[i].ev) lights.splice(i, 1);
+    (evHome?.items || []).forEach((it) => {
+      if (it.p !== 1) return;
+      const o = EV.ml.objById(it.i);
+      const L = o?.userData?.ctl?.light;
+      if (!L) return;
+      o.updateMatrixWorld(true);
+      const lp = o.localToWorld(new V(L.x, L.y, L.z));
+      lights.push({ x: lp.x, y: lp.y, z: lp.z, color: new THREE.Color(L.color), intensity: L.intensity, distance: L.distance, inner: true, ev: true, ctl: o.userData.ctl });
     });
     // v198: evdeki eşyaların eski ev ekranındaki eylemleri — ışık / TV / şömine aç-kapat, buzdolabından /
     // kahve makinesinden ürün al (elde 2 dk). Herkese açık; sadece bu cihazda (Firestore'a yazılmaz).
-    (evHome?.items || []).forEach((it, idx) => {
+    (evHome?.items || []).forEach((it) => {
       if (it.p !== 1 || HOME_PLAY_KEYS.has(it.k) || HOME_STUDIO_KEYS[it.k] || HOME_INSTR[it.k]) return;
       const def = CATALOG_MAP[it.k];
       if (!def) return;
       const acts = [];
-      const ctl = EV.ml.objAt(idx)?.userData?.ctl;
+      const ctl = EV.ml.objById(it.i)?.userData?.ctl; // v202: kimlikle (sıra numarası kayıyordu)
       if (!def.panel && ctl?.act && !ctl.noToggle && typeof ctl.setOn === 'function') acts.push({ kind: 'toggle', label: ctl.act });
+      // v202: müzik kutusu (sadece bu cihazda çalar) · ATM (telefonda banka)
+      if (def.panel === 'jukebox') acts.push({ kind: 'jukebox', label: '🎵 Müzik' });
+      if (def.panel === 'atm') acts.push({ kind: 'atm', label: '🏧 Parara Bank' });
       (def.takes || []).forEach((product) => {
         const pr = HOUSE_PRODUCTS[product];
         if (pr) acts.push({ kind: 'take', product, label: `${pr.emoji} ${pr.label} al` });
@@ -1418,7 +1436,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       if (HOME_GYM_FREE.has(it.k)) acts.push({ kind: 'gymfree', equipment: it.k, label: '💪 Serbest çalış' });
       if (!acts.length) return;
       const p = fromRoom(EV, it.x, it.z);
-      zones.push({ kind: 'homeItem', id: `hi_${it.i}`, idx, acts, title: `${def.icon || ''} ${def.name}`, x: p.x, z: p.z, y: EV.ml.floors[it.f] ?? 0, r: 1.5, ev: true });
+      zones.push({ kind: 'homeItem', id: `hi_${it.i}`, itemId: it.i, acts, title: `${def.icon || ''} ${def.name}`, x: p.x, z: p.z, y: EV.ml.floors[it.f] ?? 0, r: 1.5, ev: true });
     });
     // v198: evdeki stüdyo eşyaları (mikser konsolu, tuval) — sadece sahibine; yaklaşınca düğme çıkar.
     // Piyano / davul oturunca çalınır (aşağıda, oturma dalı) — evdeki herkes çalabilir.
@@ -1451,6 +1469,42 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
         // arcade makinesi ayakta oynanır; diğerleri sadece koltuktan (koltuk yoksa düğme çıkmaz)
         zones.push({ kind: 'homePlay', id: `hp_${it.i}`, title: it.k === 'gamer' ? '🎮 Oyun · 🔴 Yayın' : '🎮 Oyun', chair: it.k === 'gamer' ? it.i : null, x: p.x, z: p.z, y: EV.ml.floors[it.f] ?? 0, r: 1.7, ev: true, ...(it.k !== 'arcade' ? { seatOnly: true, chairPos: chair } : {}) });
       });
+    }
+  }
+  // v202 — EVDEKİ CANLI EŞYALAR: ev eşyaları şehir kurulduktan SONRA (eve girince) kurulduğu için canlı
+  // parçaları (TV ekranı, şömine alevi, akvaryum…) şehrin tek seferlik canlı listesine hiç girmiyordu —
+  // TV açılınca ekran siyah kalıyordu. Artık içerideyken kat kitlerinin listesi her karede oynatılır.
+  // Duşakabin: içinde biri (ben ya da duruşu duşta olan başka oyuncu) varsa su akar.
+  const tkV = new V();
+  function homeTicks(t, dt) {
+    for (let f = 0; f < 3; f++) {
+      const kit = EV.ml.furnKit(f);
+      if (!kit) continue;
+      for (const tk of kit.ticks) {
+        const ctl = tk.ctl;
+        if (!ctl) continue;
+        if (tk.wx === undefined) {
+          tk.obj.getWorldPosition(tkV);
+          tk.wx = tkV.x;
+          tk.wz = tkV.z;
+          tk.wy = tkV.y;
+        }
+        if (ctl.setRunning) {
+          let busy = Boolean(self.seat?.stand) && Math.hypot(self.seat.x - tk.wx, self.seat.z - tk.wz) < 0.7 && Math.abs(self.seat.y - tk.wy) < 1;
+          if (!busy) {
+            for (const r of remotes.values()) {
+              const q = r.st;
+              if (!q || q.m === 1 || !r.fig?.group.visible) continue;
+              if (Math.hypot(r.fig.x - tk.wx, r.fig.z - tk.wz) < 0.45 && Math.abs((r.fig.y || 0) - tk.wy) < 1) {
+                busy = true;
+                break;
+              }
+            }
+          }
+          if (ctl.running !== busy) ctl.setRunning(busy);
+        }
+        if (ctl.tick && Math.abs(tk.wx - self.x) < 25 && Math.abs(tk.wz - self.z) < 25) ctl.tick(t, dt, Math.hypot(tk.wx - self.x, tk.wz - self.z));
+      }
     }
   }
   const evLocal = (x, z) => {
@@ -1996,6 +2050,11 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     f.venue = n.venue || null; // etiketi sadece o mekânın içindeyken görünür
     f.quiet = Boolean(n.quiet); // konuşmayı mekân katmanı (VenueLayer) yönetir
     f.off = Boolean(n.off); // v197: kapalı NPC (ör. imam yokken) hiç çizilmez
+    if (n.sit) {
+      // v202: minderde oturan NPC (camideki dilenciler)
+      f.sitting = true;
+      f.seatY = f.y + n.sit;
+    }
     if (n.route) f.route = n.route; // v196: devriye (bot garson)
     return f;
   });
@@ -3489,6 +3548,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     const g0 = ml.pick(o, d);
     if (!g0) return false;
     const g = ml.stairGoal?.(g0, me.y) || g0; // v198: merdivene dokununca kat değiştir
+    if (self.seat && seatHolds.size) return true; // v202: oyun / yayın açıkken koltuktan kalkılmaz
     if (self.seat) standUp();
     const pts = ml.route({ x: toRoom(curVenue, self.x, self.z).x, z: toRoom(curVenue, self.x, self.z).z, y: me.y }, g).map(([x, z]) => fromRoom(curVenue, x, z));
     self.path = pts;
@@ -3540,6 +3600,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     // profiller yandaki 👥 Yakındakiler listesinden açılır. Dokunuş yürümeye gider.
     void onPlayerTap;
     if (curVenue?.ml && evTap()) return; // v196: evin içi (katlar, merdiven, tasarım)
+    if (self.seat && seatHolds.size) return; // v202: oyun / yayın açıkken koltuktan kalkılmaz
     if (self.seat) standUp();
     // önce bir binaya dokunduysa kapısına yürü
     // v157.3: girilebilir mekânların kabuğu dokunuşu yutmaz — mekânın içine / arkasına dokununca
@@ -4151,7 +4212,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     }
     const manual = f || s;
     if (self.seat) {
-      if (manual) standUp();
+      // v202: oyun / yayın açıkken (internet kafe, evdeki konsol) ok tuşları oyuna gider, avatar kalkmaz
+      if (manual && !seatHolds.size) standUp();
       else {
         me.moving = false;
         return;
@@ -4240,6 +4302,9 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     }
     return false;
   }
+  // v202 — KOLTUK KİLİDİ: internet kafede / evde oyun ya da yayın açıkken ok tuşları ve dokunuş oyuncuyu
+  // koltuktan kaldırmaz (eskiden PC'de oyunda sağa sola basınca avatar kalkıp yürüyordu)
+  const seatHolds = new Set();
   function sitAt(st) {
     if (driving || !st || st.taken || seatBusy(st)) return;
     self.target = null;
@@ -4251,7 +4316,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     self.z = st.z;
     me.x = st.x;
     me.z = st.z;
-    me.sitting = true;
+    me.sitting = !st.stand; // v202: duşakabinde ayakta durulur
     me.seatY = st.y;
     // v149: tribün koltuğu — yüz sahaya dönük, kamera arkadan sahaya bakar
     me.seatYaw = st.tier ? st.yaw : null;
@@ -4606,6 +4671,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   function updateLights(force, px = self.x, pz = self.z) {
     const near = [];
     for (const L of lights) {
+      if (L.ctl && L.ctl.on === false) continue; // v202: evde söndürülen lamba / şömine
       const d = (L.x - px) ** 2 + (L.z - pz) ** 2;
       if (d < 150 * 150) near.push({ L, d });
     }
@@ -4824,6 +4890,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       if (Math.abs(tk.wx - tpx) > TICK_R || Math.abs(tk.wz - tpz) > TICK_R) continue;
       tk.ctl.tick(t, dt, Math.hypot(tk.wx - tpx, tk.wz - tpz));
     }
+    if (EV && curVenue === EV) homeTicks(t, dt); // v202: evdeki TV / şömine / akvaryum… + duş suyu
     smoke.forEach((s) => {
       const u = s.userData;
       u.t = (u.t + dt * 0.08) % 1;
@@ -4910,9 +4977,14 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       else if (sb) best = { ...best, id: `${best.id}+${sid}`, seatNear: sb.tier ? 'near' : sb };
     }
     if (self.seat) {
-      best = { id: 'seated', kind: 'seated', title: '🪑 Oturuyorsun' };
-      // v197: oyun / yayın koltuğundayken o cihazın düğmeleri (+ Kalk)
       const st = self.seat;
+      best = { id: 'seated', kind: 'seated', title: st.stand ? '🚿 Duştasın' : '🪑 Oturuyorsun', ...(st.exitLabel ? { exitLabel: st.exitLabel } : {}) };
+      // v202: evde oturduğun eşyanın kendi düğmeleri (jakuzi köpüğü, küvet…) oturunca da çıkar
+      if (st.ev) {
+        const hz = zones.find((z) => z.kind === 'homeItem' && z.itemId === st.item);
+        if (hz) best = { ...hz, id: `${hz.id}+seated`, seatedAt: true, ...(st.exitLabel ? { exitLabel: st.exitLabel } : {}) };
+      }
+      // v197: oyun / yayın koltuğundayken o cihazın düğmeleri (+ Kalk)
       const cands = zones.filter((z) => z.seatOnly && z.chairPos && Math.hypot(z.chairPos.x - st.x, z.chairPos.z - st.z) < z.chairPos.r && (z.y == null || Math.abs(st.y - z.y) < 1.6));
       const sz = cands.find((z) => z.chair) || cands[0]; // yayın koltuğu (oyuncu koltuğu) önce
       if (sz) best = { ...sz, id: `${sz.id}+seated`, seatedAt: true };
@@ -5943,10 +6015,11 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     myHolding: () => (me.holding && heldUntil > Date.now() ? { p: me.holding, until: heldUntil } : null),
     playerHolding: (id) => remotes.get(id)?.st?.h || null,
     // v198: evdeki eşyayı aç / kapat (ışık, TV, şömine…) — sadece bu cihazda
-    homeToggle(idx) {
-      const ctl = EV?.ml.objAt(idx)?.userData?.ctl;
+    homeToggle(itemId) {
+      const ctl = EV?.ml.objById(itemId)?.userData?.ctl; // v202: eşya kimliği
       if (!ctl?.setOn) return false;
       ctl.setOn(!ctl.on);
+      updateLights(true); // v202: ışığı olan eşya hemen söner / yanar
       return true;
     },
     // v198: garson siparişi getirir (ürün garsonun elinde gelir, varınca done çağrılır)
@@ -5975,6 +6048,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
         return;
       }
       if (o.name) n.setName(String(o.name).slice(0, 40));
+      if (Array.isArray(o.lines)) n.lines = o.lines.filter(Boolean).map((l) => String(l).slice(0, 120)); // v202
       if (!o.av || typeof o.av !== 'object' || !Object.keys(o.av).length) return;
       const av = { ...o.av };
       delete av.pet; // camide evcil hayvan dolaşmasın
@@ -6088,6 +6162,16 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       // v197: garajda her zaman benim aracım — kendi evime girince sunucudaki güncel hali gelir
       if (home?.mine && (home.garage?.cid || home.garageCar)) evSetGarageCar(home.garage?.cid || home.garageCar, home.garage?.mods || null, home.garage?.id || null);
       else if (home?.mine) evSetGarageCar(null);
+    },
+    // v202: bot / hayvan ayarı kaydedilince (Tasarla › ✏️ Düzenle) evdeki figür hemen güncellenir
+    homeSetCfg(field, id, cfg) {
+      if (!evHome || (field !== 'bots' && field !== 'pets')) return;
+      evHome[field] = { ...evHome[field], [id]: cfg };
+      try {
+        evFigsBuild();
+      } catch {
+        /* yoksay */
+      }
     },
     homeSetItems(items) {
       if (!EV) return;
@@ -6459,6 +6543,11 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     exitCar,
     sit: (st) => sitAt(st && st !== 'near' ? st : nearestSeat()),
     stand: () => standUp(),
+    // v202: koltuk kilidi (anahtar başına; hepsi kalkınca kilit açılır)
+    seatHold(key, on) {
+      if (on) seatHolds.add(String(key));
+      else seatHolds.delete(String(key));
+    },
     setDrive(patch) {
       Object.assign(driveIn, patch);
     },
@@ -6608,9 +6697,9 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     },
     // ağa gönderilecek kendi durumum (kısa alan adları → az veri)
     getNetState() {
-      const st = { x: Math.round(self.x * 100) / 100, z: Math.round(self.z * 100) / 100, l: me.facingLeft ? 1 : 0, m: me.moving ? 1 : 0, p: driving ? 'd' : self.ride ? 'r' : self.seat ? 's' : 'w' };
+      const st = { x: Math.round(self.x * 100) / 100, z: Math.round(self.z * 100) / 100, l: me.facingLeft ? 1 : 0, m: me.moving ? 1 : 0, p: driving ? 'd' : self.ride ? 'r' : self.seat && !self.seat.stand ? 's' : 'w' }; // v202: duşta ayakta
       if (self.run && me.moving) st.r = 1;
-      if (self.seat) st.sy = Math.round(self.seat.y * 100) / 100;
+      if (self.seat && !self.seat.stand) st.sy = Math.round(self.seat.y * 100) / 100;
       if (self.ride) {
         st.ro = self.ride.owner;
         st.rk = self.ride.k;

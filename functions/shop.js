@@ -264,11 +264,14 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       const item = itemSnap.data();
       const job = workshopJob({ itemType, item, action, upgradeType: p.upgradeType });
       if (job.block) fail('failed-precondition', `job-${job.block}`);
-      const total = v196WorkshopPrice(job);
+      const base = v196WorkshopPrice(job);
+      // v202: vergi fiyatın üstüne eklenir (Silah / Modifiye / Tamirci vergisi) — müşteri toplamı öder
+      const vat = business?.saleTaxOf?.(type, base) || 0;
+      const total = base + vat;
       if (Number(p.expect) !== total) fail('aborted', `price-changed:${total}`);
       if (Number(us.data()?.gold || 0) < total) fail('failed-precondition', 'gold');
       if (total > 0) tx.update(userRef(uid), { gold: FieldValue.increment(-total), goldTag: goldTag('atolye') });
-      const sp = business?.recordGameIncomeTx?.(tx, { type, amount: total, kind: 'service', customerUid: uid, products: { [`${action}:${itemType}`]: 1 } });
+      const sp = business?.recordGameIncomeTx?.(tx, { type, amount: base, kind: 'service', customerUid: uid, products: { [`${action}:${itemType}`]: 1 } });
       let patch;
       if (action === 'repair') {
         const cap = lifeCapOf(itemType, item);
@@ -280,7 +283,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
         patch = vehicleLevelUpPatch(item); // araç seviyesi +1 (hız / ivme / nitro)
       }
       tx.update(itemRef, patch);
-      result = { ok: true, action, itemType, qty: job.qty, labor: 0, material: total, total, tax: sp?.tax || 0 };
+      result = { ok: true, action, itemType, qty: job.qty, labor: 0, material: base, price: base, total, tax: sp?.tax ?? vat };
     });
     // Onboarding görev 19 — "silahını geliştir"
     if (result.action === 'upgrade' && result.itemType === 'weapon') await advanceOnboardingStep(uid, 19).catch(() => {});
@@ -356,10 +359,13 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       const want = sanitizeMods(cid, p.mods);
       const cost = modCost(cid, v.mods || null, want);
       if (cost.total <= 0) fail('failed-precondition', 'no-change');
-      if (Number(p.expect) !== cost.total) fail('aborted', `price-changed:${cost.total}`);
-      if (Number(us.data()?.gold || 0) < cost.total) fail('failed-precondition', 'gold');
+      // v202: Modifiye Vergisi fiyatın üstüne eklenir — müşteri toplamı öder
+      const vat = business?.saleTaxOf?.(type, cost.total) || 0;
+      const pay = cost.total + vat;
+      if (Number(p.expect) !== pay) fail('aborted', `price-changed:${pay}`);
+      if (Number(us.data()?.gold || 0) < pay) fail('failed-precondition', 'gold');
       // --- yazmalar ---
-      tx.update(userRef(uid), { gold: FieldValue.increment(-cost.total), goldTag: goldTag('modifiye') });
+      tx.update(userRef(uid), { gold: FieldValue.increment(-pay), goldTag: goldTag('modifiye') });
       tx.update(vRef, { mods: compactMods(cid, want), modsAtMs: now() });
       const products = Object.fromEntries(cost.items.map((x) => [`modifiye:${x.label}`, 1]));
       if (least?.cacheWrite) tx.set(db.collection('gameVenues').doc(type), least.cacheWrite, { merge: true });
@@ -371,7 +377,7 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
       } else {
         business?.recordGameIncomeTx?.(tx, { type, amount: cost.total, kind: 'service', customerUid: uid, products });
       }
-      result = { ok: true, total: cost.total, items: cost.items, mods: compactMods(cid, want) };
+      result = { ok: true, total: pay, price: cost.total, tax: vat, items: cost.items, mods: compactMods(cid, want) };
     });
     return result;
   }
@@ -691,15 +697,19 @@ export function createShop({ db, FieldValue, HttpsError, requireAuth, onCall, sp
     const e = catalogOf(kind)[cid];
     const type = kind === 'vehicle' ? vehicleShopOf(cid) : 'silahci'; // v177: motorlar motor galerisinden
     const price = Math.max(0, Math.round(Number(e.price) || 0));
+    // v202: Araba / Motor / Silah Vergisi fiyatın üstüne eklenir (müşteri fiyat + vergi öder)
+    const vat = business?.saleTaxOf?.(type, price) || 0;
+    const total = price + vat;
     let result = null;
     await db.runTransaction(async (tx) => {
       const us = await tx.get(userRef(uid));
-      if (expect != null && Number(expect) !== price) fail('aborted', `price-changed:${price}`);
-      if (Number(us.data()?.gold || 0) < price) fail('failed-precondition', 'Yetersiz altın.');
-      tx.update(userRef(uid), { gold: FieldValue.increment(-price), goldTag: goldTag(kind === 'vehicle' ? 'arac' : 'silah') });
+      // expect: istemcinin gösterdiği TOPLAM (vergi dahil)
+      if (expect != null && Number(expect) !== total) fail('aborted', `price-changed:${total}`);
+      if (Number(us.data()?.gold || 0) < total) fail('failed-precondition', 'Yetersiz altın.');
+      tx.update(userRef(uid), { gold: FieldValue.increment(-total), goldTag: goldTag(kind === 'vehicle' ? 'arac' : 'silah') });
       const sp = business?.recordGameIncomeTx(tx, { type, amount: price, kind: 'sale', customerUid: uid, products: { [e.name]: 1 } });
       tx.set(db.collection(coll(kind)).doc(), kind === 'vehicle' ? newVehicleDoc(uid, cid, FieldValue) : newWeaponDoc(uid, cid, FieldValue));
-      result = { ok: true, price, fromShop: false, tax: sp?.tax || 0 };
+      result = { ok: true, price, total, fromShop: false, tax: sp?.tax ?? vat };
     });
     return { ...result, name: e.name };
   }

@@ -260,7 +260,9 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
   // Süresi dolmuş bitmemiş üyeliği iade et. YAZMA. (m okunmuş olmalı)
   function refundTx(tx, ref, m) {
     tx.update(ref, { status: 'refunded', refundedAtMs: now() });
-    if (m.price > 0) tx.update(userRef(m.uid), { gold: FieldValue.increment(m.price), goldTag: goldTag('spor') });
+    // v202: fiyatın üstüne ödenen vergi (vat) de iade edilir
+    const back = Number(m.price || 0) + Number(m.vat || 0);
+    if (back > 0) tx.update(userRef(m.uid), { gold: FieldValue.increment(back), goldTag: goldTag('spor') });
   }
 
   // ---- üyeliği başlat ----------------------------------------------------------------------
@@ -300,9 +302,12 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
       if (ms.exists && ms.data().status !== 'refunded') fail('failed-precondition', 'membership-today');
       const own = !isGameGym(h) && h.ownerUid === uid;
       const price = own ? 0 : gymPriceOf(h);
-      if (!own && Number(p.expect) !== price) fail('aborted', `price-changed:${price}`);
-      const refund = expired.reduce((a, [, m]) => a + Number(m.price || 0), 0);
-      if (Number(user.gold || 0) + refund < price) fail('failed-precondition', 'gold');
+      // v202: Spor Salonu Vergisi fiyatın üstüne eklenir (oyunun salonu) — expect = toplam
+      const vat = !own && isGameGym(h) ? business?.saleTaxOf?.('spor', price, t) || 0 : 0;
+      const pay = price + vat;
+      if (!own && Number(p.expect) !== pay) fail('aborted', `price-changed:${pay}`);
+      const refund = expired.reduce((a, [, m]) => a + Number(m.price || 0) + Number(m.vat || 0), 0);
+      if (Number(user.gold || 0) + refund < pay) fail('failed-precondition', 'gold');
       const bonus = await gymBonus(gymId, h, dayKey);
       // görevler: salondaki alet türlerinden rastgele 3 farklısı
       const kinds = GYM_EQUIPMENT.filter((k) => (h.items || []).some((x) => x.k === k && x.p === 1));
@@ -317,7 +322,7 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
       expired.forEach(([ref, m]) => refundTx(tx, ref, m));
       if (!fs.exists) tx.set(fbRef(uid), fb);
       else if (patch) tx.update(fbRef(uid), patch);
-      if (price > 0) tx.update(userRef(uid), { gold: FieldValue.increment(-price), goldTag: goldTag('spor') });
+      if (pay > 0) tx.update(userRef(uid), { gold: FieldValue.increment(-pay), goldTag: goldTag('spor') });
       const expiresAtMs = gymDeadlineMs(t);
       tx.set(memRef(uid, dayKey), {
         uid,
@@ -328,6 +333,7 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
         ownerUid: isGameGym(h) ? null : h.ownerUid,
         dayKey,
         price,
+        vat, // v202: fiyatın üstüne ödenen vergi (gelir tamamlanınca belediyeye; iadede geri)
         bonus,
         tasks,
         step: 0,
@@ -338,7 +344,7 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
       });
       if (!isGameGym(h) && Number(h.bizLockUntilMs || 0) < expiresAtMs) tx.update(houseRef(gymId), { bizLockUntilMs: expiresAtMs });
       void os;
-      result = { ok: true, dayKey, tasks, bonus, price, position: fb.position, power: fb.power };
+      result = { ok: true, dayKey, tasks, bonus, price, vat, total: pay, position: fb.position, power: fb.power };
     });
     return result;
   }
@@ -397,7 +403,8 @@ export function createGym({ db, FieldValue, HttpsError, splitIncomeForDebt, busi
       if (hs.exists && hs.data().biz?.type === 'spor' && !isGameGym(hs.data()) && hs.data().ownerUid === m.ownerUid) {
         payGymTx(tx, { gymId: m.gymId, h: hs.data(), ownerSnap: os, amount: m.price, customerUid: uid, kind: 'service', atMs: m.paidAtMs, products: { üyelik: 1 }, prepaid: true });
       } else if (m.game && m.price > 0) {
-        business?.recordGameIncomeTx?.(tx, { type: 'spor', amount: m.price, kind: 'service', customerUid: uid, atMs: m.paidAtMs, products: { üyelik: 1 }, tax: bizTax(m.price, 'spor', ratesFor(rateDayKey(m.paidAtMs || t))) });
+        // v202: vergisi fiyatın üstünde ödenmiş üyelik (vat alanı var) yeni sistemle; güncelleme öncesi ödenen eski sistemle
+        business?.recordGameIncomeTx?.(tx, { type: 'spor', amount: m.price, kind: 'service', customerUid: uid, atMs: m.paidAtMs, products: { üyelik: 1 }, addon: m.vat != null, vat: m.vat ?? null });
       } else if (m.ownerUid && os && m.price > 0) {
         // salon kapanmış/sahibi değişmiş olsa da parası ödenmiş hizmet tamamlandı → sahibe (vergi düşülerek)
         const gTax = bizTax(m.price, 'spor', ratesFor(rateDayKey(m.paidAtMs || t)));

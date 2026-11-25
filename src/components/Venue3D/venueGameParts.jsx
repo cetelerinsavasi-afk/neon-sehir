@@ -128,6 +128,23 @@ export function NetKafePart({ panel, setPanel, flash, engineRef }) {
     return () => clearInterval(tickRef.current);
   }, [sess, flash]);
   useEffect(() => () => shopAction({ op: 'netLeave', houseId }).catch(() => {}), []);
+  // v202: kalan süre sayacı (bisiklet kiralamadaki gibi) — sunucunun creditUntilMs'i; Date.now() sunucu saatine göre
+  const [left, setLeft] = useState(0);
+  useEffect(() => {
+    if (!sess?.until) return undefined;
+    const step = () => setLeft(Math.max(0, Math.ceil((sess.until - Date.now()) / 1000)));
+    step();
+    const iv = setInterval(step, 1000);
+    return () => clearInterval(iv);
+  }, [sess?.until]);
+  // v202: oyun / yayın açıkken avatar koltuktan kalkmasın (ok tuşları oyuna gider)
+  const holding = Boolean(sess || streamChair);
+  useEffect(() => {
+    const eng = engineRef?.current?.cityEng?.();
+    if (!eng?.seatHold) return undefined;
+    eng.seatHold('netkafe', holding);
+    return () => eng.seatHold('netkafe', false);
+  }, [holding, engineRef]);
   // istasyon düğmesi: play:<cihaz> → hemen başlar (onay penceresi yok), oyun açılır
   useEffect(() => {
     if (!panel || !panel.startsWith('play:')) return;
@@ -161,6 +178,11 @@ export function NetKafePart({ panel, setPanel, flash, engineRef }) {
   }, [panel, setPanel, sess, leave]);
   return (
     <>
+      {sess && !streamChair && (
+        <div className="cs-rent-chip" style={{ position: 'fixed', zIndex: 6000 }} aria-live="off">
+          🖥️ {Math.floor(left / 60)}:{String(left % 60).padStart(2, '0')}
+        </div>
+      )}
       {sess && !streamChair && (
         <div className="hb-topbtns">
           <button className="hb-topbtn" onClick={() => setArcade(true)}>🎮 Oyna · {deviceName(sess.id)}</button>

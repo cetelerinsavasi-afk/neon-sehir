@@ -25,7 +25,6 @@ export const GANG = {
   SAG_KOL_SLOTS: 2,
   KIDEMLI_SLOTS: 4,
   RANK_THRESHOLD: 1_000_000, // altı → Çömez
-  RESPECT_PRESTIGE: 1_000_000, // Mafya Babası saygısı
   // v64: saygı HAFTALIK — her oyuncuya haftada en fazla 1 kez (hafta Pazartesi 00:00'da başlar).
   // Bu sürümden önce gösterilmiş saygılar (hafta bilgisi olmayan) bu haftaya sayılır;
   // ilk sıfırlanma bir sonraki Pazartesi 00:00.

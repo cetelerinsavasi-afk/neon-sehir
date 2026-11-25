@@ -3,27 +3,24 @@
 // gönderim, ittifaklar (not / iptal), devirme / ayaklanma, çeteden ayrıl.
 import { useState } from 'react';
 import { limit, orderBy } from 'firebase/firestore';
-import { fmtDateTime, istHour, respectedThisWeek, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
+import { fmtDateTime, istHour, useGang, useGangAction, useNow, useQueryData } from '../GangContext';
 import { AmountInput, Btn, Card, Chips, Confirm, Logo, RankBadge, Sheet } from '../ui';
 import { EditProfileSheet, KasaLine, MemberCard, MidnightLegend, RankTree, useMyWallet } from '../shared';
 import { DIST_GROUPS, GANG_RULES, LEADERS, RANK_ICONS, fmt } from '../gangConstants';
 import { BiatPanel } from '../Biat';
 
-// Üyeye dokununca: saygı / at / çıkarma oylaması (yetkiye göre)
+// Üyeye dokununca: at / çıkarma oylaması (yetkiye göre) — v202: saygı kaldırıldı
 const KICK_VOTE_TARGETS = { baba: ['sagkol', 'kidemli'], sagkol: ['kidemli', 'tetikci'], kidemli: ['tetikci', 'comez'] };
 function MemberSheet({ member, myRank, handover, onClose }) {
   const { run, busy } = useGangAction();
   const [ask, setAsk] = useState(null);
   const t = member.rank;
-  const respected = respectedThisWeek(member, Date.now()); // v64: haftalık
-  const canRespect = myRank === 'baba' && !respected;
   const canKick = (myRank === 'baba' && (t === 'tetikci' || t === 'comez')) || (myRank === 'sagkol' && t === 'comez');
   const canKickVote = (KICK_VOTE_TARGETS[myRank] || []).includes(t);
   // v41: Baba → Sağ Kol başkanlık devri (günde bir açık talep)
   const canHandover = myRank === 'baba' && t === 'sagkol' && !handover;
   const voteOpen = istHour(useNow(30_000)) < 12;
   const C = {
-    respect: { icon: '🎩', title: `${member.name} için saygı göster`, lines: [`✦ +${fmt(GANG_RULES.RESPECT_PRESTIGE)}`, '📅 Her üyeye haftada 1 kez (Pazartesi 00:00 yenilenir)'], label: 'Saygı göster', act: () => run('giveRespect', { targetId: member.id }, { success: '🎩 Saygı gösterildi' }) },
     kick: { icon: '🚫', title: `${member.name} çeteden atılsın mı?`, lines: ['Prestiji kalıcı silinir.', '🚪 Bu çeteye 00:00\'a kadar geri giremez; sonra prestiji 0\'dan başlar.'], label: 'At', danger: true, act: () => run('kickMember', { targetId: member.id }, { success: '🚫 Üye atıldı' }) },
     handover: {
       icon: '👑',
@@ -40,7 +37,6 @@ function MemberSheet({ member, myRank, handover, onClose }) {
       <div className="gx-member-detail">
         <RankBadge rank={member.rank} />
         <span className="gx-prestige">✦ {fmt(member.prestige)}</span>
-        {respected && <span className="gx-pill">🎩 Bu hafta saygı gördü</span>}
         {member.inactiveWarn && <span className="gx-pill warn">💤 29 gündür aktif değil</span>}
       </div>
       <div className="gx-stack">
@@ -49,7 +45,6 @@ function MemberSheet({ member, myRank, handover, onClose }) {
             👑 Başkanlığı devret
           </Btn>
         )}
-        {canRespect && <Btn block onClick={() => setAsk('respect')}>🎩 Saygı göster (+{fmt(GANG_RULES.RESPECT_PRESTIGE)})</Btn>}
         {canKickVote && (
           <Btn block kind="ghost" disabled={!voteOpen} onClick={() => setAsk('kickVote')}>
             {voteOpen ? '🗳️ Çıkarma oylaması başlat' : '🔒 🗳️ 00:00–12:00'}
@@ -283,7 +278,6 @@ export default function CetemTab({ d }) {
       onClick={() => m.id !== actorId && setSel(m)}
       badges={
         <>
-          {respectedThisWeek(m, Date.now()) && '🎩'}
           {m.inactiveWarn && '💤'}
         </>
       }

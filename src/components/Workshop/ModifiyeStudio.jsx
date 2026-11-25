@@ -8,6 +8,7 @@ import { buildVehicle, VEHICLE_BY_ID } from '../City/vehicles.js';
 import { shopAction } from '../../services/gameActions';
 import { bizErrText } from '../../lib/bizErrors';
 import { usePlayer } from '../../hooks/usePlayer';
+import { useSaleTax } from '../../hooks/useSaleTax'; // v202: Modifiye Vergisi fiyatın üstüne
 import { MOD_OPTIONS, MOD_RANGES, modDefaults, sanitizeMods, modCost, roofOptions, cleanPlate, cleanSideNo, cleanSign, modProfile, accOptions, TRAILER_COLOR } from '../../../functions/vehicleMods.js';
 import { vehicleDisplayName } from '../VehicleCard/VehicleCard';
 import { previewHorn } from '../../lib/hornSound.js'; // v162 korna
@@ -535,6 +536,10 @@ export default function ModifiyeStudio({ vehicle, shop, isOwner = false, onClose
   }, [onClose]);
 
   const cost = useMemo(() => modCost(cid, base, cfg), [cid, base, cfg]);
+  // v202: Modifiye Vergisi fiyatın üstüne eklenir (oyunun garajı) — ödenecek = parça toplamı + vergi
+  const vat = useSaleTax(shop?.kind === 'game' ? 'modifiye' : null);
+  const tax = vat.taxOf(cost.total);
+  const pay = cost.total + tax;
   // bir seçeneğin (şu anki hale göre) fiyatı
   const priceOf = (patch) => modCost(cid, base, { ...base, ...patch }).total;
   const set = (patch) => {
@@ -542,7 +547,7 @@ export default function ModifiyeStudio({ vehicle, shop, isOwner = false, onClose
     setCfg((c) => sanitizeMods(cid, { ...c, ...patch, acc: { ...c.acc, ...(patch.acc || {}) } }));
   };
   const gold = Number(player?.gold || 0);
-  const poor = gold < cost.total;
+  const poor = gold < pay;
   const hasCab = roofOptions(cid).some((o) => o[0] === 'kapali');
 
   const apply = async () => {
@@ -550,8 +555,8 @@ export default function ModifiyeStudio({ vehicle, shop, isOwner = false, onClose
     setBusy(true);
     setMsg(null);
     try {
-      const r = await shopAction({ op: 'modify', shop: shop.kind === 'game' ? 'game' : shop.houseId, vehicleId: vehicle.id, mods: cfg, expect: cost.total });
-      setMsg({ ok: true, text: `✓ Modifiye tamam! ${fmt(r?.total ?? cost.total)} altın ödendi — aracın artık şehirde, profilde ve galeride böyle görünür.` });
+      const r = await shopAction({ op: 'modify', shop: shop.kind === 'game' ? 'game' : shop.houseId, vehicleId: vehicle.id, mods: cfg, expect: pay });
+      setMsg({ ok: true, text: `✓ Modifiye tamam! ${fmt(r?.total ?? pay)} altın ödendi — aracın artık şehirde, profilde ve galeride böyle görünür.` });
       onDone?.(r);
     } catch (e) {
       const m = String(e?.message || '');
@@ -746,6 +751,11 @@ export default function ModifiyeStudio({ vehicle, shop, isOwner = false, onClose
                   {x.label} <b>{fmt(x.price)}</b>
                 </span>
               ))}
+              {tax > 0 && (
+                <span>
+                  %{vat.pct} vergi <b>{fmt(tax)}</b>
+                </span>
+              )}
             </div>
           ) : null}
           <div className="ms-foot-row">
@@ -756,7 +766,7 @@ export default function ModifiyeStudio({ vehicle, shop, isOwner = false, onClose
               🏭 Orijinal
             </button>
             <button className="ms-go" disabled={busy || !cost.total || poor || isOwner} onClick={apply}>
-              {busy ? 'Uygulanıyor…' : isOwner ? 'Kendi dükkânın' : !cost.total ? 'Değişiklik yok' : poor ? `Altın yetmiyor · ${fmt(cost.total)}` : `💳 Uygula · ${fmt(cost.total)}`}
+              {busy ? 'Uygulanıyor…' : isOwner ? 'Kendi dükkânın' : !cost.total ? 'Değişiklik yok' : poor ? `Altın yetmiyor · ${fmt(pay)}` : `💳 Uygula · ${fmt(pay)}`}
             </button>
           </div>
           {isOwner && <p className="ms-warn">Kendi dükkânında modifiye yaptıramazsın — rakip bir modifiyeciye ya da oyunun garajına git. (Deneyebilirsin, ama uygulayamazsın.)</p>}

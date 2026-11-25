@@ -1176,7 +1176,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
         if (live.has(k)) bots[k] = v;
       });
       bots[i] = cfg;
-      tx.update(houseRef(houseId), { bots, updatedAtMs: now() });
+      // v202: kişisel evde updatedAtMs değişmez (yarım kalan tasarım taslağı geçersiz sayılmasın)
+      tx.update(houseRef(houseId), { bots, ...(houseId.startsWith('home_') ? {} : { updatedAtMs: now() }) });
       result = { ok: true, cfg };
     });
     return result;
@@ -1211,7 +1212,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
         if (live.has(k)) pets[k] = v;
       });
       pets[i] = cfg;
-      tx.update(houseRef(houseId), { pets, updatedAtMs: now() });
+      // v202: kişisel evde updatedAtMs değişmez (yarım kalan tasarım taslağı geçersiz sayılmasın)
+      tx.update(houseRef(houseId), { pets, ...(houseId.startsWith('home_') ? {} : { updatedAtMs: now() }) });
       result = { ok: true, cfg };
     });
     return result;
@@ -1464,7 +1466,8 @@ export function createHouses({ db, FieldValue, HttpsError, requireAuth, onCall, 
     // v198: kişisel ev (home_…) SADECE şehirdeki Tasarla ile (home.js) düzenlenir. Eski ev ekranının kaydı /
     // satın alması bu belgeye yazılırsa eşyalar eski envantere (houseInventories) gidiyor ve oyuncunun
     // evinde de, envanterinde de görünmüyordu.
-    if (['save', 'checkout', 'take', 'botSet', 'petSet', 'music'].includes(p.op) && String(p.houseId || '').startsWith('home_')) fail('failed-precondition', 'Evini şehirde, evinin içinde Tasarla ile düzenleyebilirsin.');
+    // v202: bot / hayvan ayarı (botSet / petSet) kişisel evde de yapılır — sadece ayar alanına yazar (eşyalara / envantere dokunmaz)
+    if (['save', 'checkout', 'take', 'music'].includes(p.op) && String(p.houseId || '').startsWith('home_')) fail('failed-precondition', 'Evini şehirde, evinin içinde Tasarla ile düzenleyebilirsin.');
     switch (p.op) {
       case 'buy':
         return buy(uid, p);

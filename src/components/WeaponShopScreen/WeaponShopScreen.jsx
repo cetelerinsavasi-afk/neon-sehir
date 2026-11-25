@@ -6,6 +6,7 @@ import { buyWeapon } from '../../services/gameActions';
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import { useShopOffers, withOfferPrices } from '../../hooks/useShopOffers';
 import { priceChangedText } from '../../lib/priceChanged';
+import { useSaleTax } from '../../hooks/useSaleTax'; // v202: vergi fiyatın üstüne
 import './WeaponShopScreen.css';
 
 // Silah Mağazası SADECE silah SATIN ALMA yeri — geliştirme Profil'den
@@ -29,6 +30,7 @@ export default function WeaponShopScreen({ items = null, onBuy = null, disabledT
   );
   // v132: oyunun mağazası — en ucuz oyuncu silahçısının fiyatı
   const best = useShopOffers('weapon', { enabled: !items && Boolean(user), excludeMine: true });
+  const vat = useSaleTax('silahci'); // v202: Silah Vergisi (fiyata eklenir)
 
   if (!user) {
     return <SignInPrompt message="Silah satın almak için giriş yapmalısın." />;
@@ -48,7 +50,7 @@ export default function WeaponShopScreen({ items = null, onBuy = null, disabledT
 
   const gold = player?.gold ?? 0;
   const list = items || withOfferPrices(weaponCatalog, best);
-  const rawBuy = onBuy || ((w) => buyWeapon(w.id, w.price));
+  const rawBuy = onBuy || ((w) => buyWeapon(w.id, vat.totalOf(w.price))); // v202: expect = vergi dahil toplam
   const buy = async (w) => {
     await rawBuy(w);
     setJustBought((prev) => new Set(prev).add(w.id));
@@ -72,10 +74,16 @@ export default function WeaponShopScreen({ items = null, onBuy = null, disabledT
             <span className="weapon-card-stats">
               Güç {w.power.toLocaleString('tr-TR')} · {w.price.toLocaleString('tr-TR')} altın
             </span>
+            {/* v202: vergi fiyatın üstüne eklenir — ödemeden önce görünür */}
+            {vat.frac > 0 && (
+              <span className="weapon-card-stats">
+                + %{vat.pct} {vat.name.toLocaleLowerCase('tr-TR')} {vat.taxOf(w.price).toLocaleString('tr-TR')} = <b>{vat.totalOf(w.price).toLocaleString('tr-TR')} altın</b>
+              </span>
+            )}
           </div>
           <button
             className={`weapon-card-buy${justBought.has(w.id) ? ' bought' : ''}`}
-            disabled={Boolean(disabledText) || busy === `buy-${w.id}` || justBought.has(w.id) || gold < w.price}
+            disabled={Boolean(disabledText) || busy === `buy-${w.id}` || justBought.has(w.id) || gold < vat.totalOf(w.price)}
             onClick={() => run(`buy-${w.id}`, () => buy(w))}
           >
             {busy === `buy-${w.id}` ? '…' : justBought.has(w.id) ? 'Satın Alındı ✓' : disabledText || 'Satın Al'}

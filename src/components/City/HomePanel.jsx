@@ -19,6 +19,9 @@ import { releaseThumbRenderer } from '../HouseScreen/itemThumbs.js';
 import { FLOORS, WALLS } from '../HouseScreen/houseTextures.js';
 import { SURFACE_KEYS, FREE_SURFACES, surfacePrice } from '../../../functions/houseCatalogData.js';
 import { WIN_MODELS, WIN_COLORS, HOME_FLOOR_DEFAULT, HOME_WALL_DEFAULT } from './world/houseFloors.js';
+import { BotEditor } from '../HouseScreen/BotUi'; // v202: evdeki bot / hayvanı düzenleme
+import { PetEditor } from '../HouseScreen/PetUi';
+import { isAnimalKey } from '../../../functions/animalData.js';
 
 const HOME_DOORS = [
   ['ahsap', '🚪 Ahşap'],
@@ -223,7 +226,11 @@ export default function HomePanel({ eng, uid, inside, flash, evtRef, Sheet, list
     <>
 
       {(mode === 'list' || listOpen) && <HomeList Sheet={Sheet} eng={eng} own={own} onPick={goHome} onClose={() => { setMode(null); onListClose?.(); }} flash={flash} />}
-      {mode === 'design' && home && mine && <HomeDesign eng={eng} home={home} player={player} evtRef={evtRef} flash={flash} onLock={async (v) => {
+      {mode === 'design' && home && mine && <HomeDesign eng={eng} home={home} player={player} evtRef={evtRef} flash={flash} onCfg={(field, id, cfg) => {
+        // v202: bot / hayvan ayarı kaydedildi → ev hemen güncellenir (yeniden okuma yok)
+        setHome((h) => (h ? { ...h, [field]: { ...h[field], [id]: cfg } } : h));
+        eng?.homeSetCfg?.(field, id, cfg);
+      }} onLock={async (v) => {
         if (busy) return;
         setBusy(true);
         try {
@@ -353,7 +360,9 @@ function Money({ gold = 0, gem = 0, small }) {
   );
 }
 const SHOP_ALL = SHOP_CATS;
-function HomeDesign({ eng, home, evtRef, flash, onDone, settings, onLock = null, player = null }) {
+function HomeDesign({ eng, home, evtRef, flash, onDone, settings, onLock = null, player = null, onCfg = null }) {
+  const [botEdit, setBotEdit] = useState(null); // v202: { i }
+  const [petEdit, setPetEdit] = useState(null); // v202: { i, k, c }
   const [setOpen, setSetOpen] = useState(false);
   const [draft0] = useState(() => {
     const d = readDraft(home);
@@ -828,9 +837,14 @@ function HomeDesign({ eng, home, evtRef, flash, onDone, settings, onLock = null,
             <button onClick={() => add(cur.k, { near: cur })}>⧉ Bir tane daha</button>
             <button className="danger" onClick={remove}>{cur.p === 1 ? '📦 Envantere' : '🗑 Kaldır'}</button>
             {cur.p === 1 && furnPriceBand(cur.k) && <button className="hs-sell-btn" onClick={() => setPanel('sell')}>🏷️ Sat</button>}
+            {/* v202 — bot: görünüm / sözler / hareket · hayvan: ad / sözler / hareket (eski ev ekranındaki gibi) */}
+            {cur.p === 1 && cur.k === 'bot' && <button className="hs-bot-edit" onClick={() => setBotEdit({ i: cur.i })}>✏️ Düzenle</button>}
+            {cur.p === 1 && isAnimalKey(cur.k) && <button className="hs-bot-edit" onClick={() => setPetEdit({ i: cur.i, k: cur.k, c: cur.c || 0 })}>✏️ Düzenle</button>}
           </div>
         </div>
       )}
+      {botEdit && <BotEditor houseId={home.id} itemId={botEdit.i} cfg={home.bots?.[botEdit.i] || null} flash={flash} onSaved={(cfg) => onCfg?.('bots', botEdit.i, cfg)} onClose={() => setBotEdit(null)} />}
+      {petEdit && <PetEditor houseId={home.id} item={petEdit} cfg={home.pets?.[petEdit.i] || null} flash={flash} onSaved={(cfg) => onCfg?.('pets', petEdit.i, cfg)} onClose={() => setPetEdit(null)} />}
 
       {/* raf: Mağaza / Envanter / Pazar */}
       <div className={`hs-shelf${shelfOpen ? '' : ' closed'}`}>

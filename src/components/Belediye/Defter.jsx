@@ -35,6 +35,7 @@ function groupOf(kind, cat) {
     if (cat === 'vergi_piyango') return ['ticaret', 'Piyango vergisi'];
     if (cat === 'vergi_seyyar') return ['ticaret', 'Seyyar satıcı vergisi']; // v200
     if (cat === 'vergi_sirket') return ['ticaret', 'Şirket vergisi']; // v201
+    if (cat === 'vergi_ticariArac') return ['ticaret', 'Ticari araç vergisi']; // v202
     if (cat === 'vergi_sofor') return ['ticaret', 'Şoförlük vergisi'];
     if (cat === 'vergi_oyun') return ['ticaret', 'Oyunun mekânları vergisi'];
     if (cat.startsWith('gazino_')) return ['ticaret', 'Oyunun gazinosu kârı'];

@@ -929,6 +929,13 @@ export function buildHouseFloors(P, { RX, RZ, T, doorX, doorW = 1.1, doorH = 2.2
     // kat düğmesi (telefon): o katın merdiven başı { x, z, y }
     stairGoal,
     objAt: (idx) => objByIdx[idx] || null, // v198: eşyanın 3B nesnesi (aç / kapat)
+    // v202: eşya KİMLİĞİYLE (it.i) — ev belgesindeki sıra ile buradaki (süzülmüş) sıra farklı olabiliyor,
+    // sıra numarasıyla eşleyince düğmeler yanlış eşyaya / hiçbir eşyaya bağlanıyordu
+    objById(id) {
+      if (id == null) return null;
+      const idx = items.findIndex((it) => it.i === id);
+      return idx >= 0 ? objByIdx[idx] || null : null;
+    },
     floorTarget(f) {
       if (f <= 0) return { x: RF[0].hub[0], z: RF[0].hub[1], y: UP[0] };
       if (f === 1) return { x: RF[0].up[0], z: RF[0].up[1], y: UP[1] };

@@ -15,11 +15,11 @@ if not exist "package.json" goto yanlis
 if not exist ".git" goto yanlis
 
 set "MSG=%~1"
-if "%MSG%"=="" set "MSG=v201 (v200+v199+v198 dahil): tek gelir kurali (yarisi masraf + belediye vergisi, kalan hissedarlara, toplarken hisse vergisi) mekan/seyyar/sirket, yeni sirket vergisi, arac satisinin tamami sirket geliri; v200: yayinda yaris+gazino, ev kilidi + evden cikar, elindekini ismarla, seyyar satici vergisi; v199: bolme duvarina TV, merdiven rotasi, yayin kamerasi, kurye x2, motor 10+10; v198: kumarhane, evde piyano/davul, oto tamirci, bellek sizintisi"
+if "%MSG%"=="" set "MSG=v202: satis vergileri fiyata ekleniyor (araba/silah/motor/modifiye/spor/tamirci/ticari arac), sirket ve hisse vergisi kaldirildi; soygun ekibi icin 1/10 guc; ev mobilyalari (TV, somine, dus, isiklar), ev bot/hayvan duzenleme; camide dilenciler; elmas esikleri; internet kafe sayaci + koltuk kilidi; grafiti titremesi; PC modifiye sekmeleri; mafya saygisi kaldirildi; acilis hizlandirma"
 
 echo.
 echo ===== 1/6 gereksiz dosyalar temizleniyor =====
-for /d %%D in (_v1*) do (
+for /d %%D in (_v1* _v2*) do (
   echo   siliniyor: %%D
   rd /s /q "%%D"
 )
@@ -80,7 +80,7 @@ if not errorlevel 1 (
   echo Gonderilecek degisiklik yok - commit atlandi.
   goto bekle
 )
-git commit -q -m "%MSG%" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -m "Claude-Session: https://claude.ai/code/session_01YQymXNmPp6gZwHGyjL1sHx"
+git commit -q -m "%MSG%" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>" -m "Claude-Session: https://claude.ai/code/session_01YQymXM9wLHJd49xfmi2jb9"
 if errorlevel 1 (
   echo git commit basarisiz. Ciktiyi Claude'a gonder.
   goto son

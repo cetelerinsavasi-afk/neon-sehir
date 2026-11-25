@@ -10,6 +10,7 @@ import { shopAction } from '../../services/gameActions';
 import QuantityStepper from '../QuantityStepper/QuantityStepper';
 import PriceField from '../Shop/PriceField';
 import ConfirmButton from '../ConfirmButton/ConfirmButton';
+import { flashToast } from '../../lib/flashToast'; // v202
 import { DEPO_BUY, DEPO_SELL, DEPO_STEP, GAME_DEPO_ID, GAME_DEPO_PRICES, depoPricesOf } from '../../../functions/depo.js';
 import '../../styles/bizui.css';
 import './Depo.css';
@@ -106,6 +107,12 @@ export function DepoTradeSheet({ depotId, houseDoc, onClose }) {
     setMsg(null);
     try {
       const r = await shopAction({ op: 'depoTrade', depotId, side: tab, qty, expect: unit });
+      // v202: alımda panel kapanır, "X adet yasaklı madde alındı" bildirimi 3 sn görünür (dokununca kapanır)
+      if (tab === 'buy' && onClose) {
+        flashToast({ title: `✅ ${fmt(r.qty)} adet yasaklı madde alındı`, text: `−${fmt(r.total)} altın`, ms: 3000 });
+        onClose();
+        return;
+      }
       setMsg({ ok: true, text: tab === 'buy' ? `✓ ${fmt(r.qty)} yasaklı madde aldın (−${fmt(r.total)} altın).` : `✓ ${fmt(r.qty)} yasaklı madde sattın (+${fmt(r.total)} altın).` });
     } catch (err) {
       setMsg({ ok: false, text: depoErrText(err) });

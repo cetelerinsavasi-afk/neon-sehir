@@ -64,11 +64,22 @@ export const VENUE_CO_NAME = {
 };
 // Neon Borsa gelir sayacı kodu (stateLedger stat hs_<sk>)
 export const VENUE_CO_SK = { silahci: 'ms', galeri: 'mg', motogaleri: 'mo', modifiye: 'mm', spor: 'mp', cafe: 'mc', bar: 'mb', internet: 'mi', tamirci: 'mt' };
+// v202 — FİYATA EKLENEN VERGİ (kullanıcı kararı): Araba · Silah · Motor · Modifiye · Spor Salonu · Tamirci
+// mekânlarında vergi ARTIK fiyatın İÇİNDEN değil, ÜSTÜNE eklenir ve müşteri ödemeden önce görür.
+//   100'lük alışveriş, vergi %10 → müşteri 110 öder · 10 vergi (belediye) · 50 masraf · 50 hissedarlara
+// Kafe, bar, internet kafe (ve seyyar satıcılar) ESKİ sistemde: 100 → 10 vergi + 50 masraf + 40 hissedar.
+export const VENUE_ADDON_TAX_TYPES = Object.freeze(['galeri', 'silahci', 'motogaleri', 'modifiye', 'spor', 'tamirci']);
+export const isAddonTaxVenue = (type) => VENUE_ADDON_TAX_TYPES.includes(type);
+const clampTax = (f) => Math.max(0, Math.min(0.5, Number(f) || 0));
+// fiyatın üstüne eklenecek vergi (yuvarlama sunucu ve istemcide aynı)
+export const addonTaxOf = (price, taxFrac) => Math.max(0, Math.round(Math.max(0, Math.round(Number(price) || 0)) * clampTax(taxFrac)));
 // Saf: mekânın brüt gelirinin paylaşımı. taxFrac: belediyenin o mekân için oranı (0..0,5)
-export function venueIncomeSplit(amount, taxFrac) {
+//   addon: true → vergi fiyatın üstünde (müşteri ayrıca öder); hissedar payı = brüt − masraf
+export function venueIncomeSplit(amount, taxFrac, { addon = false } = {}) {
   const gross = Math.max(0, Math.round(Number(amount) || 0));
   const expense = Math.round(gross * VENUE_EXPENSE_FRAC);
-  const tax = Math.min(gross - expense, Math.round(gross * Math.max(0, Math.min(0.5, Number(taxFrac) || 0))));
+  if (addon) return { gross, expense, tax: addonTaxOf(gross, taxFrac), share: gross - expense, addon: true };
+  const tax = Math.min(gross - expense, Math.round(gross * clampTax(taxFrac)));
   return { gross, expense, tax, share: gross - expense - tax };
 }
 export const GIFT_SHARES_PER_TYPE = 10; // Faz 6.11: sahip olunan her tür için 10 hisse

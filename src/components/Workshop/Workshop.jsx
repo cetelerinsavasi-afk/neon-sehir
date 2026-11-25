@@ -26,6 +26,7 @@ import {
 import { BIZ_MATERIALS } from '../../../functions/businessCatalogData.js';
 import { WORKSHOP_MATERIAL_PRICE } from '../../../functions/v196Shared.js';
 import { CarStatBars, LevelPips, vehicleRaceLevel, VEHICLE_MAX_LEVEL } from '../RaceTrackScreen/CarStats';
+import { useSaleTax } from '../../hooks/useSaleTax'; // v202: vergi fiyatın üstüne
 import '../../styles/bizui.css';
 import './Workshop.css';
 
@@ -80,6 +81,8 @@ export default function Workshop({ shop, onClose }) {
   const [msg, setMsg] = useState(null);
   const [seenPrice, setSeenPrice] = useState(null);
   const [studio, setStudio] = useState(false); // v150
+  // v202: Silah / Modifiye / Tamirci Vergisi fiyatın üstüne eklenir (oyunun dükkânı)
+  const vat = useSaleTax(isGame ? shop.type : null);
 
   // v177: bisiklet / at / deve atölyeye girmez (tamir, geliştirme, modifiye yok)
   const items = useMemo(() => (isWeapon ? weapons : vehicles.filter((v) => canModify(v.catalogId))).filter((x) => !x.listed), [isWeapon, weapons, vehicles]);
@@ -127,7 +130,9 @@ export default function Workshop({ shop, onClose }) {
   const priceChanged = seenPrice !== null && seenPrice !== priceKey;
 
   const gold = Number(player?.gold || 0);
-  const payable = isOwner ? 0 : cost.total;
+  const basePay = isOwner ? 0 : cost.total;
+  const tax = vat.taxOf(basePay); // v202
+  const payable = basePay + tax;
   const poor = gold < payable;
 
   // ---- ürün bilgileri ---------------------------------------------------------------
@@ -187,7 +192,7 @@ export default function Workshop({ shop, onClose }) {
         itemId: item.id,
         action: tab,
         upgradeType: isWeapon ? undefined : 'level',
-        expect: cost.total,
+        expect: cost.total + vat.taxOf(cost.total), // v202: vergi dahil toplam
       });
       setMsg({
         ok: true,
@@ -365,6 +370,11 @@ export default function Workshop({ shop, onClose }) {
                   <div>
                     <span>Ödeyeceğin</span>
                     {isOwner && <small>Kendi dükkânın: ücret yok</small>}
+                    {tax > 0 && (
+                      <small>
+                        {fmt(basePay)} + %{vat.pct} vergi {fmt(tax)}
+                      </small>
+                    )}
                   </div>
                   <b className={poor ? 'bz-bad' : ''}>
                     <Gold v={payable} />

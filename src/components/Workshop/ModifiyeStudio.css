@@ -392,6 +392,15 @@
     border-top: 0;
     border-left: 1px solid #1f2a40;
   }
+  /* v202: geniş ekranda (PC) üst şerit sadece önizlemenin üstünde — eskiden sağdaki panelin
+     üstüne de uzanıyordu, araç adı kutusu "Boya / Jant…" sekmelerinin tıklamalarını yutuyordu */
+  .ms-top {
+    right: calc(400px + 10px);
+  }
+}
+/* araç adı sadece yazı: tıklamayı altına bırakır */
+.ms-title {
+  pointer-events: none !important;
 }
 
 /* v162 — korna */

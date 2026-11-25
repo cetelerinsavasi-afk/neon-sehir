@@ -20,7 +20,7 @@ class HttpsError extends Error {
 function setup() {
   let t = Date.parse('2026-12-01T10:00:00+03:00');
   const db = new FakeFirestore({ clock: () => t });
-  const fleet = createFleet({ db, FieldValue, HttpsError, goldTag, statWrite, stateWrite, companyTaxFrac: () => 0.1, newVehicleDoc, companyStatKey: borsaCompanyStatKey, dayKey: (ms) => stateDayKey(ms), now: () => t, log: { log() {} } });
+  const fleet = createFleet({ db, FieldValue, HttpsError, goldTag, statWrite, stateWrite, ticariTaxFrac: () => 0.1, newVehicleDoc, companyStatKey: borsaCompanyStatKey, dayKey: (ms) => stateDayKey(ms), now: () => t, log: { log() {} } });
   const user = (uid, gold, extra = {}) => db.doc(`users/${uid}`).set({ gold, ...extra });
   const u = async (uid) => (await db.doc(`users/${uid}`).get()).data();
   const veh = (id, ownerId, catalogId, extra = {}) => db.doc(`vehicles/${id}`).set({ ownerId, catalogId, lifeDays: 20, model: 'X', ...extra });
@@ -63,20 +63,24 @@ test('kurallar: galeri ticari satmaz, ömür değeri, şoför geliri bölüşüm
   assert.equal(JOBS.ambulans.avg, 5250);
 });
 
-test('durakdan taksi: 1 tane; v201 satışın tamamı şirket geliri (%50 masraf + şirket vergisi), hurda sayılmaz', async () => {
+test('durakdan taksi: 1 tane; v202 Ticari Araç Vergisi fiyatın üstüne (alıcı öder), şirkete %50 vergisiz; hurda sayılmaz', async () => {
   const { db, fleet, user, u, veh, ledger } = setup();
   await user('a', 1_000_000);
-  const r = await fleet.fleetBuy('a', { job: 'taksi' });
+  await assert.rejects(fleet.fleetBuy('a', { job: 'taksi', expect: 100000 }), /price-changed:110000/);
+  const r = await fleet.fleetBuy('a', { job: 'taksi', expect: 110000 });
   assert.equal(r.price, 100000);
-  assert.equal((await u('a')).gold, 900000);
+  assert.equal(r.tax, 10000);
+  assert.equal(r.total, 110000);
+  assert.equal((await u('a')).gold, 890000);
   await assert.rejects(fleet.fleetBuy('a', { job: 'taksi' }), /Zaten bir taksi/);
   const L = await ledger();
-  assert.equal(L.stat.hs_tk, 40000); // 100.000 → 50.000 masraf, 10.000 vergi, 40.000 hissedarlara
-  assert.equal(L.in.vergi_sirket, 10000);
-  // başka tür serbest — 500.000'lik tır: 250.000 masraf, 50.000 vergi, 200.000 hissedarlara
+  assert.equal(L.stat.hs_tk, 50000); // 100.000 → 50.000 masraf, 50.000 hissedarlara (şirket vergisi yok)
+  assert.equal(L.in.vergi_ticariArac, 10000); // alıcının ödediği vergi
+  assert.equal(L.in.vergi_sirket, undefined);
+  // başka tür serbest — 500.000'lik tır (+50.000 vergi): 250.000 masraf, 250.000 hissedarlara
   await fleet.fleetBuy('a', { job: 'tir' });
-  assert.equal((await ledger()).stat.hs_nk, 200000);
-  assert.equal((await ledger()).in.vergi_sirket, 60000);
+  assert.equal((await ledger()).stat.hs_nk, 250000);
+  assert.equal((await ledger()).in.vergi_ticariArac, 60000);
   // ömrü bitmiş (hurda) taksi engel değil
   await user('b', 1_000_000);
   await veh('old', 'b', 13, { lifeDays: 0 });
@@ -103,7 +107,7 @@ test('2. elden: aynı türden araç varken alınamaz', async () => {
 
 test('iş kazancı: şoförlük vergisi + şirket payı; v199 kurye: vergi + %10 seyyar satıcıya', async () => {
   const { db, user, u, veh, ledger, adv } = setup();
-  const jobs = createJobs({ db, FieldValue, HttpsError, splitIncomeForDebt: (d, a) => ({ goldDelta: a, debtDelta: 0 }), stateWrite, taxFrac: () => 0.1, vendorTaxFrac: () => 0.1, companyTaxFrac: () => 0.1, companyStatKey: borsaCompanyStatKey, now: () => Date.parse('2026-12-01T10:00:00+03:00') + 0 });
+  const jobs = createJobs({ db, FieldValue, HttpsError, splitIncomeForDebt: (d, a) => ({ goldDelta: a, debtDelta: 0 }), stateWrite, taxFrac: () => 0.1, vendorTaxFrac: () => 0.1, companyTaxFrac: () => 0, companyStatKey: borsaCompanyStatKey, now: () => Date.parse('2026-12-01T10:00:00+03:00') + 0 });
   await user('a', 0);
   await veh('amb', 'a', 15);
   await veh('mot', 'a', 21);
@@ -117,10 +121,11 @@ test('iş kazancı: şoförlük vergisi + şirket payı; v199 kurye: vergi + %10
   assert.equal((await db.doc('vehicles/amb').get()).data().jobEarned, d.net);
   let L = await ledger();
   assert.equal(L.in.vergi_sofor, d.tax);
-  // v201: şoförün %10 payı şirket geliri → %50 masraf + şirket vergisi, kalan hissedarlara
-  const cs = vendorIncomeSplit(d.share, 0.1);
+  // v202: şoförün %10 payı şirket geliri → %50 masraf, kalan VERGİSİZ hissedarlara (şirket vergisi kalktı)
+  const cs = vendorIncomeSplit(d.share, 0);
   assert.equal(L.stat.hs_hn, cs.share);
-  assert.equal(L.in.vergi_sirket, cs.tax);
+  assert.equal(cs.share, d.share - Math.round(d.share * 0.5));
+  assert.equal(L.in.vergi_sirket, undefined);
   // kurye
   const k = await jobs.ops.jobStart('a', { vehicleId: 'mot' });
   await db.doc('vehicles/mot').update({ 'job.run.at': 0 });

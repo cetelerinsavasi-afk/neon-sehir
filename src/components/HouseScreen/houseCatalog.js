@@ -3072,7 +3072,8 @@ function graffiti(g, ctx) {
     c.strokeStyle = '#fff';
     c.strokeText('NEON', w / 2, 160);
   });
-  PLANE(g, 2.6, 1.3, own(new THREE.MeshStandardMaterial({ map: tx, roughness: 0.9 })), 0, 1.7, 0.01);
+  // v202: duvardan 4 cm önde (0,01'de mekân duvarıyla aynı düzleme düşüp titriyordu — internet kafe)
+  PLANE(g, 2.6, 1.3, own(new THREE.MeshStandardMaterial({ map: tx, roughness: 0.9 })), 0, 1.7, 0.04);
 }
 function painting2(g, ctx) {
   const idx = ctx.ti || 0;

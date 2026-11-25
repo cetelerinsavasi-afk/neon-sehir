@@ -322,19 +322,20 @@ test('gece dağıtımı, toplama, borç ve tekrar çalışmada çift dağıtım 
   const r2 = await b.hourly();
   assert.deepEqual(r2.distributed, []);
   const before = (await u('a')).gold;
+  // v202: hisse gelir vergisi kalktı — toplarken vergi yok (taxFrac verilse bile)
   const ca = await topla('a');
   assert.equal(ca.gross, 22_000);
-  assert.equal(ca.tax, 2_200);
-  assert.equal(ca.pay, 19_800);
-  assert.equal((await u('a')).gold, before + 19_800);
+  assert.equal(ca.tax, 0);
+  assert.equal(ca.pay, 22_000);
+  assert.equal((await u('a')).gold, before + 22_000);
   await assert.rejects(topla('a'), /Toplanacak gelir yok/);
   const cBefore = await u('c');
   const cc = await topla('c');
   assert.equal(cc.gross, 11_000);
-  assert.equal(cc.toDebt, 4_950);
+  assert.equal(cc.toDebt, 5_500);
   const cAfter = await u('c');
-  assert.equal(cAfter.gold, cBefore.gold + 4_950);
-  assert.equal(cAfter.debtToState, 100_000 - 4_950);
+  assert.equal(cAfter.gold, cBefore.gold + 5_500);
+  assert.equal(cAfter.debtToState, 100_000 - 5_500);
   const led = await S.db.collection('stateLedger').get();
   let vergi = 0;
   let sahipsiz = 0;
@@ -342,7 +343,7 @@ test('gece dağıtımı, toplama, borç ve tekrar çalışmada çift dağıtım 
     vergi += d.data().in?.vergi_hisse || 0;
     sahipsiz += d.data().in?.seyyar_sahipsiz || 0;
   });
-  assert.equal(vergi, 2_200 + 1_100);
+  assert.equal(vergi, 0, 'v202: hisse vergisi yok');
   assert.equal(sahipsiz, 5_000);
 });
 
@@ -572,9 +573,9 @@ test('20 gün: oyuna giren satılmaz (sayaç ileri alınır), girmeyen satılır
   assert.equal((await db.collection('users/oynayan/messages').get()).size, 0, 'uyarı SMS\'i yok');
   const m = await market();
   assert.equal(m.co.kokorecci.u, 2 * U);
-  // eski: S=4'ten 2 hisse sat → 3960+2970; gelir 20.000 → vergi 2.000, borca 9.000 → 9.000
-  assert.equal(ue.gold, 1_000_000 - 3030 + 3960 + 2970 + 9_000);
-  assert.equal(ue.debtToState, 1_000_000 - 9_000);
+  // eski: S=4'ten 2 hisse sat → 3960+2970; gelir 20.000 → v202 vergi yok, borca 10.000 → 10.000
+  assert.equal(ue.gold, 1_000_000 - 3030 + 3960 + 2970 + 10_000);
+  assert.equal(ue.debtToState, 1_000_000 - 10_000);
   const sms = (await db.collection('users/eski/messages').get()).docs.map((d) => d.data());
   assert.equal(sms.length, 1);
   assert.equal(sms[0].type, 'borsa_tasfiye');

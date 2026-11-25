@@ -84,14 +84,14 @@ import { VENUES } from './venueLayouts.js';
 import { VENDORS, VENDOR_COST as VENDOR_DAILY_COST } from './vendorData.js';
 import { goldTag, recordGoldChange, cleanupMoneyLog, realizeSale, realizeBankWithdraw } from './moneyLog.js';
 import { stateWrite, statWrite, closeStateDays, readStateReport, stateDayKey } from './stateTreasury.js';
-import { createBorsa, borsaCoOfVendor, borsaIncomeStatKey, borsaCompanyStatKey, BORSA_TAX_RATE_ID, vendorIncomeSplit, VENDOR_TAX_RATE_ID, COMPANY_TAX_RATE_ID } from './borsa.js'; // v176 Neon Borsa
-import { createFleet, SOFOR_TAX_RATE_ID, canResell, NO_RESALE_TEXT } from './fleet.js'; // v177 ticari araçlar
+import { createBorsa, borsaCoOfVendor, borsaIncomeStatKey, borsaCompanyStatKey, vendorIncomeSplit, VENDOR_TAX_RATE_ID } from './borsa.js'; // v176 Neon Borsa
+import { createFleet, SOFOR_TAX_RATE_ID, TICARI_TAX_RATE_ID, canResell, NO_RESALE_TEXT } from './fleet.js'; // v177 ticari araçlar
 import { createStable } from './stable.js'; // v177 at / deve / bisiklet
 import { newVehicleDoc } from './shop.js';
 import { createV196Migration } from './v196Migration.js'; // v196 tek seferlik geçiş
 import { DIAMOND_PROD_FACTOR, FACTORY_STARTER_V196, diamondMachinePriceOf, diamondFleetValueOf, WORK_BUTTON_REWARD, NEW_PLAYER_GOLD, REFERRAL_NEW_PLAYER_BONUS_V196 } from './v196Shared.js';
 import { createClosing } from './v196Closing.js'; // v196 kapanış modu
-import { addDayKey as rateAddDayKey, bizRateFrac } from './belediyeRates.js';
+import { addDayKey as rateAddDayKey, bizRateFrac, rateDayKey } from './belediyeRates.js';
 import { policeBustSplit, heistStateEntries, heistStat, crimeLockedBySuspicion, CRIME_LOCK_TEXT, CRIME_LOCK_TEAM_TEXT, BELEDIYE_CRIME_TEXT, BELEDIYE_CRIME_TEAM_TEXT } from './policeRules.js';
 
 admin.initializeApp();
@@ -245,7 +245,7 @@ export const socialAction = social.socialAction;
 // v66 — 3D Ev (herkese açık: satın alma, envanter, sepet, davet). Ayrıntı functions/houses.js
 // v77 — İşletmeler: günlük rapor/sıralama (business) + silahçı/modifiye/galeri
 // (shop: atölye + vitrin). shop'un kapanış kancaları houses'a verilir.
-const business = createBusiness({ db, FieldValue: admin.firestore.FieldValue, HttpsError, venueTaxFrac: (type) => bizRateFrac(ratesFor(), type) }); // v196: oyunun mekânları — gelir paylaşımı
+const business = createBusiness({ db, FieldValue: admin.firestore.FieldValue, HttpsError, venueTaxFrac: (type, atMs) => bizRateFrac(ratesFor(rateDayKey(atMs ?? Date.now())), type) }); // v196: oyunun mekânları — gelir paylaşımı
 // v100 — Ofisler: ücretli mobilyalar (functions/office.js)
 const office = createOffice({
   db,
@@ -327,7 +327,7 @@ const jobs = createJobs({
   stateWrite,
   taxFrac: (day) => rateFrac(ratesFor(day), SOFOR_TAX_RATE_ID),
   vendorTaxFrac: (day) => rateFrac(ratesFor(day), VENDOR_TAX_RATE_ID), // v200
-  companyTaxFrac: (day) => rateFrac(ratesFor(day), COMPANY_TAX_RATE_ID), // v201
+  companyTaxFrac: () => 0, // v202: Şirket Vergisi kalktı — şoför payının yarısı vergisiz hissedarlara
   companyStatKey: (co) => borsaCompanyStatKey(co),
 });
 // v177 — ticari araçlar: durak / terminal / hastane / yükleme alanından satın alma (shopAction op: fleetBuy)
@@ -337,8 +337,8 @@ const fleet = createFleet({
   HttpsError,
   goldTag,
   statWrite,
-  stateWrite, // v201: şirket vergisi
-  companyTaxFrac: (day) => rateFrac(ratesFor(day), COMPANY_TAX_RATE_ID),
+  stateWrite, // v202: Ticari Araç Vergisi (müşteri öder)
+  ticariTaxFrac: (day) => rateFrac(ratesFor(day), TICARI_TAX_RATE_ID),
   newVehicleDoc,
   companyStatKey: (co) => borsaCompanyStatKey(co),
   dayKey: (ms) => stateDayKey(ms),
@@ -422,7 +422,7 @@ const borsa = createBorsa({
   HttpsError,
   goldTag,
   stateWrite,
-  taxFrac: (day) => rateFrac(ratesFor(day), BORSA_TAX_RATE_ID),
+  taxFrac: () => 0, // v202: Hisse Senedi Gelir Vergisi kalktı — gelir toplarken vergi yok (borç payı sürer)
   dayKey: (ms) => stateDayKey(ms),
   addDayKey: (k, n) => rateAddDayKey(k, n),
   rtdb: cityDb, // v189: her işlemden sonra canlı fiyat (S) → RTDB borsaFiyat
@@ -657,6 +657,16 @@ export const checkOnboardingProgress = onCall(async (request) => {
       if (!ADMIN_UIDS.includes(uid)) throw new HttpsError('permission-denied', 'Bu aksiyon sadece yöneticiye açık.');
       const del = admin.firestore.FieldValue.delete();
       tx.update(userRef, { onboardingStep: 1, onboardingV: ONBOARDING_V, onboardingRewardClaimed: false, amcaDead: del, storyStarted: del, obFree: del });
+      return;
+    }
+    // v201.1 — YÖNETİCİ: senaryoda belirli bir göreve atla (varsayılan: hurdalık çatışması, 22). Sadece kendi
+    // hesabı. Amca'yı diriltir, hikâyeyi başlamış sayar; onboardingRewardClaimed'e dokunmaz (polislik vb. bozulmaz).
+    if (ev === 'adminJump') {
+      if (!ADMIN_UIDS.includes(uid)) throw new HttpsError('permission-denied', 'Bu aksiyon sadece yöneticiye açık.');
+      const taskId = Number(request.data?.taskId ?? AMCA_FINALE_TASK_ID);
+      const at = ONBOARDING_ORDER.indexOf(taskId);
+      if (at < 0) throw new HttpsError('invalid-argument', 'Böyle bir görev yok.');
+      tx.update(userRef, { onboardingStep: at + 1, onboardingV: ONBOARDING_V, storyStarted: true, amcaDead: admin.firestore.FieldValue.delete() });
       return;
     }
     // v168.1 — "3 yıl önce" ilk kez izlendi: hikâye (ve görevler) başlar
@@ -3975,12 +3985,12 @@ export const hourlyInvestmentUpdate = onSchedule(
     };
     // v196: elmasta da kriptodaki bant kuralı — 5.000 altı %75 yükseliş, 40.000 üstü %75 düşüş, arada 50/50
     // (gizli ters rejim = alışlar çoğunluktaysa, eşik 20.000 / taban 10.000 arasında: pickInvestmentRegime)
-    const diamondUpProb = prev.diamondPrice < DIAMOND_LOW_BAND ? 0.75 : prev.diamondPrice > DIAMOND_HIGH_BAND ? 0.25 : 0.5;
+    const diamondUpProb = prev.diamondPrice < DIAMOND_LOW_BAND ? 0.75 : prev.diamondPrice >= DIAMOND_HIGH_BAND ? 0.25 : 0.5; // v202: 40.000 ve üstü
     const diamondChangePct = move(diamondRegime.reversed, 0.05, 0.04, 0.05, diamondUpProb);
     const stockChangePct = move(stockRegime.reversed, 0.1, 0.08, 0.1);
     // Kripto sınır eğilimi: 50.000 altında %75 ihtimalle yukarı, 400.000 üstünde
     // %75 ihtimalle aşağı (aralıklar/rejim aynı; sadece yön olasılığı değişir).
-    const cryptoUpProb = prev.cryptoPrice < CRYPTO_LOW_BAND ? 0.75 : prev.cryptoPrice > CRYPTO_HIGH_BAND ? 0.25 : 0.5;
+    const cryptoUpProb = prev.cryptoPrice < CRYPTO_LOW_BAND ? 0.75 : prev.cryptoPrice >= CRYPTO_HIGH_BAND ? 0.25 : 0.5; // v202: 400.000 ve üstü
     const cryptoChangePct = move(cryptoRegime.reversed, 0.2, 0.16, 0.2, cryptoUpProb);
 
     const diamondPrice = Math.max(1, Math.round(prev.diamondPrice * (1 + diamondChangePct)));
@@ -4078,7 +4088,7 @@ export const buyVehicle = onCall(async (request) => {
   // v132: oyunun galerisi stoğu olan en ucuz oyuncu galerisini satar (yoksa kendisi) — functions/shop.js
   const r = await shop.gameStoreBuy(uid, 'vehicle', catalogId, expect ?? null);
   await shop.afterItemBuy(uid, 'vehicle', r.name);
-  return { ok: true, price: r.price };
+  return { ok: true, price: r.price, tax: r.tax || 0, total: r.total ?? r.price }; // v202: vergi fiyatın üstünde
 });
 
 // ---------------------------------------------------------------------------
@@ -4168,7 +4178,7 @@ export const buyWeapon = onCall(async (request) => {
   // v132: oyunun silah mağazası stoğu olan en ucuz oyuncu silahçısını satar (yoksa kendisi) — functions/shop.js
   const r = await shop.gameStoreBuy(uid, 'weapon', catalogId, expect ?? null);
   await shop.afterItemBuy(uid, 'weapon', r.name);
-  return { ok: true, price: r.price };
+  return { ok: true, price: r.price, tax: r.tax || 0, total: r.total ?? r.price }; // v202: vergi fiyatın üstünde
 });
 
 // ---------------------------------------------------------------------------
@@ -6456,6 +6466,15 @@ export const cancelLimanOrder = onCall(async (request) => {
 // =============================================================================
 
 const HEIST_TARGETS = Object.keys(HEIST_CONFIG);
+// v202 — ekip soygununa KATILMAK / ekip KURMAK için en az hedefin gereken gücünün 1/10'u.
+// Sadece kurarken / katılırken bakılır; sonradan silah eskiyip güç düşerse ekipten atılmaz.
+const heistTeamMinPower = (target) => Math.ceil((HEIST_CONFIG[target]?.requiredPower || 0) / 10);
+function assertHeistTeamPower(target, power) {
+  const need = heistTeamMinPower(target);
+  if (need > 0 && (Number(power) || 0) < need) {
+    throw new HttpsError('failed-precondition', `Bu soygun ekibi için en az ${need.toLocaleString('tr-TR')} güç gerekiyor (senin gücün: ${(Number(power) || 0).toLocaleString('tr-TR')}).`);
+  }
+}
 const HEIST_PLAN_MAX_PARTICIPANTS = 4;
 const HEIST_PLAN_DURATION_MS = 24 * 60 * 60 * 1000;
 
@@ -6522,6 +6541,7 @@ export const createHeistPlan = onCall(async (request) => {
   }
 
   const myPower = await getMaxWeaponPower(uid);
+  assertHeistTeamPower(target, myPower); // v202
 
   const planRef = db.collection('heistPlans').doc();
   await planRef.set({
@@ -6724,6 +6744,8 @@ export const joinHeistPlan = onCall(async (request) => {
   const user = userSnap.data();
   // v124: şüphesi 50+ olan da ekibe katılabilir (soygun başlatılamaz)
   const myPower = await getMaxWeaponPower(uid);
+  // v202: katılmak için hedefin gücünün 1/10'u (kurucu planına geri dönerken bakılmaz)
+  if (plan.creatorUid !== uid) assertHeistTeamPower(plan.target, myPower);
   const iAmPolice = user?.profession === 'polis';
 
   await planRef.collection('participants').doc(uid).set({

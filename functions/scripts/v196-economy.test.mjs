@@ -61,13 +61,19 @@ test('mekân geliri: 100 → 50 masraf, %10 vergi → 40 hissedar; vergi sınır
   assert.deepEqual(GAME_VENUE_TYPES, VENUE_SHARE_TYPES);
 });
 
-test('oyunun silahçısı: tam fiyat, gelir paylaşımı defterde, eski sıfır satış vergisi YOK (çift vergi yok)', async () => {
+test('oyunun silahçısı: v202 vergi FİYATIN ÜSTÜNE (müşteri fiyat + vergi öder), hissedara %50, devlete vergi bir kez', async () => {
   const w = world();
-  const r = await w.shop.gameStoreBuy('ali', 'weapon', 1, WEAPON_CATALOG[1].price);
   const p = WEAPON_CATALOG[1].price;
+  const tax = Math.round(p * 0.1);
+  // eski istemci (vergisiz fiyat) → fiyat değişti uyarısı, yeni toplamla
+  await assert.rejects(() => w.shop.gameStoreBuy('ali', 'weapon', 1, p), new RegExp(`price-changed:${p + tax}`));
+  const r = await w.shop.gameStoreBuy('ali', 'weapon', 1, p + tax);
   assert.equal(r.price, p);
-  assert.equal(w.G('users/ali').gold, 10_000_000 - p);
-  const sp = venueIncomeSplit(p, 0.1);
+  assert.equal(r.total, p + tax);
+  assert.equal(w.G('users/ali').gold, 10_000_000 - p - tax);
+  const sp = venueIncomeSplit(p, 0.1, { addon: true });
+  assert.equal(sp.tax, tax);
+  assert.equal(sp.share, p - Math.round(p * 0.5), '100 → hissedara 50');
   assert.equal(r.tax, sp.tax);
   assert.equal(statSum(w.db, `hs_${VENUE_CO_SK.silahci}`), sp.share, 'hissedar payı Borsa gelir sayacına');
   const daily = Object.entries(w.db._dump('businessDaily/')).find(([k]) => k.startsWith('businessDaily/game_silahci_'))[1];
@@ -78,8 +84,10 @@ test('oyunun silahçısı: tam fiyat, gelir paylaşımı defterde, eski sıfır 
   assert.equal(inTotal, sp.tax, 'devlete sadece mekân vergisi (bir kez)');
   // galeri / motor galerisi
   const vid = Object.keys(VEHICLE_CATALOG).find((c) => VEHICLE_CATALOG[c].price > 0 && Number(c) <= 10);
-  const rv = await w.shop.gameStoreBuy('ali', 'vehicle', vid, VEHICLE_CATALOG[vid].price);
-  assert.equal(rv.price, VEHICLE_CATALOG[vid].price);
+  const vp = VEHICLE_CATALOG[vid].price;
+  const rv = await w.shop.gameStoreBuy('ali', 'vehicle', vid, vp + Math.round(vp * 0.1));
+  assert.equal(rv.price, vp);
+  assert.equal(rv.total, vp + Math.round(vp * 0.1));
   assert.ok(statSum(w.db, `hs_${VENUE_CO_SK.galeri}`) > 0);
 });
 
@@ -91,13 +99,16 @@ test('atölye: tamir = ürün fiyatının %10\'u, geliştirme = tamamı; işçil
   const repair = v196WorkshopPrice(job);
   assert.equal(repair, Math.round(p / 100) * 10);
   assert.ok(Math.abs(repair - p * 0.1) <= 10);
-  const r = await w.act('ali', { op: 'workshop', shopType: 'silahci', itemId: 'w1', action: 'repair', expect: repair });
-  assert.equal(r.total, repair);
+  // v202: Silah Vergisi fiyatın üstüne (expect = toplam)
+  await assert.rejects(() => w.act('ali', { op: 'workshop', shopType: 'silahci', itemId: 'w1', action: 'repair', expect: repair }), /price-changed/);
+  const r = await w.act('ali', { op: 'workshop', shopType: 'silahci', itemId: 'w1', action: 'repair', expect: repair + Math.round(repair * 0.1) });
+  assert.equal(r.price, repair);
+  assert.equal(r.total, repair + Math.round(repair * 0.1));
   assert.equal(r.labor, 0);
   const up = v196WorkshopPrice(workshopJob({ itemType: 'weapon', item: w.G('weapons/w1'), action: 'upgrade' }));
   assert.ok(Math.abs(up - p) <= 100, 'geliştirme ≈ ürün fiyatı');
-  const r2 = await w.act('ali', { op: 'workshop', shopType: 'silahci', itemId: 'w1', action: 'upgrade', expect: up });
-  assert.equal(r2.total, up);
+  const r2 = await w.act('ali', { op: 'workshop', shopType: 'silahci', itemId: 'w1', action: 'upgrade', expect: up + Math.round(up * 0.1) });
+  assert.equal(r2.price, up);
   assert.equal(w.G('weapons/w1').level, 2);
   // eski istemci oyuncu dükkânı göndermiş olsa bile oyunun atölyesi
   await assert.rejects(() => w.act('ali', { op: 'stockAdd' }), /işletmeleri kapandı/);
@@ -145,13 +156,15 @@ test('sabit fiyatlar: salon 1.000, depo 2.000 (güvenli satış 2.500 kalır), s
   assert.equal(GAME_LOTTERY_CUT, 0);
 });
 
-test('Borsa: 8 mekân hissesi; v201 toplarken her hissede hisse vergisi; hediye hisse sınırı aşar ama hata yok', () => {
+test('Borsa: 8 mekân hissesi; v202 toplarken hisse vergisi YOK; hediye hisse sınırı aşar ama hata yok', () => {
   const ids = BORSA_COS.filter((c) => c.kind === 'mekan').map((c) => c.id);
   assert.deepEqual(ids.sort(), Object.values(VENUE_CO_ID).sort());
-  assert.equal(collectTaxFrac({ [VENUE_CO_ID.bar]: 100 }, 0.1), 0.1);
-  assert.equal(collectTaxFrac({ simitci: 100 }, 0.1), 0.1);
-  assert.equal(collectTaxFrac({ [VENUE_CO_ID.bar]: 50, simitci: 50 }, 0.1), 0.1);
+  assert.equal(collectTaxFrac({ [VENUE_CO_ID.bar]: 100 }, 0.1), 0);
+  assert.equal(collectTaxFrac({ simitci: 100 }, 0.1), 0);
+  assert.equal(collectTaxFrac({ [VENUE_CO_ID.bar]: 50, simitci: 50 }, 0.1), 0);
   assert.equal(collectTaxFrac({}, 0.1), 0);
+  assert.equal(RATE_ITEMS.some((x) => x.id === 'hisse' || x.id === 'sirket'), false, 'hisse ve şirket vergisi kalemleri kalktı');
+  assert.ok(RATE_ITEMS.some((x) => x.id === 'ticariArac'), 'Ticari Araç Vergisi kalemi');
   // 10 hediye hisse, piyasada sadece 10 satılmış: alım sınırı dolu (0), ama negatif / hata yok
   assert.equal(buyRoom(10 * BORSA_UNITS, 10 * BORSA_UNITS), 0);
   // başkaları alınca yer açılır (S büyüdükçe)

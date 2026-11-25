@@ -136,7 +136,7 @@ export const CATS = [
         L('🎖️', 'Kıdemli: 4 kişi. Masaya oturanlar.'),
         L('🔫', 'Tetikçi: sahada savaşanlar.'),
         L('🐣', 'Çömez: yolun başındakiler.'),
-        L('✦', 'Prestij kazanmanın yolu: kasaya bağış yap, savaşta zar at, Baba’nın saygısını kazan.'),
+        L('✦', 'Prestij kazanmanın yolu: kasaya bağış yap, savaşta zar at.'),
         L('🚪', 'Rütbe kapısı 1.000.000 prestijde açılır. Altındakiler hâlâ Çömez.'),
         L('🌙', 'Sıralama her gece yeniden yapılır. Koltuğunu kimse garantilemez.'),
       ] },
@@ -146,7 +146,6 @@ export const CATS = [
         { i: '👑', name: 'Baba', sub: 'Son söz senin.', lines: [
           'Çetenin adını ve logosunu değiştirirsin.',
           'Tetikçi ve Çömez’i tek hamlede atarsın.',
-          'Üyelere saygı gösterip prestij verirsin (her üyeye haftada bir).',
           'Kasadan kendi cebine para alırsın. Ama prestijin erir.',
           'Bahis ve ittifaka sen karar verirsin.',
           'Elinde ticaret yolu yoksa başka bir çeteye biat edersin.',

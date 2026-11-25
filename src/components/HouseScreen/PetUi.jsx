@@ -35,7 +35,7 @@ export function PetCanvas({ art, tint, size = 120, moving = false, still = false
   return <canvas ref={ref} className={className} style={{ width: size * 1.8, height: size * 1.75 }} />;
 }
 
-export function PetEditor({ houseId, item, cfg: initial, onClose, flash }) {
+export function PetEditor({ houseId, item, cfg: initial, onClose, flash, onSaved = null }) {
   const a = ANIMAL_BY_KEY[item.k];
   const [c, setC] = useState(() => {
     const base = cleanPetConfig(initial);
@@ -50,7 +50,8 @@ export function PetEditor({ houseId, item, cfg: initial, onClose, flash }) {
   const save = async () => {
     setBusy(true);
     try {
-      await houseAction({ op: 'petSet', houseId, i: item.i, cfg: { ...c, l: lines } });
+      const r = await houseAction({ op: 'petSet', houseId, i: item.i, cfg: { ...c, l: lines } });
+      onSaved?.(r?.data?.cfg || { ...c, l: lines }); // v202: şehirdeki ev hemen güncellensin
       flash?.(`🐾 ${c.n || a?.name} hazır.`);
       onClose();
     } catch (err) {

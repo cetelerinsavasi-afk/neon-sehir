@@ -132,8 +132,11 @@ function Ticaret({ r, c, rates }) {
           { label: 'Piyango vergisi', value: nf(c.in.vergi_piyango), sub: st.pi_bilet ? `${nf(st.pi_bilet)} bilet · ödül ${nf(st.pi_odul)}` : null },
           // v176: seyyar satıcı gelirleri artık Neon Borsa hissedarlarına → yerine hisse gelir vergisi
           { label: 'Seyyar satıcı vergisi', value: nf(c.in.vergi_seyyar), sub: `%${rates.seyyar ?? 10} · %50 masraftan sonra kalan hissedarlara` },
-          { label: 'Şirket vergisi', value: nf(c.in.vergi_sirket), sub: `%${rates.sirket ?? 10} · hastane, nakliye, terminal, taksi` },
-          { label: 'Hisse senedi vergisi', value: nf(c.in.vergi_hisse), sub: `%${rates.hisse ?? 10} · gelir toplanırken${c.in.seyyar_sahipsiz ? ` · hissedarsız mekân geliri ${nf(c.in.seyyar_sahipsiz)}` : ''}` },
+          // v202: Ticari Araç Vergisi (alıcı öder) — Şirket ve Hisse Senedi vergileri kalktı (eski günlerin kayıtları görünür)
+          { label: 'Ticari araç vergisi', value: nf(c.in.vergi_ticariArac), sub: `%${rates.ticariArac ?? 10} · alıcı fiyatın üstüne öder` },
+          ...(c.in.vergi_sirket ? [{ label: 'Şirket vergisi', value: nf(c.in.vergi_sirket), sub: 'kalktı (eski kayıt)' }] : []),
+          ...(c.in.vergi_hisse ? [{ label: 'Hisse senedi vergisi', value: nf(c.in.vergi_hisse), sub: 'kalktı (eski kayıt)' }] : []),
+          ...(c.in.seyyar_sahipsiz ? [{ label: 'Hissedarsız mekân geliri', value: nf(c.in.seyyar_sahipsiz) }] : []),
           { label: 'Benzinlik', value: nf(c.in.benzinlik), sub: st.bz_n ? `⛽ ${nf(st.bz_benzin_n)} · 🛒 ${nf(st.bz_market_n)} · tamamı devlete` : 'benzin + market · tamamı devlete' },
         ]}
       />

@@ -111,9 +111,31 @@ export function CamiiPart({ panel, setPanel, setDynNpcs, walk, engineRef }) {
   useEffect(() => {
     // v95.3: liste sunucuyla ortak (fotoğrafta da aynısı çizilir)
     const list = camiiDynamicNpcs({ imam, sermon: gaveSermonToday(imam), beggars });
+    const e = engineRef?.current;
+    if (!e?.city) {
+      setDynNpcs(list);
+      return;
+    }
     // şehirde imam motorun kendi NPC'si: sıradaki konuşma döngüsüne girmez, 30 sn'de bir aşağıda konuşur
-    setDynNpcs(engineRef?.current?.city ? list.map((n) => (n.id === 'npc_imam' ? { ...n, lines: [] } : n)) : list);
+    // v202: dilenciler de motorun minderdeki NPC'leri (npc_dil0..2) — eskiden şehirde hiç görünmüyorlardı
+    const dil = list.filter((n) => n.id.startsWith('npc_dil_'));
+    for (let i = 0; i < 3; i++) {
+      const b = dil[i];
+      e.venueNpc?.(`npc_dil${i}`, b ? { name: b.name, av: b.av, lines: b.lines } : null);
+    }
+    setDynNpcs([
+      ...list.filter((n) => n.id === 'npc_imam').map((n) => ({ ...n, lines: [] })),
+      ...dil.map((n, i) => ({ ...n, id: `npc_dil${i}` })), // konuşma döngüsü (VenueLayer) motordaki kimlikle konuşturur
+    ]);
   }, [imam, beggars, setDynNpcs, engineRef]);
+  // v202: mekândan çıkınca (parça kapanınca) dilenci NPC'leri gizlenir — bir sonraki girişte güncel liste gelir
+  useEffect(
+    () => () => {
+      const e = engineRef?.current;
+      if (e?.city) for (let i = 0; i < 3; i++) e.venueNpc?.(`npc_dil${i}`, null);
+    },
+    [engineRef]
+  );
   const imamName = imam?.displayName || '';
   const imamAv = imam?.avatar || null;
   const imamOn = Boolean(imam);

@@ -69,33 +69,43 @@ export const RATE_GROUPS = [
   },
   // v196: İşçi Maaş Vergisi kalktı (işçi sistemi yok)
   {
+    // v202 — FİYATA EKLENEN VERGİLER: müşteri fiyatın üstüne öder ve ödemeden önce görür
+    // (100'lük alışveriş, %10 → 110 öder; 10 belediyeye, 50 masraf, 50 hissedarlara).
+    // Kimlikler (isGaleri…) eskisiyle aynı: belediyenin kayıtlı oranları aynen geçerli.
+    m: 'ticaret',
+    id: 'satis',
+    title: 'Satış Vergileri (fiyata eklenir)',
+    unit: '%',
+    items: [
+      pct('isGaleri', 'Araba Vergisi'),
+      pct('isSilahci', 'Silah Vergisi'),
+      pct('isModifiye', 'Modifiye Vergisi'),
+      pct('isSpor', 'Spor Salonu Vergisi'),
+      pct('isTamirci', 'Tamirci Vergisi'), // v198
+      pct('isMotoGaleri', 'Motor Vergisi'),
+      pct('ticariArac', 'Ticari Araç Vergisi'), // v202: taksi / otobüs / ambulans / tır alan müşteri öder
+    ],
+  },
+  {
     m: 'ticaret',
     id: 'isletme',
     title: 'İşletme Vergileri',
     unit: '%',
     items: [
-      // v196: oyunun mekânları — brüt gelirin bu oranı belediyeye, %50 masraf, kalanı hissedarlara.
+      // v196: oyunun mekânları — brüt gelirin bu oranı belediyeye, %50 masraf, kalanı hissedarlara (eski sistem).
       // Kumarhane ve Ofis Kazançları kalktı (gazino vergi ödemez, ofis yok).
-      pct('isSilahci', 'Silahçı'),
-      pct('isGaleri', 'Araba Galerisi'),
-      pct('isMotoGaleri', 'Motor Galerisi'),
-      pct('isModifiye', 'Modifiye'),
-      pct('isSpor', 'Spor Salonu'),
       pct('isKafe', 'Kafe'),
       pct('isBar', 'Bar'),
       pct('isInternet', 'İnternet Kafe'),
-      pct('isTamirci', 'Oto Tamirci'), // v198
     ],
   },
   // v196: Piyango Vergisi kalktı (bilet 100, tamamı havuza, kazanç vergisiz)
-  // v176 — Neon Borsa: hisse gelirleri TOPLANIRKEN kesilir (al-satta vergi yok)
-  { m: 'ticaret', id: 'hisse', title: 'Hisse Senedi Gelir Vergisi', unit: '%', items: [pct('hisse', 'Hisse Senedi Gelir Vergisi')] },
-  // v177 — taksi / otobüs / tır / ambulans gelirleri (motokurye hariç)
+  // v202: Hisse Senedi Gelir Vergisi KALKTI (hisse geliri toplarken vergi yok)
+  // v177 — taksi / otobüs / tır / ambulans gelirleri (motokurye hariç) — şoför öder
   { m: 'ticaret', id: 'sofor', title: 'Şoförlük Gelir Vergisi', unit: '%', items: [pct('sofor', 'Şoförlük')] },
   // v200 — seyyar satıcı geliri (bağış, menü, ısmarlama, kurye siparişi): %50 masraf + bu vergi, kalan hissedarlara
   { m: 'ticaret', id: 'seyyar', title: 'Seyyar Satıcı Vergisi', unit: '%', items: [pct('seyyar', 'Seyyar satıcı')] },
-  // v201 — şirketler (Hastane, Nakliye, Terminal, Taksi Durağı): %50 masraf + bu vergi, kalan hissedarlara
-  { m: 'ticaret', id: 'sirket', title: 'Şirket Vergisi', unit: '%', items: [pct('sirket', 'Hastane · Nakliye · Terminal · Taksi')] },
+  // v202: Şirket Vergisi KALKTI — şirket geliri (araç satışı + şoför payı) %50 masraf, %50 vergisiz hissedarlara
   // v132: 2. el satış vergisi kaldırıldı (araç / silah / malzeme 2. el satışları vergisiz)
   // v196: Sıfır Satış Kâr Vergileri kalktı — galeri / silahçı satışı mekân vergisine (İşletme Vergileri) giriyor,
   // aynı satıştan iki kez vergi alınmaz.

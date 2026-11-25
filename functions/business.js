@@ -33,7 +33,7 @@ import { ownListingStock } from './autoSupply.js'; // v186
 import { BIZ_TYPES, ALL_BIZ_KEYS, bizDayKey, prevDayKey, bizOpenAllDay } from './businessCatalogData.js';
 import { taxLedgerWrite } from './tax.js';
 import { statWrite } from './stateTreasury.js';
-import { VENUE_SHARE_TYPES, VENUE_CO_SK, venueIncomeSplit } from './v196Shared.js';
+import { VENUE_SHARE_TYPES, VENUE_CO_SK, venueIncomeSplit, isAddonTaxVenue, addonTaxOf } from './v196Shared.js';
 import { STOCK_KIND, clampStockPrice, stockQty } from './shopStockRules.js'; // v195 pasif → teklifler
 import { VEHICLE_CATALOG, WEAPON_CATALOG } from './catalogData.js';
 import { vehicleShopOf } from './fleet.js';
@@ -146,10 +146,19 @@ export function createBusiness({ db, FieldValue, HttpsError = null, now = () => 
   // + kalan → mekân hissedarları (Neon Borsa gelir sayacı hs_<kod>, gece borsa.hourly dağıtır).
   // Satış başına yeni belge YOK: mevcut günlük kayıt (businessDaily/game_{tür}_{gün}) + stateLedger
   // parçası (artırım). Çağıranın verdiği tax / stat yok sayılır (çift vergi olmasın).
-  function recordGameIncomeTx(tx, { type, amount, kind, customerUid, products, materialsUsed, atMs }) {
+  // v202: fiyata eklenen vergi (Araba · Silah · Motor · Modifiye · Spor · Tamirci). Çağıran müşteriden
+  // fiyat + saleTaxOf(tür, fiyat) tahsil eder, burada fiyat (vergisiz) gelir olarak yazılır; vergi aynı formülle.
+  function saleTaxOf(type, amount, atMs) {
+    if (!isAddonTaxVenue(type)) return 0;
+    return addonTaxOf(amount, venueTaxFrac(type, atMs ?? now()));
+  }
+  //   addon: varsayılan türe göre; false verilirse eski sistem (güncellemeden önce ödenmiş spor üyeliği)
+  //   vat: müşteriden önceden tahsil edilmiş vergi (spor üyeliği ödeme günü) — verilirse aynen o yazılır
+  function recordGameIncomeTx(tx, { type, amount, kind, customerUid, products, materialsUsed, atMs, addon = null, vat = null }) {
     if (!GAME_VENUE_TYPES.includes(type)) return null;
     const t = atMs ?? now();
-    const sp = venueIncomeSplit(amount, venueTaxFrac(type, t));
+    const sp = venueIncomeSplit(amount, venueTaxFrac(type, t), { addon: addon == null ? isAddonTaxVenue(type) : Boolean(addon) && isAddonTaxVenue(type) });
+    if (sp.addon && vat != null) sp.tax = Math.max(0, Math.round(Number(vat) || 0));
     if (!sp.gross) return sp;
     const stat = { [`hs_${VENUE_CO_SK[type]}`]: sp.share, [`isl_${type}_ciro`]: sp.gross, [`isl_${type}_n`]: 1 };
     recordIncomeTx(tx, { houseId: gameVenueId(type), h: { biz: { type }, ownerUid: GAME_VENUE_OWNER }, amount: sp.gross, kind, customerUid, products, materialsUsed, atMs: t, tax: sp.tax, taxSource: 'isletme', stat });
@@ -494,5 +503,5 @@ export function createBusiness({ db, FieldValue, HttpsError = null, now = () => 
     return sent;
   }
 
-  return { recordIncomeTx, recordGameIncomeTx, rollover, dailyRef, sendShortageSms, assertBizOpen, idleSweepType, idleSweepOffices, registerOfficeTx, reactivateOwner, passivate };
+  return { recordIncomeTx, recordGameIncomeTx, saleTaxOf, rollover, dailyRef, sendShortageSms, assertBizOpen, idleSweepType, idleSweepOffices, registerOfficeTx, reactivateOwner, passivate };
 }

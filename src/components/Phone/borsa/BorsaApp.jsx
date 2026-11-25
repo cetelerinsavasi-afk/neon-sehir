@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useBorsaMarket, setLiveU } from '../../../hooks/useBorsaMarket';
 import { useAuth } from '../../../contexts/AuthContext';
 import { usePlayer } from '../../../hooks/usePlayer';
-import { useBelediyeRates } from '../../../hooks/useBelediyeRates';
 import { useBackClose } from '../../../lib/backStack';
 import { borsaAction } from '../../../services/gameActions';
 import SignInPrompt from '../../SignInPrompt/SignInPrompt';
@@ -12,7 +11,6 @@ import {
   capOf,
   buyRoom,
   fmtSharesShort,
-  BORSA_TAX_RATE_ID,
   coState,
   holdState,
   pendingAll,
@@ -28,7 +26,6 @@ import {
   buyQuote,
   sellQuote,
 } from '../../../../functions/borsa.js';
-import { rateFrac } from '../../../../functions/belediyeRates.js';
 import { setGoldPreview } from '../../../lib/goldPreview';
 import './BorsaApp.css';
 
@@ -146,7 +143,6 @@ const newPrice = (err) => {
 export default function BorsaApp({ selected, onSelect, embed = false }) {
   const { user } = useAuth();
   const { player } = usePlayer();
-  const rates = useBelediyeRates();
   const { data: market, ready } = useBorsaMarket();
   const [tab, setTab] = useState('all');
   const [range, setRange] = useState('d');
@@ -225,8 +221,8 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
   useBackClose(sellAsk, () => setSellAsk(false));
   if (!user) return <SignInPrompt message="Neon Borsa'yı kullanmak için giriş yapmalısın." />;
 
-  const taxFrac = rateFrac(rates, BORSA_TAX_RATE_ID);
-  const taxPct = Math.round(taxFrac * 100);
+  const taxFrac = 0; // v202: Hisse Senedi Gelir Vergisi kalktı (sunucu da kesmez)
+  const taxPct = 0;
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   const call = async (payload) => {
     const gap = GAP_MS - (Date.now() - lastSend.current);
@@ -585,10 +581,12 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
                   <span>Toplam</span>
                   <span>{fmt(split.gross)}</span>
                 </div>
-                <div className="borsa-ln t">
-                  <span>{`Hisse gelir vergisi %${taxPct}`}</span>
-                  <span>{`−${fmt(split.tax)}`}</span>
-                </div>
+                {split.tax > 0 && (
+                  <div className="borsa-ln t">
+                    <span>{`Hisse gelir vergisi %${taxPct}`}</span>
+                    <span>{`−${fmt(split.tax)}`}</span>
+                  </div>
+                )}
                 {split.toDebt > 0 && (
                   <div className="borsa-ln t">
                     <span>Borca</span>

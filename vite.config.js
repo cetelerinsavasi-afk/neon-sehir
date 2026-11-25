@@ -22,8 +22,11 @@ function prefetchList() {
         return
       }
       const want = new Set()
+      // v202 DÜZELTME: Windows'ta resolve() ters bölü (\\) verir, facadeModuleId düz bölü (/) — eşleşmiyordu,
+      // prefetch-list.json hep BOŞ ([]) çıkıyordu (hiçbir ekran önceden indirilmiyordu). İki taraf da / yapılır.
+      const norm = (f) => String(f || '').replace(/\\/g, '/')
       for (const m of src.matchAll(/lazyScreen\(\(\)\s*=>\s*import\('([^']+)'\)\)/g)) {
-        const base = resolve(dirname(appFile), m[1])
+        const base = norm(resolve(dirname(appFile), m[1]))
         for (const ext of ['', '.jsx', '.js']) want.add(base + ext)
       }
       const chunks = Object.values(bundle).filter((c) => c.type === 'chunk')
@@ -51,7 +54,7 @@ function prefetchList() {
           }
         })
       }
-      chunks.filter((c) => c.isDynamicEntry && c.facadeModuleId && want.has(c.facadeModuleId)).forEach((c) => add(c.fileName))
+      chunks.filter((c) => c.isDynamicEntry && c.facadeModuleId && want.has(norm(c.facadeModuleId))).forEach((c) => add(c.fileName))
       this.emitFile({ type: 'asset', fileName: 'prefetch-list.json', source: JSON.stringify(out) })
     },
   }

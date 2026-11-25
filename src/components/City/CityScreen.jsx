@@ -34,7 +34,6 @@ import { stableAt } from './world/roadsideGeo.js';
 import { createJobRunner, navRoute } from './cityJobs.js';
 import { JOBS } from '../../../functions/vehicleKinds.js';
 import { invalidateSixtagramFeed } from '../../hooks/useSixtagramFeed';
-import PhotoStoryEditor from '../HouseScreen/PhotoStoryEditor';
 import { vehicleCatalog, vehicleKindOfId } from '../../data/vehicleCatalog.js';
 import { VehicleKindTabs } from '../VehicleGalleryScreen/VehicleGalleryScreen';
 import '../VehicleGalleryScreen/VehicleGalleryScreen.css';
@@ -69,8 +68,8 @@ import { prepareCityWorld } from './world/outerWorld.js';
 import FactoryWorkButton from '../FactoryScreen/FactoryWorkButton'; // v196 Çalış butonu
 import HomePanel from './HomePanel'; // v196 3 katlı ev
 import HomeInstruments from './HomeInstruments'; // v198: evde piyano / davul / mikser / tuval
+import HomeJukebox from './HomeJukebox'; // v202: evde müzik kutusu (sadece bu cihazda)
 import './HomePanel.css';
-import VenueLayer from '../Venue3D/VenueLayer';
 import { IS_MOBILE_DEVICE } from '../../lib/photoCache';
 import { OPEN_DM_EVENT, setCityPhoneHost } from '../../lib/chatsappNav';
 import { createCityNet, watchCityBox, clearCityBox } from './cityNet.js';
@@ -85,9 +84,16 @@ import '../Workshop/Workshop.css';
 import '../../styles/bizui.css';
 import './City.css';
 import { useTaskPass, vendorDayState } from '../../hooks/useTaskPass'; // v168.1
+import { useSaleTax } from '../../hooks/useSaleTax'; // v202: Ticari Araç Vergisi fiyatın üstüne
 
 const fmt = (n) => Number(n || 0).toLocaleString('tr-TR');
 // v149 — stadyumun içindeyken sağ üstteki "Futbol" düğmesiyle açılan panel
+// v202 AÇILIŞ — mekân katmanı (VenueLayer + Banka / Cami / 10 Numara / Rulet / Atölye / Spor panelleri) ve
+// fotoğraf düzenleyici açılışta gerekmiyor: şehrin ilk paketinden çıkarıldı, ilk kullanımda (ya da açılış
+// bittikten sonra boşta) iner. Eskiden hepsi şehirle birlikte indirilip derleniyordu.
+const loadVenueLayer = () => import('../Venue3D/VenueLayer');
+const VenueLayer = lazy(loadVenueLayer);
+const PhotoStoryEditor = lazy(() => import('../HouseScreen/PhotoStoryEditor'));
 const FutbolFullScreen = lazy(() => import('../FutbolScreen/FutbolFullScreen'));
 // v157.4 — şehrin alt çubuğundan açılan paneller (şehirden çıkılmaz)
 const GangsFullScreen = lazy(() => import('../Gangs/GangsFullScreen'));
@@ -156,6 +162,10 @@ export function FleetSheet({ job, uid, gold, onClose }) {
   const [mine, setMine] = useState(undefined);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  // v202: Ticari Araç Vergisi — müşteri fiyatın üstüne öder (şirket vergisi yok)
+  const vat = useSaleTax('ticari');
+  const tax = vat.taxOf(c.price);
+  const total = c.price + tax;
   const load = useCallback(async () => {
     try {
       const s = await getDocs(query(collection(db, 'vehicles'), where('ownerId', '==', uid), where('catalogId', '==', f.cid)));
@@ -173,7 +183,7 @@ export function FleetSheet({ job, uid, gold, onClose }) {
     setBusy(true);
     setErr(null);
     try {
-      await shopAction({ op: 'fleetBuy', job, expect: c.price });
+      await shopAction({ op: 'fleetBuy', job, expect: total }); // v202: vergi dahil
       await load();
     } catch (e) {
       setErr(e?.message || 'Satın alınamadı.');
@@ -210,8 +220,15 @@ export function FleetSheet({ job, uid, gold, onClose }) {
               <span>🔧 <b>{VEHICLE_WEAPON_MAX_REPAIRS}</b> tamir</span>
               <span>👥 <b>{c.seats}</b></span>
             </div>
-            <button className="v3-btn primary cs-fleet-buy" disabled={busy || gold < c.price} onClick={buy}>
-              {busy ? '…' : <>Satın al · {fmt(c.price)} <span className="gold-coin-icon" style={{ width: 13, height: 13 }} /></>}
+            {tax > 0 && (
+              <div className="cs-fleet-stats">
+                <span>
+                  {fmt(c.price)} + %{vat.pct} vergi {fmt(tax)}
+                </span>
+              </div>
+            )}
+            <button className="v3-btn primary cs-fleet-buy" disabled={busy || gold < total} onClick={buy}>
+              {busy ? '…' : <>Satın al · {fmt(total)} <span className="gold-coin-icon" style={{ width: 13, height: 13 }} /></>}
             </button>
           </>
         )}
@@ -462,6 +479,18 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const [homeArcade, setHomeArcade] = useState(false); // v196: kendi evinde oyun
   const [homeGym, setHomeGym] = useState(null); // v199: evde serbest çalışma (spor aleti)
   const [homeStream, setHomeStream] = useState(null); // v196: evden yayın { chairId, houseId, items }
+  const [homeJuke, setHomeJuke] = useState(false); // v202: evde müzik kutusu
+  // v202: evde oyun / yayın açıkken avatar koltuktan kalkmasın (ok tuşları oyuna gider)
+  const homeHold = Boolean(homeArcade || homeStream);
+  useEffect(() => {
+    const eng = engineRef.current;
+    if (!eng?.seatHold) return undefined;
+    eng.seatHold('home', homeHold);
+    return () => eng.seatHold('home', false);
+  }, [homeHold]);
+  useEffect(() => {
+    if (!homeInside) setHomeJuke(false); // v202: evden çıkınca müzik kutusu penceresi kapanır
+  }, [homeInside]);
   const homeInstrRef = useRef(null); // v198
   const [homeInfo, setHomeInfo] = useState(null); // v196: { name, owner, floor, mine } · v200: id, locked
   const homeInfoRef = useRef(null);
@@ -674,6 +703,16 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   }, []);
   const [driveChat, setDriveChat] = useState(false);
   const [gameVenueKey, setGameVenueKey] = useState(null); // oyunun mekân katmanı (VenueLayer) — çıkınca 3 sn sonra kapanır
+  // v202: mekân katmanı açılış bittikten sonra (aşama 3) boşta önceden yüklenir — ilk mekâna girişte beklenmesin
+  useEffect(
+    () =>
+      whenBootStage(3, () => {
+        const go = () => loadVenueLayer().catch(() => {});
+        if (typeof window !== 'undefined' && window.requestIdleCallback) window.requestIdleCallback(go, { timeout: 5000 });
+        else setTimeout(go, 1500);
+      }),
+    []
+  );
   const venueApiRef = useRef(null);
   const gameVenueDef = useMemo(() => (gameVenueKey && VENUES[gameVenueKey] ? { ...VENUES[gameVenueKey], key: gameVenueKey } : null), [gameVenueKey]);
   // v154: şehir açıkken yarış ekranı / yarış balonu şehrin üstünde görünsün
@@ -1558,7 +1597,9 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           label: a.label,
           cls: 'take',
           on: () => {
-            if (a.kind === 'toggle') engineRef.current?.homeToggle?.(zone.idx);
+            if (a.kind === 'toggle') engineRef.current?.homeToggle?.(zone.itemId); // v202: eşya kimliği
+            else if (a.kind === 'jukebox') setHomeJuke(true); // v202: sadece bu cihazda çalar
+            else if (a.kind === 'atm') setPanel({ kind: 'phone', app: 'banka' }); // v202
             else if (a.kind === 'gymfree') setHomeGym(a.equipment);
             else if (a.kind === 'take') {
               holdFor(a.product);
@@ -1624,9 +1665,10 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     }
     // v168: senaryo karakterlerinden sadece Rıza Amca'nın arabasına binilir
     if (zone.kind === 'ride' && (!isStoryNpcId(zone.owner) || zone.owner === AMCA_ID)) list.push({ label: zone.owner === AMCA_ID ? '🚗 Amca\'nın arabasına bin' : '🚗 Yolcu ol', cls: 'take', on: () => rideIn(zone) });
-    if (zone.kind === 'seat') list.push({ label: '🪑 Otur', cls: 'take', free: true, on: () => engineRef.current.sit(zone.seat) });
-    if (zone.seatNear) list.push({ label: '🪑 Otur', cls: '', free: true, on: () => engineRef.current.sit(zone.seatNear) });
-    if (zone.kind === 'seated' || zone.seatedAt) list.push({ label: '🧍 Kalk', free: true, on: () => engineRef.current.stand() });
+    // v202: duşakabin "🚿 Duş al" / "🚪 Duştan çık" (koltuğun kendi etiketi)
+    if (zone.kind === 'seat') list.push({ label: zone.seat?.label || '🪑 Otur', cls: 'take', free: true, on: () => engineRef.current.sit(zone.seat) });
+    if (zone.seatNear) list.push({ label: zone.seatNear?.label || '🪑 Otur', cls: '', free: true, on: () => engineRef.current.sit(zone.seatNear) });
+    if (zone.kind === 'seated' || zone.seatedAt) list.push({ label: zone.exitLabel || '🧍 Kalk', free: true, on: () => engineRef.current.stand() });
     // misafir: gezmek serbest, işlem yapmak giriş ister
     if (guest) list.forEach((a) => !a.free && (a.on = () => setAskSignIn(true)));
     const hqName = zone.kind === 'hqIn' || zone.kind === 'hqOut' ? hqRef.current.bySlot[zone.slot]?.name : null;
@@ -2159,10 +2201,12 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
             </Suspense>
           )}
           {!guest && uid && <HomeInstruments apiRef={homeInstrRef} homeId={homeInside ? engineRef.current?.homeId?.() : null} items={homeInside ? engineRef.current?.homeItems?.() : null} inside={homeInside} user={user} name={myName} flash={flash} />}
+          {!guest && uid && <HomeJukebox open={homeJuke && homeInside} inside={homeInside} onClose={() => setHomeJuke(false)} />}
           {!guest && uid && <HomePanel eng={engineRef.current} uid={uid} inside={homeInside} flash={flash} evtRef={homeEvtRef} Sheet={Sheet} listOpen={evlerOpen} onListClose={() => setEvlerOpen(false)} onInfo={setHomeInfo} settingsReq={homeSetReq} />}
           {/* v157 — oyunun mekânları (camii, banka, karakol, belediye): işlemler içeride */}
           {gameVenueKey && !guest && VENUES[gameVenueKey] && (
             <div className={`cs-venue-layer${walkVenue && VENUE_UI[walkVenue]?.game === gameVenueKey ? '' : ' away'}`}>
+              <Suspense fallback={null}>
               <VenueLayer
                 venue={gameVenueDef}
                 engineRef={venueEngRef}
@@ -2172,6 +2216,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                 onOpenHeist={(t) => setPanel({ kind: 'heist', target: t, title: VENUE_TITLE[venue] || '' })}
                 flash={flash}
               />
+              </Suspense>
             </div>
           )}
           {spotList && spotList.length > 0 && !actions?.list?.length && (
@@ -2490,7 +2535,9 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         </div>
       )}
       {panel?.kind === 'camera' && cameraShot && (
-        <PhotoStoryEditor img={cameraShot.img || null} loading={!cameraShot.img && !cameraShot.error} error={cameraShot.error || null} busy={camBusy} onShare={shareCamera} onClose={closeCamera} />
+        <Suspense fallback={<div className="hs-loading cs-loading"><div className="hs-spinner" /></div>}>
+          <PhotoStoryEditor img={cameraShot.img || null} loading={!cameraShot.img && !cameraShot.error} error={cameraShot.error || null} busy={camBusy} onShare={shareCamera} onClose={closeCamera} />
+        </Suspense>
       )}
       {card && (
         <PlayerCard

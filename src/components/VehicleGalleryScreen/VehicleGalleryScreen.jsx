@@ -10,6 +10,7 @@ import { CarStatBars } from '../RaceTrackScreen/CarStats';
 import { useShopOffers, withOfferPrices } from '../../hooks/useShopOffers';
 import { priceChangedText } from '../../lib/priceChanged';
 import { vehicleShopOf } from '../../../functions/fleet.js';
+import { useSaleTax } from '../../hooks/useSaleTax'; // v202: vergi fiyatın üstüne
 
 // v151 — galeri 3 sekme: Araba · Ticari (meslek) · Motor
 export const GALLERY_TABS = [
@@ -56,6 +57,7 @@ export default function VehicleGalleryScreen({ items = null, onBuy = null, disab
   const feedbackTimeouts = useRef({});
   // v132: oyunun galerisi — en ucuz oyuncu galerisinin fiyatı
   const best = useShopOffers('vehicle', { enabled: !items && Boolean(user), excludeMine: true });
+  const vat = useSaleTax(shop === 'motogaleri' ? 'motogaleri' : 'galeri'); // v202: Araba / Motor Vergisi
 
   useEffect(
     () => () => {
@@ -76,7 +78,7 @@ export default function VehicleGalleryScreen({ items = null, onBuy = null, disab
     setBusy(catalogId);
     setError(null);
     try {
-      await (onBuy ? onBuy(car) : buyVehicle(catalogId, car.price));
+      await (onBuy ? onBuy(car) : buyVehicle(catalogId, vat.totalOf(car.price))); // v202: expect = vergi dahil toplam
       setJustBoughtIds((prev) => new Set(prev).add(catalogId));
       if (feedbackTimeouts.current[catalogId]) {
         clearTimeout(feedbackTimeouts.current[catalogId]);
@@ -107,10 +109,16 @@ export default function VehicleGalleryScreen({ items = null, onBuy = null, disab
               <span className="vehicle-card-name">{car.name}</span>
               {kindOfCar(car) === 'araba' && <CarStatBars catalogId={car.id} level={1} compact />}
               <span className="vehicle-card-price">{car.price.toLocaleString('tr-TR')} altın</span>
+              {/* v202: vergi fiyatın üstüne eklenir — ödemeden önce görünür */}
+              {vat.frac > 0 && (
+                <span className="vehicle-card-price vat">
+                  + %{vat.pct} vergi {vat.taxOf(car.price).toLocaleString('tr-TR')} = <b>{vat.totalOf(car.price).toLocaleString('tr-TR')} altın</b>
+                </span>
+              )}
             </div>
             <button
               className={`vehicle-card-buy${justBought ? ' bought' : ''}`}
-              disabled={Boolean(disabledText) || busy === car.id || justBought || gold < car.price}
+              disabled={Boolean(disabledText) || busy === car.id || justBought || gold < vat.totalOf(car.price)}
               onClick={() => handleBuy(car)}
             >
               {busy === car.id ? '…' : justBought ? 'Satın Alındı ✓' : disabledText || 'Satın Al'}

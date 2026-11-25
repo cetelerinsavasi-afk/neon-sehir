@@ -180,7 +180,6 @@ export function createGangSystem(deps) {
     offerHandover: membership.offerHandover,
     respondHandover: membership.respondHandover,
     cancelHandover: membership.cancelHandover,
-    giveRespect: membership.giveRespect,
     updateGangProfile: membership.updateGangProfile,
     donate: membership.donate,
     donateGem: membership.donateGem, // v146
@@ -781,12 +780,12 @@ export function createGangSystem(deps) {
   // v38: üye listesi (00:00 prestijli herkese açık görünüm) değiştiren işlemler
   // UGC D1: oyuncunun serbest metin yazdığı eylemler (sohbet, ad, not, kod adı)
   const TEXT_ACTIONS = new Set(['sendGangChat', 'sendGlobalChat', 'sendIntelChat', 'createGang', 'updateGangProfile', 'sendAllianceNote', 'joinIntel', 'updateIntelNote', 'changeCodeName', 'applyIntel']);
-  const ROSTER_ACTIONS = new Set(['createGang', 'joinGang', 'leaveGang', 'kickMember', 'giveRespect', 'joinIntel', 'leaveIntel', 'kickIntelMember', 'changeCodeName', 'intelDecision', 'reviewIntelApplication']);
+  const ROSTER_ACTIONS = new Set(['createGang', 'joinGang', 'leaveGang', 'kickMember', 'joinIntel', 'leaveIntel', 'kickIntelMember', 'changeCodeName', 'intelDecision', 'reviewIntelApplication']);
   const INTEL_ROSTER_ACTIONS = new Set(['joinIntel', 'leaveIntel', 'kickIntelMember', 'changeCodeName', 'intelDecision', 'reviewIntelApplication']);
   async function refreshRostersAfter(ctx, action, before) {
     const after = (await db.doc(`gangWorlds/${ctx.worldId}/memberships/${ctx.actorId}`).get()).data() || {};
     const gangIds = new Set([before?.gangId, after.gangId].filter(Boolean));
-    if (action === 'kickMember' || action === 'giveRespect') gangIds.add(after.gangId || before?.gangId);
+    if (action === 'kickMember') gangIds.add(after.gangId || before?.gangId);
     for (const g of gangIds) if (g) await core.refreshGangRoster(ctx, g);
     if (INTEL_ROSTER_ACTIONS.has(action) || before?.intelRosterId !== after.intelRosterId) await core.refreshIntelRoster(ctx);
   }

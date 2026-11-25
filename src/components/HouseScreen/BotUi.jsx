@@ -65,7 +65,7 @@ const TABS = [
   ['move', '🚶 Hareket'],
 ];
 
-export function BotEditor({ houseId, itemId, cfg: initial, onClose, flash }) {
+export function BotEditor({ houseId, itemId, cfg: initial, onClose, flash, onSaved = null }) {
   const [c, setC] = useState(() => {
     const base = cleanBotConfig(initial);
     // hiç düzenlenmemiş bot: mesleğin adı ve sözleri hazır gelir
@@ -92,7 +92,8 @@ export function BotEditor({ houseId, itemId, cfg: initial, onClose, flash }) {
   const save = async () => {
     setBusy(true);
     try {
-      await houseAction({ op: 'botSet', houseId, i: itemId, cfg: { ...c, l: lines } });
+      const r = await houseAction({ op: 'botSet', houseId, i: itemId, cfg: { ...c, l: lines } });
+      onSaved?.(r?.data?.cfg || { ...c, l: lines }); // v202: şehirdeki ev hemen güncellensin
       flash?.(`🤖 ${botLabel(c.n || jobOf.names[c.g])} hazır.`);
       onClose();
     } catch (err) {

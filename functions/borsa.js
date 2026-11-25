@@ -22,7 +22,7 @@
 //     alınan hisse bir sonraki dağıtımı ATLAR (o günü tam elde tutmamış). O payı diğer (hak
 //     kazanmış) hissedarlar paylaşır; mekânda hak kazanmış hisse yoksa gelir belediyeye gider.
 //     Satışta önce o dönem alınan birimler düşülür.
-//   • Gelir sınırsız birikir; küsurat kaybolmaz (Q ölçeğinde saklanır). Toplarken vergi + borç payı.
+//   • Gelir sınırsız birikir; küsurat kaybolmaz (Q ölçeğinde saklanır). Toplarken borç payı (v202: vergi yok).
 //   • v189: 20 gün OYUNA GİRMEYEN (users/{uid}/private/meta.lastSeenAtMs) oyuncunun hisseleri gece
 //     satılır, biriken geliri vergi + borç payı düşülüp yatırılır, SMS gider (24 saat önceki uyarı
 //     SMS'i kalktı).
@@ -93,13 +93,12 @@ export const BORSA_COS = [
   // v201: toplarken hisse gelir vergisi her hissede (mekân dahil) kesilir.
   ...VENUE_SHARE_TYPES.map((t) => ({ id: VENUE_CO_ID[t], sk: VENUE_CO_SK[t], name: VENUE_CO_NAME[t], kind: 'mekan', venueType: t })),
 ];
-// v201: hisse geliri TOPLANIRKEN her hissede (mekân, seyyar satıcı, şirket) hisse gelir vergisi kesilir.
-// (v196'da mekân hisseleri vergisizdi; artık her gelir önce %50 masraf + kendi vergisi, toplarken hisse vergisi.)
-export const isTaxFreeCo = () => false;
+// v202: Hisse Senedi Gelir Vergisi KALKTI — hisse geliri toplanırken vergi kesilmez (borç payı sürer).
+// (sunucu taxFrac da 0 verir; bu işlev eski çağrılar için duruyor)
+export const isTaxFreeCo = () => true;
+// eslint-disable-next-line no-unused-vars
 export function collectTaxFrac(by, taxFrac) {
-  let total = 0;
-  for (const v of Object.values(by || {})) total += Math.max(0, Number(v) || 0);
-  return total > 0 ? Math.max(0, Number(taxFrac) || 0) : 0;
+  return 0;
 }
 export const BORSA_CO_IDS = BORSA_COS.map((c) => c.id);
 export const BORSA_CO_BY_ID = Object.fromEntries(BORSA_COS.map((c) => [c.id, c]));
@@ -115,8 +114,9 @@ export function vendorIncomeSplit(amount, taxFrac) {
 }
 export const VENDOR_TAX_RATE_ID = 'seyyar';
 // v201 — ŞİRKETLER (Hastane, Nakliye, Terminal, Taksi Durağı): gelir = yeni ticari araç satışının TAMAMI + şoför
-// gelirlerinin %10'u; aynı kural: %50 masraf + belediyenin şirket vergisi (Ticaret), kalan hissedarlara.
-export const COMPANY_TAX_RATE_ID = 'sirket';
+// gelirlerinin %10'u. v202: Şirket Vergisi KALKTI — %50 masraf, %50 vergisiz hissedarlara. Araç alan müşteri
+// Ticari Araç Vergisi'ni (fleet.js) fiyatın üstüne, şoför de Şoförlük Vergisi'ni kendi gelirinden öder.
+export const COMPANY_TAX_RATE_ID = 'sirket'; // (artık oran listesinde yok → 0)
 export const companyIncomeSplit = vendorIncomeSplit;
 // buyFromVendor'un devlet defteri parçasına eklediği gelir sayacı
 export const borsaIncomeStatKey = (sk) => `hs_${sk}`;

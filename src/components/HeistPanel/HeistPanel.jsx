@@ -129,7 +129,7 @@ const short = (n) => {
 };
 
 // v154 — sade ekip kartı: avatarlar (güçleriyle), toplam güç çubuğu, tek satır buton
-function PlanCard({ plan, myUid, onChanged, mine, runner }) {
+function PlanCard({ plan, myUid, onChanged, mine, runner, myPower = null }) {
   const { participants } = useHeistPlanParticipants(plan.id);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
@@ -155,6 +155,9 @@ function PlanCard({ plan, myUid, onChanged, mine, runner }) {
   const isCreator = plan.creatorUid === myUid;
   const required = HEIST_LABELS[plan.target]?.requiredPower || 0;
   const ready = required > 0 && totalPower >= required;
+  // v202: ekibe katılmak için en az hedefin gücünün 1/10'u (sunucu: assertHeistTeamPower)
+  const teamMin = Math.ceil(required / 10);
+  const weak = myPower != null && myPower < teamMin;
   useEffect(() => {
     if (participants.some((p) => p.uid === myUid)) noteMyHeistPlan(plan.id, plan.target, true);
   }, [participants, myUid, plan.id, plan.target]);
@@ -245,8 +248,8 @@ function PlanCard({ plan, myUid, onChanged, mine, runner }) {
       )}
       <div className="hp2-acts">
         {!isMember && (
-          <button className="hp2-btn go" disabled={busy || participants.length >= 4} onClick={() => run(() => joinHeistPlan(plan.id), true)}>
-            {participants.length >= 4 ? 'Dolu' : '🤝 Katıl'}
+          <button className="hp2-btn go" disabled={busy || participants.length >= 4 || weak} onClick={() => run(() => joinHeistPlan(plan.id), true)}>
+            {participants.length >= 4 ? 'Dolu' : weak ? `⚔️ En az ${nf(teamMin)} güç` : '🤝 Katıl'}
           </button>
         )}
         {isCreator && (
@@ -350,6 +353,9 @@ export default function HeistPanel({ target, onRun = null }) {
   const crimeLocked = sus >= 50; // sunucu: CRIME_SUSPICION_LOCK
   const official = Boolean(player?.belediyeSeat); // belediye görevlisi soygun yapamaz
   const canSolo = myPower >= meta.requiredPower;
+  // v202: ekip kurmak / ekibe girmek için en az hedefin gücünün 1/10'u
+  const teamMin = Math.ceil(meta.requiredPower / 10);
+  const teamOk = myPower >= teamMin;
   const myPlanIds = new Set(myActivePlans.filter((p) => p.target === target).map((p) => p.planId));
   const mineOf = (p) => isMyPlan(p, user.uid, myPlanIds);
   const myPlans = plans.filter(mineOf);
@@ -445,13 +451,13 @@ export default function HeistPanel({ target, onRun = null }) {
             <PlanCard key={plan.id} plan={plan} myUid={user.uid} mine runner={runner} onChanged={(data, played) => data && setResult({ ...data, _played: played })} />
           ))}
           {!canSolo && !inTeamHere && !done && !official && (
-            <button className="hp2-cta sec" disabled={busy} onClick={handleCreatePlan}>
-              👥 EKİP KUR
+            <button className="hp2-cta sec" disabled={busy || !teamOk} onClick={handleCreatePlan}>
+              {teamOk ? '👥 EKİP KUR' : `👥 Ekip için en az ${nf(teamMin)} güç`}
             </button>
           )}
           {!canSolo && otherPlans.length > 0 && <p className="hp2-sub">Açık ekipler · {otherPlans.length}</p>}
           {!canSolo &&
-            otherPlans.map((plan) => <PlanCard key={plan.id} plan={plan} myUid={user.uid} runner={runner} onChanged={(data, played) => data && setResult({ ...data, _played: played })} />)}
+            otherPlans.map((plan) => <PlanCard key={plan.id} plan={plan} myUid={user.uid} myPower={myPower} runner={runner} onChanged={(data, played) => data && setResult({ ...data, _played: played })} />)}
           {!canSolo && !plansLoading && plans.length === 0 && <p className="hp2-empty">Henüz ekip yok — ilk ekibi sen kur.</p>}
         </div>
       )}

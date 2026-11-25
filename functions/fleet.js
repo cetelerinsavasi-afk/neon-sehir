@@ -7,8 +7,9 @@
 //       otobüs   → Otogarların içinde ("🚌 Otobüs")
 //       ambulans → Hastanede ("🚑 Ambulans")
 //       tır      → Liman yükleme alanı / teslimat depolarında ("🚛 Tır")
-//     Fiyat oyunun galeri fiyatı. v201: satış bedelinin tamamı ilgili şirketin (Neon Borsa) geliri:
-//     %50 masraf + şirket vergisi (Ticaret), kalan hissedarlara. 2. elden alınanlarda şirket payı yok.
+//     Fiyat oyunun galeri fiyatı. v201: satış bedelinin tamamı ilgili şirketin (Neon Borsa) geliri.
+//     v202: %50 masraf, %50 vergisiz hissedarlara; müşteri fiyatın üstüne Ticari Araç Vergisi öder.
+//     2. elden alınanlarda şirket payı yok.
 //   • Bir oyuncu her ticari türden EN FAZLA 1 araç tutar (2. elden de alamaz). Ömrü bitmiş
 //     (hurda) ya da bankaya el konmuş araç sayılmaz; 2. elde ilanda olan sayılır.
 //   • Polis arabası oyundan kalktı (polislik mesleği değil, sadece para kazandıran araç görevi).
@@ -20,6 +21,7 @@
 // =============================================================================
 import { VEHICLE_CATALOG } from './catalogData.js';
 import { companyIncomeSplit } from './borsa.js';
+import { addonTaxOf } from './v196Shared.js';
 
 export const FLEET = {
   taksi: { job: 'taksi', cid: 13, co: 'taksi', label: 'Taksi', icon: '🚕', place: 'Taksi Durağı' },
@@ -35,6 +37,10 @@ export const RETIRED_VEHICLE_IDS = [POLICE_CAR_ID];
 export const FLEET_SALE_SHARE = 1; // v201: satış bedelinin TAMAMI şirketin geliri (%50 masraf + şirket vergisi, kalan hissedarlara)
 export const FLEET_DRIVER_SHARE = 0.1; // şoför gelirinin şirkete giden payı
 export const SOFOR_TAX_RATE_ID = 'sofor';
+// v202 — TİCARİ ARAÇ VERGİSİ (Ticaret Bakanlığı): yeni ticari araç alan müşteri fiyatın ÜSTÜNE öder.
+// Şirket Vergisi kalktı: şirketin geliri (araç satış bedeli + şoför payı) %50 masraf, %50 vergisiz hissedarlara.
+export const TICARI_TAX_RATE_ID = 'ticariArac';
+export const fleetTaxOf = (price, taxFrac) => addonTaxOf(price, taxFrac);
 export const fleetOfCid = (cid) => FLEET_JOBS.map((j) => FLEET[j]).find((f) => f.cid === Number(cid)) || null;
 export const fleetOfJob = (job) => FLEET[job] || null;
 export const isFleetId = (cid) => FLEET_IDS.includes(Number(cid));
@@ -91,7 +97,7 @@ export function splitDriverIncome(job, gross, taxFrac) {
 // =============================================================================
 // deps: { db, FieldValue, HttpsError, goldTag, statWrite, newVehicleDoc, companyStatKey(coId),
 //         dayKey(ms), now }
-export function createFleet({ db, FieldValue, HttpsError, goldTag, statWrite, stateWrite = null, companyTaxFrac = null, newVehicleDoc, companyStatKey, dayKey, now = () => Date.now(), log = console }) {
+export function createFleet({ db, FieldValue, HttpsError, goldTag, statWrite, stateWrite = null, ticariTaxFrac = null, newVehicleDoc, companyStatKey, dayKey, now = () => Date.now(), log = console }) {
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
   };
@@ -116,27 +122,31 @@ export function createFleet({ db, FieldValue, HttpsError, goldTag, statWrite, st
     if (!f) fail('invalid-argument', 'Geçersiz araç.');
     const e = VEHICLE_CATALOG[f.cid];
     const price = e.price;
-    if (p.expect != null && Number(p.expect) !== price) fail('aborted', `price-changed:${price}`);
     const t = now();
+    // v202: Ticari Araç Vergisi fiyatın üstüne (müşteri öder) — expect = toplam
+    const vat = fleetTaxOf(price, ticariTaxFrac ? ticariTaxFrac(dayKey(t)) : 0);
+    const total = price + vat;
+    if (p.expect != null && Number(p.expect) !== total) fail('aborted', `price-changed:${total}`);
     let id = null;
     await db.runTransaction(async (tx) => {
       const [us, own] = await Promise.all([tx.get(userRef(uid)), ownedOfType((q) => tx.get(q), uid, f.cid)]);
       const u = us.data();
       if (!u) fail('failed-precondition', 'Oyuncu bulunamadı.');
       if (own.length) fail('failed-precondition', `Zaten bir ${f.label.toLocaleLowerCase('tr-TR')} aracın var.`);
-      if ((u.gold || 0) < price) fail('failed-precondition', 'Yetersiz altın.');
-      tx.update(userRef(uid), { gold: FieldValue.increment(-price), goldTag: goldTag('arac') });
+      if ((u.gold || 0) < total) fail('failed-precondition', 'Yetersiz altın.');
+      tx.update(userRef(uid), { gold: FieldValue.increment(-total), goldTag: goldTag('arac') });
       const ref = db.collection('vehicles').doc();
       id = ref.id;
       tx.set(ref, { ...newVehicleDoc(uid, f.cid, FieldValue), source: 'filo' });
-      // v201: satış bedeli şirketin geliri → %50 masraf + şirket vergisi, kalan gece hissedarlara dağıtılır
+      // v202: satış bedeli şirketin geliri → %50 masraf, %50 VERGİSİZ hissedarlara (gece dağıtılır).
+      // Vergi (Ticari Araç Vergisi) müşteriden ayrıca alındı → belediyeye.
       const day = dayKey(t);
-      const sp = companyIncomeSplit(Math.round(price * FLEET_SALE_SHARE), companyTaxFrac ? companyTaxFrac(day) : 0);
+      const sp = companyIncomeSplit(Math.round(price * FLEET_SALE_SHARE), 0);
       const stat = { ...(sp.share ? { [companyStatKey(f.co)]: sp.share } : {}), [`filo_${f.job}_n`]: 1, [`filo_${f.job}_ciro`]: price };
-      if (stateWrite) stateWrite(tx, db, FieldValue, { kind: 'in', cat: 'vergi_sirket', amount: sp.tax, atMs: t, dayKey: day, stat });
+      if (stateWrite && vat > 0) stateWrite(tx, db, FieldValue, { kind: 'in', cat: 'vergi_ticariArac', amount: vat, atMs: t, dayKey: day, stat });
       else statWrite(tx, db, FieldValue, { atMs: t, dayKey: day, stat });
     });
-    return { ok: true, job: f.job, price, vehicleId: id };
+    return { ok: true, job: f.job, price, tax: vat, total, vehicleId: id };
   }
 
   // ---- tek seferlik geçiş ---------------------------------------------------
