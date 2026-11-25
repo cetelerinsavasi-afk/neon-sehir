@@ -235,3 +235,29 @@ export async function nativeBillingConsume(purchaseToken) {
   if (!billingReady()) return null;
   return callAsync('billingConsume', [String(purchaseToken)], BILLING_TIMEOUT);
 }
+
+// --------------------------------------------------------- v18 Paylaş / Dışarıda aç
+// shareText: Android'in kendi paylaşım menüsü (sadece WebView v18+). Köprüde fonksiyon
+// yoksa (v14–v17, TWA, tarayıcı) false döner — çağıran yedeğe (navigator.share / pano) düşer.
+export function nativeShareText(text) {
+  const b = bridge();
+  if (!b || typeof b.shareText !== 'function') return false;
+  try {
+    return b.shareText(String(text ?? '')) === true;
+  } catch {
+    return false;
+  }
+}
+
+// openExternal: v14+ köprüsünde var (market:// → Play Store uygulaması, yoksa web adresi).
+// Köprü yoksa false döner — çağıran normal linke (<a href>) bırakır.
+export function nativeOpenExternal(url) {
+  const b = bridge();
+  if (!b || typeof b.openExternal !== 'function') return false;
+  try {
+    b.openExternal(String(url));
+    return true;
+  } catch {
+    return false;
+  }
+}

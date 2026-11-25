@@ -449,3 +449,17 @@
 .guide .nav button:active {
   transform: translateY(1px);
 }
+
+/* v203 — "Oyunu Değerlendir" (sadece Android uygulamasında, İçindekiler'in en altı) */
+.guide .guide-rate {
+  margin: 0;
+  padding: 2px 0 8px;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.guide .guide-rate-link {
+  color: var(--text-dim, #8a93a8);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}

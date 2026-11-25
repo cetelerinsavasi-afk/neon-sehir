@@ -31,6 +31,7 @@ import { createVisits } from './visits.js';
 import { createShop, newSaleStat } from './shop.js';
 import { createJobs } from './jobs.js';
 import { CAR_IDS, isCarId } from './vehicleKinds.js';
+import { raceBetCap, canRaceForBet } from './raceBetCap.js'; // v203: araba başına bahis sınırı
 import { stockUnitCost } from './shopStockRules.js'; // v130
 import { createVenue } from './venue.js';
 import { createOffice } from './office.js';
@@ -8627,8 +8628,15 @@ function finalizeRace({ tx, roomRef, room, winnerUid, players, userRefs, userSna
 // ekstra bir güvenlik önlemi olarak duruyor.
 // ---------------------------------------------------------------------------
 
-// v67 — bahisli yarışta tek odanın en yüksek bahsi
-const RACE_MAX_BET = 100_000;
+// v203 — sabit 100.000 sınırı kaldırıldı: her arabanın kendi sınırı var
+// (galeri fiyatının 1/10'u, bkz. functions/raceBetCap.js). Kurucu kendi arabasının
+// sınırına kadar bahis koyar; katılan da sınırı bu bahse yeten bir arabayla girer.
+function raceBetCapError(vehicle, amount) {
+  const cap = raceBetCap(vehicle?.catalogId);
+  if (canRaceForBet(vehicle?.catalogId, amount)) return null;
+  const name = vehicle?.customName || vehicle?.model || 'Bu araba';
+  return `${name} ile en fazla ${cap.toLocaleString('tr-TR')} altın bahisli yarışa girilebilir (galeri fiyatının 1/10'u).`;
+}
 
 // createRaceRoom — oda kurar (status: 'waiting', rakip yok).
 export const createRaceRoom = onCall(async (request) => {
@@ -8639,10 +8647,9 @@ export const createRaceRoom = onCall(async (request) => {
   if (!Number.isInteger(amount) || amount <= 0) {
     throw new HttpsError('invalid-argument', 'Geçersiz bahis miktarı.');
   }
-  if (amount > RACE_MAX_BET) {
-    throw new HttpsError('invalid-argument', `Bahis en fazla ${RACE_MAX_BET.toLocaleString('tr-TR')} altın olabilir.`);
-  }
   const vehicle = await getVehicleForRace(uid, vehicleId);
+  const capErr = raceBetCapError(vehicle, amount);
+  if (capErr) throw new HttpsError('invalid-argument', capErr);
 
   const userRef = db.collection('users').doc(uid);
   const roomRef = db.collection('raceRooms').doc();
@@ -8713,6 +8720,8 @@ export const joinRaceRoom = onCall(async (request) => {
     if (room.creatorUid === uid) {
       throw new HttpsError('failed-precondition', 'Kendi odana katılamazsın.');
     }
+    const capErr = raceBetCapError(vehicle, room.betAmount);
+    if (capErr) throw new HttpsError('failed-precondition', `${capErr} Bu odanın bahsi ${Number(room.betAmount).toLocaleString('tr-TR')} altın.`);
     const user = userSnap.data();
     if (!user || (user.gold || 0) < room.betAmount) {
       throw new HttpsError('failed-precondition', 'Yetersiz altın.');

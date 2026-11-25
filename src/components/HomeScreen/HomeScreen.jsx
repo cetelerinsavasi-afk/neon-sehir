@@ -20,11 +20,41 @@ import AdminPanelEntry from '../AdminPanel/AdminPanelEntry';
 import AdminStoryReset from '../AdminPanel/AdminStoryReset'; // v168.1
 import LegalLinks from '../LegalLinks/LegalLinks';
 import { retryImport } from '../../lib/lazyRetry';
+import { buildInviteText, shareInvite } from '../../lib/shareInvite'; // v203: Arkadaşını Davet Et
 import './HomeScreen.css';
 
 // v146 — Profil › Mobilyalar (3D katalog / three.js ana pakete girmesin diye ayrı parça)
 const CostumeShop = lazy(retryImport(() => import('../CostumeShop/CostumeShop'))); // v160
 const FurnitureScreen = lazy(retryImport(() => import('../Furniture/FurnitureScreen'))); // v196: mobilya pazarı devam
+
+// v203 — "Arkadaşını Davet Et": sadece oyuncu dokununca paylaşır. Ödül mantığı değişmedi
+// (sunucuda applyReferralCode); mesaj panelde gösterilen davet adını içerir.
+function InviteShareButton({ inviteName }) {
+  const [note, setNote] = useState('');
+  const timer = useRef(0);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const text = buildInviteText(inviteName);
+  const onShare = async () => {
+    if (!text) return;
+    const r = await shareInvite(text);
+    const msg = r === 'copied' ? 'Davet mesajı kopyalandı' : r === 'failed' ? 'Paylaşılamadı, tekrar dene' : '';
+    clearTimeout(timer.current);
+    setNote(msg);
+    if (msg) timer.current = setTimeout(() => setNote(''), 2500);
+  };
+  return (
+    <div className="home-referral-share">
+      <button type="button" className="home-btn home-referral-share-btn" disabled={!text} onClick={onShare}>
+        📤 Arkadaşını Davet Et
+      </button>
+      {note && (
+        <span className="home-hint home-referral-share-note" role="status">
+          {note}
+        </span>
+      )}
+    </div>
+  );
+}
 
 function weaponImage(catalogId) {
   return weaponCatalog.find((w) => w.id === catalogId)?.image;
@@ -273,6 +303,7 @@ export default function HomeScreen() {
           Referans Kodun: <strong>{player?.displayName || '—'}</strong> — bu kodu kullanarak
           katılan her yeni oyuncu için <strong>1 zümrüt + 10.000 altın</strong> kazanırsın!
         </p>
+        <InviteShareButton inviteName={player?.displayName} />
       </div>
 
       {/* v124: oyuncunun elinde malzeme yok (fabrika/işletme envanterinde) — sadece yasaklı madde */}

@@ -41,8 +41,8 @@ android {
         targetSdk = 36
         // v155: Zümrüt Mağazası (Google Play Faturalandırma). UA eki (NeonSehirApp/15) ve açılış
         // adresi (av=15) BuildConfig.VERSION_CODE'dan türetilir — başka yere elle yazılmaz.
-        versionCode = 17
-        versionName = "1.3.0"
+        versionCode = 18
+        versionName = "1.3.1"
 
         buildConfigField("String", "WEB_CLIENT_ID", "\"$webClientId\"")
         buildConfigField("String", "SITE_HOST", "\"cetelerinsavasi.com\"")

@@ -46,6 +46,7 @@ if (cfg.bridge) {
     signOutGoogle: () => calls.push(['signOutGoogle']),
     exitApp: () => calls.push(['exitApp']),
     copyText: (t) => { calls.push(['copyText', t]); return true; },
+    openExternal: (u) => calls.push(['openExternal', u]), // v14'ten beri var
     saveFile: (id, name, mime, b64) => {
       calls.push(['saveFile', name, mime, b64.length]);
       files.set(name, Buffer.from(b64, 'base64'));
@@ -61,6 +62,8 @@ if (cfg.bridge) {
     },
   };
   win.__files = files;
+  // v18: Android paylaşım menüsü (sadece cfg.share varken — v14–v17 köprüsünde YOK)
+  if (cfg.share) win.NeonAndroid.shareText = (t) => { calls.push(['shareText', t]); return true; };
   // v155: native Play faturalandırma (sadece cfg.billing varken köprüde bulunur)
   if (cfg.billing) {
     const B = cfg.billing;
@@ -88,6 +91,9 @@ if (cfg.bridge) {
 globalThis.window = win;
 globalThis.document = { referrer: cfg.referrer || '' };
 Object.defineProperty(globalThis, 'navigator', {
-  value: { userAgent: cfg.ua || 'Mozilla/5.0 (X11; Linux x86_64) Chrome/140.0 Safari/537.36', platform: 'Linux', maxTouchPoints: 0, ...(cfg.clipboard === 'fail' ? { clipboard: { writeText: () => Promise.reject(new Error('NotAllowedError')) } } : cfg.clipboard === 'ok' ? { clipboard: { writeText: () => Promise.resolve() } } : {}) },
+  value: { userAgent: cfg.ua || 'Mozilla/5.0 (X11; Linux x86_64) Chrome/140.0 Safari/537.36', platform: 'Linux', maxTouchPoints: 0,
+    // v18: navigator.share taklidi — cfg.navShare: 'ok' | 'abort' | 'fail' (yoksa tanımsız, WebView'daki gibi)
+    ...(cfg.navShare ? { share: (d) => { (globalThis.__navShares ||= []).push(d.text); return cfg.navShare === 'ok' ? Promise.resolve() : Promise.reject(Object.assign(new Error(cfg.navShare), { name: cfg.navShare === 'abort' ? 'AbortError' : 'NotAllowedError' })); } } : {}),
+    ...(cfg.clipboard === 'fail' ? { clipboard: { writeText: () => Promise.reject(new Error('NotAllowedError')) } } : cfg.clipboard === 'ok' ? { clipboard: { writeText: () => Promise.resolve() } } : {}) },
   configurable: true,
 });

@@ -363,3 +363,26 @@
 .home-fold-chev { color: var(--text-dim); font-size: 14px; transition: transform 0.18s ease; transform: rotate(-90deg); }
 .home-fold-head.open .home-fold-chev { transform: rotate(0deg); }
 .home-veh-tabs .vg-tabs { margin-bottom: 0; }
+
+/* v203 — davet panelinin içindeki "Arkadaşını Davet Et" butonu (alt satırda) */
+.home-referral-box {
+  flex-wrap: wrap;
+}
+.home-referral-box > .home-hint {
+  flex: 1 1 0; /* sarma açıkken metin emojinin yanında kalsın */
+  min-width: 0;
+}
+.home-referral-share {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.home-referral-share-btn {
+  border-color: #ffd23f;
+  font-weight: 700;
+}
+.home-referral-share-note {
+  color: #ffd23f;
+}

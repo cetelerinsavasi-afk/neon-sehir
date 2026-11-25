@@ -3,6 +3,7 @@ package com.cetelerinsavasi.twa
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.os.Build
 import android.webkit.JavascriptInterface
 import org.json.JSONObject
@@ -117,6 +118,25 @@ class NeonBridge(private val activity: LauncherActivity) {
                 cm.setPrimaryClip(ClipData.newPlainText("Neon Şehir", text))
             } catch (_: Exception) {
                 // pano kapalı olabilir — yoksay
+            }
+        }
+        return true
+    }
+
+    // ------------------------------------------------ v18 Paylaş (davet mesajı)
+    /** Android'in kendi paylaşım menüsü (ACTION_SEND + createChooser). Yeni kütüphane yok. */
+    @JavascriptInterface
+    fun shareText(text: String?): Boolean {
+        if (!trusted() || text.isNullOrBlank()) return false
+        val value = text.take(2000) // davet mesajı kısa; aşırı uzun metin menüye gitmesin
+        activity.runOnUiThread {
+            try {
+                val send = Intent(Intent.ACTION_SEND)
+                    .setType("text/plain")
+                    .putExtra(Intent.EXTRA_TEXT, value)
+                activity.startActivity(Intent.createChooser(send, "Neon Şehir'i paylaş"))
+            } catch (_: Exception) {
+                activity.toast(activity.getString(R.string.no_app_to_open))
             }
         }
         return true

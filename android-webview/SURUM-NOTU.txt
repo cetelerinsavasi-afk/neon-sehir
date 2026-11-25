@@ -1,6 +1,5 @@
 <tr-TR>
-Neon Şehir 1.3.0
-• Yeni: Hikâye modu eklendi.
-• Kasma ve donma sorunları büyük ölçüde giderildi; oyun daha akıcı çalışıyor.
-• Araç sürüşü iyileştirildi.
+Neon Şehir 1.3.1
+• Yeni: Profildeki davet panelinden oyunu arkadaşlarınla tek dokunuşla paylaşabilirsin.
+• Yeni: Telefondaki Neon Şehir uygulamasından oyunu Google Play'de değerlendirebilirsin.
 </tr-TR>

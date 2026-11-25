@@ -69,6 +69,14 @@ if (scenario !== 'platform') {
     out.hash = await PB.accountHashOf('uid-123');
     out.verify = globalThis.__verifyCalls || [];
   }
+  if (scenario === 'share' || scenario === 'rate') {
+    // v18: davet paylaşımı + Oyunu Değerlendir
+    const S = await import('../../src/lib/shareInvite.js');
+    out.text = S.buildInviteText(process.env.NS_INVITE_NAME ?? 'Rois');
+    if (scenario === 'share') out.share = await S.shareInvite(out.text);
+    if (scenario === 'rate') out.rate = S.openPlayReview();
+    out.navShares = globalThis.__navShares || [];
+  }
   out.calls = window.__calls || null;
 }
 process.stdout.write(JSON.stringify(out));

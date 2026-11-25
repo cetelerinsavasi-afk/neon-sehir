@@ -5,6 +5,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { CATS } from './guideContent';
 import LegalLinks from '../LegalLinks/LegalLinks';
+import { IS_ANDROID_APP } from '../../lib/platform';
+import { PLAY_WEB_URL, RATE_TEXT, openPlayReview } from '../../lib/shareInvite';
 import './GuideScreen.css';
 
 const POS_KEY = 'rehber:pos';
@@ -27,6 +29,28 @@ function ensureFont() {
   l.rel = 'stylesheet';
   l.href = 'https://fonts.googleapis.com/css2?family=Oswald:wght@500;700&display=swap';
   document.head.appendChild(l);
+}
+
+// v203 (Android v18) — "Oyunu Değerlendir": SADECE Android uygulamasında, İçindekiler'in en
+// altında küçük bir satır. Ödül yok, yıldız yönlendirmesi yok; sadece dokununca Play açılır.
+// WebView köprüsü varsa market://, yoksa (eski TWA) normal Play linki.
+function RateOnPlay() {
+  if (!IS_ANDROID_APP) return null;
+  return (
+    <p className="guide-rate">
+      <a
+        className="guide-rate-link"
+        href={PLAY_WEB_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => {
+          if (openPlayReview()) e.preventDefault();
+        }}
+      >
+        ⭐ {RATE_TEXT}
+      </a>
+    </p>
+  );
 }
 
 function Detail({ it }) {
@@ -120,6 +144,7 @@ export default function GuideScreen() {
             ))}
           </div>
           <LegalLinks />
+          <RateOnPlay />
         </div>
       </article>
     );
