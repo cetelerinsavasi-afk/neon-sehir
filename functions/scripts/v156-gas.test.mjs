@@ -1,9 +1,8 @@
-// v156 — benzinlik: benzin al (100, RP) + market (eldeki ürün); gelir devlete "benzinlik"
+// v156 — benzinlik: benzin al (100, RP) + market (eldeki ürün); v203: gelir devlete GİTMEZ (devlet defterine yazım yok)
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { FakeFirestore, FieldValue } from '../gang/test/fakeFirestore.js';
 import { createGasStation, FUEL_PRICE, GAS_MARKET_MENU } from '../gasStation.js';
-import { stateWrite, STATE_IN } from '../stateTreasury.js';
 import { HOUSE_PRODUCTS } from '../houseCatalogData.js';
 
 class HE extends Error {
@@ -15,24 +14,20 @@ class HE extends Error {
 const setup = async (gold) => {
   const db = new FakeFirestore();
   await db.doc('users/u').set({ gold });
-  const gs = createGasStation({ db, FieldValue, HttpsError: HE, goldTag: (s) => s, stateWrite, heldItemMs: 120_000, now: () => 1_000_000, dateKey: () => '2026-11-12' });
+  const gs = createGasStation({ db, FieldValue, HttpsError: HE, goldTag: (s) => s, heldItemMs: 120_000, now: () => 1_000_000 });
   return { db, gs };
 };
-const ledger = async (db) => {
-  const all = await db.collection('stateLedger').get();
-  return all.docs.map((d) => d.data()).reduce((a, d) => a + Number(d.in?.benzinlik || 0), 0);
-};
+const ledger = async (db) => (await db.collection('stateLedger').get()).docs.length;
 
-test('benzin: 100 altın düşer, devlete benzinlik kalemi; eldeki ürün değişmez', async () => {
+test('benzin: 100 altın düşer, devlete gitmez; eldeki ürün değişmez', async () => {
   const { db, gs } = await setup(150);
   assert.equal(FUEL_PRICE, 100);
   const r = await gs.fuelBuy('u');
   assert.equal(r.price, 100);
   assert.equal((await db.doc('users/u').get()).data().gold, 50);
-  assert.equal(await ledger(db), 100);
+  assert.equal(await ledger(db), 0);
   assert.equal((await db.doc('heldItems/u').get()).exists, false);
   await assert.rejects(gs.fuelBuy('u'), /Yetersiz altın/);
-  assert.ok(STATE_IN.benzinlik);
 });
 
 test('market: menüdeki ürün ele gelir (2 dk), fiyat düşer; geçersiz ürün reddedilir', async () => {
@@ -46,5 +41,5 @@ test('market: menüdeki ürün ele gelir (2 dk), fiyat düşer; geçersiz ürün
   assert.equal(h.untilMs, 1_000_000 + 120_000);
   await assert.rejects(gs.marketBuy('u', { item: 'tabanca' }), /Geçersiz ürün/);
   await assert.rejects(gs.marketBuy('u', { item: '__proto__' }), /Geçersiz ürün/);
-  assert.equal(await ledger(db), GAS_MARKET_MENU.cips);
+  assert.equal(await ledger(db), 0);
 });

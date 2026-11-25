@@ -72,14 +72,14 @@ export default function WeaponShopScreen({ items = null, onBuy = null, disabledT
           <div className="weapon-card-info">
             <span className="weapon-card-name">{w.name}</span>
             <span className="weapon-card-stats">
+              {/* v203: Güç 1.000 · 1.000 altın + %10 vergi = 1.100 altın */}
               Güç {w.power.toLocaleString('tr-TR')} · {w.price.toLocaleString('tr-TR')} altın
+              {vat.frac > 0 && (
+                <>
+                  {' '}+ %{vat.pct} vergi = <b>{vat.totalOf(w.price).toLocaleString('tr-TR')} altın</b>
+                </>
+              )}
             </span>
-            {/* v202: vergi fiyatın üstüne eklenir — ödemeden önce görünür */}
-            {vat.frac > 0 && (
-              <span className="weapon-card-stats">
-                + %{vat.pct} {vat.name.toLocaleLowerCase('tr-TR')} {vat.taxOf(w.price).toLocaleString('tr-TR')} = <b>{vat.totalOf(w.price).toLocaleString('tr-TR')} altın</b>
-              </span>
-            )}
           </div>
           <button
             className={`weapon-card-buy${justBought.has(w.id) ? ' bought' : ''}`}

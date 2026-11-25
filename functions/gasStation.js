@@ -1,9 +1,8 @@
 // =============================================================================
 // v156 — BENZİNLİK: "⛽ Benzin al" (100 altın, sadece RP — hiçbir şeye etki etmez)
 // ve benzinlik marketi (kola, cips… → eldeki ürün, 2 dk, seyyar satıcı menüsüyle aynı).
-// Gelirin tamamı devlete: stateLedger "benzinlik" kalemi (Ticaret Bakanlığı).
-// Firestore: işlem başına kullanıcı + (markette) eldeki ürün + devlet defteri — seyyar satıcı
-// menü alışverişiyle aynı yazma sayısı. Yeni dinleyici yok.
+// v203: gelir devlete GİTMEZ (Ticaret Bakanlığı kaleminden kalktı) — altın oyundan çıkar.
+// Firestore: işlem başına kullanıcı + (markette) eldeki ürün; devlet defterine yazım yok.
 // =============================================================================
 import { HOUSE_PRODUCTS } from './houseCatalogData.js';
 
@@ -11,7 +10,7 @@ export const FUEL_PRICE = 100;
 // Market menüsü (ürün → fiyat). Ürünler oyunun eldeki ürünleri (HOUSE_PRODUCTS).
 export const GAS_MARKET_MENU = { kola: 60, cips: 50, cikolata: 50, biskuvi: 40, enerji: 80, su: 20, meyveSuyu: 50 };
 
-export function createGasStation({ db, FieldValue, HttpsError, goldTag, stateWrite, heldItemMs, dateKey = () => new Date(Date.now() + 3 * 3600_000).toISOString().slice(0, 10), now = () => Date.now() }) {
+export function createGasStation({ db, FieldValue, HttpsError, goldTag, heldItemMs, now = () => Date.now() }) {
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
   };
@@ -24,16 +23,13 @@ export function createGasStation({ db, FieldValue, HttpsError, goldTag, stateWri
       if (!u || (u.gold || 0) < price) fail('failed-precondition', 'Yetersiz altın.');
       tx.update(userRef(uid), { gold: FieldValue.increment(-price), goldTag: goldTag('benzinlik') });
       extra?.(tx, t);
-      stateWrite(tx, db, FieldValue, { kind: 'in', cat: 'benzinlik', amount: price, atMs: t, dayKey: dateKey(), stat: extra?.stat || null });
     });
     return t;
   }
 
   // ⛽ Benzin al — sadece RP
   async function fuelBuy(uid) {
-    const pay = () => {};
-    pay.stat = { bz_n: 1, bz_benzin_n: 1, bz_benzin_ciro: FUEL_PRICE };
-    await charge(uid, FUEL_PRICE, pay);
+    await charge(uid, FUEL_PRICE);
     return { ok: true, price: FUEL_PRICE };
   }
 
@@ -47,7 +43,6 @@ export function createGasStation({ db, FieldValue, HttpsError, goldTag, stateWri
       until = t + heldItemMs;
       tx.set(db.collection('heldItems').doc(uid), { itemId: item, venue: 'ev', houseId: null, untilMs: until, boughtAtMs: t });
     };
-    put.stat = { bz_n: 1, bz_market_n: 1, bz_market_ciro: price };
     await charge(uid, price, put);
     return { ok: true, itemId: item, price, untilMs: until };
   }

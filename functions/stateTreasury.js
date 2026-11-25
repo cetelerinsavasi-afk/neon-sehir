@@ -74,18 +74,18 @@ export const STATE_IN = {
   vergi_maasFutbolcu: 'Vergi · Futbolcu maaşları',
   vergi_transfer: 'Vergi · Futbolcu transferleri', // v146 — alıcı öder (Kültür ve Spor)
   vergi_maasMenajer: 'Vergi · Menajer maaşları',
-  vergi_isl_silahci: 'Vergi · Silah vergisi (fiyata eklenen)', // v202
-  vergi_isl_modifiye: 'Vergi · Modifiye vergisi (fiyata eklenen)', // v202
-  vergi_isl_spor: 'Vergi · Spor salonu vergisi (fiyata eklenen)', // v202
+  vergi_isl_silahci: 'Vergi · Silah vergisi', // v202
+  vergi_isl_modifiye: 'Vergi · Modifiye vergisi', // v202
+  vergi_isl_spor: 'Vergi · Spor salonu vergisi', // v202
   vergi_isl_cafe: 'Vergi · İşletme · Kafe',
   vergi_isl_bar: 'Vergi · İşletme · Bar',
   vergi_isl_internet: 'Vergi · İşletme · İnternet Kafe',
   vergi_isl_sinema: 'Vergi · İşletme · Sinema',
   vergi_isl_studyo: 'Vergi · İşletme · Stüdyo',
   vergi_isl_mescit: 'Vergi · İşletme · Mescit bağışları',
-  vergi_isl_galeri: 'Vergi · Araba vergisi (fiyata eklenen)', // v202
-  vergi_isl_motogaleri: 'Vergi · Motor vergisi (fiyata eklenen)', // v202
-  vergi_isl_tamirci: 'Vergi · Tamirci vergisi (fiyata eklenen)', // v202
+  vergi_isl_galeri: 'Vergi · Araba vergisi', // v202
+  vergi_isl_motogaleri: 'Vergi · Motor vergisi', // v202
+  vergi_isl_tamirci: 'Vergi · Tamirci vergisi', // v202
   vergi_isl_gazino: 'Vergi · İşletme · Kumarhane',
   vergi_sifirSilah: 'Vergi · Sıfır silah satış kârı', // v130
   vergi_sifirAraba: 'Vergi · Sıfır araba satış kârı', // v130
@@ -94,7 +94,7 @@ export const STATE_IN = {
   vergi_sofor: 'Vergi · Şoförlük gelirleri', // v177 (taksi, otobüs, tır, ambulans)
   vergi_seyyar: 'Vergi · Seyyar satıcılar', // v200 (bağış, menü, kurye siparişi)
   vergi_sirket: 'Vergi · Şirketler (v201; v202\'de kalktı)', // v201
-  vergi_ticariArac: 'Vergi · Ticari araç vergisi (alıcı öder)', // v202
+  vergi_ticariArac: 'Vergi · Ticari araç vergisi', // v202
   vergi_hisse: 'Vergi · Hisse senedi gelirleri (v202\'de kalktı)', // v176 Neon Borsa (toplarken)
   benzinlik: 'Benzinlik satışları (benzin + market)', // v156 — Ticaret Bakanlığı
   bagis: 'Belediyeye bağışlar',

@@ -753,7 +753,7 @@ export default function ModifiyeStudio({ vehicle, shop, isOwner = false, onClose
               ))}
               {tax > 0 && (
                 <span>
-                  %{vat.pct} vergi <b>{fmt(tax)}</b>
+                  {fmt(cost.total)} altın + %{vat.pct} vergi = <b>{fmt(pay)} altın</b>
                 </span>
               )}
             </div>

@@ -128,16 +128,15 @@ function Ticaret({ r, c, rates }) {
       <Kpis
         items={[
           { label: 'İşletme vergisi', value: nf(bizTax) },
-          ...(sfTax ? [{ label: 'Sıfır satış vergisi', value: nf(sfTax), sub: 'kârdan (eski)' }] : []),
+          ...(sfTax ? [{ label: 'Sıfır satış vergisi', value: nf(sfTax) }] : []),
           { label: 'Piyango vergisi', value: nf(c.in.vergi_piyango), sub: st.pi_bilet ? `${nf(st.pi_bilet)} bilet · ödül ${nf(st.pi_odul)}` : null },
           // v176: seyyar satıcı gelirleri artık Neon Borsa hissedarlarına → yerine hisse gelir vergisi
-          { label: 'Seyyar satıcı vergisi', value: nf(c.in.vergi_seyyar), sub: `%${rates.seyyar ?? 10} · %50 masraftan sonra kalan hissedarlara` },
+          { label: 'Seyyar satıcı vergisi', value: nf(c.in.vergi_seyyar), sub: `%${rates.seyyar ?? 10}` },
           // v202: Ticari Araç Vergisi (alıcı öder) — Şirket ve Hisse Senedi vergileri kalktı (eski günlerin kayıtları görünür)
-          { label: 'Ticari araç vergisi', value: nf(c.in.vergi_ticariArac), sub: `%${rates.ticariArac ?? 10} · alıcı fiyatın üstüne öder` },
-          ...(c.in.vergi_sirket ? [{ label: 'Şirket vergisi', value: nf(c.in.vergi_sirket), sub: 'kalktı (eski kayıt)' }] : []),
-          ...(c.in.vergi_hisse ? [{ label: 'Hisse senedi vergisi', value: nf(c.in.vergi_hisse), sub: 'kalktı (eski kayıt)' }] : []),
+          { label: 'Ticari araç vergisi', value: nf(c.in.vergi_ticariArac), sub: `%${rates.ticariArac ?? 10}` },
+          ...(c.in.vergi_sirket ? [{ label: 'Şirket vergisi', value: nf(c.in.vergi_sirket) }] : []),
+          ...(c.in.vergi_hisse ? [{ label: 'Hisse senedi vergisi', value: nf(c.in.vergi_hisse) }] : []),
           ...(c.in.seyyar_sahipsiz ? [{ label: 'Hissedarsız mekân geliri', value: nf(c.in.seyyar_sahipsiz) }] : []),
-          { label: 'Benzinlik', value: nf(c.in.benzinlik), sub: st.bz_n ? `⛽ ${nf(st.bz_benzin_n)} · 🛒 ${nf(st.bz_market_n)} · tamamı devlete` : 'benzin + market · tamamı devlete' },
         ]}
       />
       {rows.length > 0 && (

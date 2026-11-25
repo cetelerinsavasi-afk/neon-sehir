@@ -223,7 +223,7 @@ export function FleetSheet({ job, uid, gold, onClose }) {
             {tax > 0 && (
               <div className="cs-fleet-stats">
                 <span>
-                  {fmt(c.price)} + %{vat.pct} vergi {fmt(tax)}
+                  {fmt(c.price)} altın + %{vat.pct} vergi = {fmt(total)} altın
                 </span>
               </div>
             )}

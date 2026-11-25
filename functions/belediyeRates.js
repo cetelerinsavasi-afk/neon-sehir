@@ -74,7 +74,7 @@ export const RATE_GROUPS = [
     // Kimlikler (isGaleri…) eskisiyle aynı: belediyenin kayıtlı oranları aynen geçerli.
     m: 'ticaret',
     id: 'satis',
-    title: 'Satış Vergileri (fiyata eklenir)',
+    title: 'Satış Vergileri',
     unit: '%',
     items: [
       pct('isGaleri', 'Araba Vergisi'),

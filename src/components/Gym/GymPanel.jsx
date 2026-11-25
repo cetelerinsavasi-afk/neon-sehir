@@ -109,20 +109,8 @@ export default function GymPanel({ houseId, houseDoc, onClose, onStarted }) {
         <p className="bz-sec-title">🎟️ Üyelik</p>
         <div className="bz-row">
           <span>Günlük ücret</span>
-          <b>{isOwner ? 'Ücretsiz (senin salonun)' : `${fmt(basePrice)} altın`}</b>
+          <b>{isOwner ? 'Ücretsiz (senin salonun)' : tax > 0 ? `${fmt(basePrice)} altın + %${vat.pct} vergi = ${fmt(price)} altın` : `${fmt(basePrice)} altın`}</b>
         </div>
-        {tax > 0 && (
-          <>
-            <div className="bz-row">
-              <span>%{vat.pct} spor salonu vergisi</span>
-              <b>{fmt(tax)} altın</b>
-            </div>
-            <div className="bz-row">
-              <span>Toplam</span>
-              <b>{fmt(price)} altın</b>
-            </div>
-          </>
-        )}
         <div className="bz-row">
           <span>Geçerli</span>
           <b>{hhmm(deadline)}&apos;a kadar</b>

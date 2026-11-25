@@ -404,7 +404,7 @@ const cityPhoto = createCityPhoto({
   isProduct: (k) => Object.prototype.hasOwnProperty.call(HOUSE_PRODUCTS, k),
 });
 // v156 — benzinlik: benzin al (RP, 100 altın) + market (eldeki ürün)
-const gasStation = createGasStation({ db, FieldValue: admin.firestore.FieldValue, HttpsError, goldTag, stateWrite, heldItemMs: 120_000 }); // = HELD_ITEM_MS (2 dk)
+const gasStation = createGasStation({ db, FieldValue: admin.firestore.FieldValue, HttpsError, goldTag, heldItemMs: 120_000 }); // = HELD_ITEM_MS (2 dk)
 export const cityAction = onCall(async (request) => {
   const uid = requireAuth(request);
   const p = request.data || {};

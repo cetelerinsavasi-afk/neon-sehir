@@ -372,7 +372,7 @@ export default function Workshop({ shop, onClose }) {
                     {isOwner && <small>Kendi dükkânın: ücret yok</small>}
                     {tax > 0 && (
                       <small>
-                        {fmt(basePay)} + %{vat.pct} vergi {fmt(tax)}
+                        {fmt(basePay)} altın + %{vat.pct} vergi = {fmt(payable)} altın
                       </small>
                     )}
                   </div>

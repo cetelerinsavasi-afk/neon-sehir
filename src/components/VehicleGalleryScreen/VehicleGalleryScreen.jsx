@@ -108,13 +108,15 @@ export default function VehicleGalleryScreen({ items = null, onBuy = null, disab
             <div className="vehicle-card-info">
               <span className="vehicle-card-name">{car.name}</span>
               {kindOfCar(car) === 'araba' && <CarStatBars catalogId={car.id} level={1} compact />}
-              <span className="vehicle-card-price">{car.price.toLocaleString('tr-TR')} altın</span>
-              {/* v202: vergi fiyatın üstüne eklenir — ödemeden önce görünür */}
-              {vat.frac > 0 && (
-                <span className="vehicle-card-price vat">
-                  + %{vat.pct} vergi {vat.taxOf(car.price).toLocaleString('tr-TR')} = <b>{vat.totalOf(car.price).toLocaleString('tr-TR')} altın</b>
-                </span>
-              )}
+              {/* v203: 1.000 altın + %10 vergi = 1.100 altın */}
+              <span className="vehicle-card-price">
+                {car.price.toLocaleString('tr-TR')} altın
+                {vat.frac > 0 && (
+                  <>
+                    {' '}+ %{vat.pct} vergi = <b>{vat.totalOf(car.price).toLocaleString('tr-TR')} altın</b>
+                  </>
+                )}
+              </span>
             </div>
             <button
               className={`vehicle-card-buy${justBought ? ' bought' : ''}`}
