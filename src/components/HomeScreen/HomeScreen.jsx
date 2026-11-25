@@ -43,12 +43,12 @@ function InviteShareButton({ inviteName }) {
     if (msg) timer.current = setTimeout(() => setNote(''), 2500);
   };
   return (
-    <div className="home-referral-share">
-      <button type="button" className="home-btn home-referral-share-btn" disabled={!text} onClick={onShare}>
-        📤 Arkadaşını Davet Et
+    <div className="home-invite-share">
+      <button type="button" className="home-invite-btn" disabled={!text} onClick={onShare}>
+        📤 Davet Gönder
       </button>
       {note && (
-        <span className="home-hint home-referral-share-note" role="status">
+        <span className="home-invite-note" role="status">
           {note}
         </span>
       )}
@@ -297,12 +297,22 @@ export default function HomeScreen() {
       <AdminPanelEntry uid={user.uid} player={player} />
       <AdminStoryReset uid={user.uid} />
 
-      <div className="home-referral-box">
-        <span className="home-referral-emoji">🎁</span>
-        <p className="home-hint">
-          Referans Kodun: <strong>{player?.displayName || '—'}</strong> — bu kodu kullanarak
-          katılan her yeni oyuncu için <strong>1 zümrüt + 10.000 altın</strong> kazanırsın!
-        </p>
+      {/* v203: davet kartı (ödül mantığı aynı — sunucuda applyReferralCode) */}
+      <div className="home-invite">
+        <div className="home-invite-head">
+          <span className="home-invite-emoji" aria-hidden="true">🎁</span>
+          <div className="home-invite-titles">
+            <p className="home-invite-title">Arkadaşını Davet Et</p>
+            <p className="home-invite-reward">
+              Her yeni oyuncu için <strong>1 zümrüt + 10.000 altın</strong>
+            </p>
+          </div>
+        </div>
+        <div className="home-invite-code">
+          <span className="home-invite-code-label">Davet kodun</span>
+          <strong className="home-invite-code-value">{player?.displayName || '—'}</strong>
+        </div>
+        <p className="home-invite-hint">Arkadaşın oyuna girerken davet eden kısmına bu adı yazsın.</p>
         <InviteShareButton inviteName={player?.displayName} />
       </div>
 

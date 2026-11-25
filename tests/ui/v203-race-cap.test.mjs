@@ -52,4 +52,8 @@ test('arayüz: sınır seçilen arabaya göre; katılımda yetmeyen arabalar kap
   assert.equal(/RACE_MAX_BET|100_000/.test(l), false);
   assert.match(l, /const carCap = myCar \? raceBetCap\(myCar\.catalogId\) : 0;/);
   assert.match(l, /minBet=\{joinRoom\.betAmount\}/);
+  // bahis bölümü araba seçilmeden görünmez; açıklama yazıları yok
+  assert.match(l, /\{myCar && \(\n\s+<>\n\s+<p className="race-bet-label">/);
+  const ui = l.split('\n').filter((x) => !x.trim().startsWith('//')).join('\n');
+  assert.equal(/galeri fiyat|Önce arabanı seç|1\/10/.test(ui), false);
 });

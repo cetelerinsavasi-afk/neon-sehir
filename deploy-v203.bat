@@ -17,6 +17,10 @@ if not exist "package.json" goto yanlis
 if not exist ".git" goto yanlis
 
 set "MSG=v203: profilde Arkadasini Davet Et (paylas) butonu, telefondaki Neon Sehir uygulamasinda Oyunu Degerlendir (sadece Android, odulsuz), yarista araba basina bahis siniri (galeri fiyatinin 1/10'u); Android v18 / 1.3.1 shareText"
+REM v203 daha once gonderildiyse bu ikinci tur (yaris bahis ekrani + yeni davet karti) ayri commit olur
+set "ONCEKI="
+for /f %%C in ('git log --format^=%%h -n 1 --fixed-strings --grep^="v203: profilde"') do set "ONCEKI=%%C"
+if defined ONCEKI set "MSG=v203.1: yarista bahis bolumu araba secilince acilir, aciklama yazilari kaldirildi; profilde yeni davet karti tasarimi"
 
 echo.
 echo ===== 1/5 arayuz derleme =====

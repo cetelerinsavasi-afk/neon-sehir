@@ -30,7 +30,7 @@ function raceable(v) {
 
 // Araçlar artık düz bir <select> değil, fotoğraflı, tıklanabilir kartlar
 // olarak gösteriliyor (HTML <option> içine resim koyulamıyor).
-function VehiclePicker({ vehicles, value, onChange, showCap = false, minBet = 0 }) {
+function VehiclePicker({ vehicles, value, onChange, minBet = 0 }) {
   if (vehicles.length === 0) {
     return (
       <p className="race-hint">
@@ -58,11 +58,7 @@ function VehiclePicker({ vehicles, value, onChange, showCap = false, minBet = 0 
                 {vehicleDisplayName(v)} <LevelPips level={vehicleRaceLevel(v)} />
               </span>
               <CarStatBars catalogId={v.catalogId} level={vehicleRaceLevel(v)} compact />
-              {(showCap || minBet > 0) && (
-                <small className="race-hint">
-                  Bahis sınırı: {fmt(cap)} altın{tooLow ? ' — bu oda için yetmez' : ''}
-                </small>
-              )}
+              {tooLow && <small className="race-hint">Bu oda için yetmez</small>}
             </span>
           </button>
         );
@@ -210,16 +206,17 @@ function CreateRoomModal({ vehicles, onClose, onCreated }) {
             ✕
           </button>
         </div>
-        <VehiclePicker vehicles={vehicles} value={myVehicleId} onChange={pickCar} showCap />
-        <p className="race-bet-label">
-          Bahsi Belirle: <strong>{betAmount.toLocaleString('tr-TR')} altın</strong>
-        </p>
-        <QuantityStepper value={betAmount} onChange={setBetAmount} max={betMax} />
-        <p className="race-hint">
-          {myCar
-            ? `Bu arabayla en fazla ${fmt(carCap)} altın bahis (galeri fiyatının 1/10'u).${myGold < carCap ? ` Altının: ${fmt(myGold)}` : ''}`
-            : 'Önce arabanı seç: her araba galeri fiyatının 1/10\'u kadar bahisli yarışa girebilir.'}
-        </p>
+        <VehiclePicker vehicles={vehicles} value={myVehicleId} onChange={pickCar} />
+        {/* v203: bahis bölümü araba seçilince açılır; Max = o arabanın sınırı */}
+        {myCar && (
+          <>
+            <p className="race-bet-label">
+              Bahsi Belirle: <strong>{betAmount.toLocaleString('tr-TR')} altın</strong>
+            </p>
+            <QuantityStepper value={betAmount} onChange={setBetAmount} max={betMax} />
+            {myGold < carCap && <p className="race-hint">Altının: {fmt(myGold)}</p>}
+          </>
+        )}
         <button
           className="race-btn primary"
           disabled={busy || !myVehicleId || !betAmount || betAmount > betMax}
@@ -330,7 +327,7 @@ export default function RaceLobby({ myUid, onEnterRoom }) {
             <VehiclePicker vehicles={vehicles} value={joinVehicleId} onChange={setJoinVehicleId} minBet={joinRoom.betAmount} />
             {vehicles.length > 0 && !vehicles.some((v) => raceBetCap(v.catalogId) >= joinRoom.betAmount) && (
               <p className="race-hint">
-                Bu odaya katılmak için bahis sınırı en az {fmt(joinRoom.betAmount)} altın olan bir araba gerekir (galeri fiyatı {fmt(joinRoom.betAmount * 10)} altın ve üstü).
+                Bu odanın bahsi için arabaların yetmiyor. Daha güçlü bir arabayla katılabilirsin.
               </p>
             )}
             <button className="race-btn primary" disabled={busy || !joinVehicleId} onClick={() => handleJoin(joinRoom.id)}>

@@ -43,11 +43,11 @@ test('davet adı boşsa paylaşım yapılmaz (köprü/pano hiç çağrılmaz)', 
 
 test('profil paneli: davet adı = player.displayName (Referans Kodun ile aynı değer)', () => {
   const home = src('src/components/HomeScreen/HomeScreen.jsx');
-  assert.match(home, /Referans Kodun: <strong>\{player\?\.displayName \|\| '—'\}<\/strong>/);
+  assert.match(home, /<strong className="home-invite-code-value">\{player\?\.displayName \|\| '—'\}<\/strong>/);
   assert.match(home, /<InviteShareButton inviteName=\{player\?\.displayName\} \/>/);
-  // buton davet panelinin İÇİNDE
-  const box = home.slice(home.indexOf('<div className="home-referral-box">'));
-  assert.ok(box.indexOf('<InviteShareButton') < box.indexOf('</div>'), 'buton panelin içinde olmalı');
+  // buton davet kartının İÇİNDE (kartın son öğesi)
+  const card = home.slice(home.indexOf('<div className="home-invite">'));
+  assert.ok(card.indexOf('<InviteShareButton') < card.indexOf('\n      </div>'), 'buton kartın içinde olmalı');
   assert.match(home, /Davet mesajı kopyalandı/);
 });
 

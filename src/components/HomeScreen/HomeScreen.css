@@ -364,25 +364,110 @@
 .home-fold-head.open .home-fold-chev { transform: rotate(0deg); }
 .home-veh-tabs .vg-tabs { margin-bottom: 0; }
 
-/* v203 — davet panelinin içindeki "Arkadaşını Davet Et" butonu (alt satırda) */
-.home-referral-box {
-  flex-wrap: wrap;
+/* v203 — profildeki davet kartı */
+.home-invite {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 210, 63, 0.55);
+  background:
+    radial-gradient(120% 140% at 100% 0%, rgba(255, 46, 136, 0.16), transparent 55%),
+    linear-gradient(135deg, rgba(255, 210, 63, 0.12), rgba(34, 211, 238, 0.06));
+  box-shadow: 0 0 18px rgba(255, 210, 63, 0.12);
+  overflow: hidden;
 }
-.home-referral-box > .home-hint {
-  flex: 1 1 0; /* sarma açıkken metin emojinin yanında kalsın */
-  min-width: 0;
-}
-.home-referral-share {
-  flex-basis: 100%;
+.home-invite-head {
   display: flex;
   align-items: center;
+  gap: 12px;
+}
+.home-invite-emoji {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  font-size: 24px;
+  border-radius: 12px;
+  background: rgba(255, 210, 63, 0.16);
+  border: 1px solid rgba(255, 210, 63, 0.4);
+}
+.home-invite-titles {
+  min-width: 0;
+}
+.home-invite-title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 800;
+  color: #ffd23f;
+  letter-spacing: 0.2px;
+}
+.home-invite-reward {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.home-invite-reward strong {
+  color: var(--text);
+  white-space: nowrap;
+}
+.home-invite-code {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 10px;
-  flex-wrap: wrap;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px dashed rgba(255, 210, 63, 0.6);
+  background: rgba(0, 0, 0, 0.25);
 }
-.home-referral-share-btn {
-  border-color: #ffd23f;
-  font-weight: 700;
+.home-invite-code-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-dim);
 }
-.home-referral-share-note {
+.home-invite-code-value {
+  font-size: 15px;
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-invite-hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.home-invite-share {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+.home-invite-btn {
+  padding: 11px 14px;
+  border: none;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 800;
+  color: #1a1206;
+  background: linear-gradient(90deg, #ffd23f, #ffb02e);
+  box-shadow: 0 4px 14px rgba(255, 190, 50, 0.3);
+  cursor: pointer;
+}
+.home-invite-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.home-invite-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.home-invite-note {
+  text-align: center;
+  font-size: 12px;
   color: #ffd23f;
 }

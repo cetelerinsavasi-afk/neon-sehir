@@ -8635,7 +8635,7 @@ function raceBetCapError(vehicle, amount) {
   const cap = raceBetCap(vehicle?.catalogId);
   if (canRaceForBet(vehicle?.catalogId, amount)) return null;
   const name = vehicle?.customName || vehicle?.model || 'Bu araba';
-  return `${name} ile en fazla ${cap.toLocaleString('tr-TR')} altın bahisli yarışa girilebilir (galeri fiyatının 1/10'u).`;
+  return `${name} ile en fazla ${cap.toLocaleString('tr-TR')} altın bahisli yarışa girilebilir.`;
 }
 
 // createRaceRoom — oda kurar (status: 'waiting', rakip yok).
