@@ -16,6 +16,7 @@ import { useMyGymMembership } from '../../hooks/useGym';
 import { DepoTradeSheet } from '../Depo/DepoPanels';
 import { NET_MINUTE_PRICE, GAME_VENUE_HOUSES } from '../../../functions/v196Shared.js';
 import '../../styles/bizui.css';
+import '../Workshop/Workshop.css'; // v204: .wk-sheet-bg / .wk-sheet (mini oyun katmanı) her zaman yüklü olsun
 
 const ArcadeHub = lazy(() => import('../Arcade/ArcadeHub'));
 const CityStreamHost = lazy(() => import('../Stream/CityStreamHost'));
@@ -43,10 +44,15 @@ function TopBtns({ show, items, setPanel }) {
     </div>
   );
 }
-function Layer({ children, onClose }) {
+// v204: wide → içerik ekran genişliğinde (en fazla 520 px). Eskiden sarmalayıcı div esnek kutuda
+// içeriği kadar daralıyordu; spor salonu mini oyunları (width:100% olan .wk-sheet) bu yüzden
+// olması gerekenden çok küçük görünüyordu.
+function Layer({ children, onClose, wide = false }) {
   return (
     <div className="wk-sheet-bg" onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()}>{children}</div>
+      <div onClick={(e) => e.stopPropagation()} style={wide ? { width: '100%', maxWidth: 520, display: 'flex', justifyContent: 'center' } : undefined}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -250,7 +256,7 @@ export function SporPart({ panel, setPanel, walk, hideActRef }) {
         </Layer>
       )}
       {game && (
-        <Layer onClose={() => setGame(null)}>
+        <Layer wide onClose={() => setGame(null)}>
           <div className="wk-sheet">
             <GymMiniGame
               key={game}

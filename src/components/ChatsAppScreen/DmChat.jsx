@@ -1,5 +1,5 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
-import { collection, limit, onSnapshot, orderBy, query } from 'firebase/firestore';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { collection, getDocs, limit, onSnapshot, orderBy, query, startAfter } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
 import { useSocial, MESSAGE_TTL_MS } from '../../contexts/SocialContext';
@@ -19,25 +19,85 @@ import { CHAT_REACTIONS, ChatInput, ReactionChips, ReplyBar, ReplyQuote, replyDr
 // geçer (socialAction → sendDm); 7 günden eski mesajlar gösterilmez ve silinir.
 const MAX_LEN = 500;
 
+// v204 MALİYET + HIZ: sohbet son 20 mesajla açılır (eskiden 150). Yukarı kaydırınca / "Önceki
+// mesajlar"a basınca 30'ar eski mesaj TEK SEFERLİK okunur ve aynı oturumda cihazda kalır.
+const DM_FIRST = 20;
+const DM_OLDER = 30;
+const dmOlder = new Map(); // chatId → { msgs: Map(id → mesaj), done: bool }
+
 function useDmMessages(chatId, enabled) {
-  const [messages, setMessages] = useState([]);
+  const [live, setLive] = useState([]);
+  const [olderRev, setOlderRev] = useState(0);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   useEffect(() => {
     if (!chatId || !enabled) {
-      setMessages([]);
+      setLive([]);
       return undefined;
     }
-    const q = query(collection(db, 'dmChats', chatId, 'dmMessages'), orderBy('createdAtMs', 'desc'), limit(150));
+    const q = query(collection(db, 'dmChats', chatId, 'dmMessages'), orderBy('createdAtMs', 'desc'), limit(DM_FIRST));
     return onSnapshot(
       q,
-      (snap) => setMessages(snap.docs.map((d) => ({ id: d.id, ...d.data() })).reverse()),
+      (snap) => {
+        const msgs = snap.docs.map((d) => ({ id: d.id, ...d.data() })).reverse();
+        // canlı pencereden düşen (yeni mesaj gelince) mesajlar ekranda kalsın
+        setLive((prev) => {
+          const keep = new Set(msgs.map((m) => m.id));
+          const box = dmOlder.get(chatId) || { msgs: new Map(), done: false };
+          let moved = false;
+          for (const m of prev) {
+            if (!keep.has(m.id) && m.createdAtMs && !box.msgs.has(m.id)) {
+              box.msgs.set(m.id, m);
+              moved = true;
+            }
+          }
+          if (moved) {
+            dmOlder.set(chatId, box);
+            setOlderRev((r) => r + 1);
+          }
+          return msgs;
+        });
+      },
       (err) => {
         // sohbet silindiyse (arkadaşlıktan çıkarma) izin hatası beklenir
         console.warn('dmMessages dinleme:', err?.code || err);
-        setMessages([]);
+        setLive([]);
       }
     );
   }, [chatId, enabled]);
-  return messages;
+
+  const box = chatId ? dmOlder.get(chatId) : null;
+  const messages = useMemo(() => {
+    const byId = new Map();
+    if (box) for (const m of box.msgs.values()) byId.set(m.id, m);
+    for (const m of live) byId.set(m.id, m);
+    return [...byId.values()].sort((a, b) => (a.createdAtMs || Number.MAX_SAFE_INTEGER) - (b.createdAtMs || Number.MAX_SAFE_INTEGER));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [live, olderRev, chatId]);
+  const hasMore = Boolean(chatId) && !(box?.done) && live.length >= DM_FIRST;
+
+  const loadOlder = async () => {
+    if (!chatId || loadingOlder || !hasMore) return 0;
+    const oldest = messages.find((m) => m.createdAtMs);
+    if (!oldest) return 0;
+    setLoadingOlder(true);
+    try {
+      const snap = await getDocs(
+        query(collection(db, 'dmChats', chatId, 'dmMessages'), orderBy('createdAtMs', 'desc'), startAfter(oldest.createdAtMs), limit(DM_OLDER))
+      );
+      const b = dmOlder.get(chatId) || { msgs: new Map(), done: false };
+      snap.docs.forEach((d) => b.msgs.set(d.id, { id: d.id, ...d.data() }));
+      if (snap.size < DM_OLDER) b.done = true;
+      dmOlder.set(chatId, b);
+      setOlderRev((r) => r + 1);
+      return snap.size;
+    } catch (err) {
+      console.warn('dmMessages eski mesajlar:', err?.code || err);
+      return 0;
+    } finally {
+      setLoadingOlder(false);
+    }
+  };
+  return { messages: chatId && enabled ? messages : [], loadOlder, loadingOlder, hasMore: Boolean(enabled) && hasMore };
 }
 
 function Bubble({ m, mine, myUid, onMenu, onReact }) {
@@ -62,7 +122,7 @@ export default function DmChat({ target, onBack }) {
   const chat = chatWith(target.uid);
   const name = friend?.name || chat?.otherName || target.name || 'Oyuncu';
   const avatar = friend?.avatar ?? chat?.otherAvatar ?? target.avatar ?? null;
-  const raw = useDmMessages(chat?.id, Boolean(chat && friend));
+  const { messages: raw, loadOlder, loadingOlder, hasMore } = useDmMessages(chat?.id, Boolean(chat && friend));
   const cutoff = Date.now() - MESSAGE_TTL_MS;
   const messages = raw.filter((m) => m.createdAtMs > cutoff && !isHiddenForMe(m, m.uid, isBlocked));
   const [error, setError] = useState(null);
@@ -72,6 +132,9 @@ export default function DmChat({ target, onBack }) {
   const [replyTo, setReplyTo] = useState(null); // v72 — yanıtlanan mesaj
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
+  const listRef = useRef(null);
+  const keepPos = useRef(null);
+  const lastIdRef = useRef(null);
   const myUnread = chat?.myUnread || 0;
 
   const react = async (m, emoji) => {
@@ -83,9 +146,28 @@ export default function DmChat({ target, onBack }) {
     }
   };
 
+  // v204: sadece EN YENİ mesaj değişince en alta kay; eski mesajlar eklenince yer sabit kalsın
+  const lastId = messages.length ? messages[messages.length - 1].id : null;
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!lastId || lastId === lastIdRef.current) return;
+    const first = lastIdRef.current === null;
+    lastIdRef.current = lastId;
+    bottomRef.current?.scrollIntoView({ behavior: first ? 'auto' : 'smooth' });
+  }, [lastId]);
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    const k = keepPos.current;
+    if (!el || !k) return;
+    el.scrollTop = el.scrollHeight - k.height + k.top;
+    keepPos.current = null;
   }, [messages.length]);
+  const showOlder = async () => {
+    const el = listRef.current;
+    if (!hasMore || loadingOlder) return;
+    if (el) keepPos.current = { height: el.scrollHeight, top: el.scrollTop };
+    const n = await loadOlder();
+    if (!n) keepPos.current = null;
+  };
 
   // v146: açık sohbet (üst bildirim şeridi bu kişi için çıkmasın)
   useEffect(() => {
@@ -124,8 +206,19 @@ export default function DmChat({ target, onBack }) {
           </span>
         </button>
       </div>
-      <div className="chatsapp-messages ca-dm-messages">
+      <div
+        className="chatsapp-messages ca-dm-messages"
+        ref={listRef}
+        onScroll={(e) => {
+          if (e.currentTarget.scrollTop < 40 && lastIdRef.current) showOlder();
+        }}
+      >
         <p className="ca-dm-note">🔒 Yalnızca arkadaşlar yazışabilir · mesajlar 7 gün sonra silinir</p>
+        {hasMore && messages.length > 0 && (
+          <button type="button" className="ca-load-older" onClick={showOlder} disabled={loadingOlder}>
+            {loadingOlder ? 'Yükleniyor…' : '↑ Önceki mesajlar'}
+          </button>
+        )}
         {messages.map((m, i) => (
           <Fragment key={m.id}>
             {(i === 0 || !sameDay(messages[i - 1].createdAtMs, m.createdAtMs)) && <p className="ca-day">{dayLabelOf(m.createdAtMs)}</p>}

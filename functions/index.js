@@ -1032,6 +1032,19 @@ function computeFactoryValue(machinesByType, cryptoPrice, diamondCount = 0, diam
   return value;
 }
 
+// v204 — fabrikadaki makine adetleri, tür başına count() ile (belge okumadan)
+async function countMachinesByType(factoryRef) {
+  const out = {};
+  await Promise.all(
+    VALID_MACHINES.map(async (type) => {
+      const snap = await factoryRef.collection('machines').where('type', '==', type).count().get();
+      const n = Number(snap.data().count || 0);
+      if (n) out[type] = n;
+    })
+  );
+  return out;
+}
+
 function randomInRange(min, max) {
   return Math.random() * (max - min) + min;
 }
@@ -1516,15 +1529,8 @@ export const getFactoryValue = onCall(async (request) => {
   const factorySnap = await db.collection('factories').doc(factoryId).get();
   if (!factorySnap.exists) throw new HttpsError('not-found', 'Fabrika bulunamadı.');
 
-  const [machinesSnap, prices] = await Promise.all([
-    db.collection('factories').doc(factoryId).collection('machines').get(),
-    getCurrentPrices(),
-  ]);
-  const machinesByType = {};
-  machinesSnap.forEach((d) => {
-    const type = d.data().type;
-    machinesByType[type] = (machinesByType[type] || 0) + 1;
-  });
+  // v204 MALİYET: makineler okunmaz, tür başına sayılır (bkz. countMachinesByType)
+  const [machinesByType, prices] = await Promise.all([countMachinesByType(factorySnap.ref), getCurrentPrices()]);
 
   return { value: computeFactoryValue(machinesByType, prices.cryptoPrice || 0, factorySnap.data().dm?.n || 0, prices.diamondPrice || 0) };
 });
@@ -1593,6 +1599,8 @@ export const buyFactoryMachine = onCall(async (request) => {
       lastProducedQty: 0,
       purchasedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
+    // v204: yeni makine bugün henüz çalıştırılmadı → ana sayfa hatırlatması tekrar görünsün
+    if (machineType === 'mining') tx.update(factoryRef, { minTrig: admin.firestore.FieldValue.delete() });
   });
 
   return { ok: true, machineId: machineRef.id, price, tax: machineTax(price, machineType), total: price + machineTax(price, machineType) };
@@ -2101,7 +2109,19 @@ export const ensureFactoryMigrationsV38 = onCall(async (request) => {
 // vurur (üretim yine o gece 00:00'da dailyReset içinde gerçekleşir).
 // triggerAllMining VE runFactoryMachines tarafından ORTAK kullanılır ki
 // damgalama mantığı iki yerde tekrar edilmesin.
+// v204 MALİYET: işlem bitince fabrika belgesine minTrig = bugün yazılır (update: fabrika yoksa
+// belge OLUŞTURULMAZ, hata yutulur). Ana sayfadaki
+// "Makineleri çalıştır" hatırlatması artık yüzlerce makineyi canlı dinlemek yerine bu tek
+// alana bakar (bkz. src/hooks/useOnboarding.js → useFactoryRunNeeded).
+async function markMiningRan(ownerUid, dateKey) {
+  await db.collection('factories').doc(ownerUid).update({ minTrig: dateKey }).catch((err) => console.warn('minTrig yazılamadı', err?.message || err));
+}
 async function stampUntriggeredMining(ownerUid, dateKey, preloadedDocs = null) {
+  const res = await stampUntriggeredMiningInner(ownerUid, dateKey, preloadedDocs);
+  await markMiningRan(ownerUid, dateKey);
+  return res;
+}
+async function stampUntriggeredMiningInner(ownerUid, dateKey, preloadedDocs = null) {
   const machinesRef = db.collection('factories').doc(ownerUid).collection('machines');
   const miningQ = machinesRef.where('type', '==', 'mining');
   let miningDocs;
@@ -4651,15 +4671,13 @@ async function computeCreditScore(uid) {
   });
   let factory = 0;
   if (factorySnap.exists) {
-    const [machinesSnap, sharesSnap] = await Promise.all([
-      factorySnap.ref.collection('machines').get(),
+    // v204 MALİYET: makineler tek tek okunmaz (fabrika başına ~200 belge) — tür başına SAYIM
+    // (her sayım 1.000 makineye kadar 1 okuma). Sonuç birebir aynı: computeFactoryValue
+    // yalnızca türlerin adedine bakar.
+    const [machinesByType, sharesSnap] = await Promise.all([
+      countMachinesByType(factorySnap.ref),
       factorySnap.ref.collection('shares').get(),
     ]);
-    const machinesByType = {};
-    machinesSnap.forEach((d) => {
-      const type = d.data().type;
-      machinesByType[type] = (machinesByType[type] || 0) + 1;
-    });
     let away = 0;
     sharesSnap.forEach((d) => {
       const sh = d.data();

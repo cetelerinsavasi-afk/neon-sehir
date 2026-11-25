@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useGlobalChat } from '../../hooks/useGlobalChat';
 import { markChatsAppSeen } from '../../hooks/useUnreadNotifications';
@@ -43,7 +43,8 @@ function ChatRow({ m, mine, myUid, onProfile, onMenu, onReact, isBlocked }) {
 
 export default function GroupChat({ onBack }) {
   const { user } = useAuth();
-  const { messages: allMessages } = useGlobalChat();
+  // v204: son 10 mesajla açılır; yukarı kaydırınca 20'şer eski mesaj gelir (bkz. useGlobalChat)
+  const { messages: allMessages, loadOlder, loadingOlder, hasMore } = useGlobalChat();
   const { isBlocked } = useBlocks();
   // UGC D2: gizlenen (şikâyetle) ve engellenen oyuncuların mesajları gösterilmez
   const messages = allMessages.filter((m) => !isHiddenForMe(m, m.uid, isBlocked));
@@ -54,6 +55,9 @@ export default function GroupChat({ onBack }) {
   const [replyTo, setReplyTo] = useState(null); // v72 — yanıtlanan mesaj
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
+  const listRef = useRef(null);
+  const keepPos = useRef(null); // eski mesajlar eklenince ekran zıplamasın
+  const lastIdRef = useRef(null);
 
   const react = async (m, emoji) => {
     setError(null);
@@ -69,9 +73,34 @@ export default function GroupChat({ onBack }) {
     markChatsAppSeen();
   }, [allMessages.length]);
 
+  // Sadece EN YENİ mesaj değişince en alta kay (eski mesaj yüklenince kaydırma yok)
+  const lastId = messages.length ? messages[messages.length - 1].id : null;
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (!lastId || lastId === lastIdRef.current) return;
+    const first = lastIdRef.current === null;
+    lastIdRef.current = lastId;
+    bottomRef.current?.scrollIntoView({ behavior: first ? 'auto' : 'smooth' });
+  }, [lastId]);
+
+  // Eski mesajlar üste eklenince kullanıcının baktığı yer sabit kalsın
+  useLayoutEffect(() => {
+    const el = listRef.current;
+    const k = keepPos.current;
+    if (!el || !k) return;
+    el.scrollTop = el.scrollHeight - k.height + k.top;
+    keepPos.current = null;
   }, [messages.length]);
+
+  const showOlder = async () => {
+    const el = listRef.current;
+    if (!hasMore || loadingOlder) return;
+    if (el) keepPos.current = { height: el.scrollHeight, top: el.scrollTop };
+    const n = await loadOlder();
+    if (!n) keepPos.current = null;
+  };
+  const onListScroll = (e) => {
+    if (e.currentTarget.scrollTop < 40 && lastIdRef.current) showOlder();
+  };
 
   const handleSend = async (trimmed) => {
     setError(null);
@@ -99,7 +128,12 @@ export default function GroupChat({ onBack }) {
           <span className="ca-header-sub">Tüm oyuncular</span>
         </div>
       </div>
-      <div className="chatsapp-messages">
+      <div className="chatsapp-messages" ref={listRef} onScroll={onListScroll}>
+        {hasMore && messages.length > 0 && (
+          <button type="button" className="ca-load-older" onClick={showOlder} disabled={loadingOlder}>
+            {loadingOlder ? 'Yükleniyor…' : '↑ Önceki mesajlar'}
+          </button>
+        )}
         {messages.map((m) => (
           <ChatRow key={m.id} m={m} mine={m.uid === user.uid} myUid={user.uid} onProfile={setProfileOf} onMenu={setMenuFor} onReact={react} isBlocked={isBlocked} />
         ))}

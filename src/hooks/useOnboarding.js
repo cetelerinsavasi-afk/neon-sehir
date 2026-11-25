@@ -7,7 +7,7 @@ import { useVehicles } from './useVehicles';
 import { isCarCatalogId } from '../data/vehicleCatalog'; // v163 — şampiyona hatırlatması sadece arabalar
 import { useWeapons } from './useWeapons'; // v162 — "Gücün 0" hatırlatması
 import { useInventory } from './useInventory'; // v162 — eksik yasaklı madde hatırlatması
-import { useMyFactory } from './useMyFactory';
+import { useMyFactoryRunNeeded } from './useMyFactory'; // v204: makineler canlı dinlenmez
 import { useMyFutbolTeam } from './useMyFutbolTeam';
 import { currentPrayerWindow } from './useMosqueAttendance';
 import { useBizReminders } from './useBizReminders';
@@ -118,7 +118,6 @@ export function useOnboarding(gangReminders = null, gangChans = null, { inStadiu
   const { vehicles } = useVehicles();
   const { weapons, loading: weaponsLoading } = useWeapons();
   const { inventory, loading: invLoading } = useInventory();
-  const { factory, machines } = useMyFactory();
   const { team, role: futbolRole } = useMyFutbolTeam();
   const bizReminders = useBizReminders(); // v92: galeri / silahçı / spor salonu
   const matchLive = useMatchLive(Boolean(user)); // v163: 18:00–19:00 maç günü
@@ -126,6 +125,7 @@ export function useOnboarding(gangReminders = null, gangChans = null, { inStadiu
   // v196: işçi sistemi kalktı — Çalış hatırlatması dailyActions.factoryWork'ten (ek okuma yok)
 
   const todayKey = istanbulDateKey();
+  const factoryRunNeeded = useMyFactoryRunNeeded(todayKey);
   const win = currentPrayerWindow();
 
   // v124: eski kayıtlı adım yeni sıraya çevrilir (sunucuyla aynı formül)
@@ -203,19 +203,9 @@ export function useOnboarding(gangReminders = null, gangChans = null, { inStadiu
       list.push({ id: 'work', emoji: '🏭', text: 'Fabrikada çalış' });
     }
 
-    if (factory) {
-      const hasUntriggeredMining = machines.some(
-        (m) => m.type === 'mining' && m.miningTriggeredDateKey !== todayKey
-      );
-      const hasUntriggeredWorkerMachine = machines.some(
-        (m) =>
-          m.type !== 'mining' &&
-          m.lastProducedDateKey !== todayKey &&
-          m.ownerTriggeredDateKey !== todayKey
-      );
-      if (hasUntriggeredMining || hasUntriggeredWorkerMachine) {
-        list.push({ id: 'machines', emoji: '⚙️', text: 'Makineleri çalıştır' });
-      }
+    // v204: fabrika belgesi + gerekirse 2 sayım (bkz. useMyFactoryRunNeeded)
+    if (factoryRunNeeded) {
+      list.push({ id: 'machines', emoji: '⚙️', text: 'Makineleri çalıştır' });
     }
 
     // v115: Park'taki gizemli adama günlük 10 risksiz satış hakkı — her
@@ -263,7 +253,7 @@ export function useOnboarding(gangReminders = null, gangChans = null, { inStadiu
     list.push(...bizReminders);
 
     return list;
-  }, [matchLive, inStadium, player, actions, vehicles, weapons, weaponsLoading, inventory, invLoading, team, futbolRole, actionsLoading, factory, machines, todayKey, win, gangReminders?.joinWar, gangReminders?.takeMoney, gangReminders?.report, gangReminders?.leak, bizReminders, belediyeChat, gangChat, intelChat, polNeed]);
+  }, [matchLive, inStadium, player, actions, vehicles, weapons, weaponsLoading, inventory, invLoading, team, futbolRole, actionsLoading, factoryRunNeeded, todayKey, win, gangReminders?.joinWar, gangReminders?.takeMoney, gangReminders?.report, gangReminders?.leak, bizReminders, belediyeChat, gangChat, intelChat, polNeed]);
 
   return {
     loading: playerLoading || actionsLoading,
