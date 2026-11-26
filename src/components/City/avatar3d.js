@@ -237,8 +237,8 @@ function eraseBody(x, build, head) {
   // gövde kutusu biraz geniş silinir: kıyafetin kenar gölgesi / dikişi kartta ince çubuk gibi kalmasın
   x.fillRect(s.tl - 10, s.ty - 6, s.tr - s.tl + 20, 386 - s.ty);
   // omuz köşeleri (omuzluk / zırh / kabarık omuz): 3D omuz başına giydiriliyor
-  x.fillRect(s.tl - 30, s.ty - 22, 62, 72);
-  x.fillRect(s.tr - 32, s.ty - 22, 62, 72);
+  x.fillRect(s.tl - 48, s.ty - 26, 80, 84);
+  x.fillRect(s.tr - 32, s.ty - 26, 80, 84);
   x.fillRect(138, 220, 44, 56);
   for (const cx of [s.cx, SW - s.cx]) x.fillRect(cx - s.hw - 3, 376, s.hw * 2 + 6, 174);
 }
@@ -741,9 +741,11 @@ export class Avatar3D {
   //   sit: oturuyor · swim: suda ilerliyor (yatay kulaç) · tread: suda duruyor (ayak çırpma)
   //   emote: dans / zipla / selam / alkis / kalp (e = başlangıçtan beri geçen saniye)
   pose(o) {
+    // dt = 0: tek karelik çizim (fotoğraf) → pozlar geçişsiz, doğrudan son hallerinde
+    const snap = !(o.dt > 0);
     const dt = Math.min(o.dt || 0.016, 0.1);
     const t = o.t;
-    const ease = (k, want, rate) => k + ((want ? 1 : 0) - k) * Math.min(1, dt * rate);
+    const ease = (k, want, rate) => (snap ? (want ? 1 : 0) : k + ((want ? 1 : 0) - k) * Math.min(1, dt * rate));
     this.kSit = ease(this.kSit, o.sit, 9);
     this.kSwim = ease(this.kSwim, o.swim, 5);
     this.kTread = ease(this.kTread, o.tread, 5);

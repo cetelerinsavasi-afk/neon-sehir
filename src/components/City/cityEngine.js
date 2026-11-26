@@ -209,7 +209,6 @@ function ensureBackTex(e, pose) {
 }
 // v206 — 3D avatar: bu mesafeden (m) yakındaki ayakta / yürüyen figürler 3D çizilir; uzakta, oturunca,
 // araçta, özel pozda ve "en düşük" grafik ayarında eski kâğıt figür. applyTier() ayarlar.
-let FIG3D_DIST = 0;
 const FIG3D_TIER_DIST = [42, 32, 24, 0];
 function requestLook3(e) {
   if (!e || e.look3 || e.look3Q || !e.ready || !e.tex.idle) return;
@@ -512,7 +511,8 @@ class Fig {
     this.plane.position.y = this.sitting ? 0.04 + kIn * (AV_WAIST_FROM_TOP - AV_PLANE_H / 2) : AV_PLANE_H / 2 - AV_FEET - this.sinkCur;
     // v206 — 3D avatar (yakında, ayakta / yürürken). Kâğıt yüzey sahnede kalır ama çizilmez
     // (malzemesi gizlenir): ateş aurası gibi ona bağlı efektler çalışmaya devam eder.
-    const use3d = FIG3D_DIST > 0 && hd < FIG3D_DIST && this.tex.ready && !(this.forcePose && this.tex.tex[this.forcePose]); // v209: araçta da 3D
+    const d3 = this.scene.userData.fig3d || 0; // v211: her motorun kendi ayarı (fotoğraf motoru canlı oyunu etkilemez)
+    const use3d = d3 > 0 && hd < d3 && this.tex.ready && !(this.forcePose && this.tex.tex[this.forcePose]); // v209: araçta da 3D
     let look3 = null;
     if (use3d) {
       look3 = this.tex.look3 || null;
@@ -666,6 +666,7 @@ export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 
   container.appendChild(layer);
 
   const scene = new THREE.Scene();
+  scene.userData.fig3d = AVATAR_3D_ENABLED && snapshot ? 90 : 0; // v211: fotoğraflarda da 3D (canlıda applyTier ayarlar)
   const bgCol = new THREE.Color('#0b1838');
   const isoBg = new THREE.Color('#07080c'); // v158: yalıtılmış iç mekânın (karargah) arka planı
   scene.background = bgCol;
@@ -944,8 +945,26 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   const TICK_R = IS_MOBILE ? 50 : 70; // canlı eşyalar bu mesafede oynar
   const npcDefs = [];
   const seats = [];
+  // v211: koltuğun yanında masa / sehpa varsa 3D avatar masaya dönük oturur (tabure gibi yönü
+  // olmayan oturakların kendi yönü rastgele; seyyar satıcı masalarında ters oturuluyordu)
+  const TABLE_RE = /masa|sehpa|table|desk/i;
+  const tableYaw = (x, z) => {
+    let best = null;
+    let bd = 1.5 * 1.5;
+    for (const s of solids) {
+      if (!s.key || !TABLE_RE.test(s.key)) continue;
+      const d = (s.x - x) ** 2 + (s.z - z) ** 2;
+      if (d < bd && d > 0.01) {
+        bd = d;
+        best = s;
+      }
+    }
+    return best ? Math.atan2(best.x - x, best.z - z) : null;
+  };
   // v207: bir noktaya en yakın koltuğun yönü (uzak oyuncunun 3D avatarı koltuğa dönük otursun)
   const seatYawNear = (x, z) => {
+    const ty = tableYaw(x, z);
+    if (ty != null) return ty;
     let best = null;
     let bd = 0.7 * 0.7;
     for (const s of seats) {
@@ -4447,7 +4466,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     me.z = st.z;
     me.sitting = !st.stand; // v202: duşakabinde ayakta durulur
     me.seatY = st.y;
-    me.seat3Yaw = st.yaw ?? null; // v207: 3D avatar koltuğun yönüne döner
+    me.seat3Yaw = st.tier ? st.yaw ?? null : tableYaw(st.x, st.z) ?? st.yaw ?? null; // v207/v211: koltuğun yönü, yanında masa varsa masaya dönük
     // v149: tribün koltuğu — yüz sahaya dönük, kamera arkadan sahaya bakar
     me.seatYaw = st.tier ? st.yaw : null;
     if (st.tier) glideCam(st.yaw + Math.PI, 0.28);
@@ -5376,7 +5395,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     renderer.setPixelRatio(Math.max(PR_FLOOR, Math.min(window.devicePixelRatio || 1, t.dpr) * drs));
     moonL.castShadow = t.shadows;
     moonL.shadow.autoUpdate = t.shadows && t.shadowEvery <= 1;
-    FIG3D_DIST = AVATAR_3D_ENABLED && !snapshot ? FIG3D_TIER_DIST[tier] ?? 0 : 0; // v206
+    scene.userData.fig3d = AVATAR_3D_ENABLED ? (snapshot ? 90 : FIG3D_TIER_DIST[tier] ?? 0) : 0; // v211
     pool.forEach((l, i) => (l.visible = i < t.pool));
     cull(true);
   }
@@ -5773,6 +5792,15 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       backs.forEach(([f, pose]) => ensureBackTex(f.tex, pose));
       const t1 = Date.now();
       while (backs.some(([f, pose]) => f.tex && !f.tex.lazy && !f.tex.tex?.[pose] && f.tex.pending?.[pose]) && Date.now() - t1 < 3000) await sleep(60);
+      // v211 — 3D avatarlar fotoğraftan önce hazırlanır (saç / şapka çizimi kuyrukta; en çok 4 sn beklenir)
+      if ((scene.userData.fig3d || 0) > 0) {
+        const figs3 = [...tmpFigs, ...fbFigs];
+        const t2 = Date.now();
+        while (figs3.some((f) => f.tex?.ready && !f.tex.lazy && !f.tex.look3) && Date.now() - t2 < 4000) {
+          figs3.forEach((f) => requestLook3(f.tex));
+          await sleep(60);
+        }
+      }
       // v153: stadyum reklamları fotoğrafın çekildiği andaki sponsorlar (eski fotoğraf: varsayılan)
       const stM = stadLot?.info?.match;
       const liveAds = stM?.getSponsors?.() ?? null;
