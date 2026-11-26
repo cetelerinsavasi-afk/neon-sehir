@@ -11,7 +11,7 @@
 // =============================================================================
 import * as THREE from 'three';
 import { Avatar3D, makeAvatar3DLook, avatar3DPlain, avatar3DUsesPlain, AVATAR_3D_HIP } from '../components/City/avatar3d.js';
-import { buildFullAvatarSvgMarkup, buildFullAvatarBackSvgMarkup, DEFAULT_AVATAR } from './avatarShapes';
+import { buildFullAvatarSvgMarkup, buildFullAvatarBackSvgMarkup, buildAvatarBackLayerMarkup, DEFAULT_AVATAR } from './avatarShapes';
 
 const SHADOW_RE = /<ellipse cx="160" cy="562"[^>]*\/>/;
 const IS_MOBILE = typeof navigator !== 'undefined' && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent || '');
@@ -47,7 +47,9 @@ export function getAvatarLook3D(avatar, quality = 'hi') {
   const plain = avatar3DUsesPlain(full);
   const src = plain ? avatar3DPlain(full) : full;
   const [w, h] = quality === 'hi' ? (IS_MOBILE ? [288, 522] : [384, 696]) : [208, 377];
-  p = Promise.all([raster(buildFullAvatarSvgMarkup(src, { pose: 'idle' }), w, h), raster(buildFullAvatarBackSvgMarkup(src, { pose: 'idle' }), w, h)]).then(([f, b]) => makeAvatar3DLook(f, b, full, { plain }));
+  // v215: pelerin / kanat katmanı ayrıca (varsa) → 3D'de sırt kartı
+  const bo = buildAvatarBackLayerMarkup(src);
+  p = Promise.all([raster(buildFullAvatarSvgMarkup(src, { pose: 'idle' }), w, h), raster(buildFullAvatarBackSvgMarkup(src, { pose: 'idle' }), w, h), bo ? raster(bo, w, h) : null]).then(([f, b, k]) => makeAvatar3DLook(f, b, full, { plain, backOnly: k }));
   p.catch(() => LOOKS.delete(k));
   LOOKS.set(k, p);
   if (LOOKS.size > 40) LOOKS.delete(LOOKS.keys().next().value); // dokular GC ile bırakılır
@@ -206,7 +208,7 @@ export class AvatarViewer {
       if (walk) this.walkT += dt;
       const em = this.pose === 'dans' || this.pose === 'selam' ? { kind: this.pose, e: 0.3 + (t % 2.6) } : null;
       m.pose({ dt, t: now / 1000, walkT: this.walkT, walk, sit: this.pose === 'sit', emote: em });
-      const sitY = STOOL_H - AVATAR_3D_HIP + 0.03;
+      const sitY = STOOL_H - (m.hipH || AVATAR_3D_HIP) + 0.03;
       m.root.position.y = sitY * m.kSit + (em && em.kind === 'dans' ? Math.abs(Math.sin(t * 8)) * 0.03 : 0);
     }
     this.r.render(this.scene, this.cam);

@@ -6,6 +6,9 @@
   --avb-pk: #ff2e88;
   --avb-card: #0b0f1c;
   --avb-line: #ffffff14;
+  /* v215: 3D önizleme aşağı kaydırınca üstte sabit kalır (değişiklik anında görünür) */
+  --avb-top: 56px;
+  --avb-stage-h: clamp(200px, 34vh, 340px);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -51,8 +54,13 @@
 
 /* 3D sahne */
 .avb-stage {
-  position: relative;
-  height: clamp(250px, 42vh, 380px);
+  position: sticky;
+  top: var(--avb-top);
+  z-index: 5;
+  flex: 0 0 auto;
+  height: var(--avb-stage-h);
+  /* altından kayan seçenekler köşelerde / üstte görünmesin */
+  box-shadow: 0 -14px 0 8px var(--panel-bg, #070a14);
   border-radius: 18px;
   overflow: hidden;
   border: 1px solid var(--avb-line);
@@ -133,8 +141,9 @@
 /* sekmeler */
 .avb-tabs {
   position: sticky;
-  top: 56px;
+  top: calc(var(--avb-top) + var(--avb-stage-h) + 6px);
   z-index: 5;
+  box-shadow: 0 -8px 0 2px var(--panel-bg, #070a14);
   display: flex;
   gap: 6px;
   overflow-x: auto;

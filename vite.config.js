@@ -103,6 +103,17 @@ function cityPreload() {
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react(), prefetchList(), cityPreload()],
+  // v215: dosya adlarına "-n2" eklendi → Cloudflare'de / cihazlarda yanlışlıkla HTML olarak saklanmış
+  // eski adlar bir daha istenmez (bkz. worker.js). Yeni bir temizlik gerekirse n3 yapılır.
+  build: {
+    rolldownOptions: {
+      output: {
+        entryFileNames: 'assets/[name]-[hash]-n2.js',
+        chunkFileNames: 'assets/[name]-[hash]-n2.js',
+        assetFileNames: 'assets/[name]-[hash]-n2[extname]',
+      },
+    },
+  },
   // v187 GEÇİCİ ÖLÇÜM (3 gün) — okuma kaynağı sayacı (bkz. src/lib/fsMeter). v170'te bu satır
   // kaldırılmıştı, ölçüm kodu hiç yüklenmiyordu. Bitiş: src/lib/fsMeter/meter.js READ_STATS_END
   // (o tarihten sonra sarmalayıcı doğrudan orijinali çağırır). Kaldırmak için bu alias'ı sil.

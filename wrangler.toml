@@ -1,6 +1,9 @@
 name = "neon-sehir"
 compatibility_date = "2024-09-23"
+# v215: küçük bir worker — olmayan /assets/... dosyası için index.html yerine 404 döner (bkz. worker.js)
+main = "worker.js"
 
 [assets]
 directory = "./dist"
+binding = "ASSETS"
 not_found_handling = "single-page-application"

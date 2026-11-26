@@ -7,7 +7,7 @@
 // =============================================================================
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { buildFullAvatarSvgMarkup, buildFullAvatarBackSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes'; // v164: ayrı arka çizim
+import { buildFullAvatarSvgMarkup, buildFullAvatarBackSvgMarkup, buildAvatarBackLayerMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes'; // v164: ayrı arka çizim
 import { heldCanvas } from '../HouseScreen/heldArt';
 import { PetFollower, FireAuraFx, EMOTES } from '../HouseScreen/figureFx.js'; // v191: ev motoru (~1 MB) şehirle yüklenmesin
 import { getSharedRenderer } from '../HouseScreen/sharedRenderer.js';
@@ -121,10 +121,11 @@ function queueTex(job) {
   schedTex();
 }
 // SVG → (kuyrukta) resim → (kuyrukta) tuval dokusu
-function rasterTex(markup, w, h, aniso, done, isDead) {
+function rasterTex(markup, w, h, aniso, done, isDead, onFail) {
   queueTex(() => {
     if (isDead()) return;
     const img = new Image();
+    if (onFail) img.onerror = () => onFail();
     img.onload = () =>
       queueTex(() => {
         if (isDead()) return;
@@ -209,40 +210,67 @@ function ensureBackTex(e, pose) {
 }
 // v206 — 3D avatar: bu mesafeden (m) yakındaki ayakta / yürüyen figürler 3D çizilir; uzakta, oturunca,
 // araçta, özel pozda ve "en düşük" grafik ayarında eski kâğıt figür. applyTier() ayarlar.
-const FIG3D_TIER_DIST = [42, 32, 24, 0];
+// v215: "en düşük" ayarda da yakındakiler 3D (zayıf telefon kendiliğinden en düşüğe inince herkes 2D kalıyordu)
+const FIG3D_TIER_DIST = [42, 32, 24, 16];
 function requestLook3(e) {
   if (!e || e.look3 || e.look3Q || !e.ready || !e.tex.idle) return;
-  const make = (f, b, plain) =>
+  const W3 = IS_MOBILE ? 208 : 320;
+  const H3 = IS_MOBILE ? 377 : 580;
+  // v215: çizim / kurulum hatasında takılı kalma: 3 sn sonra tekrar (en çok 4 kez)
+  let failed = false;
+  const fail = () => {
+    if (failed) return;
+    failed = true;
+    e.look3Tries = (e.look3Tries || 0) + 1;
+    if (e.look3Tries < 4) setTimeout(() => (e.look3Q = false), 3000);
+  };
+  const make = (f, b, plain, bo) =>
     queueTex(() => {
       if (e.disposed) return;
       try {
-        e.look3 = makeAvatar3DLook(f, b, e.full, { plain });
+        e.look3 = makeAvatar3DLook(f, b, e.full, { plain, backOnly: bo });
       } catch (err) {
         console.warn('3d avatar:', err);
       }
+      if (!e.look3) fail(); // v215: kurulamadıysa bir süre sonra yeniden denenir (kalıcı 2D kalmasın)
       // v208: saçsız / şapkasız resimler sadece 3D dokuya kopyalanır; ekran kartına hiç yüklenmez
       if (plain) {
         f.dispose();
         b.dispose();
       }
+      bo?.dispose();
     });
+  // v215: pelerin / kanat katmanı (sadece varsa çizilir)
+  const plainAv = avatar3DUsesPlain(e.full) ? avatar3DPlain(e.full) : e.full;
+  let boSvg = '';
+  try {
+    boSvg = buildAvatarBackLayerMarkup(plainAv);
+  } catch {
+    boSvg = '';
+  }
+  const withBack = (cb) => {
+    if (!boSvg) return cb(null);
+    rasterTex(() => boSvg, W3, H3, 1, cb, () => e.disposed, () => cb(null)); // pelerin çizilemezse onsuz
+  };
   if (!avatar3DUsesPlain(e.full)) {
     // kostüm: kafa çizimi kostümden gelir → mevcut önden / arkadan resim kullanılır
     ensureBackTex(e, 'backIdle');
-    if (!e.tex.backIdle) return; // arka resim kuyrukta; sonraki karede tekrar denenir
+    if (!e.tex.backIdle) {
+      // arka resim kuyrukta; sonraki karede tekrar denenir. v215: 4 sn'de gelmezse önden resimle (2D'de kalmasın)
+      e.look3Wait ||= performance.now();
+      if (performance.now() - e.look3Wait < 4000 && !e.lazy) return;
+    }
     e.look3Q = true;
-    make(e.tex.idle, e.tex.backIdle, false);
+    withBack((bo) => make(e.tex.idle, e.tex.backIdle || e.tex.idle, false, bo));
     return;
   }
   // v208: saç + şapka 3D modellenir → gövdeye saçsız / şapkasız çizim giydirilir (kuyrukta, 2 resim)
   e.look3Q = true;
-  const plainAv = avatar3DPlain(e.full);
-  const W3 = IS_MOBILE ? 208 : 320;
-  const H3 = IS_MOBILE ? 377 : 580;
-  const got = {};
-  const both = () => got.f && got.b && make(got.f, got.b, true);
-  rasterTex(() => buildFullAvatarSvgMarkup(plainAv, { pose: 'idle' }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, ''), W3, H3, 1, (t) => ((got.f = t), both()), () => e.disposed);
-  rasterTex(() => buildFullAvatarBackSvgMarkup(plainAv, { pose: 'idle' }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, ''), W3, H3, 1, (t) => ((got.b = t), both()), () => e.disposed);
+  const got = { bo: boSvg ? undefined : null };
+  const both = () => got.f && got.b && got.bo !== undefined && make(got.f, got.b, true, got.bo);
+  withBack((t) => ((got.bo = t), both()));
+  rasterTex(() => buildFullAvatarSvgMarkup(plainAv, { pose: 'idle' }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, ''), W3, H3, 1, (t) => ((got.f = t), both()), () => e.disposed, fail);
+  rasterTex(() => buildFullAvatarBackSvgMarkup(plainAv, { pose: 'idle' }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, ''), W3, H3, 1, (t) => ((got.b = t), both()), () => e.disposed, fail);
 }
 const wrapAng = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 let blobTex = null;
@@ -413,6 +441,13 @@ class Fig {
     this.bubbles.push(b);
     while (this.bubbles.length > 2) this.bubbles.shift().el.remove();
   }
+  // v215: yönü hemen ayarla (ışınlanma / doğma: sırt kameraya, binaya dönük)
+  faceYaw(yaw) {
+    if (!Number.isFinite(yaw)) return;
+    this.yaw = this.yawT = wrapAng(yaw);
+    this.px = undefined;
+    this.pz = undefined;
+  }
   playEmote(kind) {
     if (!EMOTE_EMOJI[kind]) return;
     this.emote = { kind, t0: performance.now() };
@@ -512,11 +547,13 @@ class Fig {
     // v206 — 3D avatar (yakında, ayakta / yürürken). Kâğıt yüzey sahnede kalır ama çizilmez
     // (malzemesi gizlenir): ateş aurası gibi ona bağlı efektler çalışmaya devam eder.
     const d3 = this.scene.userData.fig3d || 0; // v211: her motorun kendi ayarı (fotoğraf motoru canlı oyunu etkilemez)
-    const use3d = d3 > 0 && hd < d3 && this.tex.ready && !(this.forcePose && this.tex.tex[this.forcePose]); // v209: araçta da 3D
+    const use3d = d3 > 0 && hd < d3 && !(this.forcePose && this.tex.tex?.[this.forcePose]); // v209: araçta da 3D
     let look3 = null;
     if (use3d) {
-      look3 = this.tex.look3 || null;
-      if (!look3) requestLook3(this.tex);
+      look3 = (this.tex.ready && this.tex.look3) || null;
+      if (!look3 && this.tex.ready) requestLook3(this.tex);
+      // v215: yeni görünüm (kıyafet / aksesuar değişti) hazırlanırken eski 3D görünüm kalır — arada 2D'ye dönmez
+      if (!look3 && this.m3?.look) look3 = this.m3.look;
     }
     if (look3) {
       if (this.m3 && !this.m3.setLook(look3)) {
@@ -548,7 +585,7 @@ class Fig {
         hold: Boolean(this.holding), // v213: yiyecek / içecek elde, kol önde bükük, ara sıra ağza
       });
       const stand = lift - this.sinkCur;
-      const seatOff = (this.seatY ?? this.y) - this.y - AVATAR_3D_HIP + 0.03;
+      const seatOff = (this.seatY ?? this.y) - this.y - (this.m3.hipH || AVATAR_3D_HIP) + 0.03;
       let ry = stand + (seatOff - stand) * this.m3.kSit;
       ry += (-0.12 - ry) * this.m3.kSwim; // yüzerken gövde su yüzeyinde
       r.position.set(this.pivot.position.x, ry, 0);
@@ -4755,6 +4792,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       if (Math.abs(dy) < 0.01 && Math.abs(camGlide.pitch - self.camPitch) < 0.01) camGlide = null;
     }
     standsK = first ? (inStands ? 1 : 0) : standsK + ((inStands ? 1 : 0) - standsK) * Math.min(1, dt * 5);
+    // v215: doğunca / ışınlanınca avatarın sırtı kameraya (evden / binadan çıkınca sırtı binaya) dönük
+    if (first && !driving && !me.sitting && !snapshot) me.faceYaw(self.camYaw + Math.PI);
     const yaw = self.camYaw;
     const pitch = clamp(self.camPitch, -0.2, 1.2);
     const aspect = camera.aspect || 1;
@@ -5591,6 +5630,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     const now = performance.now();
     const o = { uid, x: r2(f.x), z: r2(f.z), y: r2(f.y), l: f.facingLeft ? 1 : 0, m: f.moving ? 1 : 0, wp: Math.floor(f.walkT / 0.16) % 2 ? 1 : 0 };
     if (f.sitting && !f.inCar) o.sy = r2(f.seatY ?? 0.5);
+    // v215: 3D avatarın baktığı yön (fotoğrafta herkes kameraya dönmesin)
+    if (Number.isFinite(f.yaw)) o.yw = Math.round(wrapAng(f.yaw) * 1000) / 1000;
     // v151: tribündeki yön (sahaya dönük) — fotoğrafta da ense görünsün (oyundaki gibi)
     const fy = f.seatYaw ?? f.standYaw;
     if (fy != null && !f.inCar) o.sw = Math.round(fy * 1000) / 1000;
@@ -5990,6 +6031,12 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
           f.group.visible = true;
         }
         f.facingLeft = Boolean(p.l);
+        // v215: kaydedilen yön; eski fotoğraflarda kameraya tam dönük değil, yürüdüğü yana hafif dönük
+        if (Number.isFinite(p.yw)) f.faceYaw(p.yw);
+        else {
+          const toCam = Math.atan2(camera.position.x - f.x, camera.position.z - f.z);
+          f.faceYaw(toCam + (p.l ? -0.6 : 0.6));
+        }
         f.walkT = p.wp ? 0.16 : 0;
         f.emote = p.e && EMOTE_EMOJI[p.e.k] ? { kind: p.e.k, t0: now - (Number(p.e.at) || 0) } : null;
         if (p.h) f.setHolding(p.h);
@@ -6281,6 +6328,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       self.path = null;
       ring.visible = false;
       self.camYaw = out; // kamera binanın önünde, sırtın binaya dönük
+      me.faceYaw(out); // v215: avatar da binadan dışarı bakar
       zoneKey = '__exit__';
     },
     teleport(x, z) {

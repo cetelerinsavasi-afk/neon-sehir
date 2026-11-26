@@ -11,7 +11,9 @@ const OFFLINE_CACHE = 'ns-offline-v1';
 // adı da değişir, eski adla asla farklı içerik gelmez) cihazda saklanır: ikinci açılıştan itibaren
 // ağ beklenmeden anında yüklenir. Oyun VERİSİ (Firestore vb.) bundan etkilenmez, hep canlıdır.
 // index.html önbelleğe ALINMAZ → güncellemeler eskisi gibi hemen gelir.
-const ASSET_CACHE = 'ns-assets-v1';
+// v215: v2 — v1'de bazı cihazlara dosya yerine index.html (yayın anında henüz olmayan dosya) kaydolmuştu;
+// o oyuncularda şehir "Ekran yüklenemedi" diye açılmıyordu. Ad değişince eski önbellek silinir.
+const ASSET_CACHE = 'ns-assets-v2';
 const ASSET_MAX = 400; // en fazla bu kadar dosya tutulur (eski sürümlerin dosyaları zamanla atılır)
 // Cloudflare .html uzantısını yönlendirir (/offline.html → 307 /offline); yönlendirilmiş
 // yanıt gezinmeye verilemediği için yönlendirmesiz adres kullanılır.
@@ -67,12 +69,14 @@ async function assetFirst(req) {
   try {
     cache = await caches.open(ASSET_CACHE);
     const hit = await cache.match(req);
-    if (hit) return hit;
+    if (hit && !isHtml(hit)) return hit;
+    if (hit) cache.delete(req).catch(() => {}); // bozuk kopya (HTML) → atılır, ağdan alınır
   } catch {
     /* depolama kapalı → doğrudan ağ */
   }
   const res = await fetch(req);
-  if (cache && res && res.ok && res.status === 200 && res.type === 'basic') {
+  // v215: sadece gerçek dosya saklanır (dosya yoksa sunucunun döndürdüğü index.html SAKLANMAZ)
+  if (cache && res && res.ok && res.status === 200 && res.type === 'basic' && !isHtml(res)) {
     const copy = res.clone();
     cache
       .put(req, copy)
@@ -80,6 +84,10 @@ async function assetFirst(req) {
       .catch(() => {});
   }
   return res;
+}
+
+function isHtml(r) {
+  return /text\/html/i.test(r.headers.get('content-type') || '');
 }
 
 let trimming = false;

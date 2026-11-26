@@ -886,6 +886,18 @@ export function buildAvatarSvgInner(rawState, opts = {}) {
   if (pose === 'aim') upperBody += aimArmShape(s);
   if (pose === 'handsup') upperBody += SCARED_FACE;
 
+  // v214 — 3D avatar: sadece gövdenin ARKASINDA kalan katmanlar (kostüm pelerini / kanadı +
+  // sırt aksesuarı). 3D'de arka kart bundan çizilir; eller, tutulan eşyalar, pantolon kenarı karışmaz.
+  if (opts.onlyBack) {
+    let sv = '';
+    if (look && look.b) sv += layer('b');
+    if (L.back) sv += tinting ? BACK : L.back;
+    if (tinting && sv) {
+      sv = tintLook(sv, rawState.look, tint, s, origSkin);
+      sv = sv.replace(BACK, () => L.back);
+    }
+    return sv;
+  }
   let svg = '';
   svg += `<ellipse cx="160" cy="${GROUND_Y}" rx="74" ry="12" fill="#000" opacity="0.35"/>`;
   if (look && look.b) svg += `<g transform="translate(0,${bob})">${layer('b')}</g>`;
@@ -922,6 +934,12 @@ export function effectiveAvatar(rawState) {
 export function buildFullAvatarSvgMarkup(rawState, opts = {}) {
   const inner = buildAvatarSvgInner(rawState, opts);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 ${AVATAR_FULL_VIEWBOX_H}">${inner}</svg>`;
+}
+
+// v215 — 3D avatar: sadece sırttaki katman (pelerin / kanat / sırt aksesuarı); yoksa '' döner
+export function buildAvatarBackLayerMarkup(rawState) {
+  const inner = buildAvatarSvgInner(rawState, { pose: 'idle', onlyBack: true });
+  return inner ? `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 ${AVATAR_FULL_VIEWBOX_H}">${inner}</svg>` : '';
 }
 
 // =============================================================================

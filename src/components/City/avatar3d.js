@@ -48,6 +48,21 @@ const TORSO = {
 const SIZE_K = { zayif: 0.8, standart: 1, iri: 1.24 };
 const HEAD_SVG = { x0: 102, x1: 218, y0: 104, y1: 236 };
 const HEAD_Y = 3.78;
+const CHIN_Y = 3.12; // çene hizası (model birimi) — kafa tipi ne olursa olsun çene boyunda durur
+// v214 — avatar tipleri: kafa boyu / şekli, boyun, bacak boyu. Prototipte karşılaştırılır,
+// oyunda bir tanesi varsayılan yapılır (setAvatar3DStyle).
+export const AVATAR_STYLES = {
+  klasik: { name: 'Klasik (şimdiki)', s: 1, rx: 1, ry: 1, rz: 1, taper: 0, flat: 1, box: false, legs: 1, neck: 0 },
+  dengeli: { name: 'Dengeli', s: 0.84, rx: 0.95, ry: 1.03, rz: 0.92, taper: 0.26, flat: 0.88, box: false, legs: 1.06, neck: 0.04 },
+  gercekci: { name: 'Gerçekçi', s: 0.72, rx: 0.88, ry: 1.1, rz: 0.9, taper: 0.32, flat: 0.86, box: false, legs: 1.15, neck: 0.1 },
+  koseli: { name: 'Köşeli', s: 0.84, rx: 0.98, ry: 1.0, rz: 0.9, taper: 0.14, flat: 1, box: true, legs: 1.06, neck: 0.04 },
+  uzun: { name: 'Uzun oval', s: 0.8, rx: 0.84, ry: 1.16, rz: 0.88, taper: 0.18, flat: 0.9, box: false, legs: 1.09, neck: 0.06 },
+};
+let STYLE_ID = 'dengeli'; // v215: oyunun avatar tipi
+export function setAvatar3DStyle(id) {
+  if (AVATAR_STYLES[id]) STYLE_ID = id;
+}
+export const getAvatar3DStyle = () => STYLE_ID;
 const HIP_Y = 1.72;
 const KNEE = 0.8; // kalçadan dize (model birimi)
 // oturunca kalçanın yerden yüksekliği (m) — koltuk yüksekliğine hizalamak için
@@ -175,12 +190,30 @@ function parts(build, body) {
     bake(new THREE.CylinderGeometry(0.19, 0.21, 0.6, 10), mtx([0, 3.0, 0]), { x0: -0.21, x1: 0.21, y0: 2.7, y1: 3.3 }, { x0: 140, x1: 180, y0: 222, y1: 274 }),
   ]);
   out.head = merge([bake(sph, mtx([0, 0, 0], [0.58, 0.66, 0.56]), { x0: -0.58, x1: 0.58, y0: -0.66, y1: 0.66 }, HEAD_SVG)]);
-  // kesik kart: ön + arka yüz, gövdenin biraz arkasında
+  // v214 — kartlar ikiye ayrıldı:
+  //  • gövde kartı (çene altı): SADECE kostümün arka katmanı (pelerin, kanat). Sırtın arkasında,
+  //    yanlara doğru hafif kıvrık (pelerin sırtı sarar). Eller / eşyalar / pantolon kenarı yok.
+  //  • kafa kartı (çene üstü): şapka kenarı, yüzgeç, boynuz, kulak… kafaya bağlı, kafayla büyür/küçülür.
   const cardZ = -Math.min(0.16, D * 0.25);
-  const pl = new THREE.PlaneGeometry(3.2, 5.8);
-  const raw = { x0: -1.6, x1: 1.6, y0: -0.32, y1: 5.48 };
-  const rawS = { x0: 0, x1: SW, y0: 0, y1: SH };
-  out.card = merge([bake(pl, mtx([0, 2.58, cardZ]), raw, rawS), bake(pl, mtx([0, 2.58, cardZ - 0.002], [1, 1, 1], [0, Math.PI, 0]), raw, rawS)]);
+  const bodyBox = { x0: -1.6, x1: 1.6, y0: -0.32, y1: CHIN_Y };
+  const bodyS = { x0: 0, x1: SW, y0: 236, y1: SH };
+  const curve = (g, z0, dir) => {
+    const p = g.attributes.position;
+    for (let i = 0; i < p.count; i++) p.setZ(i, z0 - dir * 0.26 * (p.getX(i) / 1.6) ** 2);
+    g.computeVertexNormals();
+    return g;
+  };
+  const plB = () => new THREE.PlaneGeometry(3.2, CHIN_Y + 0.32, 24, 1).translate(0, (CHIN_Y - 0.32) / 2, 0);
+  const pf = curve(plB(), cardZ, 1);
+  const pb = curve(plB().rotateY(Math.PI), cardZ - 0.002, 1);
+  out.cardBody = merge([bake(pf, new THREE.Matrix4(), bodyBox, bodyS), bake(pb, new THREE.Matrix4(), bodyBox, bodyS)]);
+  pf.dispose();
+  pb.dispose();
+  const headBox = { x0: -1.6, x1: 1.6, y0: CHIN_Y - HEAD_Y, y1: 5.48 - HEAD_Y };
+  const headS = { x0: 0, x1: SW, y0: 0, y1: 236 };
+  const plH = new THREE.PlaneGeometry(3.2, 5.48 - CHIN_Y).translate(0, (5.48 + CHIN_Y) / 2 - HEAD_Y, 0);
+  out.cardHead = merge([bake(plH, mtx([0, 0, -0.1]), headBox, headS), bake(plH, mtx([0, 0, -0.102], [1, 1, 1], [0, Math.PI, 0]), headBox, headS)]);
+  plH.dispose();
 
   const armR = s2.armR;
   const yMid = s2.ty + (380 - s2.ty) * 0.5;
@@ -222,29 +255,98 @@ function parts(build, body) {
   });
   sph.dispose();
   torsoG.dispose?.();
-  pl.dispose();
   PARTS[pk] = out;
   return out;
 }
 
 // --- dokular -------------------------------------------------------------------
 // Kart dokusunda gövdeyle örtüşen bölgeler silinir: sadece taşan parçalar kalır.
-function eraseBody(x, build, head) {
-  const s = B2[build];
+function eraseHead(x, head, ears) {
   x.beginPath();
-  x.ellipse(head.cx, head.cy, head.rx - 2, head.ry - 2, 0, 0, Math.PI * 2);
+  // kafa çizgisi (kontur) de silinir: kartta kalırsa yandan bakınca yüzün yanında ince bir çizgi gibi havada durur
+  x.ellipse(head.cx, head.cy, head.rx + 5, head.ry + 5, 0, 0, Math.PI * 2);
   x.fill();
-  // gövde kutusu biraz geniş silinir: kıyafetin kenar gölgesi / dikişi kartta ince çubuk gibi kalmasın
-  x.fillRect(s.tl - 10, s.ty - 6, s.tr - s.tl + 20, 386 - s.ty);
-  // omuz köşeleri (omuzluk / zırh / kabarık omuz): 3D omuz başına giydiriliyor
-  x.fillRect(s.tl - 48, s.ty - 26, 80, 84);
-  x.fillRect(s.tr - 32, s.ty - 26, 80, 84);
-  // gövdenin iki yanı (kalçaya kadar): kostümlerin 2D'de yana çizdiği eller / eldivenler / tutulan
-  // eşyalar (harita, kalkan…) 3D kolların yanında havada duran düz parça olarak kalmasın
-  x.fillRect(s.tl - 56, s.ty, 58, 410 - s.ty);
-  x.fillRect(s.tr - 2, s.ty, 58, 410 - s.ty);
-  x.fillRect(138, 220, 44, 56);
-  for (const cx of [s.cx, SW - s.cx]) x.fillRect(cx - s.hw - 3, 376, s.hw * 2 + 6, 174);
+  if (ears) {
+    // kulaklar (ve küpeler) 3D modelleniyor
+    x.beginPath();
+    x.ellipse(101, 180, 13, 20, 0, 0, Math.PI * 2);
+    x.ellipse(219, 180, 13, 20, 0, 0, Math.PI * 2);
+    x.fill();
+  }
+}
+// v215 — kartta kalan ince çizgi ve noktalar (kolye ipi, kontur artığı, toz) silinir: alfa kanalına
+// "açma" (önce aşındır, sonra genişlet) uygulanır; pelerin, kanat, şapka kenarı gibi dolu parçalar kalır.
+function dropThin(x, w, h, r) {
+  let d;
+  try {
+    d = x.getImageData(0, 0, w, h);
+  } catch {
+    return;
+  }
+  const px = d.data;
+  const a = new Uint8Array(w * h);
+  for (let i = 0; i < a.length; i++) a[i] = px[i * 4 + 3] > 127 ? 1 : 0;
+  const pass = (src, horiz, op) => {
+    const out = new Uint8Array(src.length);
+    for (let y = 0; y < h; y++) {
+      for (let xx = 0; xx < w; xx++) {
+        let v = op;
+        for (let k = -r; k <= r && v === op; k++) {
+          const sx = horiz ? xx + k : xx;
+          const sy = horiz ? y : y + k;
+          const s = sx < 0 || sy < 0 || sx >= w || sy >= h ? 0 : src[sy * w + sx];
+          if (s !== op) v = s;
+        }
+        out[y * w + xx] = v;
+      }
+    }
+    return out;
+  };
+  // aşındır (1 → hepsi 1 ise 1), genişlet (0 → hepsi 0 ise 0)
+  const open = pass(pass(pass(pass(a, true, 1), false, 1), true, 0), false, 0);
+  let n = 0;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] && !open[i]) {
+      px[i * 4 + 3] = 0;
+      n++;
+    }
+  }
+  if (n) x.putImageData(d, 0, 0);
+}
+// v214 — kart dokusu: çene üstü tam çizimden (kafa silinir), çene altı SADECE arka katmandan
+function cardAtlas(front, back, backOnly, head, ears) {
+  const w = front.width;
+  const h = front.height;
+  const c = document.createElement('canvas');
+  c.width = w * 2;
+  c.height = h;
+  const x = c.getContext('2d');
+  const top = Math.round(h * (236 / SH));
+  for (const [img, side] of [[front, 0], [back, 1]]) {
+    const ox = side * w;
+    if (backOnly) {
+      x.save();
+      x.beginPath();
+      x.rect(ox, top, w, h - top);
+      x.clip();
+      x.drawImage(backOnly, ox, 0, w, h);
+      x.restore();
+    }
+    x.save();
+    x.beginPath();
+    x.rect(ox, 0, w, top);
+    x.clip();
+    x.drawImage(img, ox, 0, w, h);
+    x.globalCompositeOperation = 'destination-out';
+    x.translate(ox, 0);
+    x.scale(w / SW, h / SH);
+    eraseHead(x, head, ears);
+    x.restore();
+  }
+  dropThin(x, c.width, c.height, Math.max(1, Math.round((2.5 * w) / SW)));
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
 }
 function atlas(front, back, build, erase, ears = false, head = HEAD_FIT0, fillHead = false) {
   const w = front.width;
@@ -283,21 +385,7 @@ function atlas(front, back, build, erase, ears = false, head = HEAD_FIT0, fillHe
     x.globalCompositeOperation = 'source-over';
   }
   if (erase) {
-    x.globalCompositeOperation = 'destination-out';
-    for (const side of [0, 1]) {
-      x.save();
-      x.translate(side * w, 0);
-      x.scale(w / SW, h / SH);
-      eraseBody(x, build, head);
-      if (ears) {
-        // kulaklar (ve küpeler) 3D modelleniyor
-        x.beginPath();
-        x.ellipse(101, 180, 13, 20, 0, 0, Math.PI * 2);
-        x.ellipse(219, 180, 13, 20, 0, 0, Math.PI * 2);
-        x.fill();
-      }
-      x.restore();
-    }
+    // (v214: kart artık cardAtlas ile çiziliyor)
   }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
@@ -346,25 +434,56 @@ function fitHead(img) {
     return HEAD_FIT0; // okunamayan resim (güvenlik kısıtı) → normal kafa
   }
 }
+// v215 — kafa şekli (çeneye daralma + yüz düzlüğü) dokudan SONRA uygulanır: 2D kafa elipsinin tamamı
+// (sakal, çene, yanaklar) kafa yüzeyine biner, kart üzerinde kafadan kopuk parça / boşluk kalmaz.
+// Aynı dönüşüm saç / şapka / kulağa da uygulanır → saç ve kulaklar yüze yapışık kalır.
+function shapeHead(g, st, cy, rx, ry, rz) {
+  if (!st.taper && st.flat === 1) return g;
+  const p = g.attributes.position;
+  const n = g.attributes.normal;
+  const v = new THREE.Vector3();
+  for (let i = 0; i < p.count; i++) {
+    const uy = (p.getY(i) - cy) / ry;
+    let sx = 1;
+    let sz = 1;
+    if (uy < 0) {
+      const k = Math.pow(Math.min(1.25, -uy), 1.4);
+      sx = 1 - st.taper * k;
+      sz = 1 - st.taper * 0.45 * k;
+    }
+    if (p.getZ(i) > 0) sz *= st.flat;
+    p.setXYZ(i, p.getX(i) * sx, p.getY(i), p.getZ(i) * sz);
+    // yumuşak normal korunur (yeniden hesaplanırsa indekssiz geometride basamaklı gölge olur)
+    if (n) {
+      v.set(n.getX(i) / sx, n.getY(i), n.getZ(i) / sz).normalize();
+      n.setXYZ(i, v.x, v.y, v.z);
+    }
+  }
+  p.needsUpdate = true;
+  if (n) n.needsUpdate = true;
+  return g;
+}
 const HEADS = new Map();
-function headGeo(f) {
-  const key = [f.cx, f.cy, f.rx, f.ry].join(',');
+function headGeo(f, sid = STYLE_ID) {
+  const st = AVATAR_STYLES[sid] || AVATAR_STYLES.klasik;
+  const key = [f.cx, f.cy, f.rx, f.ry, sid].join(',');
   let g = HEADS.get(key);
   if (g) return g;
-  const rx = f.rx / 100;
-  const ry = f.ry / 100;
-  const rz = Math.max(0.56, Math.min(0.8, rx * 0.95));
+  const rx = (f.rx / 100) * st.rx;
+  const ry = (f.ry / 100) * st.ry;
+  const rz = Math.max(0.56, Math.min(0.8, (f.rx / 100) * 0.95)) * st.rz;
   const dy = (170 - f.cy) / 100;
-  const sph = new THREE.SphereGeometry(1, 18, 13);
-  g = merge([bake(sph, mtx([0, dy, 0], [rx, ry, rz]), { x0: -rx, x1: rx, y0: dy - ry, y1: dy + ry }, { x0: f.cx - f.rx, x1: f.cx + f.rx, y0: f.cy - f.ry, y1: f.cy + f.ry })]);
-  sph.dispose();
+  // birim kafa: küre ya da yuvarlatılmış küp; çeneye doğru daralır (taper), yüz biraz düzleşir (flat)
+  const base = st.box ? new RoundedBoxGeometry(2, 2, 2, 4, 0.62) : new THREE.SphereGeometry(1, 24, 18);
+  g = merge([shapeHead(bake(base, mtx([0, dy * st.ry, 0], [rx, ry, rz]), { x0: -rx, x1: rx, y0: dy * st.ry - ry, y1: dy * st.ry + ry }, { x0: f.cx - f.rx, x1: f.cx + f.rx, y0: f.cy - f.ry, y1: f.cy + f.ry }), st, dy * st.ry, rx, ry, rz)]);
+  base.dispose();
   HEADS.set(key, g);
   return g;
 }
 
 // plain: resimler saçsız + şapkasız çizildi (avatar3DPlain) → saç, şapka, kulak 3D modellenir.
 // Kostümde (look) ya da başlık aksesuarında başın çevresi kavisli kabuğa giydirilir.
-export function makeAvatar3DLook(frontTex, backTex, avatar, { plain = false } = {}) {
+export function makeAvatar3DLook(frontTex, backTex, avatar, { plain = false, backOnly = null } = {}) {
   const fi = frontTex?.image;
   const bi = backTex?.image;
   if (!fi || !bi) return null;
@@ -374,7 +493,8 @@ export function makeAvatar3DLook(frontTex, backTex, avatar, { plain = false } = 
   // kostüm: kask / başlık / maske kafanın kendisi olur → kafa, başlık çiziminin boyutuna büyütülür
   const head = plain ? HEAD_FIT0 : fitHead(fi);
   const tb = atlas(fi, bi, build, false, false, head, head !== HEAD_FIT0);
-  const tc = atlas(fi, bi, build, true, plain, head);
+  const bo = backOnly?.image || null; // pelerin / kanat katmanı (yoksa gövde kartı çizilmez)
+  const tc = cardAtlas(fi, bi, bo, head, plain);
   const bodyMat = new THREE.MeshMatcapMaterial({ map: tb, matcap: matcap(), toneMapped: false });
   const card = new THREE.MeshMatcapMaterial({ map: tc, matcap: matcap(), toneMapped: false, alphaTest: 0.5 });
   return {
@@ -386,6 +506,7 @@ export function makeAvatar3DLook(frontTex, backTex, avatar, { plain = false } = 
     gearKey: gear ? gear.key : '',
     head,
     headKey: [head.cx, head.cy, head.rx, head.ry].join(','),
+    hasBack: Boolean(bo),
     dispose() {
       tb.dispose();
       tc.dispose();
@@ -651,7 +772,9 @@ function hatGeos(hat, c) {
 
 const GEAR = new Map();
 function gearParts(g) {
-  let out = GEAR.get(g.key);
+  const st = AVATAR_STYLES[STYLE_ID] || AVATAR_STYLES.klasik;
+  const gk = g.key + '|' + STYLE_ID;
+  let out = GEAR.get(gk);
   if (out) return out;
   const byColor = new Map();
   const put = (geo, col) => {
@@ -670,8 +793,9 @@ function gearParts(g) {
     put(E([sx * 0.6, -0.06, 0.01], [0.03, 0.08, 0.04]), shade(g.skin, -18));
     if (g.earring === 'cift' || (g.earring === 'sol' && sx < 0) || (g.earring === 'sag' && sx > 0)) put(E([sx * 0.6, -0.22, 0.02], [0.035, 0.035, 0.035], [0, 0, 0], [8, 6]), '#d4af37');
   }
-  out = [...byColor].map(([color, list]) => ({ color, geo: merge(list) }));
-  GEAR.set(g.key, out);
+  // kafayla aynı şekil (gear grubu ayrıca st.rx/ry/rz ile ölçeklenir → burada sade kafa yarıçapları)
+  out = [...byColor].map(([color, list]) => ({ color, geo: shapeHead(merge(list), st, 0, 0.58, 0.66, 0.56) }));
+  GEAR.set(gk, out);
   return out;
 }
 
@@ -679,11 +803,18 @@ function gearParts(g) {
 export class Avatar3D {
   constructor(look) {
     const P = parts(look.build, look.shape);
+    const st = AVATAR_STYLES[STYLE_ID] || AVATAR_STYLES.klasik;
+    this.styleId = STYLE_ID;
     this.root = new THREE.Group();
     this.root.scale.setScalar(MODEL_SCALE);
     this.baseScale = MODEL_SCALE;
+    // bacak boyu: kalça yükselir, gövde onunla kalkar
+    this.lift = new THREE.Group();
+    this.lift.position.y = HIP_Y * (st.legs - 1);
+    this.root.add(this.lift);
     this.upper = new THREE.Group();
-    this.root.add(this.upper);
+    this.lift.add(this.upper);
+    this.hipH = AVATAR_3D_HIP * st.legs;
     this.meshes = [];
     const mk = (geo, mat, parent) => {
       const m = new THREE.Mesh(geo, mat);
@@ -694,11 +825,18 @@ export class Avatar3D {
     };
     mk(P.upper, look.body, this.upper);
     this.head = new THREE.Group();
-    this.head.position.y = HEAD_Y;
+    this.head.scale.setScalar(st.s);
+    this.head.position.y = CHIN_Y + st.neck + 0.66 * st.ry * st.s;
     this.upper.add(this.head);
-    mk(look.headKey === HEAD_KEY0 ? P.head : headGeo(look.head), look.body, this.head);
-    mk(P.card, look.card, this.upper);
-    if (look.gear) for (const g of gearParts(look.gear)) mk(g.geo, colorMat(g.color), this.head).userData.gear = true;
+    mk(headGeo(look.head), look.body, this.head);
+    if (look.hasBack) mk(P.cardBody, look.card, this.upper);
+    // kafa kartı kafayla aynı en / boy oranında (kafa dışına taşan şapka kenarı, yüzgeç kafaya yapışık kalır)
+    mk(P.cardHead, look.card, this.head).scale.set(st.rx, st.ry, 1);
+    // saç / şapka / kulak: kafa şekline uysun (köşeli kafada biraz daha geniş)
+    this.gearG = new THREE.Group();
+    this.gearG.scale.set(st.rx * (st.box ? 1.07 : 1), st.ry, st.rz * (st.box ? 1.07 : 1));
+    this.head.add(this.gearG);
+    if (look.gear) for (const g of gearParts(look.gear)) mk(g.geo, colorMat(g.color), this.gearG).userData.gear = true;
     this.arms = P.arms.map((a) => {
       const sh = new THREE.Group();
       sh.position.set(...a.pos);
@@ -718,7 +856,8 @@ export class Avatar3D {
     this.arms[1].el.add(this.hand);
     this.legs = P.legs.map((l) => {
       const pv = new THREE.Group();
-      pv.position.set(...l.pos);
+      pv.position.set(l.pos[0], l.pos[1] * st.legs, l.pos[2]);
+      pv.scale.y = st.legs;
       this.root.add(pv);
       mk(l.thigh, look.body, pv);
       const knee = new THREE.Group();
@@ -737,7 +876,7 @@ export class Avatar3D {
   setLook(look) {
     if (look === this.look) return true;
     // vücut yapısı / saç / şapka / kabuk değişti → yeniden kur
-    if (look.build !== this.look.build || look.shape !== this.look.shape || look.gearKey !== this.look.gearKey || look.headKey !== this.look.headKey) return false;
+    if (this.styleId !== STYLE_ID || look.build !== this.look.build || look.shape !== this.look.shape || look.gearKey !== this.look.gearKey || look.headKey !== this.look.headKey || look.hasBack !== this.look.hasBack) return false;
     this.meshes.forEach((m) => {
       if (m.userData.gear) return;
       m.material = m.material === this.look.card ? look.card : look.body;
