@@ -520,6 +520,7 @@ class Fig {
     }
     if (look3) {
       if (this.m3 && !this.m3.setLook(look3)) {
+        this.group.add(this.held); // v213: eldeki eşya eski modelle birlikte gitmesin
         this.m3.dispose();
         this.m3 = null;
       }
@@ -544,6 +545,7 @@ class Fig {
         tread: deep && !this.moving,
         tilt: em ? 0 : tilt,
         emote: em,
+        hold: Boolean(this.holding), // v213: yiyecek / içecek elde, kol önde bükük, ara sıra ağza
       });
       const stand = lift - this.sinkCur;
       const seatOff = (this.seatY ?? this.y) - this.y - AVATAR_3D_HIP + 0.03;
@@ -556,14 +558,21 @@ class Fig {
       if (this.m3) this.m3.root.visible = false;
       this.mat.visible = true;
     }
-    if (this.holding) {
+    // v213: 3D'de eldeki eşya gerçekten ELE bağlı (kolla birlikte sallanır, ağza gider);
+    // kâğıt figürde eskisi gibi figürün yanında
+    if (look3 && this.m3) {
+      if (this.held.parent !== this.m3.hand) {
+        this.m3.hand.add(this.held);
+        this.held.scale.set(0.8, 0.8, 1);
+        this.held.position.set(0, 0, 0);
+      }
+    } else if (this.held.parent !== this.group) {
+      this.group.add(this.held);
+      this.held.scale.set(0.34, 0.34, 1);
+    }
+    if (this.holding && !(look3 && this.m3)) {
       const bob = Math.sin(now / 480) * 0.02;
-      if (look3) {
-        // 3D: elde tutulan, karakterin sol elinde (2D çizimdeki tarafla aynı), baktığı yönle döner
-        const hx = this.m3.handX + 0.05;
-        const hz = 0.12;
-        this.held.position.set(hx * Math.cos(this.yaw) + hz * Math.sin(this.yaw), 0.52 + bob - this.sinkCur, -hx * Math.sin(this.yaw) + hz * Math.cos(this.yaw));
-      } else {
+      {
         const side = this.facingLeft ? -1 : 1;
         this.held.position.set(Math.cos(ang) * side * 0.3 + Math.sin(ang) * 0.12, AV_PLANE_H * 0.47 - AV_FEET + bob, -Math.sin(ang) * side * 0.3 + Math.cos(ang) * 0.12);
       }
@@ -584,6 +593,7 @@ class Fig {
     });
   }
   dispose(scene) {
+    this.group.add(this.held);
     this.m3?.dispose();
     this.m3 = null;
     texUse(this.tex, null);

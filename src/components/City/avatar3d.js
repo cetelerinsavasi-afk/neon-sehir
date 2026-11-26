@@ -712,6 +712,10 @@ export class Avatar3D {
       mk(a.foreArm, look.body, el);
       return { sh, el, sx: a.sx };
     });
+    // v213: eldeki eşyanın tutma noktası (karakterin sol eli — 2D çizimdeki taraf); avucun biraz önü
+    this.hand = new THREE.Group();
+    this.hand.position.set(0, -0.74, 0.13);
+    this.arms[1].el.add(this.hand);
     this.legs = P.legs.map((l) => {
       const pv = new THREE.Group();
       pv.position.set(...l.pos);
@@ -741,7 +745,7 @@ export class Avatar3D {
     this.look = look;
     return true;
   }
-  // o: { dt, t, walkT, walk, sit, drive, swim, tread, tilt, emote: { kind, e } }
+  // o: { dt, t, walkT, walk, sit, drive, swim, tread, tilt, hold, emote: { kind, e } }
   //   sit: oturuyor · swim: suda ilerliyor (yatay kulaç) · tread: suda duruyor (ayak çırpma)
   //   emote: dans / zipla / selam / alkis / kalp (e = başlangıçtan beri geçen saniye)
   pose(o) {
@@ -813,6 +817,18 @@ export class Avatar3D {
       }
     }
 
+    // --- elde yiyecek / içecek: kol önde bükük, yürürken sallanmaz (hafif yaylanır);
+    //     her ~7 sn'de bir ağza götürülür (ısırma / yudum) ---
+    if (o.hold && !em && this.kSwim < 0.5 && this.kTread < 0.5) {
+      const a = A[1];
+      const cyc = (t + 2.1) % 7;
+      const bite = cyc < 1.3 ? Math.sin((cyc / 1.3) * Math.PI) : 0;
+      const sway = o.walk ? Math.sin(ph * 2) * 0.05 : Math.sin(t * 1.8) * 0.02;
+      arm[1].x = -0.38 - bite * 0.5 + sway;
+      arm[1].z = a.sx * (0.1 - bite * 0.95);
+      arm[1].ex = -1.28 - bite * 1.12;
+      arm[1].ez = 0;
+    }
     // --- oturma: uyluk öne, baldır aşağı, eller dizlerde ---
     if (this.kSit > 0.001) {
       const k = this.kSit;
@@ -821,6 +837,7 @@ export class Avatar3D {
         leg[i].k = mix(leg[i].k, 1.5, k);
       });
       A.forEach((a, i) => {
+        if (o.hold && i === 1 && !o.drive) return; // elde yiyecek varken o kol dizde değil
         arm[i].x = mix(arm[i].x, -0.42, k);
         arm[i].z = mix(arm[i].z, a.sx * 0.12, k);
         arm[i].ex = mix(arm[i].ex, -0.6, k);
