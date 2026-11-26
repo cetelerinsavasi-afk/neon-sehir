@@ -24,7 +24,7 @@ import { bakeGeo, canonMat, makeLod, lodTag, dropVenueInt, buildVenueInt, swapVe
 import { NEW_VENUES } from './world/layouts.js';
 import { HQ_CACHE } from './world/venues.js';
 import { Kit } from './kit.js';
-import { AVATAR_3D_ENABLED, AVATAR_3D_HIP, Avatar3D, makeAvatar3DLook, avatar3DPlain, avatar3DUsesPlain } from './avatar3d.js'; // v206: 3D avatar (geri alma: avatar3d.js)
+import { AVATAR_3D_ENABLED, AVATAR_3D_HIP, Avatar3D, makeAvatar3DLook, avatar3DPlain, avatar3DUsesPlain, avatar3DBackSrc } from './avatar3d.js'; // v206: 3D avatar (geri alma: avatar3d.js)
 import { CATALOG_MAP } from '../HouseScreen/houseCatalog.js'; // v198: evdeki eşya eylemleri (kit.js zaten yüklüyor)
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import { ANIMAL_BY_KEY } from '../../../functions/animalData.js'; // v198: evdeki hayvanlar
@@ -244,7 +244,7 @@ function requestLook3(e) {
   const plainAv = avatar3DUsesPlain(e.full) ? avatar3DPlain(e.full) : e.full;
   let boSvg = '';
   try {
-    boSvg = buildAvatarBackLayerMarkup(plainAv);
+    boSvg = buildAvatarBackLayerMarkup(avatar3DBackSrc(e.full));
   } catch {
     boSvg = '';
   }
@@ -563,6 +563,7 @@ class Fig {
       }
       if (!this.m3) {
         this.m3 = new Avatar3D(look3);
+        this.m3.hideFire = true; // v215: şehirde ateş aurası FireAuraFx ile (çift alev olmasın)
         this.group.add(this.m3.root);
       }
       const r = this.m3.root;

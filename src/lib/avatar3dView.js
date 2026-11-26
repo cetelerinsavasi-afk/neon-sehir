@@ -10,7 +10,7 @@
 //    Sırayla, kare başına bir tane üretilir; aynı avatar tekrar istenirse önbellekten.
 // =============================================================================
 import * as THREE from 'three';
-import { Avatar3D, makeAvatar3DLook, avatar3DPlain, avatar3DUsesPlain, AVATAR_3D_HIP } from '../components/City/avatar3d.js';
+import { Avatar3D, makeAvatar3DLook, avatar3DPlain, avatar3DUsesPlain, avatar3DBackSrc, AVATAR_3D_HIP } from '../components/City/avatar3d.js';
 import { buildFullAvatarSvgMarkup, buildFullAvatarBackSvgMarkup, buildAvatarBackLayerMarkup, DEFAULT_AVATAR } from './avatarShapes';
 
 const SHADOW_RE = /<ellipse cx="160" cy="562"[^>]*\/>/;
@@ -48,7 +48,7 @@ export function getAvatarLook3D(avatar, quality = 'hi') {
   const src = plain ? avatar3DPlain(full) : full;
   const [w, h] = quality === 'hi' ? (IS_MOBILE ? [288, 522] : [384, 696]) : [208, 377];
   // v215: pelerin / kanat katmanı ayrıca (varsa) → 3D'de sırt kartı
-  const bo = buildAvatarBackLayerMarkup(src);
+  const bo = buildAvatarBackLayerMarkup(avatar3DBackSrc(full));
   p = Promise.all([raster(buildFullAvatarSvgMarkup(src, { pose: 'idle' }), w, h), raster(buildFullAvatarBackSvgMarkup(src, { pose: 'idle' }), w, h), bo ? raster(bo, w, h) : null]).then(([f, b, k]) => makeAvatar3DLook(f, b, full, { plain, backOnly: k }));
   p.catch(() => LOOKS.delete(k));
   LOOKS.set(k, p);
@@ -79,7 +79,7 @@ const STOOL_H = 0.45;
 
 // --- etkileşimli önizleme ---------------------------------------------------------------
 export class AvatarViewer {
-  constructor(canvas, { yaw = -0.35, frame = 'full' } = {}) {
+  constructor(canvas, { yaw = -0.35, frame = 'full', drag = true } = {}) {
     this.canvas = canvas;
     this.r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'low-power' });
     this.r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
@@ -103,7 +103,7 @@ export class AvatarViewer {
     this.walkT = 0;
     this.visible = true;
     this.dead = false;
-    this._drag();
+    if (drag) this._drag();
     this.io = new IntersectionObserver((es) => (this.visible = es.some((e) => e.isIntersecting)));
     this.io.observe(canvas);
     let last = performance.now();
@@ -218,7 +218,7 @@ export class AvatarViewer {
     cancelAnimationFrame(this.raf);
     this.io.disconnect();
     const c = this.canvas;
-    c.removeEventListener('pointerdown', this._down);
+    if (this._down) c.removeEventListener('pointerdown', this._down);
     c.removeEventListener('pointermove', this._move);
     c.removeEventListener('pointerup', this._up);
     c.removeEventListener('pointercancel', this._up);

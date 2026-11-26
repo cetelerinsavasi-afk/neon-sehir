@@ -4,6 +4,7 @@ import { cosmeticsAction } from '../../services/gameActions';
 import { buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
 import { ACC_ART, drawPet, drawOwnerPet, drawAuraFx, drawAuraBackFx, PET_ART } from '../../lib/cosmeticsArt';
 import { PETS, ACCESSORIES, ACC_SLOTS, RARITY, LEASH_COLORS, priceOf } from '../../../functions/cosmeticsData.js';
+import { AvatarViewer, webglOk } from '../../lib/avatar3dView';
 import './AccessoryShop.css';
 
 // =============================================================================
@@ -72,10 +73,40 @@ function AccThumb({ item }) {
 }
 
 // --- Önizleme sahnesi: avatar ileri geri yürür, hayvan peşinden gelir ---------------
+// v215: avatar 3D (WebGL yoksa eski 2D çizim). Zemin, evcil hayvan, kalpler ve konuşma balonu
+// alttaki tuvalde; 3D avatar onun üstündeki şeffaf küçük tuvalde, yürüdükçe yana kayar ve döner.
 function Stage({ avatar, onPet, sayRef }) {
   const ref = useRef(null);
+  const ref3 = useRef(null);
+  const viewer = useRef(null);
+  const ready3 = useRef(false);
   const avRef = useRef(avatar);
   avRef.current = avatar;
+  const avKey = JSON.stringify(avatar || {});
+  useEffect(() => {
+    if (!ref3.current || !webglOk()) return undefined;
+    try {
+      viewer.current = new AvatarViewer(ref3.current, { yaw: 0, drag: false });
+    } catch {
+      viewer.current = null;
+    }
+    return () => {
+      viewer.current?.dispose();
+      viewer.current = null;
+      ready3.current = false;
+    };
+  }, []);
+  useEffect(() => {
+    const v = viewer.current;
+    if (!v) return undefined;
+    let live = true;
+    v.setAvatar(JSON.parse(avKey)).then((ok) => {
+      if (live && ok) ready3.current = true;
+    });
+    return () => {
+      live = false;
+    };
+  }, [avKey]);
   useEffect(() => {
     const cv = ref.current;
     if (!cv) return undefined;
@@ -94,6 +125,8 @@ function Stage({ avatar, onPet, sayRef }) {
       return e.ready ? e.img : null;
     };
     let lastImg = null;
+    let pose3 = 'idle';
+    let yaw3 = 0;
     const P = { x: 0.42, dir: 1, mode: 'idle', until: performance.now() + 1800 };
     let raf = 0;
     let last = performance.now();
@@ -149,16 +182,39 @@ function Stage({ avatar, onPet, sayRef }) {
       const baseY = H * 0.9;
       const pose = moving ? (Math.floor(now / 170) % 2 ? 'walk1' : 'walk2') : 'idle';
       const av = avRef.current;
-      const im = img(av, pose) || lastImg;
-      if (im) lastImg = im;
-      if (av.acc?.aura === 'fire') drawAuraBackFx(ctx, av.acc, x, baseY, h, now);
-      ctx.save();
-      ctx.translate(x, baseY);
-      if (P.dir < 0) ctx.scale(-1, 1);
-      if (im) ctx.drawImage(im, -w / 2, -h, w, h);
-      ctx.restore();
+      const v3 = viewer.current && ready3.current ? viewer.current : null;
+      const c3 = ref3.current;
+      if (v3 && c3) {
+        // 3D: tuval avatarın kutusu kadar; ayaklar zemin çizgisinde (aura 3D'de çizilir)
+        const oh = Math.round(h * 1.12);
+        const ow = Math.round(h * 0.95);
+        if (c3.style.width !== ow + 'px') {
+          c3.style.width = ow + 'px';
+          c3.style.height = oh + 'px';
+        }
+        c3.style.transform = `translate(${Math.round(x - ow / 2)}px, ${Math.round(baseY - oh * 0.956)}px)`;
+        c3.style.visibility = 'visible';
+        const want = moving ? 'walk' : 'idle';
+        if (want !== pose3) {
+          pose3 = want;
+          v3.setPose(want);
+        }
+        const yT = moving ? (P.dir > 0 ? Math.PI / 2 : -Math.PI / 2) : 0;
+        yaw3 += (yT - yaw3) * Math.min(1, dt * 8);
+        v3.yaw = yaw3;
+      } else {
+        if (c3) c3.style.visibility = 'hidden';
+        const im = img(av, pose) || lastImg;
+        if (im) lastImg = im;
+        if (av.acc?.aura === 'fire') drawAuraBackFx(ctx, av.acc, x, baseY, h, now);
+        ctx.save();
+        ctx.translate(x, baseY);
+        if (P.dir < 0) ctx.scale(-1, 1);
+        if (im) ctx.drawImage(im, -w / 2, -h, w, h);
+        ctx.restore();
+      }
       if (av.pet?.id) drawOwnerPet(ctx, { key: '__shop', x, baseY, facing: P.dir < 0 ? 'left' : 'right', h, w, pet: av.pet, moving, now });
-      if (av.acc?.aura) drawAuraFx(ctx, av.acc, x, baseY, h, now);
+      if (av.acc?.aura && !v3) drawAuraFx(ctx, av.acc, x, baseY, h, now);
       // kalpler + konuşma
       ctx.font = '20px sans-serif';
       ctx.textAlign = 'center';
@@ -193,7 +249,12 @@ function Stage({ avatar, onPet, sayRef }) {
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
   }, [sayRef]);
-  return <canvas ref={ref} className="acs-stage-cv" onPointerDown={onPet} />;
+  return (
+    <>
+      <canvas ref={ref} className="acs-stage-cv" onPointerDown={onPet} />
+      <canvas ref={ref3} className="acs-stage-3d" aria-hidden="true" />
+    </>
+  );
 }
 
 export default function AccessoryShop({ onBack }) {

@@ -237,6 +237,8 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
     });
 
     // kişiler
+    // v215: 3D avatarın baktığı yön (yw, radyan) — yoksa fotoğrafta herkes kameraya dönük çıkıyordu
+    const yawOf = (q) => (num(q.yw, -4, 4) !== null ? { yw: Math.round(q.yw * 1000) / 1000 } : {});
     const picked = [];
     const seen = new Set();
     for (const q of reqPeople) {
@@ -249,7 +251,7 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
         if (x === null || z === null || Math.hypot(x - mx, z - mz) > PHOTO_NPC_NEAR) continue;
         seen.add(q.uid);
         const car = typeof q.c === 'string' && carOwners.has(q.c) ? { c: q.c, k: Math.round(num(q.k, 0, 40) ?? 0) } : {};
-        picked.push({ uid: q.uid, x: r2(x), z: r2(z), y: r2(num(q.y, -6, 300) ?? 0), l: q.l ? 1 : 0, m: q.m ? 1 : 0, wp: q.wp ? 1 : 0, ...(num(q.sy, -6, 300) !== null && !car.c ? { sy: r2(q.sy) } : {}), ...car, npc: true, said: [] });
+        picked.push({ uid: q.uid, x: r2(x), z: r2(z), y: r2(num(q.y, -6, 300) ?? 0), l: q.l ? 1 : 0, m: q.m ? 1 : 0, wp: q.wp ? 1 : 0, ...yawOf(q), ...(num(q.sy, -6, 300) !== null && !car.c ? { sy: r2(q.sy) } : {}), ...car, npc: true, said: [] });
         continue;
       }
       const rec = rt.p.get(q.uid);
@@ -270,6 +272,7 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
         l: q.l ? 1 : 0,
         m: q.m ? 1 : 0,
         wp: q.wp ? 1 : 0,
+        ...yawOf(q),
         ...(num(q.sy, -6, 300) !== null && !car.c ? { sy: r2(q.sy) } : {}),
         ...car,
         ...(em ? { e: em } : {}),

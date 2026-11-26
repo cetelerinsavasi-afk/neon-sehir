@@ -490,6 +490,7 @@ export function makeAvatar3DLook(frontTex, backTex, avatar, { plain = false, bac
   const build = buildOf(avatar);
   const body = shapeOf(avatar);
   const gear = plain ? gearOf(avatar) : null;
+  const props = propsOf(avatar, plain);
   // kostüm: kask / başlık / maske kafanın kendisi olur → kafa, başlık çiziminin boyutuna büyütülür
   const head = plain ? HEAD_FIT0 : fitHead(fi);
   const tb = atlas(fi, bi, build, false, false, head, head !== HEAD_FIT0);
@@ -504,6 +505,8 @@ export function makeAvatar3DLook(frontTex, backTex, avatar, { plain = false, bac
     card,
     gear,
     gearKey: gear ? gear.key : '',
+    props,
+    propsKey: props.key,
     head,
     headKey: [head.cx, head.cy, head.rx, head.ry].join(','),
     hasBack: Boolean(bo),
@@ -520,9 +523,35 @@ export function makeAvatar3DLook(frontTex, backTex, avatar, { plain = false, bac
 // Kostümsüz avatarlarda gövdeye SAÇSIZ + ŞAPKASIZ çizim giydirilir (avatar3DPlain), saç ve şapka
 // buradaki gerçek 3D parçalardan gelir: avatarın kendi saç / şapka / ten renkleriyle.
 // Geometri + renk birleşimi önbellekte; aynı saç / şapkayı taşıyan herkes paylaşır.
-export const avatar3DPlain = (av) => ({ ...av, hairStyle: 'kel', hat: 'none' });
+// v215: elde tutulan eşya, puro, başlık aksesuarı (taç, boynuz…) ve aura da 3D modellenir →
+// çizimden çıkarılır (düz resim olarak gövdeye / karta yapışıp kötü duruyordu).
+const stripAcc = (acc, slots) => {
+  if (!acc || typeof acc !== 'object') return acc;
+  const o = { ...acc };
+  slots.forEach((k) => delete o[k]);
+  return o;
+};
+export const avatar3DPlain = (av) => ({
+  ...av,
+  hairStyle: 'kel',
+  hat: 'none',
+  heldItem: 'yok',
+  faceAcc: av?.faceAcc === 'cigar' ? 'none' : av?.faceAcc,
+  acc: stripAcc(av?.acc, ['head', 'aura']),
+});
 // Kostüm (look) giyen avatarda kafa çizimi kostümden gelir → saç / şapka modellenmez.
 export const avatar3DUsesPlain = (av) => !av?.look;
+// v215: sırt kartının (pelerin / kanat) çizileceği avatar — aura (yerdeki halka, alev, yıldız) 3D'de ayrı
+export const avatar3DBackSrc = (av) => (avatar3DUsesPlain(av) ? avatar3DPlain(av) : { ...av, acc: stripAcc(av?.acc, ['aura']) });
+const HEAD_ACC = ['simit', 'foil', 'chef', 'horns', 'catears', 'halo', 'crown'];
+const HELD = ['tabanca', 'bicak', 'sopa', 'para', 'canta', 'telefon', 'kadeh'];
+const AURAS = ['ring', 'spark', 'fire'];
+// elde tutulan eşya + aura (kostümde de aura)
+export function propsOf(av, plain) {
+  const held = plain && HELD.includes(av?.heldItem) ? av.heldItem : '';
+  const aura = AURAS.includes(av?.acc?.aura) ? av.acc.aura : '';
+  return { held, aura, key: held + '|' + aura };
+}
 
 const HR = [0.58, 0.66, 0.56]; // kafa yarıçapları (kafa yereli)
 function shade(hex, p) {
@@ -542,8 +571,10 @@ export function gearOf(av) {
     hatColor: av?.hatColor || '#0d0d0d',
     skin: av?.skin || '#c68863',
     earring: av?.earring || 'yok',
+    headAcc: HEAD_ACC.includes(av?.acc?.head) ? av.acc.head : '',
+    cigar: av?.faceAcc === 'cigar' && !av?.acc?.face,
   };
-  g.key = [g.hair, g.hairColor, g.hat, g.hatColor, g.skin, g.earring].join('|');
+  g.key = [g.hair, g.hairColor, g.hat, g.hatColor, g.skin, g.earring, g.headAcc, g.cigar ? 1 : 0].join('|');
   return g;
 }
 const MATS = new Map();
@@ -770,6 +801,167 @@ function hatGeos(hat, c) {
   return L;
 }
 
+// v215 — başlık aksesuarları (kafa yereli: kafa yarıçapı 0.58 / 0.66 / 0.56, tepe y = 0.66; saçla ~0.74)
+function headAccGeos(id) {
+  const L = [];
+  const add = (g, col) => L.push([g, col]);
+  switch (id) {
+    case 'simit': {
+      add(new THREE.TorusGeometry(0.46, 0.13, 10, 28).applyMatrix4(mtx([0, 0.5, -0.02], [1, 1, 0.95], [Math.PI / 2 - 0.12, 0, 0])), '#c47a30');
+      for (let i = 0; i < 14; i++) {
+        const a = (i / 14) * Math.PI * 2;
+        add(E([Math.cos(a) * 0.46, 0.63 - Math.sin(a) * 0.05, Math.sin(a) * 0.44 - 0.02], [0.03, 0.012, 0.018], [0, a, 0], [6, 4]), '#f7e7c4');
+      }
+      break;
+    }
+    case 'foil':
+      add(new THREE.ConeGeometry(0.5, 0.95, 9).applyMatrix4(mtx([0, 0.86, -0.02], [1, 1, 0.95])), '#cfd6df');
+      add(new THREE.TorusGeometry(0.49, 0.04, 6, 24).applyMatrix4(mtx([0, 0.4, -0.02], [1, 1, 0.95], [Math.PI / 2, 0, 0])), '#8b95a3');
+      break;
+    case 'chef':
+      add(new THREE.CylinderGeometry(0.48, 0.48, 0.46, 20).applyMatrix4(mtx([0, 0.62, -0.02], [1, 1, 0.95])), '#ffffff');
+      for (const [x, z] of [[-0.26, 0.05], [0.26, 0.05], [0, -0.2], [0, 0.24]]) add(E([x, 0.92, z], [0.32, 0.25, 0.3], [0, 0, 0], [12, 8]), '#f4f6fa');
+      add(E([0, 0.98, 0], [0.34, 0.3, 0.33], [0, 0, 0], [12, 8]), '#ffffff');
+      break;
+    case 'horns':
+      for (const sx of [-1, 1]) {
+        add(new THREE.ConeGeometry(0.1, 0.34, 10).applyMatrix4(mtx([sx * 0.36, 0.64, 0.1], [1, 1, 1], [0.15, 0, -sx * 0.5])), '#d7263d');
+        add(new THREE.ConeGeometry(0.055, 0.2, 8).applyMatrix4(mtx([sx * 0.45, 0.84, 0.12], [1, 1, 1], [0.15, 0, -sx * 0.15])), '#d7263d');
+      }
+      break;
+    case 'catears':
+      add(new THREE.TorusGeometry(0.56, 0.035, 6, 24, Math.PI).applyMatrix4(mtx([0, 0.12, -0.02], [1, 1.12, 1])), '#ff2e88');
+      for (const sx of [-1, 1]) {
+        add(new THREE.ConeGeometry(0.17, 0.32, 4).applyMatrix4(mtx([sx * 0.34, 0.74, 0], [1, 1, 0.45], [0, 0, -sx * 0.32])), '#ff2e88');
+        add(new THREE.ConeGeometry(0.09, 0.2, 4).applyMatrix4(mtx([sx * 0.34, 0.72, 0.05], [1, 1, 0.3], [0, 0, -sx * 0.32])), '#ffc2dc');
+      }
+      break;
+    case 'halo':
+      add(new THREE.TorusGeometry(0.4, 0.045, 8, 32).applyMatrix4(mtx([0, 0.96, -0.04], [1, 1, 1], [Math.PI / 2 - 0.1, 0, 0])), '#ffe566');
+      break;
+    case 'crown': {
+      const gold = '#ffd23f';
+      add(new THREE.CylinderGeometry(0.47, 0.45, 0.26, 20, 1, true).applyMatrix4(mtx([0, 0.52, -0.02])), gold);
+      for (let i = 0; i < 7; i++) {
+        const a = (i / 7) * Math.PI * 2;
+        add(new THREE.ConeGeometry(0.09, 0.3, 5).applyMatrix4(mtx([Math.sin(a) * 0.47, 0.79, Math.cos(a) * 0.47 - 0.02])), gold);
+        add(E([Math.sin(a) * 0.47, 0.95, Math.cos(a) * 0.47 - 0.02], [0.035, 0.035, 0.035], [0, 0, 0], [6, 4]), '#fff3b0');
+      }
+      add(E([0, 0.52, 0.46], [0.07, 0.07, 0.04]), '#ff2e88');
+      add(E([-0.3, 0.52, 0.36], [0.05, 0.05, 0.03]), '#22d3ee');
+      add(E([0.3, 0.52, 0.36], [0.05, 0.05, 0.03]), '#22d3ee');
+      break;
+    }
+    default:
+      break;
+  }
+  return L;
+}
+// v215 — elde tutulan eşyalar (el yereli: kol aşağı sarkık, -y kol boyunca aşağı, +z öne)
+function heldGeos(id) {
+  const L = [];
+  const add = (g, col) => L.push([g, col]);
+  const B = (w, h, d, p, r = [0, 0, 0]) => new RoundedBoxGeometry(w, h, d, 1, Math.min(w, h, d) * 0.3).applyMatrix4(mtx(p, [1, 1, 1], r));
+  switch (id) {
+    case 'tabanca':
+      add(B(0.075, 0.09, 0.34, [0, 0.03, 0.12]), '#2b2b2b');
+      add(B(0.07, 0.19, 0.09, [0, -0.05, -0.01], [0.25, 0, 0]), '#1a1a1a');
+      add(new THREE.CylinderGeometry(0.018, 0.018, 0.05, 8).applyMatrix4(mtx([0, 0.04, 0.31], [1, 1, 1], [Math.PI / 2, 0, 0])), '#0d0d0d');
+      break;
+    case 'bicak':
+      add(B(0.055, 0.065, 0.17, [0, 0, 0]), '#3a2f1d');
+      add(B(0.03, 0.13, 0.025, [0, 0, 0.09]), '#8a8a8a');
+      add(new THREE.BoxGeometry(0.012, 0.06, 0.3).applyMatrix4(mtx([0, 0.008, 0.25])), '#d9dde3');
+      add(new THREE.ConeGeometry(0.03, 0.08, 4).applyMatrix4(mtx([0, 0.008, 0.43], [0.4, 1, 1], [Math.PI / 2, 0, 0])), '#d9dde3');
+      break;
+    case 'sopa':
+      // beyzbol sopası: elden öne-aşağı
+      add(new THREE.CylinderGeometry(0.075, 0.035, 0.95, 12).applyMatrix4(mtx([0, -0.18, 0.4], [1, 1, 1], [-1.15, 0, 0])), '#c9a066');
+      add(new THREE.CylinderGeometry(0.045, 0.045, 0.05, 10).applyMatrix4(mtx([0, 0.02, -0.04], [1, 1, 1], [-1.15, 0, 0])), '#7a5230');
+      break;
+    case 'para':
+      for (let i = 0; i < 3; i++) add(B(0.09, 0.045, 0.24, [0, -0.02 + i * 0.045, 0.05 + i * 0.012], [0, 0.08 * (i - 1), 0]), i === 2 ? '#2a8a4a' : i ? '#22703f' : '#1d5c3a');
+      add(new THREE.BoxGeometry(0.095, 0.15, 0.04).applyMatrix4(mtx([0, 0.025, 0.05])), '#d4af37');
+      break;
+    case 'canta':
+      // evrak çantası: sapından tutulur, aşağı sarkar
+      add(new THREE.TorusGeometry(0.06, 0.016, 6, 12, Math.PI).applyMatrix4(mtx([0, -0.02, 0.02], [1, 1, 1], [0, Math.PI / 2, 0])), '#2a2014');
+      add(B(0.12, 0.3, 0.42, [0, -0.22, 0.02]), '#3a2f1d');
+      add(B(0.13, 0.04, 0.08, [0, -0.11, 0.02]), '#d4af37');
+      break;
+    case 'telefon':
+      add(B(0.1, 0.2, 0.022, [0, 0.06, 0.08], [-0.5, 0, 0]), '#111111');
+      add(new THREE.PlaneGeometry(0.08, 0.15).applyMatrix4(mtx([0, 0.066, 0.093], [1, 1, 1], [-0.5, 0, 0])), '#4ab8e0');
+      break;
+    case 'kadeh':
+      add(new THREE.CylinderGeometry(0.075, 0.012, 0.13, 14, 1, true).applyMatrix4(mtx([0, 0.2, 0.06])), '#e8d27a');
+      add(new THREE.CylinderGeometry(0.066, 0.02, 0.09, 14).applyMatrix4(mtx([0, 0.185, 0.06])), '#8a1d3a');
+      add(new THREE.CylinderGeometry(0.01, 0.01, 0.13, 6).applyMatrix4(mtx([0, 0.07, 0.06])), '#d4af37');
+      add(new THREE.CylinderGeometry(0.05, 0.05, 0.012, 14).applyMatrix4(mtx([0, 0.005, 0.06])), '#d4af37');
+      break;
+    default:
+      break;
+  }
+  return L;
+}
+// v215 — aura (model birimi, ayak tabanı y = 0)
+function auraGeos(id) {
+  const L = [];
+  const add = (g, col, tag) => L.push([g, col, tag]);
+  switch (id) {
+    case 'ring':
+      add(new THREE.TorusGeometry(1.25, 0.06, 8, 48).applyMatrix4(mtx([0, 0.06, 0], [1, 1, 0.75], [Math.PI / 2, 0, 0])), '#22d3ee', 'ring');
+      add(new THREE.TorusGeometry(1.0, 0.025, 6, 40).applyMatrix4(mtx([0, 0.04, 0], [1, 1, 0.75], [Math.PI / 2, 0, 0])), '#7ef9ff', 'ring');
+      break;
+    case 'spark':
+      for (let i = 0; i < 9; i++) {
+        const a = i * 2.39;
+        const r = 1.15 + (i % 3) * 0.25;
+        add(new THREE.OctahedronGeometry(0.11 - (i % 3) * 0.02).applyMatrix4(mtx([Math.cos(a) * r, 0.6 + ((i * 0.53) % 1) * 4.6, Math.sin(a) * r * 0.7], [0.7, 1.4, 0.35])), i % 2 ? '#fff6a8' : '#ffd23f', 'spark');
+      }
+      break;
+    case 'fire':
+      for (let i = 0; i < 7; i++) {
+        const a = (i / 7) * Math.PI * 2;
+        const h = 0.7 + (i % 3) * 0.3;
+        add(new THREE.ConeGeometry(0.2, h, 7).applyMatrix4(mtx([Math.cos(a) * 0.95, h / 2, Math.sin(a) * 0.7])), '#ff6a1a', 'fire');
+        add(new THREE.ConeGeometry(0.14, h * 0.6, 6).applyMatrix4(mtx([Math.cos(a) * 0.95, h * 0.3, Math.sin(a) * 0.7 + 0.05])), '#ffd23f', 'fire');
+      }
+      break;
+    default:
+      break;
+  }
+  return L;
+}
+const PROPS = new Map();
+function propParts(kind, id) {
+  const k = kind + ':' + id;
+  let out = PROPS.get(k);
+  if (out) return out;
+  const list = kind === 'held' ? heldGeos(id) : auraGeos(id);
+  const by = new Map();
+  for (const [geo, col, tag] of list) {
+    const kk = col + '|' + (tag || '');
+    if (!by.has(kk)) by.set(kk, { color: col, tag, list: [] });
+    const ng = geo.index ? geo.toNonIndexed() : geo;
+    if (ng !== geo) geo.dispose();
+    ng.deleteAttribute('uv');
+    by.get(kk).list.push(ng);
+  }
+  out = [...by.values()].map((v) => ({ color: v.color, tag: v.tag, geo: merge(v.list) }));
+  PROPS.set(k, out);
+  return out;
+}
+const GLOW = new Map();
+function glowMat(c) {
+  let m = GLOW.get(c);
+  if (!m) {
+    m = new THREE.MeshBasicMaterial({ color: c, toneMapped: false, transparent: true, opacity: 0.85, depthWrite: false });
+    GLOW.set(c, m);
+  }
+  return m;
+}
+
 const GEAR = new Map();
 function gearParts(g) {
   const st = AVATAR_STYLES[STYLE_ID] || AVATAR_STYLES.klasik;
@@ -786,6 +978,21 @@ function gearParts(g) {
   };
   hairGeos(g.hair, g.hat).forEach((geo) => put(geo, g.hairColor));
   hatGeos(g.hat, g.hatColor).forEach(([geo, col]) => put(geo, col));
+  headAccGeos(g.headAcc).forEach(([geo, col]) => put(geo, col));
+  if (g.cigar) {
+    // puro: ağzın sağ köşesinden öne-yana uzanır, ucu kor
+    const dir = new THREE.Vector3(0.42, -0.22, 0.88).normalize();
+    const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+    const base = new THREE.Vector3(0.11, -0.38, 0.47);
+    const at = (d) => base.clone().addScaledVector(dir, d);
+    const cyl = new THREE.CylinderGeometry(0.034, 0.034, 0.26, 10);
+    cyl.applyQuaternion(q).translate(...at(0.13).toArray());
+    put(cyl, '#7a5230');
+    const band = new THREE.CylinderGeometry(0.037, 0.037, 0.03, 10);
+    band.applyQuaternion(q).translate(...at(0.05).toArray());
+    put(band, '#d4af37');
+    put(E(at(0.265).toArray(), [0.034, 0.034, 0.034], [0, 0, 0], [8, 6]), '#ff5a2a');
+  }
   // kulaklar + küpeler (uzun saç, afro, kapüşon ve kask kulağı örter)
   const earsHidden = g.hair === 'long' || g.hair === 'afro' || g.hat === 'hoodup' || g.hat === 'helmet';
   for (const sx of earsHidden ? [] : [-1, 1]) {
@@ -854,6 +1061,22 @@ export class Avatar3D {
     this.hand = new THREE.Group();
     this.hand.position.set(0, -0.74, 0.13);
     this.arms[1].el.add(this.hand);
+    // v215: elde tutulan eşya (tabanca, bıçak, sopa…) ve aura (halka, yıldız, alev)
+    this.heldProp = new THREE.Group();
+    this.heldProp.scale.setScalar(1.55); // 2D çizimdeki boyuna yakın (elle orantılı)
+    this.hand.add(this.heldProp);
+    if (look.props?.held) for (const g of propParts('held', look.props.held)) mk(g.geo, colorMat(g.color), this.heldProp).userData.gear = true;
+    this.auraG = new THREE.Group();
+    this.root.add(this.auraG);
+    this.fireG = null;
+    if (look.props?.aura) {
+      for (const g of propParts('aura', look.props.aura)) {
+        const m = mk(g.geo, g.tag === 'spark' ? colorMat(g.color) : glowMat(g.color), this.auraG);
+        m.userData.gear = true;
+        m.userData.aura = g.tag;
+      }
+      if (look.props.aura === 'fire') this.fireG = this.auraG;
+    }
     this.legs = P.legs.map((l) => {
       const pv = new THREE.Group();
       pv.position.set(l.pos[0], l.pos[1] * st.legs, l.pos[2]);
@@ -876,7 +1099,7 @@ export class Avatar3D {
   setLook(look) {
     if (look === this.look) return true;
     // vücut yapısı / saç / şapka / kabuk değişti → yeniden kur
-    if (this.styleId !== STYLE_ID || look.build !== this.look.build || look.shape !== this.look.shape || look.gearKey !== this.look.gearKey || look.headKey !== this.look.headKey || look.hasBack !== this.look.hasBack) return false;
+    if (this.styleId !== STYLE_ID || look.build !== this.look.build || look.shape !== this.look.shape || look.gearKey !== this.look.gearKey || look.propsKey !== this.look.propsKey || look.headKey !== this.look.headKey || look.hasBack !== this.look.hasBack) return false;
     this.meshes.forEach((m) => {
       if (m.userData.gear) return;
       m.material = m.material === this.look.card ? look.card : look.body;
@@ -1038,6 +1261,15 @@ export class Avatar3D {
     this.upper.position.y = bob;
     this.upper.rotation.z = roll;
     this.upper.rotation.y = twist;
+    // v215: yiyecek / içecek elde iken eşya gizlenir; aura canlı
+    this.heldProp.visible = !o.hold && sk < 0.3;
+    if (this.auraG.children.length) {
+      const kind = this.look.props?.aura;
+      if (kind === 'spark') this.auraG.rotation.y = t * 0.6;
+      else if (kind === 'ring') this.auraG.scale.set(1 + Math.sin(t * 3) * 0.04, 1, 1 + Math.sin(t * 3) * 0.04);
+      else if (kind === 'fire') this.auraG.scale.set(1, 0.85 + Math.abs(Math.sin(t * 7.3)) * 0.2 + Math.sin(t * 13) * 0.05, 1);
+      this.auraG.visible = sk < 0.3 && this.kTread < 0.5 && !(this.hideFire && kind === 'fire');
+    }
   }
   dispose() {
     this.root.removeFromParent();
