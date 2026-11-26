@@ -436,6 +436,7 @@ class Fig {
     if (md2 > 1e-6 && md2 < 9) this.yawT = Math.atan2(mdx, mdz);
     if (!this.moving && this.standYaw != null) this.yawT = this.standYaw;
     if (this.sitting && !this.inCar && (this.seat3Yaw ?? this.seatYaw) != null) this.yawT = this.seat3Yaw ?? this.seatYaw; // v207: koltuğun yönü
+    if (this.inCar && this.carYaw != null) this.yaw = this.yawT = this.carYaw; // v209: araçta yön = aracın yönü (gecikmesiz)
     if (this.yawT == null) this.yawT = ang;
     if (this.yaw == null) this.yaw = this.yawT;
     this.yaw = wrapAng(this.yaw + wrapAng(this.yawT - this.yaw) * Math.min(1, dt * 12 || 1));
@@ -511,7 +512,7 @@ class Fig {
     this.plane.position.y = this.sitting ? 0.04 + kIn * (AV_WAIST_FROM_TOP - AV_PLANE_H / 2) : AV_PLANE_H / 2 - AV_FEET - this.sinkCur;
     // v206 — 3D avatar (yakında, ayakta / yürürken). Kâğıt yüzey sahnede kalır ama çizilmez
     // (malzemesi gizlenir): ateş aurası gibi ona bağlı efektler çalışmaya devam eder.
-    const use3d = FIG3D_DIST > 0 && hd < FIG3D_DIST && this.tex.ready && !this.inCar && !(this.forcePose && this.tex.tex[this.forcePose]);
+    const use3d = FIG3D_DIST > 0 && hd < FIG3D_DIST && this.tex.ready && !(this.forcePose && this.tex.tex[this.forcePose]); // v209: araçta da 3D
     let look3 = null;
     if (use3d) {
       look3 = this.tex.look3 || null;
@@ -536,8 +537,9 @@ class Fig {
         dt,
         t: now / 1000,
         walkT: this.walkT * 1.3,
-        walk: this.moving && !this.sitting,
-        sit: this.sitting,
+        walk: this.moving && !this.sitting && !this.inCar,
+        sit: this.sitting || this.inCar,
+        drive: this.inCar,
         swim: deep && this.moving,
         tread: deep && !this.moving,
         tilt: em ? 0 : tilt,
@@ -548,6 +550,7 @@ class Fig {
       let ry = stand + (seatOff - stand) * this.m3.kSit;
       ry += (-0.12 - ry) * this.m3.kSwim; // yüzerken gövde su yüzeyinde
       r.position.set(this.pivot.position.x, ry, 0);
+      r.scale.setScalar(this.m3.baseScale * (this.inCar ? 0.9 : 1)); // araçta biraz küçük (kâğıt figürdeki gibi)
       this.mat.visible = false;
     } else {
       if (this.m3) this.m3.root.visible = false;

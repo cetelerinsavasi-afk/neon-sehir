@@ -186,9 +186,18 @@ function parts(build, body) {
   const yMid = s2.ty + (380 - s2.ty) * 0.5;
   out.arms = [-1, 1].map((sx) => {
     const strip = sx < 0 ? { x0: s2.tl + 3, x1: s2.tl + 3 + armR * 140 } : { x0: s2.tr - 3 - armR * 140, x1: s2.tr - 3 };
+    // omuz başı: gövde ile kol arasında yuvarlak omuz; 2D çizimin omuz köşesinden boyanır
+    // (kostümde omuzluk / zırh buraya gelir, düz kart olarak havada kalmaz)
+    const pos = [sx * ((W / 2) * TS.sh + armR * 0.8), top - 0.2, 0];
+    const cr = [armR * 1.75, armR * 1.45, Math.min(D * 0.5, armR * 1.7)];
+    const cx = sx < 0 ? { x0: s2.tl - 16, x1: s2.tl + 30 } : { x0: s2.tr - 30, x1: s2.tr + 16 };
+    out.upper = merge([
+      out.upper,
+      bake(sph, mtx([pos[0] - sx * armR * 0.35, pos[1] + 0.02, 0], cr), { x0: pos[0] - sx * armR * 0.35 - cr[0], x1: pos[0] - sx * armR * 0.35 + cr[0], y0: pos[1] + 0.02 - cr[1], y1: pos[1] + 0.02 + cr[1] }, { ...cx, y0: s2.ty - 8, y1: s2.ty + 42 }),
+    ]);
     return {
       sx,
-      pos: [sx * ((W / 2) * TS.sh + armR * 0.8), top - 0.2, 0],
+      pos,
       upperArm: merge([bake(new THREE.CapsuleGeometry(armR, 0.56, 3, 8), mtx([0, -0.28, 0]), { x0: -armR, x1: armR, y0: -0.56 - armR, y1: armR }, { ...strip, y0: s2.ty + 6, y1: yMid })]),
       foreArm: merge([
         bake(new THREE.CapsuleGeometry(armR * 0.92, 0.46, 3, 8), mtx([0, -0.24, 0]), { x0: -armR, x1: armR, y0: -0.47 - armR, y1: 0 }, { ...strip, y0: yMid, y1: 376 }),
@@ -227,10 +236,13 @@ function eraseBody(x, build, head) {
   x.fill();
   // gövde kutusu biraz geniş silinir: kıyafetin kenar gölgesi / dikişi kartta ince çubuk gibi kalmasın
   x.fillRect(s.tl - 10, s.ty - 6, s.tr - s.tl + 20, 386 - s.ty);
+  // omuz köşeleri (omuzluk / zırh / kabarık omuz): 3D omuz başına giydiriliyor
+  x.fillRect(s.tl - 30, s.ty - 22, 62, 72);
+  x.fillRect(s.tr - 32, s.ty - 22, 62, 72);
   x.fillRect(138, 220, 44, 56);
   for (const cx of [s.cx, SW - s.cx]) x.fillRect(cx - s.hw - 3, 376, s.hw * 2 + 6, 174);
 }
-function atlas(front, back, build, erase, ears = false, head = HEAD_FIT0) {
+function atlas(front, back, build, erase, ears = false, head = HEAD_FIT0, fillHead = false) {
   const w = front.width;
   const h = front.height;
   const c = document.createElement('canvas');
@@ -243,8 +255,23 @@ function atlas(front, back, build, erase, ears = false, head = HEAD_FIT0) {
     // Boş (şeffaf) kenarlar siyah görünmesin: resim kaydırılarak altına tekrar çizilir,
     // kenar renkleri boşluğa taşar (kostüm gövdesi 2D kutudan dar olduğunda kollar / bacaklar).
     x.globalCompositeOperation = 'destination-over';
+    if (fillHead) {
+      // büyütülmüş (kostüm) kafada çene yanlarındaki boşluk boyun / gövde rengiyle değil, başlığın
+      // kendi renkleriyle dolsun: kafa bölgesi biraz büyütülüp altına çizilir
+      for (const [img, ox] of [[front, 0], [back, w]]) {
+        x.save();
+        x.beginPath();
+        x.rect(ox, 0, w, h * (240 / SH));
+        x.clip();
+        const s = 1.3;
+        const cx = (160 / SW) * w;
+        const cy = (head.cy / SH) * h;
+        x.drawImage(img, ox + cx * (1 - s), cy * (1 - s), w * s, h * s);
+        x.restore();
+      }
+    }
     for (const d of [2, 4, 7, 11, 16, 23, 32]) {
-      for (const [ox, oy] of [[d, 0], [-d, 0], [0, d], [0, -d]]) {
+      for (const [ox, oy] of [[d, 0], [-d, 0], [0, d], [0, -d], [d, d], [-d, d], [d, -d], [-d, -d]]) {
         x.drawImage(front, ox, oy, w, h);
         x.drawImage(back, w + ox, oy, w, h);
       }
@@ -290,25 +317,27 @@ function fitHead(img) {
     x.drawImage(img, 0, 0, w, h);
     const d = x.getImageData(0, 0, w, h).data;
     const k = w / SW;
-    // kafa bölgesi: x 60..260, y 20..238 (omuzun üstü)
-    let x0 = 1e9;
-    let x1 = -1e9;
-    let y0 = 1e9;
-    for (let j = Math.floor(20 * k); j < Math.floor(238 * k); j++) {
-      for (let i = Math.floor(60 * k); i < Math.ceil(260 * k); i++) {
-        if (d[(j * w + i) * 4 + 3] < 128) continue;
-        x0 = Math.min(x0, i);
-        x1 = Math.max(x1, i);
-        y0 = Math.min(y0, j);
-      }
+    const on = (sx, sy) => d[(Math.round(sy * k) * w + Math.round(sx * k)) * 4 + 3] > 128;
+    // Her satırda kafanın ortasından (x=160) dışa doğru KESİNTİSİZ dolu genişlik: kanat, kılıç,
+    // omuzluk gibi kafaya bitişik olmayan parçalar sayılmaz. Omuz hizasının (y≈205) altı bakılmaz.
+    let half = 0;
+    let top = 104;
+    for (let sy = 40; sy <= 205; sy += 2) {
+      if (!on(160, sy)) continue;
+      let l = 0;
+      let r = 0;
+      while (160 - l - 2 > 0 && on(160 - l - 2, sy)) l += 2;
+      while (160 + r + 2 < SW && on(160 + r + 2, sy)) r += 2;
+      const hw = Math.min(l, r) + Math.abs(l - r) * 0.25; // tek yana taşan parça (yelken, yüzgeç) az sayılır
+      if (sy >= 120) half = Math.max(half, hw);
+      // tepe: en az normal kafanın %60'ı genişliğindeki ilk satır (ince yüzgeç / boynuz / püskül hariç)
+      if (hw >= 35 && sy < top) top = sy;
     }
-    if (x0 > x1) return HEAD_FIT0;
-    const left = 160 - x0 / k;
-    const right = x1 / k - 160;
-    const rx = Math.min(84, Math.max(58, Math.max(left, right) * 0.92));
+    const rx = Math.round(Math.min(80, Math.max(58, half)));
     const chin = 236;
-    const ry = Math.min(82, Math.max(66, (chin - y0 / k) / 2));
-    return { cx: 160, cy: Math.round(chin - ry), rx: Math.round(rx), ry: Math.round(ry) };
+    const ry = Math.round(Math.min(80, Math.max(66, (chin - top) / 2)));
+    if (rx <= 62 && ry <= 68) return HEAD_FIT0; // normal boy kafa
+    return { cx: 160, cy: chin - ry, rx, ry };
   } catch {
     return HEAD_FIT0; // okunamayan resim (güvenlik kısıtı) → normal kafa
   }
@@ -340,7 +369,7 @@ export function makeAvatar3DLook(frontTex, backTex, avatar, { plain = false } = 
   const gear = plain ? gearOf(avatar) : null;
   // kostüm: kask / başlık / maske kafanın kendisi olur → kafa, başlık çiziminin boyutuna büyütülür
   const head = plain ? HEAD_FIT0 : fitHead(fi);
-  const tb = atlas(fi, bi, build, false);
+  const tb = atlas(fi, bi, build, false, false, head, head !== HEAD_FIT0);
   const tc = atlas(fi, bi, build, true, plain, head);
   const bodyMat = new THREE.MeshMatcapMaterial({ map: tb, matcap: matcap(), toneMapped: false });
   const card = new THREE.MeshMatcapMaterial({ map: tc, matcap: matcap(), toneMapped: false, alphaTest: 0.5 });
@@ -648,6 +677,7 @@ export class Avatar3D {
     const P = parts(look.build, look.shape);
     this.root = new THREE.Group();
     this.root.scale.setScalar(MODEL_SCALE);
+    this.baseScale = MODEL_SCALE;
     this.upper = new THREE.Group();
     this.root.add(this.upper);
     this.meshes = [];
@@ -707,7 +737,7 @@ export class Avatar3D {
     this.look = look;
     return true;
   }
-  // o: { dt, t, walkT, walk, sit, swim, tread, tilt, emote: { kind, e } }
+  // o: { dt, t, walkT, walk, sit, drive, swim, tread, tilt, emote: { kind, e } }
   //   sit: oturuyor · swim: suda ilerliyor (yatay kulaç) · tread: suda duruyor (ayak çırpma)
   //   emote: dans / zipla / selam / alkis / kalp (e = başlangıçtan beri geçen saniye)
   pose(o) {
@@ -790,6 +820,15 @@ export class Avatar3D {
         arm[i].ex = mix(arm[i].ex, -0.6, k);
       });
       bob *= 1 - k;
+    }
+    // --- araçta: eller direksiyonda / gidonda ---
+    if (o.drive && this.kSit > 0.001) {
+      const k = this.kSit;
+      A.forEach((a, i) => {
+        arm[i].x = mix(arm[i].x, -1.05, k);
+        arm[i].z = mix(arm[i].z, -a.sx * 0.14, k);
+        arm[i].ex = mix(arm[i].ex, -0.4, k);
+      });
     }
     // --- suda durma: ayak çırpma + kollar yanlarda kürek ---
     if (this.kTread > 0.001) {
