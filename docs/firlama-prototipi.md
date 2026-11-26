@@ -3,7 +3,7 @@
 Sert çarpmada avatar bineğin üstünden fırlar, havada takla atar, yere düşüp kayar, durur ve kalkar.
 Yavaş çarpmada hiçbir şey değişmez (şehirdeki gibi sadece sarsıntı + geri sekme).
 
-Şehre henüz bağlanmadı: oyunda hiçbir dosya değişmedi, sadece yeni dosyalar eklendi.
+v216 ile şehre bağlandı (bkz. `docs/v216-guncelleme.md`). Prototip test için duruyor.
 
 ## Çalıştırma
 
@@ -34,10 +34,12 @@ Böylece duvara sürtünerek geçmek fırlatmaz, aynı hızla dik çarpmak fırl
 
 | Binek | Sınır (dik hız) |
 |---|---|
-| Bisiklet | 20 km/sa |
-| Deve | 22 km/sa |
-| At | 25 km/sa |
-| Motorlar (4'ü) | 28 km/sa |
+| Bisiklet | 30 km/sa |
+| Deve | 33 km/sa |
+| At | 38 km/sa |
+| Motorlar (4'ü) | 42 km/sa |
+
+(v216: ilk prototip değerlerinin 1,5 katı — orta hızdaki çarpmalar fırlatmasın.)
 
 Değerler `EJECT_MIN` (m/sn) içinde; prototipte sürgülerle denenebilir. Araba / otobüs / tır hiç fırlatmaz.
 
@@ -55,12 +57,8 @@ Değerler `EJECT_MIN` (m/sn) içinde; prototipte sürgülerle denenebilir. Araba
   (devrilen motor kaldırılır).
 - 50 km/sa'te düz yerde toplam ≈ 16 m (≈ 12 m uçuş + kayma), 100 km/sa'te ≈ 35 m.
 
-## Şehre bağlamak için (karar sonrası)
+## Şehirde (v216)
 
-1. `cityEngine.js › stepDrive` içinde, `if (impact) carJolt(c, impact, dt);` satırından sonra:
-   `if (impact && c === myCar && ejectCheck(c.v, impact.vn)) ejectRider(c, öncekiHız);`
-   (öncekiHız: `carImpactAt` çağrılmadan önceki `c.vx / c.vz`).
-2. `ejectRider`: `driving = false`, `me` figürünün 3D modeli (`me.m3`) prototipteki `pivot` gibi
-   ragdoll'a bağlanır; `stepRide` yerine fırlama adımı. Kalkınca normal yaya, araç olduğu yerde kalır.
-3. Çok oyunculu: diğer oyunculara sadece "fırladı + düştüğü yer" gönderilir (RTDB'de yeni durum `p: 'f'`);
-   uçuşu herkes kendi cihazında aynı başlangıçtan oynatır. Sunucuya yeni fonksiyon gerekmez.
+`cityEngine.js › stepDrive` çarpmayı (`carImpactAt`) bulunca, sert ise `ejectRider` → `stepFall` çalışır;
+sürücüsüz binek `stepLooseCar` ile kayar / geri çekilir. 3D avatar `Fig.update` içinde `me.rag` ile
+fizik gövdesine yerleştirilir (`ragPlace`). Ağa yeni veri gitmez.

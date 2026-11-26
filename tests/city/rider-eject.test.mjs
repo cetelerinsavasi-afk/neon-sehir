@@ -71,3 +71,17 @@ test('sürücüsüz motor yana yatar ve kayarak durur', () => {
   assert.ok(Math.abs(c.roll) > 1.2, `yattı ${c.roll}`);
   assert.ok(Math.hypot(c.vx, c.vz) < 0.01, 'durdu');
 });
+
+test('şehir ızgarası (blocked): bina duvarından geçmez', () => {
+  const rd = makeRagdoll({ pelvis: [0, 1.0, 0], frame: up, vel: [0, 0, 14], kind: 'moto' });
+  const world = { blocked: (x, z, r) => z + r > 2, groundY: () => 0 };
+  for (let i = 0; i < 600; i++) stepRagdoll(rd, 1 / 60, world);
+  for (const p of rd.ps) assert.ok(p.p[2] + p.r <= 2.05, `binanın dışında ${p.p[2]}`);
+  assert.ok(rd.rest, 'durdu');
+});
+
+test('eşikler: 25 km/sa motor çarpması fırlatmaz, 45 fırlatır', () => {
+  assert.equal(ejectCheck(moto, 25 / 3.6), false);
+  assert.equal(ejectCheck(moto, 45 / 3.6), true);
+  assert.equal(ejectCheck(bike, 25 / 3.6), false);
+});

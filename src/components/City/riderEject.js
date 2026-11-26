@@ -22,8 +22,9 @@ export function riderKind(v) {
   if (v.ride === 'horse') return v.catalogId === 27 || v.def?.name === 'Deve' ? 'camel' : 'horse';
   return 'moto';
 }
-// Kapanma hızı eşiği (m/sn). km/sa = × 3,6 → bisiklet 20, at 25, deve 22, motor 28 km/sa
-export const EJECT_MIN = { bike: 5.6, horse: 7, camel: 6.1, moto: 7.8 };
+// Kapanma hızı eşiği (m/sn). km/sa = × 3,6 → bisiklet 30, at 38, deve 33, motor 42 km/sa
+// (v216: prototipteki ilk değerlerin 1,5 katı — orta hızdaki çarpmalar fırlatmasın)
+export const EJECT_MIN = { bike: 8.4, horse: 10.5, camel: 9.2, moto: 11.7 };
 // Türlere göre fırlama: pop = yukarı fırlama, over = baş öne (takla), seatUp = sürücünün oturma yüksekliği farkı
 const LAUNCH = {
   bike: { pop: 1.1, popK: 0.11, keep: 0.8, over: 0.56 },
@@ -97,7 +98,8 @@ function mulberry(a) {
 }
 
 // Çevre: world.boxes = [{ x, z, w, d, h, y0?, ry?, self? }] (duvar, bariyer, araba, direk, bineğin kendisi)
-// world.groundY(x, z) → zemin yüksekliği (yoksa 0)
+// world.groundY(x, z, y) → zemin yüksekliği (yoksa 0) — parçacık başına alt adımda BİR kez sorulur
+// world.blocked(x, z, r) → şehrin 2B engel ızgarası (bina, duvar) — parçacık başına alt adımda BİR kez
 const G = 9.8;
 const E_GROUND = 0.22; // yerde sekme
 const E_WALL = 0.12; // duvara yapışır gibi
@@ -122,6 +124,7 @@ function subStep(rd, h, world) {
   const { ps, cons } = rd;
   const boxes = world.boxes || [];
   const gy = world.groundY || (() => 0);
+  const blocked = world.blocked || null;
   for (const a of ps) {
     a.v[1] -= G * h;
     const drag = Math.exp(-0.05 * h); // hava direnci (az)
@@ -136,6 +139,7 @@ function subStep(rd, h, world) {
     a.p[2] += a.v[2] * h;
     a.c = 0;
     a.n = null;
+    a.gy = gy(a.p[0], a.p[2], a.q[1]) + a.r;
   }
   // kısıtlar + temaslar (birkaç tur)
   for (let it = 0; it < 6; it++) {
@@ -155,13 +159,29 @@ function subStep(rd, h, world) {
       B.p[2] -= dz * k;
     }
     for (const a of ps) {
-      const g = gy(a.p[0], a.p[2]) + a.r;
+      const g = a.gy;
       if (a.p[1] < g) {
         a.p[1] = g;
         a.c = 1;
         a.n = [0, 1, 0];
       }
       for (const b of boxes) collideBox(a, b);
+    }
+  }
+  // 2B engel ızgarası (şehir): engele giren parçacık yatayda geri alınır, duvar teması sayılır
+  if (blocked) {
+    for (const a of ps) {
+      if (!blocked(a.p[0], a.p[2], a.r)) continue;
+      if (blocked(a.q[0], a.q[2], a.r)) continue; // zaten içindeydi (başlangıç) — itme yok
+      let dx = a.q[0] - a.p[0];
+      let dz = a.q[2] - a.p[2];
+      const L = Math.hypot(dx, dz) || 1;
+      dx /= L;
+      dz /= L;
+      a.p[0] = a.q[0];
+      a.p[2] = a.q[2];
+      a.c = 2;
+      a.n = [dx, 0, dz];
     }
   }
   // hız = konum farkı; temasta sekme + sürtünme

@@ -1,0 +1,44 @@
+# v216 — Binekten fırlama (motor, bisiklet, at, deve)
+
+Sadece site güncellenir. Sunucu fonksiyonları, Firestore / RTDB kuralları, indeksler ve oyuncu verisi değişmedi.
+
+## Ne değişti
+Motor, bisiklet, at ya da deveyle bir yere **sert** çarpınca avatar bineğin üstünden fırlar, havada takla
+atar, yere düşüp kayar, durur ve ~1,5 sn sonra kalkar. Sonra bineğine yürüyüp normal şekilde biner
+(devrilen motor / bisiklet binince kalkar). Yavaş çarpmada eskisi gibi sadece sarsıntı + geri sekme.
+
+Sertlik = duvara **dik** hız. Duvara sürtünerek geçmek fırlatmaz.
+
+| Binek | Fırlama sınırı (dik hız) |
+|---|---|
+| Bisiklet | 30 km/sa |
+| Deve | 33 km/sa |
+| At | 38 km/sa |
+| Motorlar | 42 km/sa |
+
+Araba, otobüs, tır, taksi vb. hiç fırlatmaz.
+
+## Maliyet / akıcılık
+- **Firestore: 0 ek okuma / yazma.** RTDB'ye de yeni alan yok: fırlarken ağa normal yaya konumu gider
+  (diğer oyuncular seni düştüğün yere kayarken görür, uçuşu görmez).
+- Hesap sadece fırlama sırasında (~3-5 sn) çalışır: 5 noktalı gövde, saniyede 120 küçük adım. Normal
+  sürüşte ek iş yok (sadece çarpma anında bir karşılaştırma).
+
+## Dosyalar
+| Dosya | Ne |
+|---|---|
+| `src/components/City/riderEject.js` | Fizik (saf fonksiyonlar). Eşikler: `EJECT_MIN`. |
+| `src/components/City/cityEngine.js` | `ejectRider`, `stepFall`, `stepLooseCar`, `ragPlace` (Fig), çağrılar `frame` / `stepDrive` içinde. |
+| `tests/city/rider-eject.test.mjs` | `node --test tests/city/rider-eject.test.mjs` |
+| `preview/firlama.html` | Prototip (eşikler oyunla aynı). |
+| `v216-yayinla.bat` | Test → derle → commit → push → Cloudflare. Firebase'e dokunmaz. |
+
+## Kontrol listesi
+- [ ] Motorla duvara yavaş (≈ 20-30 km/sa) çarp: sadece sarsıntı, binekte kalıyorsun.
+- [ ] Motorla duvara hızlı (60+ km/sa) çarp: fırlıyorsun, düşüyorsun, kalkıyorsun; motor yanında yatıyor.
+- [ ] Motora yürü, "Bin": motor kalkıyor, sürüş normal.
+- [ ] At / deve ile hızlı çarp: fırlıyorsun, at birkaç adım geri çekiliyor.
+- [ ] Bisikletle 35+ km/sa'te çarp (yokuş aşağı): fırlıyorsun.
+- [ ] Duvara yandan sürtünerek geç: fırlamıyorsun.
+- [ ] Fırlarken başka oyuncunun ekranında: avatarın kayarak düştüğü yere gidiyor, takılma yok.
+- [ ] Düşük grafik ayarında (kâğıt figür): fırlama çalışıyor, figür ayakta kayıyor (3D poz yok).

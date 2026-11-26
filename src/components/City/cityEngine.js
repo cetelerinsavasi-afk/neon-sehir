@@ -31,6 +31,7 @@ import { ANIMAL_BY_KEY } from '../../../functions/animalData.js'; // v198: evdek
 import { botAvatar, botDefaults, botJobOf, botLabel, cleanBotConfig } from '../../../functions/botData.js'; // v198: evdeki botlar
 import { createMap } from './world/map.js';
 import { applyImpact, findContact, impactParams, yawInertia, spring, airPitch } from './carImpact.js'; // v193 çarpma + uçuş
+import { riderKind, ejectCheck, makeRagdoll, stepRagdoll, ragdollFrame, ragdollHeading, ragdollSpin, limbPose, stepFallenBike } from './riderEject.js'; // v216 binekten fırlama
 import { geo as rsGeo, fromPad } from './world/roadsideGeo.js';
 import { LOT_TYPES } from './cityPlan.js';
 import { VENUES as GAME_VENUES } from '../../../functions/venueLayouts.js';
@@ -317,6 +318,37 @@ export function sweepAvatarTextures(now = performance.now(), idleMs = 60_000) {
   }
 }
 const motoHatOf = (v) => (v && v.moto && v.ride !== 'horse' ? (typeof v.paint === 'string' && v.paint[0] === '#' ? v.paint : '#1a1a1a') : null); // v157.4: atta kask yok
+// v216 — binekten fırlama: 3D avatarı fizik gövdesine yerleştir. rag: { o: kalça (dünya), q: yön, lp: limbPose, k, crouch }
+const ragOff = new THREE.Vector3();
+function ragPlace(m3, gpos, rag) {
+  const r = m3.root;
+  r.quaternion.copy(rag.q);
+  r.scale.setScalar(m3.baseScale);
+  ragOff.set(0, m3.hipH || AVATAR_3D_HIP, 0).applyQuaternion(rag.q);
+  r.position.set(rag.o.x - gpos.x - ragOff.x, rag.o.y - gpos.y - ragOff.y, rag.o.z - gpos.z - ragOff.z);
+  const k = rag.k ?? 1;
+  const lp = rag.lp;
+  if (lp) {
+    m3.arms.forEach((a) => {
+      const p = lp.arms[a.sx > 0 ? 1 : 0];
+      a.sh.rotation.x += (p.x - a.sh.rotation.x) * k;
+      a.sh.rotation.z += (a.sx * Math.abs(p.z) - a.sh.rotation.z) * k;
+      a.el.rotation.x += (p.ex - a.el.rotation.x) * k;
+    });
+    m3.legs.forEach((l, i) => {
+      const p = lp.legs[i];
+      l.hip.rotation.x += (p.x - l.hip.rotation.x) * k;
+      l.knee.rotation.x += (p.k - l.knee.rotation.x) * k;
+    });
+  }
+  if (rag.crouch) {
+    m3.legs.forEach((l) => {
+      l.hip.rotation.x -= rag.crouch * 1.1;
+      l.knee.rotation.x += rag.crouch * 1.6;
+    });
+  }
+}
+
 class Fig {
   constructor(scene, layer, { id, name, avatar, isSelf = false, npc = false, lazy = false }) {
     this.scene = scene;
@@ -591,6 +623,14 @@ class Fig {
       ry += (-0.12 - ry) * this.m3.kSwim; // yüzerken gövde su yüzeyinde
       r.position.set(this.pivot.position.x, ry, 0);
       r.scale.setScalar(this.m3.baseScale * (this.inCar ? 0.9 : 1)); // araçta biraz küçük (kâğıt figürdeki gibi)
+      // v216: binekten fırlama — gövde fizikten gelir (kalça konumu + yön), kollar / bacaklar çırpınır / gevşer
+      if (this.rag) {
+        ragPlace(this.m3, this.group.position, this.rag);
+        this.ragOn = true;
+      } else if (this.ragOn) {
+        this.ragOn = false;
+        r.rotation.set(r.rotation.x, this.yaw, 0);
+      }
       this.mat.visible = false;
     } else {
       if (this.m3) this.m3.root.visible = false;
@@ -2776,6 +2816,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   // v151 — meslek: işteyken tepe lambası + bot yolcular (ağa j olarak gider)
   const myJob = { on: false, pax: 0 };
   let driving = false;
+  let fall = null; // v216: binekten fırlama { rd, t, rest, up } — sadece bu cihazda, ağa yeni veri gitmez
+  let ejectReq = null;
   const driveIn = { thr: 0, steer: 0, hand: false };
   let camShake = 0;
   let driveCamOff = 0;
@@ -3267,7 +3309,15 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     return { ok: true, name: v.def.name, x: spot.x, z: spot.z };
   }
   function enterCar() {
-    if (!myCar || driving) return;
+    if (!myCar || driving || fall) return;
+    // v216: devrilmiş motoru / bisikleti kaldır
+    if (myCar.down || myCar.loose) {
+      myCar.down = false;
+      myCar.loose = null;
+      myCar.roll = 0;
+      myCar.rollV = 0;
+      myCar.vx = myCar.vz = myCar.spin = 0;
+    }
     driving = true;
     self.target = null;
     self.path = null;
@@ -3358,6 +3408,166 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     c.su.v -= 0.9 * k;
     if (im.vn > 4) sparkBurst(im.px, c.y + 0.4, im.pz, im.nx, im.nz, im.vn, Math.min(16, Math.round(3 + im.vn * 0.7)));
     if (im.vn > 9) puff(im.px, c.y, im.pz);
+  }
+  // =============================================================================
+  // v216 — BİNEKTEN FIRLAMA (motor, bisiklet, at, deve). Fizik: riderEject.js, prototip: preview/firlama.html
+  // Sert çarpmada (duvara dik hız ≥ eşik) sürücü fırlar → takla → düşer → kayar → durur → kalkar.
+  // Sadece bu cihazda hesaplanır: Firestore / RTDB'ye yeni alan ya da ek yazma yok (ağa normal yaya
+  // konumu gider). Sadece fırlarken çalışır (~3-5 sn), 5 parçacık — akıcılığa etkisi yok.
+  // =============================================================================
+  const ejQ = new THREE.Quaternion();
+  const ejM = new THREE.Matrix4();
+  const ejA = [new V(), new V(), new V()];
+  function ejectRider() {
+    const c = myCar;
+    const pre = ejectReq;
+    ejectReq = null;
+    if (!c || !driving) return;
+    c.v.root.updateMatrixWorld(true);
+    const s0 = c.v.seatPts?.[0] || [c.v.seat[0], c.v.seat[1], 0];
+    const sp = c.v.body.localToWorld(new V(s0[0], s0[1], s0[2]));
+    c.v.tilt.getWorldQuaternion(ejQ);
+    ejA[0].set(1, 0, 0).applyQuaternion(ejQ);
+    ejA[1].set(0, 1, 0).applyQuaternion(ejQ);
+    ejA[2].set(0, 0, 1).applyQuaternion(ejQ);
+    const kind = riderKind(c.v);
+    const rd = makeRagdoll({ pelvis: [sp.x, sp.y + 0.03, sp.z], frame: { x: ejA[0].toArray(), y: ejA[1].toArray(), z: ejA[2].toArray() }, vel: [pre.vx, 0, pre.vz], kind, speed: pre.spd, seed: (Date.now() & 0xffff) + 1 });
+    fall = { rd, rest: 0, up: null, kind, y0: c.y };
+    // binekten in (exitCar gibi, ama yere bırakmadan — gövde fizikte)
+    driving = false;
+    self.target = null;
+    self.path = null;
+    me.sitting = false;
+    me.inCar = false;
+    me.group.visible = true;
+    me.moving = false;
+    sound.idle(false);
+    self.camYaw = c.yaw + Math.PI;
+    zoneKey = '__exit__';
+    // sürücüsüz binek: motor / bisiklet yana devrilip kayar, at / deve irkilip geri çekilir
+    c.loose = { kind, backT: kind === 'horse' || kind === 'camel' ? 0.7 : 0 };
+    if (kind === 'moto' || kind === 'bike') {
+      c.down = true;
+      c.fall = (c.spin || 0) > 0 ? -1 : 1;
+      c.rollV = c.fall * 2.5;
+    } else if (c.jp) c.jp.v -= 3.2;
+    camShake = Math.max(camShake, 0.5);
+    stepFall(0);
+  }
+  // sürücüsüz binek: hareket + engel (carFree), devrilen iki teker yan yatar
+  function stepLooseCar(c, dt) {
+    const L = c.loose;
+    if (L.still) {
+      stepFallenBike(c, dt); // yerde yatık kalır (updateCarVisual roll'u kullanır)
+      return;
+    }
+    const fx = Math.sin(c.yaw);
+    const fz = Math.cos(c.yaw);
+    if (c.down) stepFallenBike(c, dt);
+    else if (L.backT > 0) {
+      L.backT -= dt;
+      c.vx = -fx * 2.2;
+      c.vz = -fz * 2.2;
+    } else {
+      const sp = Math.hypot(c.vx, c.vz);
+      const k = sp > 9 * dt ? (sp - 9 * dt) / sp : 0;
+      c.vx *= k;
+      c.vz *= k;
+    }
+    c.yaw += (c.spin || 0) * dt;
+    if (c.yaw > Math.PI || c.yaw < -Math.PI) c.yaw = Math.atan2(Math.sin(c.yaw), Math.cos(c.yaw));
+    const nx = c.x + c.vx * dt;
+    const nz = c.z + c.vz * dt;
+    if (!carFree(nx, nz, c.yaw)) {
+      c.x = nx;
+      c.z = nz;
+    } else {
+      c.vx *= -0.2;
+      c.vz *= -0.2;
+    }
+    // durduysa (ve atın geri çekilmesi bittiyse) artık hesaplanmaz; devrik motor yerde yatık kalır
+    if (Math.hypot(c.vx, c.vz) < 0.05 && !(L.backT > 0) && (!c.down || Math.abs(c.roll) > 1.3)) {
+      c.vx = c.vz = c.spin = 0;
+      c.loose = c.down ? { kind: L.kind, still: true } : null;
+    }
+  }
+  const fallWorld = {
+    boxes: [],
+    groundY: (x, z, y) => groundY(x, z, -1, y),
+    blocked: (x, z, r) => blockedAt(x, z, Math.min(r, 0.3)),
+  };
+  function stepFall(dt) {
+    const F = fall;
+    const rd = F.rd;
+    if (!F.up) {
+      // bineğin kendisi de engel (atın sırtı yuvarlak: üstüne düşen yana kayar; devrik motor alçak)
+      const c = myCar;
+      if (c) {
+        const h = c.down ? 0.42 : F.kind === 'horse' || F.kind === 'camel' ? 1.3 : 0.75;
+        fallWorld.boxes[0] = { x: c.x, z: c.z, w: c.v.halfW * 2, d: c.v.len * 0.92, h, y0: c.y, ry: c.yaw, self: 'ride', round: !c.down };
+      } else fallWorld.boxes.length = 0;
+      const hit = dt > 0 ? stepRagdoll(rd, dt, fallWorld) : 0;
+      if (hit > 2.5) {
+        const p = rd.ps[0].p;
+        puff(p[0], p[1] - 0.15, p[2]);
+        camShake = Math.max(camShake, Math.min(0.4, hit * 0.03));
+        sound.thump(Math.min(20, hit));
+      }
+      const f = ragdollFrame(rd);
+      ejM.makeBasis(ejA[0].set(...f.x), ejA[1].set(...f.y), ejA[2].set(...f.z));
+      F.q = (F.q || new THREE.Quaternion()).setFromRotationMatrix(ejM);
+      F.o = (F.o || new V()).set(...f.o);
+      F.shock = Math.max((F.shock ?? 1) * Math.exp(-dt * 5), Math.min(1, hit / 8));
+      me.rag = { o: F.o, q: F.q, lp: limbPose(rd.air, rd.t, ragdollSpin(rd), F.shock), k: 1 };
+      F.rest = rd.rest ? F.rest + dt : 0;
+      // durduktan ~1,4 sn sonra kalkar (çok uzun sürerse — ör. suya / boşluğa düştü — 8 sn'de)
+      if (F.rest > 1.4 || rd.t > 8) {
+        const yaw = ragdollHeading(rd);
+        F.up = { t: 0, q0: F.q.clone(), p0: F.o.clone(), q1: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0)), yaw };
+      }
+    } else {
+      const U = F.up;
+      U.t += dt / 1.1;
+      const k = Math.min(1, U.t);
+      const e = k * k * (3 - 2 * k);
+      const hip = me.m3?.hipH || AVATAR_3D_HIP;
+      const gy = groundY(U.p0.x, U.p0.z, -1, U.p0.y);
+      F.q.slerpQuaternions(U.q0, U.q1, e);
+      F.o.set(U.p0.x, U.p0.y + (gy + hip - U.p0.y) * e, U.p0.z);
+      me.rag = { o: F.o, q: F.q, lp: limbPose(0, 0, 0, 0), k: 1 - e, crouch: Math.sin(e * Math.PI) };
+      if (U.t >= 1) {
+        me.rag = null;
+        fall = null;
+        let x = U.p0.x;
+        let z = U.p0.z;
+        if (blockedAt(x, z)) {
+          const fr = freeNear(x, z);
+          if (fr) {
+            x = fr.x;
+            z = fr.z;
+          }
+        }
+        self.x = x;
+        self.z = z;
+        me.x = x;
+        me.z = z;
+        me.y = groundY(x, z, -1, U.p0.y);
+        me.faceYaw(U.yaw);
+        self.target = null;
+        self.path = null;
+        return;
+      }
+    }
+    // figür (etiket, kamera, mini harita, ağdaki konum) kalçayı izler
+    const o = F.o;
+    self.x = o.x;
+    self.z = o.z;
+    me.x = o.x;
+    me.z = o.z;
+    me.y = groundY(o.x, o.z, -1, o.y);
+    me.moving = false;
+    me.sitting = false;
+    me.inCar = false;
   }
   function stepDrive(dt) {
     const c = myCar;
@@ -3497,7 +3707,10 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       hit = 'wall';
       // v193 — GERÇEKÇİ ÇARPMA (prototipteki itki): temas noktası + normal → hız seker / kayar, araba
       // köşeden çarpınca döner. Sonra yeni hızla hareket denenir; olmazsa eski kaydırma yolları.
+      const preVx = c.vx; // v216: fırlama çarpma ÖNCESİ hızla
+      const preVz = c.vz;
       impact = carImpactAt(c, nx, nz);
+      if (impact && c === myCar && !fall && ejectCheck(c.v, impact.vn)) ejectReq = { vx: preVx, vz: preVz, spd };
       const tx = c.x + c.vx * dt;
       const tz = c.z + c.vz * dt;
       if (impact && !carFree(tx, tz, c.yaw)) {
@@ -4926,13 +5139,19 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     // v149: yolcuyken önce arabanın bu karedeki yeri hesaplanır, sonra koltuk + kamera
     // (eskiden bir kare geriden geliyordu → yolcu ekranında araba titriyordu)
     updateRemoteCars(dt);
-    if (driving && myCar) stepDrive(dt);
+    if (driving && myCar) {
+      stepDrive(dt);
+      if (ejectReq) ejectRider();
+    } else if (fall) stepFall(dt);
     else if (self.ride) stepRide(dt);
     else if (heist?.active) heist.step(dt, now); // v154: soygun dizisi oyuncuyu ve kamerayı yönetir
     else stepWalk(dt);
     // park halindeki araba / çağırma animasyonu
     if (myCar) {
-      if (!driving) updateCarVisual(myCar, dt, 0, 0, false, false);
+      if (!driving) {
+        if (myCar.loose) stepLooseCar(myCar, dt); // v216: sürücüsüz kalan binek (devrilen motor kayar, at geri çekilir)
+        updateCarVisual(myCar, dt, 0, 0, false, false);
+      }
       if (myCar.spawnT < 1) {
         myCar.spawnT = Math.min(1, myCar.spawnT + dt * 2.6);
         const k = myCar.spawnT;
@@ -6161,7 +6380,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
           first = true;
           camGlide = null;
         },
-        isBusy: () => Boolean(harac || driving || self.ride || self.seat),
+        isBusy: () => Boolean(harac || driving || self.ride || self.seat || fall),
         // v156: soygun iç mekânı başlık kartı sırasında derlenir (kapıda donma olmasın)
         warm: (pos, look) => {
           renderer.compile(scene, camera);
@@ -6354,6 +6573,10 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       ring.visible = false;
       first = true;
       faceAway = true; // v215
+      if (fall) {
+        fall = null; // v216: ışınlanma / doğma fırlamayı keser
+        me.rag = null;
+      }
     },
     walkTo,
     // v196 — 3 KATLI EV ----------------------------------------------------------------------
@@ -6498,6 +6721,10 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       ring.visible = false;
       first = true;
       faceAway = true; // v215
+      if (fall) {
+        fall = null; // v216: ışınlanma / doğma fırlamayı keser
+        me.rag = null;
+      }
       return true;
     },
     homeSurfaces(surf) {
@@ -6614,6 +6841,10 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       ring.visible = false;
       first = true;
       faceAway = true; // v215
+      if (fall) {
+        fall = null; // v216: ışınlanma / doğma fırlamayı keser
+        me.rag = null;
+      }
     },
     // v157 — girilebilir mekânlar / dış dünya
     venueType: () => (curVenue ? curVenue.type : null),
@@ -6636,6 +6867,10 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       ring.visible = false;
       first = true;
       faceAway = true; // v215
+      if (fall) {
+        fall = null; // v216: ışınlanma / doğma fırlamayı keser
+        me.rag = null;
+      }
       return true;
     },
     // v157.4 — ÇETE KARARGAHLARI: hangar (slot 0–5) → çetenin adı (kapının üstünde) + iç tasarımı
@@ -6682,6 +6917,10 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       ring.visible = false;
       first = true;
       faceAway = true; // v215
+      if (fall) {
+        fall = null; // v216: ışınlanma / doğma fırlamayı keser
+        me.rag = null;
+      }
       return true;
     },
     // karargahların bulunduğu cebin merkezi (yaklaşınca bilgiler okunur)
@@ -6719,6 +6958,10 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       ring.visible = false;
       first = true;
       faceAway = true; // v215
+      if (fall) {
+        fall = null; // v216: ışınlanma / doğma fırlamayı keser
+        me.rag = null;
+      }
     },
     world: () => W,
     // v157: geliştirme testleri (çarpışma / zemin simülasyonu) — canlıda yok
