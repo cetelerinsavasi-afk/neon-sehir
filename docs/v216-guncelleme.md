@@ -42,3 +42,13 @@ Araba, otobüs, tır, taksi vb. hiç fırlatmaz.
 - [ ] Duvara yandan sürtünerek geç: fırlamıyorsun.
 - [ ] Fırlarken başka oyuncunun ekranında: avatarın kayarak düştüğü yere gidiyor, takılma yok.
 - [ ] Düşük grafik ayarında (kâğıt figür): fırlama çalışıyor, figür ayakta kayıyor (3D poz yok).
+
+## v216.1 — düşünce tekrar tekrar fırlama hatası
+Şehirde zemin düz değil (kaldırım, basamak, rampa, köprü). Fizik gövdesi zeminin altında kalan bir noktayı
+tek adımda yukarı itiyordu; bu itme hıza dönüşüp gövdeyi tekrar fırlatıyordu (basamakta 9 m/sn'ye kadar).
+Düzeltme (`riderEject.js`):
+- Zemin altında kalan parçacık yavaşça çıkar (≤ 1,5 m/sn); sadece yukarıdan gelen parçacık zemine oturur.
+- 0,4 m'den yüksek zemin farkı (köprü / rampa kenarı, yüksek basamak) duvar sayılır — oraya ışınlanma yok.
+- Zemin bulunamazsa (su, boşluk) son bilinen zemin kullanılır.
+- Çarpışma düzeltmeleri gövdeye enerji katamaz (hız sınırı).
+Test: `rider-eject.test.mjs` › "basamak / kaldırım / köprü altı gövdeyi tekrar fırlatmaz".

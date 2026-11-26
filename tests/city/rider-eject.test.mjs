@@ -85,3 +85,25 @@ test('eşikler: 25 km/sa motor çarpması fırlatmaz, 45 fırlatır', () => {
   assert.equal(ejectCheck(moto, 45 / 3.6), true);
   assert.equal(ejectCheck(bike, 25 / 3.6), false);
 });
+
+test('v216.1: basamak / kaldırım / köprü altı gövdeyi tekrar fırlatmaz', () => {
+  const worlds = {
+    basamak: (x, z) => Math.floor(Math.max(0, z - 4) / 1.2) * 0.17,
+    kaldirim: (x, z) => (z > 6 ? 0.18 : 0),
+    kopruAlti: (x, z, y) => (z > 6 && z < 30 && y > 3 ? 4 : 0), // üstte köprü: oraya ışınlanmamalı
+    bosluk: (x, z) => (z > 6 && z < 8 ? NaN : 0),
+  };
+  for (const [n, groundY] of Object.entries(worlds)) {
+    const rd = makeRagdoll({ pelvis: [0, 1.0, 0], frame: up, vel: [0, 0, 13], kind: 'moto', seed: 2 });
+    let landed = false;
+    let maxUp = 0;
+    for (let i = 0; i < 600 && !rd.rest; i++) {
+      stepRagdoll(rd, 1 / 60, { groundY });
+      if (rd.ground) landed = true;
+      if (landed) maxUp = Math.max(maxUp, ...rd.ps.map((p) => p.v[1]));
+    }
+    assert.ok(rd.rest, `${n}: durdu`);
+    assert.ok(maxUp < 3.2, `${n}: yere değdikten sonra yukarı fırlamadı (${maxUp.toFixed(1)} m/sn)`);
+    assert.ok(rd.ps[0].p[1] < 2, `${n}: köprüye ışınlanmadı`);
+  }
+});

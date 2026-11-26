@@ -106,6 +106,7 @@ const E_WALL = 0.12; // duvara yapışır gibi
 const MU = 0.7; // asfaltta kayma sürtünmesi (μ·g ≈ 6,9 m/sn² yavaşlama)
 const ROLL_DAMP = 1.6; // yerde yuvarlanırken / sürünürken ek enerji kaybı (1/sn)
 const H = 1 / 120;
+const STEP_MAX = 0.4; // v216.1: bundan yüksek zemin farkı basamak değil duvar sayılır
 
 // Bir adım ilerlet (sabit 1/120 sn alt adımlarla). Dönen: bu adımdaki en sert temas (m/sn) — ses / sarsıntı için
 export function stepRagdoll(rd, dt, world) {
@@ -125,6 +126,8 @@ function subStep(rd, h, world) {
   const boxes = world.boxes || [];
   const gy = world.groundY || (() => 0);
   const blocked = world.blocked || null;
+  let vPre = 0; // v216.1: adım öncesi en yüksek hız — çarpışma düzeltmeleri gövdeye enerji katmasın
+  for (const a of ps) vPre = Math.max(vPre, len(a.v));
   for (const a of ps) {
     a.v[1] -= G * h;
     const drag = Math.exp(-0.05 * h); // hava direnci (az)
@@ -139,7 +142,22 @@ function subStep(rd, h, world) {
     a.p[2] += a.v[2] * h;
     a.c = 0;
     a.n = null;
-    a.gy = gy(a.p[0], a.p[2], a.q[1]) + a.r;
+    // v216.1: zemin bir kez sorulur. Bulunamazsa (NaN: su, boşluk) son bilinen zemin kullanılır.
+    let g = gy(a.p[0], a.p[2], a.q[1]);
+    if (!Number.isFinite(g)) g = a.gLast ?? 0;
+    // Zemin parçacığın olduğu yerden çok yüksekse (yüksek basamak, köprü / rampa kenarı, bina tabanı)
+    // oraya IŞINLANMAZ: duvar sayılır, yatayda geri alınır. Eskiden gövde metrelerce yukarı itilip
+    // tekrar tekrar fırlıyordu.
+    if (g > a.q[1] - a.r + STEP_MAX) {
+      a.p[0] = a.q[0];
+      a.p[2] = a.q[2];
+      a.c = 2;
+      a.n = norm([-a.v[0], 0, -a.v[2]]);
+      const g0 = gy(a.p[0], a.p[2], a.q[1]);
+      g = Number.isFinite(g0) && g0 <= a.q[1] - a.r + STEP_MAX ? g0 : (a.gLast ?? Math.min(g, a.q[1] - a.r));
+    }
+    a.gLast = g;
+    a.gy = g + a.r;
   }
   // kısıtlar + temaslar (birkaç tur)
   for (let it = 0; it < 6; it++) {
@@ -161,9 +179,12 @@ function subStep(rd, h, world) {
     for (const a of ps) {
       const g = a.gy;
       if (a.p[1] < g) {
-        a.p[1] = g;
-        a.c = 1;
-        a.n = [0, 1, 0];
+        // v216.1: yukarıdan gelen parçacık zemine oturur; zemin altında kalmışsa (basamak / kaldırım
+        // kenarı) yavaşça çıkar (≤ 1,5 m/sn) — ani yukarı itme gövdeyi tekrar fırlatıyordu
+        a.p[1] = a.q[1] >= g - 1e-4 ? g : Math.max(a.p[1], Math.min(g, a.q[1] + 1.5 * h));
+        if (a.c !== 2) a.c = 1;
+        a.n = a.c === 2 ? a.n : [0, 1, 0];
+        if (a.c === 2) a.c = 3; // hem yer hem duvar: yer gibi davranır (aşağıda)
       }
       for (const b of boxes) collideBox(a, b);
     }
@@ -189,13 +210,18 @@ function subStep(rd, h, world) {
   let ground = 0;
   for (const a of ps) {
     const nv = [(a.p[0] - a.q[0]) / h, (a.p[1] - a.q[1]) / h, (a.p[2] - a.q[2]) / h];
+    if (a.c === 3) {
+      a.c = 1;
+      a.n = [0, 1, 0];
+    }
     if (a.c && a.n) {
       const n = a.n;
       const vin = dot(a.v, n); // temas öncesi normal hız (<0: çarpıyor)
       const vnNow = dot(nv, n);
       const t = [nv[0] - n[0] * vnNow, nv[1] - n[1] * vnNow, nv[2] - n[2] * vnNow];
       const e = a.c === 2 ? E_WALL : E_GROUND;
-      const vnOut = vin < -1.2 ? -vin * e : Math.max(0, vnNow);
+      // v216.1: sekme sadece gerçek çarpmadan; düzeltmeden (basamak, kaldırım) gelen yukarı hız kırpılır
+      const vnOut = vin < -1.2 ? -vin * e : Math.min(Math.max(0, vnNow), 0.4);
       const dvn = Math.max(0, vnOut - vin);
       const tl = len(t);
       // Coulomb: teğet hız, normal itki × μ kadar azalır (dinlenmede itki ≈ g·h → yavaşça durur)
@@ -204,6 +230,13 @@ function subStep(rd, h, world) {
       if (-vin > hit) hit = -vin;
       if (a.c === 1) ground++;
     } else a.v = nv;
+    // enerji sınırı: hiçbir parçacık adım öncesindeki en hızlı parçacıktan belirgin hızlı olamaz
+    const vl = len(a.v);
+    const cap = vPre + 0.6;
+    if (vl > cap) {
+      const k = cap / vl;
+      a.v = [a.v[0] * k, a.v[1] * k, a.v[2] * k];
+    }
   }
   rd.ground = ground;
   if (ground) {
