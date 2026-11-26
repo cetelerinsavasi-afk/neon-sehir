@@ -1,43 +1,17 @@
-import { useEffect, useState } from 'react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
+import { useMemo } from 'react';
+import { collection, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
+import { useFutbolSmartQuery } from '../lib/futbolSmartQuery';
 
-// Bir lig için GÜNCEL SEZONUN tüm maçlarını çeker. `season` verilmezse
-// (henüz lig verisi yüklenmediyse) boş döner — eski sezonların maçlarıyla
-// karışıp "güncel tur" hesaplamalarını (ve iddaa ekranını) bozmasın diye
-// sezon filtresi bilerek sorgunun bir parçası (backend zaten eski
-// sezonu sildiği için bu ikinci bir güvenlik katmanı).
+// Bir ligin bir sezondaki tüm maçları (tura göre sıralı).
+// v205 MALİYET: maç saati (17:55–19:30) dışında sunucuya gidilmez — liste bir kez okunur ve bir
+// sonraki maç saatine kadar cihazdaki önbellekten açılır (bkz. lib/futbolSmartQuery.js).
+// Maç saatinde eskisi gibi canlı dinlenir (skorlar anında).
 export function useFutbolMatches(leagueId, season) {
-  const [matches, setMatches] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!leagueId || !season) {
-      setMatches([]);
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
-    const q = query(
-      collection(db, 'futbolMatches'),
-      where('leagueId', '==', leagueId),
-      where('season', '==', season)
-    );
-    const unsubscribe = onSnapshot(
-      q,
-      (snap) => {
-        const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        list.sort((a, b) => a.round - b.round);
-        setMatches(list);
-        setLoading(false);
-      },
-      (err) => {
-        console.error('useFutbolMatches dinleme hatası:', err);
-        setLoading(false);
-      }
-    );
-    return unsubscribe;
-  }, [leagueId, season]);
-
+  const key = leagueId && season ? `fm:${leagueId}:${season}` : null;
+  const { docs, loading } = useFutbolSmartQuery(key, () =>
+    query(collection(db, 'futbolMatches'), where('leagueId', '==', leagueId), where('season', '==', season))
+  );
+  const matches = useMemo(() => [...docs].sort((a, b) => a.round - b.round), [docs]);
   return { matches, loading };
 }

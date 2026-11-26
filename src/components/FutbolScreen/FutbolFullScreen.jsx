@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { refreshFutbolLite } from '../../hooks/useFutbolLite';
 import GuestOverlay from '../GuestOverlay/GuestOverlay';
 import FutbolShell from './FutbolShell';
 import GuestFutbol from './GuestFutbol';
@@ -19,6 +21,8 @@ import './FutbolFullScreen.css';
  */
 export default function FutbolFullScreen({ onClose }) {
   const { user, loading } = useAuth();
+  // v205: futbol ekranından çıkınca ana sayfa futbol bilgisi (takımım / futbolcu takımım) tazelenir
+  useEffect(() => () => refreshFutbolLite(), []);
   // v134: misafir liglerin puan durumlarını inceler (veriler sunucudan)
   if (!user && !loading) return <GuestFutbol onClose={onClose} />;
 

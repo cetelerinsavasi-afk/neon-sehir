@@ -8,7 +8,7 @@ import { isCarCatalogId } from '../data/vehicleCatalog'; // v163 — şampiyona 
 import { useWeapons } from './useWeapons'; // v162 — "Gücün 0" hatırlatması
 import { useInventory } from './useInventory'; // v162 — eksik yasaklı madde hatırlatması
 import { useMyFactoryRunNeeded } from './useMyFactory'; // v204: makineler canlı dinlenmez
-import { useMyFutbolTeam } from './useMyFutbolTeam';
+import { useMyFutbolTeamLite } from './useFutbolLite'; // v205: futbol dinleyicileri stadyuma kadar hafif
 import { currentPrayerWindow } from './useMosqueAttendance';
 import { useBizReminders } from './useBizReminders';
 import { useMatchLive } from './useMatchLive'; // v163 — "Maç başladı" hatırlatması
@@ -118,7 +118,7 @@ export function useOnboarding(gangReminders = null, gangChans = null, { inStadiu
   const { vehicles } = useVehicles();
   const { weapons, loading: weaponsLoading } = useWeapons();
   const { inventory, loading: invLoading } = useInventory();
-  const { team, role: futbolRole } = useMyFutbolTeam();
+  const { team, role: futbolRole } = useMyFutbolTeamLite();
   const bizReminders = useBizReminders(); // v92: galeri / silahçı / spor salonu
   const matchLive = useMatchLive(Boolean(user)); // v163: 18:00–19:00 maç günü
 

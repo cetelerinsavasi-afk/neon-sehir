@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useFutbolSmartQuery } from '../lib/futbolSmartQuery';
 import { collection, doc, onSnapshot, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
 
@@ -13,17 +14,12 @@ import { db } from '../firebase';
 // ve iddaa için). Eski maçlarda cupGroup alanı yok → 1. grup sayılır.
 export function useFutbolCup(season, group = 1) {
   const [cup, setCup] = useState(null);
-  const [matches, setMatches] = useState([]);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!season) {
       setCup(null);
-      setMatches([]);
-      setLoading(false);
       return undefined;
     }
-    setLoading(true);
     const g = group === 'all' ? 1 : Number(group) || 1;
     const cupRef = doc(db, 'futbolCups', g > 1 ? `${season}_${g}` : String(season));
     const unsubCup = onSnapshot(
@@ -32,25 +28,17 @@ export function useFutbolCup(season, group = 1) {
       (err) => console.error('useFutbolCup (cup) dinleme hatası:', err)
     );
 
-    const matchesQuery = query(collection(db, 'futbolCupMatches'), where('cupSeason', '==', season));
-    const unsubMatches = onSnapshot(
-      matchesQuery,
-      (snap) => {
-        const all = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setMatches(group === 'all' ? all : all.filter((m) => (m.cupGroup || 1) === g));
-        setLoading(false);
-      },
-      (err) => {
-        console.error('useFutbolCup (matches) dinleme hatası:', err);
-        setLoading(false);
-      }
-    );
-
     return () => {
       unsubCup();
-      unsubMatches();
     };
   }, [season, group]);
 
-  return { cup, matches, loading };
+  // v205 MALİYET: kupa maçları maç saati dışında cihazdaki önbellekten (bkz. lib/futbolSmartQuery.js)
+  const { docs: allMatches, loading: mLoading } = useFutbolSmartQuery(season ? `fcm:${season}` : null, () =>
+    query(collection(db, 'futbolCupMatches'), where('cupSeason', '==', season))
+  );
+  const g = group === 'all' ? 1 : Number(group) || 1;
+  const matches = useMemo(() => (group === 'all' ? allMatches : allMatches.filter((m) => (m.cupGroup || 1) === g)), [allMatches, group, g]);
+
+  return { cup, matches, loading: Boolean(season) && mLoading };
 }

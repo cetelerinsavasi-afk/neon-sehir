@@ -3,7 +3,8 @@ import { collection, doc, limit, onSnapshot, query, where } from 'firebase/fires
 import { db } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { setMyShopIds } from '../lib/myShops';
-import { useFootballer, useMyGymMembership } from './useGym';
+import { useMyGymMembership } from './useGym';
+import { useMyFootballerTeamLite } from './useFutbolLite'; // v205: footballers belgesi canlı dinlenmez
 import { CASINO_MACHINES, CASINO_LOW_GOLD } from '../../functions/casino.js';
 import { SLOT_MIN_STOCK } from '../../functions/casinoRules.js';
 
@@ -21,7 +22,7 @@ import { SLOT_MIN_STOCK } from '../../functions/casinoRules.js';
 export function useBizReminders() {
   const { user } = useAuth();
   const uid = user?.uid || null;
-  const { fb, loading: fbLoading } = useFootballer(uid);
+  const { fbTeamId, loading: fbLoading } = useMyFootballerTeamLite();
   const { today: gymToday } = useMyGymMembership();
   const [shops, setShops] = useState([]); // galeri + silahçı işletmelerim
   const [stock, setStock] = useState(null); // v124: sahibin ORTAK malzeme envanteri (silahçısı varsa)
@@ -157,9 +158,9 @@ export function useBizReminders() {
         }
       }
     }
-    if (uid && !fbLoading && !fb?.teamId && gymToday?.status !== 'done') {
+    if (uid && !fbLoading && !fbTeamId && gymToday?.status !== 'done') {
       list.push({ id: 'gym', emoji: '🏋️', text: 'Spor salonunda günlük antrenmanını yap' });
     }
     return list;
-  }, [shops, stock, depoView, casinoMc, shopStock, uid, fb, fbLoading, gymToday]);
+  }, [shops, stock, depoView, casinoMc, shopStock, uid, fbTeamId, fbLoading, gymToday]);
 }

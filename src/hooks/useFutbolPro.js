@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { collection, doc, limit, onSnapshot, orderBy, query, where } from 'firebase/firestore';
 import { db } from '../firebase';
+import { useFutbolSmartQuery } from '../lib/futbolSmartQuery';
 
 // v77 Faz 5 — gerçek futbolcular: sözleşme, teklifler, serbest futbolcular,
 // sezon istatistikleri. Hepsi okuma; yazma futbolProAction ile sunucuda.
@@ -119,7 +120,8 @@ export const STAT_BOARDS = {
 };
 export function useStatBoard(season, boardId, max = 50) {
   const b = STAT_BOARDS[boardId];
-  const { docs, loading } = useQueryDocs(season && b ? `sb_${season}_${boardId}_${max}` : null, () => {
+  // v205 MALİYET: istatistikler sadece 19:00 açıklamasında değişir → maç saati dışında cihazdan
+  const { docs, loading } = useFutbolSmartQuery(season && b ? `sb_${season}_${boardId}_${max}` : null, () => {
     const parts = [where('season', '==', season)];
     if (b.position) parts.push(where('position', '==', b.position));
     parts.push(orderBy(b.field, 'desc'), limit(b.minApps ? max * 2 : max));
