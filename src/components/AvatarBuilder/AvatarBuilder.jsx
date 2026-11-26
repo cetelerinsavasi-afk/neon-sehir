@@ -11,6 +11,8 @@ import {
   BACKGROUND_COLORS,
   PANTS_COLORS,
   SHOE_COLORS,
+  BODY_SHAPES,
+  bodyShapeOf,
 } from '../../lib/avatarShapes';
 import { usePlayer } from '../../hooks/usePlayer';
 import { setAvatar, setDisplayName } from '../../services/gameActions';
@@ -20,6 +22,8 @@ import './AvatarBuilder.css';
 const OPTION_LABELS = {
   gender: { title: 'Beden Tipi', values: { erkek: 'Erkek', kadin: 'Kadın' } },
   build: { title: 'Vücut Yapısı', values: { zayif: 'Zayıf', standart: 'Standart', iri: 'İri Yarı' } },
+  // v208: 3D gövde şekli (2D görünümü değiştirmez; şehirde 3D avatarda görünür)
+  bodyShape: { title: 'Gövde Şekli (3D)', values: { kare: 'Kare', oval: 'Oval' } },
   faceShape: {
     title: 'Kafa Tipi',
     values: {
@@ -134,6 +138,7 @@ const COLOR_GROUPS = {
 const ROW_ORDER = [
   { type: 'option', field: 'gender' },
   { type: 'option', field: 'build' },
+  { type: 'option', field: 'bodyShape' },
   { type: 'option', field: 'faceShape' },
   { type: 'color', field: 'skin' },
   { type: 'color', field: 'background' },
@@ -255,6 +260,7 @@ export default function AvatarBuilder({ onBack }) {
     next.hatColor = randomFrom(HAT_COLORS);
     next.pantsColor = randomFrom(PANTS_COLORS);
     next.shoeColor = randomFrom(SHOE_COLORS);
+    next.bodyShape = randomFrom(BODY_SHAPES);
     setLocalAvatar(next);
   };
 
@@ -335,7 +341,7 @@ export default function AvatarBuilder({ onBack }) {
               key={field}
               title={title}
               values={values}
-              current={avatar[field]}
+              current={field === 'bodyShape' ? bodyShapeOf(avatar) : avatar[field]}
               onSelect={(v) => update(field, v)}
             />
           );

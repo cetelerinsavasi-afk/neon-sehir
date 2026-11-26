@@ -1,0 +1,39 @@
+NEON SEHIR - URETIME ERISIM BASVURU CEVAPLARI
+(Surum "Yayinda" olduktan sonra forma yapistirin)
+
+=== 1. KAPALI TESTINIZ HAKKINDA ===
+
+Test kullanicilarini nereden buldunuz?
+Oyunumuz web'de zaten yayında ve günlük ~50 aktif oyuncusu var. Test kullanıcılarını oyun içi duyurular, Instagram hesabımız ve kendi çevremizden organik olarak bulduk. 20'den fazla kişiyi davet ettik, yaklaşık 13 kişi düzenli oynadı. Ücretli test hizmeti kullanmadık.
+
+Test kullanicisi bulmak ne kadar kolaydi?
+Ne zor ne de kolay
+
+Test kullanicilarindan nasil bir etkilesim aldiniz?
+Testçilerin çoğu mevcut oyuncularımızdı ve uygulamayı ana oynama yolu olarak kullandı. Meslekler, işletme kurma, çeteler, futbol, seçim ve şarkı stüdyosu düzenli kullanıldı; Play Faturalandırma ile satın alma da test edildi. Kullanım, ~30 gün boyunca web'deki oyuncu davranışıyla tutarlıydı.
+
+Geri bildirimleri ozetleyin:
+Geri bildirimi oyun içi "Bi fikrin mi var?" paneli ve Instagram DM'lerinden topladık. Öne çıkanlar: bazı cihazlarda kasma/performans düşüşü ve ekranın üstünde tarayıcı adres çubuğunun görünmesi. Bunların yanında küçük hata bildirimleri ve oynanış önerileri geldi; hepsini güncellemelerle ele aldık.
+
+=== 2. OYUNUNUZ HAKKINDA ===
+
+Hedef kitle:
+Türkçe konuşan 18 yaş ve üzeri, ağırlıklı olarak 18-25 yaş arası oyuncular için çok oyunculu bir şehir/yaşam simülasyonu. Hedef kitlemiz ekonomi yönetimi, ticaret, rekabet ve sosyal etkileşimden hoşlanan, oyunu her gün kısa oturumlarla oynayan genç yetişkinlerdir.
+
+Oyunu digerlerinden ayiran ozellikler:
+Tüm ekonomiyi oyuncuların kurduğu gerçek zamanlı bir şehir simülasyonu. Onlarca meslek var: işletme/fabrika sahibi, futbol kulübü başkanı, müzisyen, yayıncı, gazeteci, ressam, polis, imam, belediye başkanı ya da çete lideri. Her oyuncunun kararı seçimlerden piyasaya kadar tüm şehri etkiler.
+
+Ilk yil yukleme: 0 - 10 bin
+
+=== 3. URETIME HAZIRLIK ===
+
+Hangi degisiklikleri yaptiniz?
+Cihaza göre görsel kaliteyi otomatik ayarlayan bir sistem ekledik, kasmalar giderildi. Tarayıcı adres çubuğunu kaldırıp tam ekrana geçtik. Zümrüt mağazasını Play Faturalandırma kurallarına uyarladık. Paneldeki hataları düzelttik ve test boyunca seçim sistemi, şarkı stüdyosu gibi özellikler ekledik.
+
+Uretime hazir olduguna nasil karar verdiniz?
+Oyun web'de gerçek oyuncularla uzun süredir stabil çalışıyor. Düzeltmelerden sonra testçilerden kritik hata veya kasma bildirimi gelmedi. Oyuncularımızdan Play'e gelmesi için çok talep aldık. Yayından sonra da oyun içi panelle geri bildirim toplayıp düzenli güncelleme yapmaya devam edeceğiz.
+
+=== 4. EK TEST ===
+
+Bu sefer neleri farkli yaptiniz?
+Yeni oyuncular ekleyerek test kullanıcısı sayısını artırdık ve testi toplam ~30 güne uzattık. Geri bildirimi oyun içi panel ve Instagram'dan düzenli toplayıp oyunu neredeyse her gün güncelledik. Bu iyileştirmeleri içeren yeni sürümü, ayrıntılı sürüm notlarıyla kapalı test kanalına yükledik.

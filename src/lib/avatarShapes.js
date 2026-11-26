@@ -26,6 +26,10 @@ export const PANTS_COLORS = [
   '#22262f', '#0d0d0d', '#1d3d5c', '#2b3550', '#3a2f1d', '#4a1d5c', '#5c1a24', '#3d3d3d', '#0d2b1f', '#4a4a4a',
 ];
 export const SHOE_COLORS = ['#0d0d0d', '#3a2f1d', '#5c1a24', '#e8e6df', '#1d3d5c', '#7a1f2b'];
+// v208 — 3D avatarın gövde şekli (isteğe bağlı alan: avatar.bodyShape; yoksa kadın → oval, erkek → kare).
+// 2D çizimi etkilemez. Sunucuda functions/index.js › setAvatar ayrıca doğrular.
+export const BODY_SHAPES = ['kare', 'oval'];
+export const bodyShapeOf = (a) => (BODY_SHAPES.includes(a?.bodyShape) ? a.bodyShape : a?.gender === 'kadin' ? 'oval' : 'kare');
 
 // Tam vücut düzeninde bel/ayak bilek/zemin çizgileri (viewBox: full=580, headshot=400).
 // LEG_H bilerek büyük tutuldu — önceki sürümde bacaklar çok kısaydı ve

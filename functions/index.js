@@ -8318,6 +8318,13 @@ export const setAvatar = onCall(async (request) => {
     }
     avatar[field] = v;
   }
+  // v208: 3D gövde şekli — İSTEĞE BAĞLI (eski uygulama sürümleri göndermez, onlar hata almaz)
+  if (input.bodyShape !== undefined && input.bodyShape !== null) {
+    if (!['kare', 'oval'].includes(input.bodyShape)) {
+      throw new HttpsError('invalid-argument', 'Geçersiz avatar alanı: bodyShape');
+    }
+    avatar.bodyShape = input.bodyShape;
+  }
 
   // v78: kuşanılmış evcil hayvan/aksesuar avatar düzenlenince kaybolmasın
   // (sadece sahip olunanlar korunur — bkz. functions/cosmetics.js)

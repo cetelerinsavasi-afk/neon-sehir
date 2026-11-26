@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>Neon Şehir — Pist Prototipi</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #070a12; color: #e8f1ff; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; user-select: none; -webkit-user-select: none; touch-action: none; }
+  #root { position: fixed; inset: 0; }
+  #root canvas { display: block; width: 100%; height: 100%; }
+  .hud { position: fixed; pointer-events: none; z-index: 5; }
+  .glass { background: rgba(8, 12, 26, 0.72); border: 1px solid rgba(120, 200, 255, 0.22); border-radius: 12px; backdrop-filter: blur(6px); }
+  #tl { top: 10px; left: 10px; padding: 10px 14px; min-width: 190px; }
+  #tl .big { font: 800 30px/1 ui-monospace, 'SF Mono', Menlo, Consolas, monospace; letter-spacing: 0.5px; }
+  #tl .row { display: flex; justify-content: space-between; gap: 14px; font-size: 12.5px; margin-top: 5px; color: #a9bad6; }
+  #tl .row b { color: #e8f1ff; font-family: ui-monospace, Menlo, Consolas, monospace; font-weight: 700; }
+  #tl .mode { font-size: 11px; letter-spacing: 1.5px; color: #23e6ff; font-weight: 800; margin-bottom: 6px; }
+  .dpos { color: #4dff8a !important; } .dneg { color: #ff4d6d !important; }
+  #map { top: 10px; right: 10px; padding: 6px; }
+  #map canvas { display: block; }
+  #spd { bottom: 14px; left: 50%; transform: translateX(-50%); padding: 8px 18px 10px; text-align: center; min-width: 180px; }
+  #spd .v { font: 900 38px/1 ui-monospace, Menlo, Consolas, monospace; }
+  #spd .u { font-size: 11px; color: #a9bad6; letter-spacing: 1px; }
+  #spd .gear { position: absolute; right: 10px; top: 8px; font: 800 15px ui-monospace, monospace; color: #23e6ff; }
+  #nitro { height: 7px; border-radius: 4px; background: rgba(255,255,255,0.12); margin-top: 7px; overflow: hidden; }
+  #nitro i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #2b7bff, #23e6ff); transition: width 0.08s linear; }
+  #nitro.on i { background: linear-gradient(90deg, #ff2bd6, #ffd23f); }
+  #msg { top: 34%; left: 50%; transform: translate(-50%, -50%); text-align: center; font-weight: 900; text-shadow: 0 2px 14px rgba(0,0,0,0.8); }
+  #msg .t { font-size: 46px; letter-spacing: 2px; }
+  #msg .s { font-size: 15px; font-weight: 600; color: #cfe1ff; margin-top: 6px; }
+  #lights { display: flex; gap: 10px; justify-content: center; margin-bottom: 12px; }
+  #lights i { width: 30px; height: 30px; border-radius: 50%; background: #2a0a0e; border: 3px solid #111; box-shadow: inset 0 0 6px #000; }
+  #lights i.on { background: #ff1d2e; box-shadow: 0 0 18px #ff1d2e, inset 0 0 6px #ff9aa2; }
+  #warn { top: 18%; left: 50%; transform: translateX(-50%); font-weight: 900; font-size: 18px; letter-spacing: 2px; padding: 6px 14px; border-radius: 10px; background: rgba(255, 60, 60, 0.85); display: none; }
+  #warn.gravel { background: rgba(200, 150, 60, 0.9); }
+  /* panel */
+  #pbtn { position: fixed; z-index: 8; top: 10px; left: 50%; transform: translateX(-50%); }
+  .btn { font: 700 13px system-ui, sans-serif; color: #e8f1ff; background: rgba(20, 30, 60, 0.85); border: 1px solid rgba(120, 200, 255, 0.35); border-radius: 10px; padding: 8px 12px; cursor: pointer; }
+  .btn:hover { border-color: #23e6ff; }
+  .btn.pri { background: linear-gradient(135deg, #ff2bd6, #7a2bff); border-color: transparent; }
+  .btn.go { background: linear-gradient(135deg, #12c46b, #0a8f86); border-color: transparent; }
+  .btn.sel { background: #23e6ff; color: #04121c; border-color: #23e6ff; }
+  #panel { position: fixed; z-index: 9; top: 0; right: 0; bottom: 0; width: min(380px, 100vw); padding: 14px; overflow-y: auto; transform: translateX(105%); transition: transform 0.2s ease; border-radius: 0; border-right: none; border-top: none; border-bottom: none; }
+  #panel.open { transform: none; }
+  #panel h3 { margin: 14px 0 8px; font-size: 12px; letter-spacing: 1.5px; color: #23e6ff; }
+  #panel h2 { margin: 0; font-size: 17px; }
+  .cars { display: grid; grid-template-columns: 1fr; gap: 5px; }
+  .car { display: flex; justify-content: space-between; align-items: center; padding: 7px 10px; border-radius: 9px; background: rgba(255,255,255,0.05); border: 1px solid transparent; cursor: pointer; font-size: 13px; }
+  .car small { color: #a9bad6; font-size: 11px; }
+  .car.sel { border-color: #23e6ff; background: rgba(35, 230, 255, 0.12); }
+  .car .pt { font: 700 12px ui-monospace, monospace; color: #ffd23f; }
+  .seg { display: flex; gap: 6px; flex-wrap: wrap; }
+  .seg .btn { flex: 1; padding: 7px 8px; }
+  .acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 12px; }
+  .note { font-size: 12px; color: #a9bad6; line-height: 1.45; }
+  /* tablo */
+  #tbl { position: fixed; z-index: 10; inset: 0; background: rgba(4, 6, 14, 0.82); display: none; align-items: center; justify-content: center; padding: 12px; }
+  #tbl.open { display: flex; }
+  #tbl .card { max-width: 760px; width: 100%; max-height: 92vh; overflow: auto; padding: 16px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  th, td { padding: 6px 6px; text-align: right; border-bottom: 1px solid rgba(255,255,255,0.07); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  th { color: #23e6ff; font-size: 11px; letter-spacing: 0.5px; position: sticky; top: 0; background: #0b1124; }
+  td.u25 { color: #4dff8a; font-weight: 800; }
+  td.me { color: #ffd23f; }
+  /* sonuç */
+  #res { position: fixed; z-index: 7; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 18px 22px; min-width: 290px; display: none; text-align: center; }
+  #res.open { display: block; }
+  #res .t { font: 900 42px ui-monospace, Menlo, monospace; margin: 6px 0; }
+  #res .row { display: flex; justify-content: space-between; gap: 18px; font-size: 13px; margin: 5px 0; color: #a9bad6; }
+  #res .row b { color: #e8f1ff; }
+  #res .acts { grid-template-columns: 1fr 1fr 1fr; }
+  /* dokunmatik */
+  #touch { position: fixed; z-index: 6; inset: auto 0 0 0; height: 0; }
+  .tb { position: fixed; bottom: 18px; width: 74px; height: 74px; border-radius: 50%; background: rgba(20, 30, 60, 0.55); border: 2px solid rgba(120, 200, 255, 0.35); display: flex; align-items: center; justify-content: center; font: 900 22px system-ui; color: #e8f1ff; pointer-events: auto; }
+  .tb.on { background: rgba(35, 230, 255, 0.45); }
+  #tL { left: 16px; } #tR { left: 102px; }
+  #tG { right: 16px; width: 84px; height: 84px; } #tB { right: 112px; } #tN { right: 30px; bottom: 116px; width: 62px; height: 62px; font-size: 14px; } #tH { right: 112px; bottom: 104px; width: 56px; height: 56px; font-size: 12px; }
+  body:not(.touch) #touch { display: none; }
+  body.touch #spd { bottom: 8px; padding: 5px 14px 7px; min-width: 140px; }
+  body.touch #spd .v { font-size: 28px; }
+  #keys { bottom: 10px; left: 10px; font-size: 11px; color: #8ea2c4; padding: 6px 10px; }
+  body.touch #keys { display: none; }
+  @media (max-height: 500px) { #tl { padding: 6px 10px; min-width: 150px; } #tl .big { font-size: 22px; } #tl .row { margin-top: 2px; font-size: 11.5px; } }
+  @media (max-width: 640px) { #tl { min-width: 150px; padding: 8px 10px; } #tl .big { font-size: 24px; } #msg .t { font-size: 34px; } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="module" src="./pist-app.js"></script>
+</body>
+</html>

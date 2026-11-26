@@ -1,0 +1,11 @@
+<tr-TR>
+Neon Şehir büyüyor!
+• Seçim sistemi: imza topla, oy ver, belediyeyi devral
+• Şarkı stüdyosu: 3 oktav, 5 kanal, yeni enstrümanlar ve yankı
+• Depolarda oyuncu piyasası; en ucuz satan kazanır
+• Polis operasyonları ucuzladı, tır baskınları yenilendi
+• Futbolda şampiyona ödülleri ve cezalı menajer listesi
+• Cihazına göre otomatik grafik ayarı, daha akıcı oyun
+• Tam ekran: adres çubuğu tarihe karıştı
+• Oyuncu bildirimlerinden gelen hata düzeltmeleri
+</tr-TR>

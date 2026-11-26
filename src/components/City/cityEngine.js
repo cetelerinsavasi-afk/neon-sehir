@@ -24,6 +24,7 @@ import { bakeGeo, canonMat, makeLod, lodTag, dropVenueInt, buildVenueInt, swapVe
 import { NEW_VENUES } from './world/layouts.js';
 import { HQ_CACHE } from './world/venues.js';
 import { Kit } from './kit.js';
+import { AVATAR_3D_ENABLED, AVATAR_3D_HIP, Avatar3D, makeAvatar3DLook, avatar3DPlain, avatar3DUsesPlain } from './avatar3d.js'; // v206: 3D avatar (geri alma: avatar3d.js)
 import { CATALOG_MAP } from '../HouseScreen/houseCatalog.js'; // v198: evdeki eşya eylemleri (kit.js zaten yüklüyor)
 import { HOUSE_PRODUCTS } from '../../../functions/houseCatalogData.js';
 import { ANIMAL_BY_KEY } from '../../../functions/animalData.js'; // v198: evdeki hayvanlar
@@ -206,6 +207,45 @@ function ensureBackTex(e, pose) {
     () => e.disposed
   );
 }
+// v206 — 3D avatar: bu mesafeden (m) yakındaki ayakta / yürüyen figürler 3D çizilir; uzakta, oturunca,
+// araçta, özel pozda ve "en düşük" grafik ayarında eski kâğıt figür. applyTier() ayarlar.
+let FIG3D_DIST = 0;
+const FIG3D_TIER_DIST = [42, 32, 24, 0];
+function requestLook3(e) {
+  if (!e || e.look3 || e.look3Q || !e.ready || !e.tex.idle) return;
+  const make = (f, b, plain) =>
+    queueTex(() => {
+      if (e.disposed) return;
+      try {
+        e.look3 = makeAvatar3DLook(f, b, e.full, { plain });
+      } catch (err) {
+        console.warn('3d avatar:', err);
+      }
+      // v208: saçsız / şapkasız resimler sadece 3D dokuya kopyalanır; ekran kartına hiç yüklenmez
+      if (plain) {
+        f.dispose();
+        b.dispose();
+      }
+    });
+  if (!avatar3DUsesPlain(e.full)) {
+    // kostüm: kafa çizimi kostümden gelir → mevcut önden / arkadan resim kullanılır
+    ensureBackTex(e, 'backIdle');
+    if (!e.tex.backIdle) return; // arka resim kuyrukta; sonraki karede tekrar denenir
+    e.look3Q = true;
+    make(e.tex.idle, e.tex.backIdle, false);
+    return;
+  }
+  // v208: saç + şapka 3D modellenir → gövdeye saçsız / şapkasız çizim giydirilir (kuyrukta, 2 resim)
+  e.look3Q = true;
+  const plainAv = avatar3DPlain(e.full);
+  const W3 = IS_MOBILE ? 208 : 320;
+  const H3 = IS_MOBILE ? 377 : 580;
+  const got = {};
+  const both = () => got.f && got.b && make(got.f, got.b, true);
+  rasterTex(() => buildFullAvatarSvgMarkup(plainAv, { pose: 'idle' }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, ''), W3, H3, 1, (t) => ((got.f = t), both()), () => e.disposed);
+  rasterTex(() => buildFullAvatarBackSvgMarkup(plainAv, { pose: 'idle' }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, ''), W3, H3, 1, (t) => ((got.b = t), both()), () => e.disposed);
+}
+const wrapAng = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 let blobTex = null;
 function blobShadow() {
   if (blobTex) return blobTex;
@@ -245,6 +285,7 @@ export function sweepAvatarTextures(now = performance.now(), idleMs = 60_000) {
     if (e.refs > 0 || !e.ready || now - (e.last || 0) < idleMs) continue;
     e.disposed = true; // v164: geç gelen (tembel) arka doku bırakılmış girdiye eklenmesin
     Object.values(e.tex).forEach((t) => t?.dispose?.());
+    e.look3?.dispose();
     avCache.delete(k);
   }
 }
@@ -385,6 +426,19 @@ class Fig {
     this.group.position.set(this.x, this.y, this.z);
     const bbYaw = camera.userData.billboardYaw;
     const ang = bbYaw != null ? bbYaw : Math.atan2(camera.position.x - this.x, camera.position.z - this.z);
+    // v206: baktığı yön = en son yürüdüğü yön (kamera döndürünce değişmez; herkeste aynı, çünkü
+    // konumdan hesaplanır — ağdan ek veri gitmez). Işınlanma gibi büyük sıçramalar sayılmaz.
+    const mdx = this.x - (this.px ?? this.x);
+    const mdz = this.z - (this.pz ?? this.z);
+    this.px = this.x;
+    this.pz = this.z;
+    const md2 = mdx * mdx + mdz * mdz;
+    if (md2 > 1e-6 && md2 < 9) this.yawT = Math.atan2(mdx, mdz);
+    if (!this.moving && this.standYaw != null) this.yawT = this.standYaw;
+    if (this.sitting && !this.inCar && (this.seat3Yaw ?? this.seatYaw) != null) this.yawT = this.seat3Yaw ?? this.seatYaw; // v207: koltuğun yönü
+    if (this.yawT == null) this.yawT = ang;
+    if (this.yaw == null) this.yaw = this.yawT;
+    this.yaw = wrapAng(this.yaw + wrapAng(this.yawT - this.yaw) * Math.min(1, dt * 12 || 1));
     let tilt = 0;
     let lift = 0;
     let forceWalk = false;
@@ -455,10 +509,61 @@ class Fig {
     const sinkT = this.sitting || this.inCar ? 0 : this.sink || 0;
     this.sinkCur = (this.sinkCur || 0) + (sinkT - (this.sinkCur || 0)) * Math.min(1, dt * 5 || 1);
     this.plane.position.y = this.sitting ? 0.04 + kIn * (AV_WAIST_FROM_TOP - AV_PLANE_H / 2) : AV_PLANE_H / 2 - AV_FEET - this.sinkCur;
+    // v206 — 3D avatar (yakında, ayakta / yürürken). Kâğıt yüzey sahnede kalır ama çizilmez
+    // (malzemesi gizlenir): ateş aurası gibi ona bağlı efektler çalışmaya devam eder.
+    const use3d = FIG3D_DIST > 0 && hd < FIG3D_DIST && this.tex.ready && !this.inCar && !(this.forcePose && this.tex.tex[this.forcePose]);
+    let look3 = null;
+    if (use3d) {
+      look3 = this.tex.look3 || null;
+      if (!look3) requestLook3(this.tex);
+    }
+    if (look3) {
+      if (this.m3 && !this.m3.setLook(look3)) {
+        this.m3.dispose();
+        this.m3 = null;
+      }
+      if (!this.m3) {
+        this.m3 = new Avatar3D(look3);
+        this.group.add(this.m3.root);
+      }
+      const r = this.m3.root;
+      r.visible = true;
+      r.rotation.y = this.yaw;
+      // v207: oturma / yüzme / suda durma / emote (dans, zıpla, selam, alkış, kalp)
+      const deep = !this.sitting && this.sinkCur > 0.75;
+      const em = this.emote ? { kind: this.emote.kind, e: (now - this.emote.t0) / 1000 } : null;
+      this.m3.pose({
+        dt,
+        t: now / 1000,
+        walkT: this.walkT * 1.3,
+        walk: this.moving && !this.sitting,
+        sit: this.sitting,
+        swim: deep && this.moving,
+        tread: deep && !this.moving,
+        tilt: em ? 0 : tilt,
+        emote: em,
+      });
+      const stand = lift - this.sinkCur;
+      const seatOff = (this.seatY ?? this.y) - this.y - AVATAR_3D_HIP + 0.03;
+      let ry = stand + (seatOff - stand) * this.m3.kSit;
+      ry += (-0.12 - ry) * this.m3.kSwim; // yüzerken gövde su yüzeyinde
+      r.position.set(this.pivot.position.x, ry, 0);
+      this.mat.visible = false;
+    } else {
+      if (this.m3) this.m3.root.visible = false;
+      this.mat.visible = true;
+    }
     if (this.holding) {
-      const side = this.facingLeft ? -1 : 1;
       const bob = Math.sin(now / 480) * 0.02;
-      this.held.position.set(Math.cos(ang) * side * 0.3 + Math.sin(ang) * 0.12, AV_PLANE_H * 0.47 - AV_FEET + bob, -Math.sin(ang) * side * 0.3 + Math.cos(ang) * 0.12);
+      if (look3) {
+        // 3D: elde tutulan, karakterin sol elinde (2D çizimdeki tarafla aynı), baktığı yönle döner
+        const hx = this.m3.handX + 0.05;
+        const hz = 0.12;
+        this.held.position.set(hx * Math.cos(this.yaw) + hz * Math.sin(this.yaw), 0.52 + bob - this.sinkCur, -hx * Math.sin(this.yaw) + hz * Math.cos(this.yaw));
+      } else {
+        const side = this.facingLeft ? -1 : 1;
+        this.held.position.set(Math.cos(ang) * side * 0.3 + Math.sin(ang) * 0.12, AV_PLANE_H * 0.47 - AV_FEET + bob, -Math.sin(ang) * side * 0.3 + Math.cos(ang) * 0.12);
+      }
     }
     this.fireFx?.update(now, this.plane.visible && this.group.visible);
     if (this.pet) {
@@ -476,6 +581,8 @@ class Fig {
     });
   }
   dispose(scene) {
+    this.m3?.dispose();
+    this.m3 = null;
     texUse(this.tex, null);
     scene.remove(this.group);
     this.label.remove();
@@ -834,6 +941,19 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   const TICK_R = IS_MOBILE ? 50 : 70; // canlı eşyalar bu mesafede oynar
   const npcDefs = [];
   const seats = [];
+  // v207: bir noktaya en yakın koltuğun yönü (uzak oyuncunun 3D avatarı koltuğa dönük otursun)
+  const seatYawNear = (x, z) => {
+    let best = null;
+    let bd = 0.7 * 0.7;
+    for (const s of seats) {
+      const d = (s.x - x) ** 2 + (s.z - z) ** 2;
+      if (d < bd) {
+        bd = d;
+        best = s.yaw;
+      }
+    }
+    return best;
+  };
   const heights = []; // v149: basamaklı zeminler (stadyum tribünü)
   const areas = []; // v149: adlandırılmış alanlar ('stadyum')
   city.kits.forEach((k) => {
@@ -2432,7 +2552,13 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
           f.sitting = true;
           f.seatY = st.sy ?? 0.5;
           f.moving = false;
-        }
+          // v207: 3D avatar için en yakın koltuğun yönü (konum değişmedikçe yeniden aranmaz)
+          if (f.s3x == null || Math.abs(f.s3x - f.x) + Math.abs(f.s3z - f.z) > 0.3) {
+            f.s3x = f.x;
+            f.s3z = f.z;
+            f.seat3Yaw = seatYawNear(f.x, f.z);
+          }
+        } else f.seat3Yaw = null;
       }
       if (show && isoV && W.inVenueRoom(f.x, f.z) !== isoV) show = false; // v158: karargahtayken sadece içerdekiler
       // v196: herkes kendi evinde (ayrı oda). Evdeyken sadece aynı evdekiler; dışarıdayken evdekiler görünmez
@@ -4318,6 +4444,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     me.z = st.z;
     me.sitting = !st.stand; // v202: duşakabinde ayakta durulur
     me.seatY = st.y;
+    me.seat3Yaw = st.yaw ?? null; // v207: 3D avatar koltuğun yönüne döner
     // v149: tribün koltuğu — yüz sahaya dönük, kamera arkadan sahaya bakar
     me.seatYaw = st.tier ? st.yaw : null;
     if (st.tier) glideCam(st.yaw + Math.PI, 0.28);
@@ -4346,6 +4473,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     st.taken = false;
     me.sitting = false;
     me.seatYaw = null;
+    me.seat3Yaw = null;
     // v159.1: kalkınca masa / tezgâh ile koltuk arasına sıkışılmasın — önce bolca boşluk olan yön
     // (önü, arkası, yanları; geniş yarıçapla) aranır, yoksa en yakın boş yer
     const sy = Math.sin(st.yaw);
@@ -5245,6 +5373,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     renderer.setPixelRatio(Math.max(PR_FLOOR, Math.min(window.devicePixelRatio || 1, t.dpr) * drs));
     moonL.castShadow = t.shadows;
     moonL.shadow.autoUpdate = t.shadows && t.shadowEvery <= 1;
+    FIG3D_DIST = AVATAR_3D_ENABLED && !snapshot ? FIG3D_TIER_DIST[tier] ?? 0 : 0; // v206
     pool.forEach((l, i) => (l.visible = i < t.pool));
     cull(true);
   }
