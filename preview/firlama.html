@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+<title>Neon Şehir — Binekten Fırlama Prototipi</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #070a12; color: #e8f1ff; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; user-select: none; -webkit-user-select: none; touch-action: none; }
+  #root { position: fixed; inset: 0; }
+  #root canvas { display: block; width: 100%; height: 100%; }
+  .hud { position: fixed; pointer-events: none; z-index: 5; }
+  .glass { background: rgba(8, 12, 26, 0.74); border: 1px solid rgba(120, 200, 255, 0.22); border-radius: 12px; backdrop-filter: blur(6px); }
+  #tl { top: 10px; left: 10px; padding: 10px 14px; min-width: 210px; }
+  #tl .mode { font-size: 11px; letter-spacing: 1.5px; color: #23e6ff; font-weight: 800; margin-bottom: 4px; }
+  #tl .name { font-size: 17px; font-weight: 800; }
+  #tl .row { display: flex; justify-content: space-between; gap: 14px; font-size: 12.5px; margin-top: 5px; color: #a9bad6; }
+  #tl .row b { color: #e8f1ff; font-family: ui-monospace, Menlo, Consolas, monospace; }
+  #spd { bottom: 14px; left: 50%; transform: translateX(-50%); padding: 8px 18px 10px; text-align: center; min-width: 160px; }
+  #spd .v { font: 900 38px/1 ui-monospace, Menlo, Consolas, monospace; }
+  #spd .u { font-size: 11px; color: #a9bad6; letter-spacing: 1px; }
+  #log { top: 10px; left: 50%; transform: translateX(-50%); padding: 8px 14px; font-size: 14px; font-weight: 700; text-align: center; max-width: 92vw; transition: opacity .3s; }
+  #log.eject { background: rgba(255, 43, 110, 0.86); border-color: transparent; }
+  #log.soft { background: rgba(18, 160, 110, 0.82); border-color: transparent; }
+  #msg { top: 30%; left: 50%; transform: translate(-50%, -50%); font: 900 44px/1 system-ui, sans-serif; letter-spacing: 2px; text-shadow: 0 3px 18px rgba(0,0,0,.8); opacity: 0; transition: opacity .25s; text-align: center; }
+  #msg small { display: block; font-size: 15px; font-weight: 700; letter-spacing: 0; margin-top: 8px; color: #cfe1ff; }
+  #hint { bottom: 76px; left: 50%; transform: translateX(-50%); font-size: 13px; padding: 6px 12px; display: none; }
+  #keys { bottom: 14px; left: 10px; padding: 8px 12px; font-size: 11.5px; color: #a9bad6; line-height: 1.55; }
+  #keys b { color: #e8f1ff; }
+  body.touch #keys { display: none; }
+  /* panel */
+  #panel { position: fixed; z-index: 9; top: 10px; right: 10px; width: min(330px, calc(100vw - 20px)); max-height: calc(100vh - 20px); overflow-y: auto; padding: 12px 14px; }
+  #panel.min .body { display: none; }
+  #panel h2 { margin: 0; font-size: 15px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; }
+  #panel h3 { margin: 12px 0 6px; font-size: 11px; letter-spacing: 1.5px; color: #23e6ff; }
+  .btn { font: 700 12.5px system-ui, sans-serif; color: #e8f1ff; background: rgba(20, 30, 60, 0.85); border: 1px solid rgba(120, 200, 255, 0.35); border-radius: 9px; padding: 7px 9px; cursor: pointer; }
+  .btn:hover { border-color: #23e6ff; }
+  .btn.sel { background: #23e6ff; color: #04121c; border-color: #23e6ff; }
+  .btn.hot { background: linear-gradient(135deg, #ff2b6e, #7a2bff); border-color: transparent; }
+  .btn.cool { background: linear-gradient(135deg, #12c46b, #0a8f86); border-color: transparent; }
+  .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
+  .sl { display: grid; grid-template-columns: 70px 1fr 54px; gap: 8px; align-items: center; font-size: 12.5px; margin: 4px 0; }
+  .sl input { width: 100%; }
+  .sl b { font-family: ui-monospace, monospace; text-align: right; }
+  .chk { font-size: 12.5px; display: flex; gap: 8px; align-items: center; margin: 4px 0; cursor: pointer; }
+  .note { font-size: 11.5px; color: #a9bad6; line-height: 1.45; margin-top: 8px; }
+  /* dokunmatik */
+  #touch { position: fixed; inset: auto 0 0 0; z-index: 6; display: none; pointer-events: none; }
+  body.touch #touch { display: block; }
+  #touch .pad { position: absolute; bottom: 18px; display: flex; gap: 10px; pointer-events: auto; }
+  #touch .l { left: 14px; }
+  #touch .r { right: 14px; }
+  #touch button { width: 66px; height: 66px; border-radius: 50%; font: 800 22px system-ui; color: #fff; background: rgba(20, 30, 60, 0.6); border: 2px solid rgba(120, 200, 255, 0.45); }
+  #touch button.on { background: rgba(35, 230, 255, 0.45); }
+  #touch .e { position: absolute; right: 14px; bottom: 100px; pointer-events: auto; width: 58px; height: 58px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<div id="tl" class="hud glass">
+  <div class="mode">BİNEKTEN FIRLAMA · PROTOTİP</div>
+  <div class="name" id="vname">–</div>
+  <div class="row"><span>Durum</span><b id="state">–</b></div>
+  <div class="row"><span>Fırlama sınırı</span><b id="thr">–</b></div>
+  <div class="row"><span>Son çarpma</span><b id="last">–</b></div>
+</div>
+<div id="log" class="hud glass" style="opacity:0"></div>
+<div id="msg" class="hud"></div>
+<div id="hint" class="hud glass"></div>
+<div id="spd" class="hud glass"><div class="v" id="kmh">0</div><div class="u">KM/SA</div></div>
+<div id="keys" class="hud glass">
+  <b>W/S</b> gaz · fren &nbsp; <b>A/D</b> direksiyon &nbsp; <b>Space</b> el freni<br />
+  <b>E</b> bin / in &nbsp; <b>R</b> başa dön &nbsp; <b>1-7</b> binek &nbsp; <b>T</b> ağır çekim &nbsp; <b>C</b> kamera
+</div>
+
+<div id="panel" class="glass">
+  <h2 id="ptitle">🧪 Test paneli <span id="pmin">–</span></h2>
+  <div class="body">
+    <h3>BİNEK</h3>
+    <div class="grid" id="vlist"></div>
+    <h3>OTOMATİK TEST (duvara dik, sabit hız)</h3>
+    <div class="grid" id="tests"></div>
+    <div class="grid3" style="margin-top:5px">
+      <button class="btn" data-side="40">Yandan sürt 40</button>
+      <button class="btn" data-bar="45">Bariyer 45</button>
+      <button class="btn" data-car="50">Araba 50</button>
+    </div>
+    <h3>FIRLAMA SINIRI (duvara dik hız, km/sa)</h3>
+    <div id="sliders"></div>
+    <label class="chk"><input type="checkbox" id="slowmo" checked /> Kaza anında ağır çekim</label>
+    <label class="chk"><input type="checkbox" id="autoup" checked /> Durunca kendiliğinden kalk</label>
+    <div class="note">
+      Sertlik = çarpma anında <b>duvara dik</b> hız (carImpact.js'teki kapanma hızı). Bu yüzden 40 km/sa ile
+      duvara sürtünerek geçmek fırlatmaz, aynı hızla dik çarpmak fırlatır. Sınırın altındaki çarpmalarda
+      şehirdeki gibi sadece sarsıntı + geri sekme olur.
+    </div>
+  </div>
+</div>
+
+<div id="touch">
+  <div class="pad l"><button data-k="KeyA">◀</button><button data-k="KeyD">▶</button></div>
+  <div class="pad r"><button data-k="KeyS">▼</button><button data-k="KeyW">▲</button></div>
+  <button class="e" data-k="KeyE">E</button>
+</div>
+
+<script type="module" src="./firlama-app.js"></script>
+</body>
+</html>

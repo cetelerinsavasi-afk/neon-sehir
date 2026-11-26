@@ -176,6 +176,17 @@ export class AvatarViewer {
     this.holder.add(this.m.root);
     return true;
   }
+  // v215: elin (tasma / eşya tutan) tuval üstündeki yeri, CSS pikseli
+  handScreen() {
+    const m = this.m;
+    const c = this.canvas;
+    if (!m || !c.clientWidth) return null;
+    this.scene.updateMatrixWorld();
+    const v = new THREE.Vector3();
+    m.hand.getWorldPosition(v);
+    v.project(this.cam);
+    return { x: (v.x * 0.5 + 0.5) * c.clientWidth, y: (0.5 - v.y * 0.5) * c.clientHeight };
+  }
   setPose(p) {
     this.pose = p || 'idle';
     this.t0 = performance.now();

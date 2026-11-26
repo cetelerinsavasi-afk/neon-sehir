@@ -72,6 +72,18 @@ export class PetFollower { // v147: şehir de kullanır
       tx = owner.x - rx * 0.3 * side + Math.sin(now / 420) * 0.15;
       tz = owner.z - rz * 0.3 * side;
       ty = base + 1.95 + Math.sin(now / 260) * 0.06;
+    } else if (owner.handWorld) {
+      // v215 — 3D avatar: hayvan tasmayı tutan elin tarafında, biraz önde / yanda yürür
+      const hw = owner.handWorld;
+      let ex = hw.x - owner.x;
+      let ez = hw.z - owner.z;
+      const el = Math.hypot(ex, ez) || 1;
+      ex /= el;
+      ez /= el;
+      const d = 0.55 + this.sm * 0.3;
+      tx = owner.x + ex * d;
+      tz = owner.z + ez * d;
+      ty = base;
     } else {
       tx = owner.x + rx * (0.5 + this.sm * 0.3) * side;
       tz = owner.z + rz * (0.5 + this.sm * 0.3) * side;
@@ -110,9 +122,11 @@ export class PetFollower { // v147: şehir de kullanır
     const showLeash = this.pet.leash !== false && !this.perch;
     this.leash.visible = showLeash;
     if (showLeash) {
-      const hx = owner.x + rx * 0.24 * side;
-      const hz = owner.z + rz * 0.24 * side;
-      const hy = seatPos ? seatPos.y + 0.5 : base + 0.92;
+      // v215: 3D avatarda tasma gerçekten elde (elin dünya konumu)
+      const hw = owner.handWorld;
+      const hx = hw ? hw.x : owner.x + rx * 0.24 * side;
+      const hz = hw ? hw.z : owner.z + rz * 0.24 * side;
+      const hy = hw ? hw.y : seatPos ? seatPos.y + 0.5 : base + 0.92;
       const fdir = this.flip ? -1 : 1;
       const [ccx, ccy] = petCollarAt(this.id);
       const px = this.x + rx * ccx * this.sm * fdir;

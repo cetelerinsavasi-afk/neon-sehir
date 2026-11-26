@@ -1378,7 +1378,7 @@ export const petSizeFor = (id, avatarH) => (PET_ART[id]?.s || 40) * 0.72 * (avat
 
 // --- Avatarın yanındaki hayvan (canvas dünyaları) ----------------------------------
 const followers = new Map(); // anahtar → { x, y, f, t, moving, flying }
-export function drawOwnerPet(ctx, { key, x, baseY, facing, h, w, pet, moving = false, isStatic = false, now = performance.now() }) {
+export function drawOwnerPet(ctx, { key, x, baseY, facing, h, w, pet, moving = false, isStatic = false, now = performance.now(), hand = null }) {
   const id = pet?.id;
   if (!PET_ART[id]) return;
   const dir = facing === 'left' ? -1 : 1;
@@ -1425,8 +1425,9 @@ export function drawOwnerPet(ctx, { key, x, baseY, facing, h, w, pet, moving = f
   const flip = perch && !flying ? dir < 0 : st.f < 0;
   // tasma (kuşlarda yok)
   if (pet.leash !== false && !perch) {
-    const hx = x + dir * w * 0.3;
-    const hy = baseY - h * 0.42;
+    // v215: 3D avatarda tasma elden çıkar (hand: ekrandaki el noktası)
+    const hx = hand ? hand.x : x + dir * w * 0.3;
+    const hy = hand ? hand.y : baseY - h * 0.42;
     const [cx, cy] = petCollarAt(id);
     const px = st.x + (flip ? -1 : 1) * cx * size;
     const py = st.y + cy * size;

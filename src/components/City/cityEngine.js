@@ -616,6 +616,11 @@ class Fig {
       }
     }
     this.fireFx?.update(now, this.plane.visible && this.group.visible);
+    // v215: tasma 3D avatarın elinden (elin dünya konumu)
+    if (this.pet && look3 && this.m3) {
+      this.m3.root.updateMatrixWorld(true);
+      this.handWorld = this.m3.hand.getWorldPosition(this.handWorld || new THREE.Vector3());
+    } else this.handWorld = null;
     if (this.pet) {
       const show = this.group.visible && !this.inCar;
       this.pet.sprite.visible = show;
@@ -4318,6 +4323,9 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   let paused = false;
   let lite = false; // v191: büyük harita açık
   let first = true;
+  // v215: sırtı kameraya çevirme SADECE doğma / ışınlanmada (kamera her sıfırlandığında değil —
+  // 2D/3D görünüm değişimi, fotoğraf vb. avatarı döndürüyordu)
+  let faceAway = true;
   let lightT = 0;
   let todT = 30;
   let zoneKey = '';
@@ -4794,7 +4802,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     }
     standsK = first ? (inStands ? 1 : 0) : standsK + ((inStands ? 1 : 0) - standsK) * Math.min(1, dt * 5);
     // v215: doğunca / ışınlanınca avatarın sırtı kameraya (evden / binadan çıkınca sırtı binaya) dönük
-    if (first && !driving && !me.sitting && !snapshot) me.faceYaw(self.camYaw + Math.PI);
+    if (faceAway && !driving && !me.sitting && !snapshot) me.faceYaw(self.camYaw + Math.PI);
+    faceAway = false;
     const yaw = self.camYaw;
     const pitch = clamp(self.camPitch, -0.2, 1.2);
     const aspect = camera.aspect || 1;
@@ -6344,6 +6353,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       self.path = null;
       ring.visible = false;
       first = true;
+      faceAway = true; // v215
     },
     walkTo,
     // v196 — 3 KATLI EV ----------------------------------------------------------------------
@@ -6487,6 +6497,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       self.path = null;
       ring.visible = false;
       first = true;
+      faceAway = true; // v215
       return true;
     },
     homeSurfaces(surf) {
@@ -6602,6 +6613,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       self.path = null;
       ring.visible = false;
       first = true;
+      faceAway = true; // v215
     },
     // v157 — girilebilir mekânlar / dış dünya
     venueType: () => (curVenue ? curVenue.type : null),
@@ -6623,6 +6635,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       self.path = null;
       ring.visible = false;
       first = true;
+      faceAway = true; // v215
       return true;
     },
     // v157.4 — ÇETE KARARGAHLARI: hangar (slot 0–5) → çetenin adı (kapının üstünde) + iç tasarımı
@@ -6668,6 +6681,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       self.path = null;
       ring.visible = false;
       first = true;
+      faceAway = true; // v215
       return true;
     },
     // karargahların bulunduğu cebin merkezi (yaklaşınca bilgiler okunur)
@@ -6704,6 +6718,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       self.path = null;
       ring.visible = false;
       first = true;
+      faceAway = true; // v215
     },
     world: () => W,
     // v157: geliştirme testleri (çarpışma / zemin simülasyonu) — canlıda yok

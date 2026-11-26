@@ -184,6 +184,7 @@ function Stage({ avatar, onPet, sayRef }) {
       const av = avRef.current;
       const v3 = viewer.current && ready3.current ? viewer.current : null;
       const c3 = ref3.current;
+      let hand = null;
       if (v3 && c3) {
         // 3D: tuval avatarın kutusu kadar; ayaklar zemin çizgisinde (aura 3D'de çizilir)
         const oh = Math.round(h * 1.12);
@@ -202,6 +203,8 @@ function Stage({ avatar, onPet, sayRef }) {
         const yT = moving ? (P.dir > 0 ? Math.PI / 2 : -Math.PI / 2) : 0;
         yaw3 += (yT - yaw3) * Math.min(1, dt * 8);
         v3.yaw = yaw3;
+        const hs = v3.handScreen();
+        if (hs) hand = { x: Math.round(x - ow / 2) + hs.x, y: Math.round(baseY - oh * 0.956) + hs.y };
       } else {
         if (c3) c3.style.visibility = 'hidden';
         const im = img(av, pose) || lastImg;
@@ -213,7 +216,7 @@ function Stage({ avatar, onPet, sayRef }) {
         if (im) ctx.drawImage(im, -w / 2, -h, w, h);
         ctx.restore();
       }
-      if (av.pet?.id) drawOwnerPet(ctx, { key: '__shop', x, baseY, facing: P.dir < 0 ? 'left' : 'right', h, w, pet: av.pet, moving, now });
+      if (av.pet?.id) drawOwnerPet(ctx, { key: '__shop', x, baseY, facing: hand ? (hand.x >= x - 2 ? 'right' : 'left') : P.dir < 0 ? 'left' : 'right', h, w, pet: av.pet, moving, now, hand }); // 3D: hayvan tasmayı tutan elin tarafında
       if (av.acc?.aura && !v3) drawAuraFx(ctx, av.acc, x, baseY, h, now);
       // kalpler + konuşma
       ctx.font = '20px sans-serif';
