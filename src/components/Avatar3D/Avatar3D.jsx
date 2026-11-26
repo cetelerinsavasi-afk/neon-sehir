@@ -55,24 +55,39 @@ export function Avatar3DView({ avatar, pose = 'idle', className = '', frame = 'f
   );
 }
 
+// v217: kart ekrana yaklaşmadan HİÇBİR resim çizilmez. Eskiden 100 kartın hepsinin 2D (SVG)
+// yedek resmi panel açılır açılmaz aynı anda çözülüyordu → telefonda bellek taşıp WebView
+// çöküyordu. Şimdi: görünür olunca 3D resim üretilir; WebGL yoksa ya da 3D başarısızsa 2D
+// yedek kullanılır. fallback bir fonksiyon da olabilir (sadece gerekince hesaplanır).
+const BLANK = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 export function Avatar3DThumb({ avatar, fallback, className = '', style, w = 200, h = 230, frame = 'bust', yaw = 0.32 }) {
   const ref = useRef(null);
   const [src, setSrc] = useState(null);
   const avKey = JSON.stringify(avatar || {});
+  const fbRef = useRef(fallback);
+  fbRef.current = fallback;
   useEffect(() => {
     setSrc(null);
-    if (!webglOk() || !ref.current) return undefined;
+    if (!ref.current) return undefined;
     let live = true;
     const el = ref.current;
+    const fb = () => {
+      const f = fbRef.current;
+      return typeof f === 'function' ? f() : f;
+    };
     const io = new IntersectionObserver(
       (es) => {
         if (!es.some((e) => e.isIntersecting)) return;
         io.disconnect();
+        if (!webglOk()) {
+          setSrc(fb() || null);
+          return;
+        }
         avatarThumb3D(JSON.parse(avKey), { w, h, frame, yaw })
           .then((u) => live && setSrc(u))
-          .catch(() => {});
+          .catch(() => live && setSrc(fb() || null));
       },
-      { rootMargin: '200px' }
+      { rootMargin: '150px' }
     );
     io.observe(el);
     return () => {
@@ -80,5 +95,5 @@ export function Avatar3DThumb({ avatar, fallback, className = '', style, w = 200
       io.disconnect();
     };
   }, [avKey, w, h, frame, yaw]);
-  return <img ref={ref} className={className} style={style} src={src || fallback} alt="" decoding="async" />;
+  return <img ref={ref} className={className} style={style} src={src || BLANK} alt="" decoding="async" />;
 }

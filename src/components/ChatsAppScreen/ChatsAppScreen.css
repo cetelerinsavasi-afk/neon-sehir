@@ -13,6 +13,14 @@
   gap: 8px;
 }
 
+/* v217: mesajlar iç kutuda — boyu izlenir, sohbet hep en alttan açılır (useStickyChat) */
+.ca-msgs-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .chatsapp-row {
   display: flex;
   gap: 6px;

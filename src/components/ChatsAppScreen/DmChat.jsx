@@ -1,4 +1,5 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { useStickyChat } from './useStickyChat';
 import { collection, getDocs, limit, onSnapshot, orderBy, query, startAfter } from 'firebase/firestore';
 import { db } from '../../firebase';
 import { useAuth } from '../../contexts/AuthContext';
@@ -130,11 +131,9 @@ export default function DmChat({ target, onBack }) {
   const [reportOf, setReportOf] = useState(null);
   const [showCard, setShowCard] = useState(false);
   const [replyTo, setReplyTo] = useState(null); // v72 — yanıtlanan mesaj
-  const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const listRef = useRef(null);
-  const keepPos = useRef(null);
-  const lastIdRef = useRef(null);
+  const innerRef = useRef(null);
   const myUnread = chat?.myUnread || 0;
 
   const react = async (m, emoji) => {
@@ -146,27 +145,15 @@ export default function DmChat({ target, onBack }) {
     }
   };
 
-  // v204: sadece EN YENİ mesaj değişince en alta kay; eski mesajlar eklenince yer sabit kalsın
-  const lastId = messages.length ? messages[messages.length - 1].id : null;
-  useEffect(() => {
-    if (!lastId || lastId === lastIdRef.current) return;
-    const first = lastIdRef.current === null;
-    lastIdRef.current = lastId;
-    bottomRef.current?.scrollIntoView({ behavior: first ? 'auto' : 'smooth' });
-  }, [lastId]);
-  useLayoutEffect(() => {
-    const el = listRef.current;
-    const k = keepPos.current;
-    if (!el || !k) return;
-    el.scrollTop = el.scrollHeight - k.height + k.top;
-    keepPos.current = null;
-  }, [messages.length]);
+  // v217: sohbet en alttan açılır ve yeni mesajda altta kalır (bkz. useStickyChat)
+  const lastMsg = messages.length ? messages[messages.length - 1] : null;
+  const sticky = useStickyChat({ listRef, innerRef, lastId: lastMsg?.id || null, lastMine: Boolean(lastMsg && lastMsg.uid === user?.uid), count: messages.length, onNearTop: () => showOlder() });
   const showOlder = async () => {
-    const el = listRef.current;
     if (!hasMore || loadingOlder) return;
-    if (el) keepPos.current = { height: el.scrollHeight, top: el.scrollTop };
+    sticky.rememberPos();
     const n = await loadOlder();
-    if (!n) keepPos.current = null;
+    if (!n) sticky.forgetPos();
+    else requestAnimationFrame(sticky.forgetPos);
   };
 
   // v146: açık sohbet (üst bildirim şeridi bu kişi için çıkmasın)
@@ -209,10 +196,9 @@ export default function DmChat({ target, onBack }) {
       <div
         className="chatsapp-messages ca-dm-messages"
         ref={listRef}
-        onScroll={(e) => {
-          if (e.currentTarget.scrollTop < 40 && lastIdRef.current) showOlder();
-        }}
+        onScroll={sticky.onScroll}
       >
+        <div className="ca-msgs-inner" ref={innerRef}>
         <p className="ca-dm-note">🔒 Yalnızca arkadaşlar yazışabilir · mesajlar 7 gün sonra silinir</p>
         {hasMore && messages.length > 0 && (
           <button type="button" className="ca-load-older" onClick={showOlder} disabled={loadingOlder}>
@@ -226,7 +212,7 @@ export default function DmChat({ target, onBack }) {
           </Fragment>
         ))}
         {messages.length === 0 && friend && <p className="ca-empty">Henüz mesaj yok. İlk mesajı sen gönder! 👋</p>}
-        <div ref={bottomRef} />
+        </div>
       </div>
       {friend && <ReplyBar replyTo={replyTo} myUid={user.uid} onCancel={() => setReplyTo(null)} />}
       {friend ? (

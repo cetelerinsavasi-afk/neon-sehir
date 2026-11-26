@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useStickyChat } from './useStickyChat';
 import { useAuth } from '../../contexts/AuthContext';
 import { useGlobalChat } from '../../hooks/useGlobalChat';
 import { markChatsAppSeen } from '../../hooks/useUnreadNotifications';
@@ -53,11 +54,9 @@ export default function GroupChat({ onBack }) {
   const [menuFor, setMenuFor] = useState(null);
   const [error, setError] = useState(null);
   const [replyTo, setReplyTo] = useState(null); // v72 — yanıtlanan mesaj
-  const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const listRef = useRef(null);
-  const keepPos = useRef(null); // eski mesajlar eklenince ekran zıplamasın
-  const lastIdRef = useRef(null);
+  const innerRef = useRef(null);
 
   const react = async (m, emoji) => {
     setError(null);
@@ -73,33 +72,15 @@ export default function GroupChat({ onBack }) {
     markChatsAppSeen();
   }, [allMessages.length]);
 
-  // Sadece EN YENİ mesaj değişince en alta kay (eski mesaj yüklenince kaydırma yok)
-  const lastId = messages.length ? messages[messages.length - 1].id : null;
-  useEffect(() => {
-    if (!lastId || lastId === lastIdRef.current) return;
-    const first = lastIdRef.current === null;
-    lastIdRef.current = lastId;
-    bottomRef.current?.scrollIntoView({ behavior: first ? 'auto' : 'smooth' });
-  }, [lastId]);
-
-  // Eski mesajlar üste eklenince kullanıcının baktığı yer sabit kalsın
-  useLayoutEffect(() => {
-    const el = listRef.current;
-    const k = keepPos.current;
-    if (!el || !k) return;
-    el.scrollTop = el.scrollHeight - k.height + k.top;
-    keepPos.current = null;
-  }, [messages.length]);
-
+  // v217: sohbet en alttan açılır ve yeni mesajda altta kalır (bkz. useStickyChat)
+  const lastMsg = messages.length ? messages[messages.length - 1] : null;
+  const sticky = useStickyChat({ listRef, innerRef, lastId: lastMsg?.id || null, lastMine: Boolean(lastMsg && lastMsg.uid === user?.uid), count: messages.length, onNearTop: () => showOlder() });
   const showOlder = async () => {
-    const el = listRef.current;
     if (!hasMore || loadingOlder) return;
-    if (el) keepPos.current = { height: el.scrollHeight, top: el.scrollTop };
+    sticky.rememberPos();
     const n = await loadOlder();
-    if (!n) keepPos.current = null;
-  };
-  const onListScroll = (e) => {
-    if (e.currentTarget.scrollTop < 40 && lastIdRef.current) showOlder();
+    if (!n) sticky.forgetPos();
+    else requestAnimationFrame(sticky.forgetPos);
   };
 
   const handleSend = async (trimmed) => {
@@ -128,7 +109,8 @@ export default function GroupChat({ onBack }) {
           <span className="ca-header-sub">Tüm oyuncular</span>
         </div>
       </div>
-      <div className="chatsapp-messages" ref={listRef} onScroll={onListScroll}>
+      <div className="chatsapp-messages" ref={listRef} onScroll={sticky.onScroll}>
+        <div className="ca-msgs-inner" ref={innerRef}>
         {hasMore && messages.length > 0 && (
           <button type="button" className="ca-load-older" onClick={showOlder} disabled={loadingOlder}>
             {loadingOlder ? 'Yükleniyor…' : '↑ Önceki mesajlar'}
@@ -137,7 +119,7 @@ export default function GroupChat({ onBack }) {
         {messages.map((m) => (
           <ChatRow key={m.id} m={m} mine={m.uid === user.uid} myUid={user.uid} onProfile={setProfileOf} onMenu={setMenuFor} onReact={react} isBlocked={isBlocked} />
         ))}
-        <div ref={bottomRef} />
+        </div>
       </div>
       <ReplyBar replyTo={replyTo} myUid={user.uid} onCancel={() => setReplyTo(null)} />
       <ChatInput onSend={handleSend} maxLength={300} inputRef={inputRef} />

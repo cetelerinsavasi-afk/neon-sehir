@@ -169,6 +169,20 @@ test('başka çeteye para: Baba/Sağ Kol, serbest paradan; iki sohbete duyuru', 
   await h.fails(A.baba, 'transferToGang', { targetGangId: A.gangId, amount: 10 });
 });
 
+test('v217: başka çeteye para + not — not iki çetenin sohbetinde de görünür', async () => {
+  const h = await createHarness();
+  const A = await rankedGang(h);
+  const B = await setupGang(h, { members: 0, name: 'Beta' });
+  await h.fundKasa(A.gangId, 100_000);
+  await h.act(A.ids[0], 'transferToGang', { targetGangId: B.gangId, amount: 1000, note: '  Savaş   desteği  ' });
+  assert.ok(h.chat(A.gangId).some((m) => /1\.000 altın gönderdi\. 📝 Not: “Savaş desteği”/.test(m)));
+  assert.ok(h.chat(B.gangId).some((m) => /kasamıza 1\.000 altın gönderdi\. 📝 Not: “Savaş desteği”/.test(m)));
+  await h.fails(A.ids[0], 'transferToGang', { targetGangId: B.gangId, amount: 10, note: 'x'.repeat(161) });
+  // notsuz gönderim eskisi gibi
+  await h.act(A.ids[0], 'transferToGang', { targetGangId: B.gangId, amount: 500 });
+  assert.ok(h.chat(B.gangId).some((m) => /kasamıza 500 altın gönderdi\.$/.test(m)));
+});
+
 test('v108: İstihbarat dağıtımı kapandı; İstihbarata bağış / kasadan çekme yok', async () => {
   const h = await createHarness();
   const ids = [];

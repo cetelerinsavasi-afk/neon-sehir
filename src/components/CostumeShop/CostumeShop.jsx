@@ -393,7 +393,7 @@ export default function CostumeShop({ onBack }) {
                     const ti = on && !tt ? savedTint : tt;
                     return ti && Object.keys(ti).length ? { look: x.id, lookTint: ti } : { look: x.id };
                   })()}
-                  fallback={thumbSrc(x.id, on && !tt ? savedTint : tt)}
+                  fallback={() => thumbSrc(x.id, on && !tt ? savedTint : tt)}
                   style={{ background: `radial-gradient(circle at 50% 38%, ${RC[x.r] || '#9aa4b2'}61 0, ${LOOK_ART[x.id]?.base?.background || '#0b0d17'} 55%, #05060c 100%)` }}
                 />
                 <span className="cos-rdot" style={{ color: RC[x.r] }}>

@@ -33,8 +33,23 @@ function raster(svg, w, h) {
 }
 
 // --- avatar → 3D görünüm (önbellekli) ---------------------------------------------
+// v217: önbellekten düşen görünümün dokuları AÇIKÇA bırakılır. Eskiden "GC ile bırakılır"
+// sanılıyordu ama WebGL dokuları çöp toplayıcıyla silinmez: kostüm kostüm gezdikçe ekran kartı
+// belleği dolup telefonda WebView çöküyordu (oyundan atma). Bırakılan bir görünüm tekrar
+// kullanılırsa three.js dokusunu yeniden yükler — sorun çıkmaz.
 const LOOKS = new Map();
+const LOOKS_MAX = IS_MOBILE ? 6 : 16;
 const keyOf = (av, q) => q + JSON.stringify(av);
+const dropLook = (p) => p?.then((l) => l?.dispose?.()).catch(() => {});
+function buildLook3D(avatar, quality) {
+  const full = { ...DEFAULT_AVATAR, ...(avatar || {}) };
+  const plain = avatar3DUsesPlain(full);
+  const src = plain ? avatar3DPlain(full) : full;
+  const [w, h] = quality === 'hi' ? (IS_MOBILE ? [288, 522] : [384, 696]) : [208, 377];
+  // v215: pelerin / kanat katmanı ayrıca (varsa) → 3D'de sırt kartı
+  const bo = buildAvatarBackLayerMarkup(avatar3DBackSrc(full));
+  return Promise.all([raster(buildFullAvatarSvgMarkup(src, { pose: 'idle' }), w, h), raster(buildFullAvatarBackSvgMarkup(src, { pose: 'idle' }), w, h), bo ? raster(bo, w, h) : null]).then(([f, b, k]) => makeAvatar3DLook(f, b, full, { plain, backOnly: k }));
+}
 export function getAvatarLook3D(avatar, quality = 'hi') {
   const full = { ...DEFAULT_AVATAR, ...(avatar || {}) };
   const k = keyOf(full, quality);
@@ -44,15 +59,14 @@ export function getAvatarLook3D(avatar, quality = 'hi') {
     LOOKS.set(k, p);
     return p;
   }
-  const plain = avatar3DUsesPlain(full);
-  const src = plain ? avatar3DPlain(full) : full;
-  const [w, h] = quality === 'hi' ? (IS_MOBILE ? [288, 522] : [384, 696]) : [208, 377];
-  // v215: pelerin / kanat katmanı ayrıca (varsa) → 3D'de sırt kartı
-  const bo = buildAvatarBackLayerMarkup(avatar3DBackSrc(full));
-  p = Promise.all([raster(buildFullAvatarSvgMarkup(src, { pose: 'idle' }), w, h), raster(buildFullAvatarBackSvgMarkup(src, { pose: 'idle' }), w, h), bo ? raster(bo, w, h) : null]).then(([f, b, k]) => makeAvatar3DLook(f, b, full, { plain, backOnly: k }));
+  p = buildLook3D(full, quality);
   p.catch(() => LOOKS.delete(k));
   LOOKS.set(k, p);
-  if (LOOKS.size > 40) LOOKS.delete(LOOKS.keys().next().value); // dokular GC ile bırakılır
+  while (LOOKS.size > LOOKS_MAX) {
+    const old = LOOKS.keys().next().value;
+    dropLook(LOOKS.get(old));
+    LOOKS.delete(old);
+  }
   return p;
 }
 
@@ -272,7 +286,9 @@ async function pump() {
   pumping = false;
 }
 async function drawThumb({ avatar, w, h, yaw, frame }) {
-  const look = await getAvatarLook3D(avatar, 'lo');
+  // v217: küçük resim görünümü önbelleğe girmez; resim çıkınca dokuları hemen bırakılır
+  // (100 kostüm kartı = 100 doku takımı ekran kartında birikiyordu)
+  const look = await buildLook3D(avatar, 'lo');
   if (!look) throw new Error('look');
   const { r, scene, cam } = thumbRig();
   const pr = Math.min(2, window.devicePixelRatio || 1);
@@ -298,6 +314,7 @@ async function drawThumb({ avatar, w, h, yaw, frame }) {
     if (!url.startsWith('data:image/webp')) url = r.domElement.toDataURL('image/png');
   } finally {
     m.dispose();
+    look.dispose?.();
   }
   return url;
 }
@@ -309,7 +326,7 @@ export function avatarThumb3D(avatar, { w = 200, h = 230, yaw = 0.32, frame = 'b
   p = new Promise((res, rej) => queue.push({ avatar, w, h, yaw, frame, res, rej }));
   p.catch(() => THUMBS.delete(k));
   THUMBS.set(k, p);
-  if (THUMBS.size > 260) THUMBS.delete(THUMBS.keys().next().value);
+  if (THUMBS.size > (IS_MOBILE ? 140 : 260)) THUMBS.delete(THUMBS.keys().next().value);
   pump();
   return p;
 }

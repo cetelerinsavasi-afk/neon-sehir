@@ -142,12 +142,13 @@ const COLOR_GROUPS = {
 
 // v212 — sekmeler: her sekmede sadece kendi seçenekleri (uzun tek liste yerine)
 const TABS = [
+  // v217: Kostümler en başta (sonda kalınca oyuncular görmüyordu); açılışta yine Vücut seçili
+  { id: 'kostum', icon: '🎭', label: 'Kostümler' },
   { id: 'vucut', icon: '🧍', label: 'Vücut', rows: [['name'], ['option', 'gender'], ['option', 'build'], ['option', 'bodyShape'], ['color', 'skin'], ['color', 'background']] },
   { id: 'yuz', icon: '🙂', label: 'Yüz', rows: [['option', 'faceShape'], ['option', 'eyeShape'], ['color', 'eyeColor'], ['option', 'eyebrowShape'], ['option', 'eyelash'], ['option', 'noseShape'], ['option', 'mouthShape'], ['color', 'lipColor'], ['option', 'tattoo']] },
   { id: 'sac', icon: '💇', label: 'Saç', rows: [['option', 'hairStyle'], ['color', 'hairColor'], ['option', 'facialHair']] },
   { id: 'kiyafet', icon: '👔', label: 'Kıyafet', rows: [['option', 'clothing'], ['color', 'clothColor'], ['color', 'pantsColor'], ['option', 'shoeStyle'], ['color', 'shoeColor'], ['option', 'neckAcc']] },
   { id: 'aksesuar', icon: '🎩', label: 'Aksesuar', rows: [['option', 'hat'], ['color', 'hatColor'], ['option', 'faceAcc'], ['option', 'earring'], ['option', 'heldItem']] },
-  { id: 'kostum', icon: '🎭', label: 'Kostümler' },
 ];
 const PREVIEW_POSES = [
   ['idle', 'Dur'],

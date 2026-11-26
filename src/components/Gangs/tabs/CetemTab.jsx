@@ -101,6 +101,7 @@ function MoneySheet({ kind, d, onClose }) {
   const [group, setGroup] = useState('rutbeli');
   const [slots, setSlots] = useState(GANG_RULES.DIST_MIN_SLOTS);
   const [target, setTarget] = useState(null);
+  const [note, setNote] = useState(''); // v217: başka çeteye gönderirken not (iki çetenin sohbetinde görünür)
   const { docs: gangs } = useQueryData(kind === 'transfer' ? path('gangs') : null, () => [limit(100)], 'gangs_all');
   const free = d.stateToday ? Number(d.state?.distributableLeft || 0) : 0;
   const n = group === 'rutbeli' ? GANG_RULES.DIST_RANKED_SLOTS : slots;
@@ -113,7 +114,7 @@ function MoneySheet({ kind, d, onClose }) {
     if (kind === 'donateGem') r = await run('donateGem', { amount }, { success: `💎 Bağışlandı · +${fmt(amount * GEM_PRESTIGE)} prestij`, withRequestId: true });
     if (kind === 'dist') r = await run('createDistribution', { group, perPerson: amount, slots: n }, { success: '💰 Dağıtım açıldı', withRequestId: true });
     if (kind === 'withdraw') r = await run('withdrawToSelf', { amount }, { success: '🏦 Hesabına aktarıldı', withRequestId: true });
-    if (kind === 'transfer') r = await run('transferToGang', { targetGangId: target, amount }, { success: target === '__belediye__' ? '🏛️ Belediyeye bağışlandı' : '📤 Gönderildi', withRequestId: true });
+    if (kind === 'transfer') r = await run('transferToGang', { targetGangId: target, amount, ...(target !== '__belediye__' && note.trim() ? { note: note.trim() } : {}) }, { success: target === '__belediye__' ? '🏛️ Belediyeye bağışlandı' : '📤 Gönderildi', withRequestId: true });
     if (r) onClose();
   };
   return (
@@ -158,6 +159,13 @@ function MoneySheet({ kind, d, onClose }) {
               </button>
             ))}
         </div>
+      )}
+      {kind === 'transfer' && target && target !== '__belediye__' && (
+        <label className="gx-field">
+          📝 Not (isteğe bağlı)
+          <textarea className="gx-input" rows={2} maxLength={GANG_RULES.NOTE_MAX} value={note} onChange={(e) => setNote(e.target.value)} placeholder="ör. Savaş desteği için, iyi kullanın…" />
+          <span className="dim gx-mini">Para ve not iki çetenin sohbetinde de görünür.</span>
+        </label>
       )}
       <AmountInput value={amount} onChange={setAmount} quick={gemOn ? [1, 5, 10, 50] : undefined} max={kind === 'dist' ? Math.floor(free / Math.max(1, n)) : kind === 'donate' ? (wallet.gold ?? undefined) : gemOn ? (wallet.emerald ?? undefined) : free} />
       {kind === 'dist' && (

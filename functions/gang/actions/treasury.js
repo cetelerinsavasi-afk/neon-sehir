@@ -291,6 +291,9 @@ export function createTreasuryActions(core) {
     if (String(data.targetGangId || '') === '__belediye__') return donateToBelediye(ctx, data);
     const amount = posInt(data.amount);
     const targetGangId = String(data.targetGangId || '');
+    // v217: isteğe bağlı not — para ile birlikte İKİ çetenin genel sohbetine de düşer
+    const note = core.cleanText(data.note || '', { max: GANG.NOTE_MAX, field: 'Not' });
+    const noteTxt = note ? ` 📝 Not: “${note}”` : '';
     return core.db.runTransaction(async (tx) => {
       const guard = await requestGuard(tx, ctx, data.requestId);
       if (guard.done) return guard.result;
@@ -314,9 +317,9 @@ export function createTreasuryActions(core) {
       ledger(tx, ctx, { type: 'gang_transfer', amount, from: { kind: 'gang', id: gangId }, to: { kind: 'gang', id: targetGangId }, before: state.kasa });
       const myName = myGangSnap.data()?.name || '';
       const tName = tgSnap.data()?.name || '';
-      announce(tx, ctx, gangId, '📤', `${me.name} (${RANK_LABELS[me.rank]}) ${tName} çetesine ${fmt(amount)} altın gönderdi.`);
-      announce(tx, ctx, targetGangId, '📥', `${myName} çetesi kasamıza ${fmt(amount)} altın gönderdi.`);
-      const res = { sent: amount };
+      announce(tx, ctx, gangId, '📤', `${me.name} (${RANK_LABELS[me.rank]}) ${tName} çetesine ${fmt(amount)} altın gönderdi.${noteTxt}`);
+      announce(tx, ctx, targetGangId, '📥', `${myName} çetesi kasamıza ${fmt(amount)} altın gönderdi.${noteTxt}`);
+      const res = { sent: amount, note: note || null };
       guard.save(res);
       return res;
     });
