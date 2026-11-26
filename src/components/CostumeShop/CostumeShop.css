@@ -106,3 +106,9 @@
   .cos-sw { flex: 1; min-width: 0; flex-wrap: wrap; overflow-x: visible; }
   .cos-chips, .cos-sub { scrollbar-width: thin; padding-bottom: 4px; }
 }
+
+/* v212 — 3D sahne */
+.cos-3d { position: absolute; inset: 0; z-index: 1; }
+.cos-poses, .cos-chatprev { z-index: 3; }
+.cos-drag { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 2; font-size: 11px; color: #c4cbe0; background: #0b0d17a8; border: 1px solid #ffffff1a; padding: 3px 10px; border-radius: 999px; pointer-events: none; white-space: nowrap; }
+.cos-stage { height: 340px; }

@@ -1,0 +1,17 @@
+/* v212 — 3D avatar önizlemesi */
+.a3d-view canvas { -webkit-tap-highlight-color: transparent; }
+.a3d-wait {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border-radius: 50%;
+  border: 3px solid #ffffff22;
+  border-top-color: #22d3ee;
+  animation: a3dspin 0.8s linear infinite;
+  pointer-events: none;
+}
+@keyframes a3dspin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .a3d-wait { animation: none; } }

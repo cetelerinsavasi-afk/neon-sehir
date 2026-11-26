@@ -160,15 +160,11 @@ function ProfileHeader({ player, onEditAvatar, onCostumes, onAccessories, onRepo
       </div>
 
       <button className="home-btn" onClick={onEditAvatar}>
-        🎭 Avatarımı Düzenle
+        🎭 Avatarım ve Kostümler
       </button>
       {/* v146 — yan yana kare butonlar: Aksesuarlar (v78) · Günlük Rapor (v92) · Mobilyalar */}
       <div className="home-sq-row">
-        {/* v160 — Kostümler (hazır tipler, zümrütle) aksesuarlardan önce */}
-        <button className="home-sq home-sq-cos" onClick={onCostumes}>
-          <span>🎭</span>
-          Kostümler
-        </button>
+        {/* v212: Kostümler artık Avatar düzenleyicinin içinde (sekme) */}
         <button className="home-sq home-sq-acc" onClick={onAccessories}>
           <span>🐾</span>
           Aksesuarlar

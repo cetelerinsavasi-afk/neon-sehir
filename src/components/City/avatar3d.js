@@ -239,6 +239,10 @@ function eraseBody(x, build, head) {
   // omuz köşeleri (omuzluk / zırh / kabarık omuz): 3D omuz başına giydiriliyor
   x.fillRect(s.tl - 48, s.ty - 26, 80, 84);
   x.fillRect(s.tr - 32, s.ty - 26, 80, 84);
+  // gövdenin iki yanı (kalçaya kadar): kostümlerin 2D'de yana çizdiği eller / eldivenler / tutulan
+  // eşyalar (harita, kalkan…) 3D kolların yanında havada duran düz parça olarak kalmasın
+  x.fillRect(s.tl - 56, s.ty, 58, 410 - s.ty);
+  x.fillRect(s.tr - 2, s.ty, 58, 410 - s.ty);
   x.fillRect(138, 220, 44, 56);
   for (const cx of [s.cx, SW - s.cx]) x.fillRect(cx - s.hw - 3, 376, s.hw * 2 + 6, 174);
 }

@@ -276,7 +276,7 @@
 /* v146 — Aksesuarlar · Günlük Rapor · Mobilyalar: yan yana kare butonlar */
 .home-sq-row {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr)); /* v160: + Kostümler */
+  grid-template-columns: repeat(3, minmax(0, 1fr)); /* v212: Kostümler avatar düzenleyicide */
   gap: 8px;
   width: 100%;
   max-width: 360px;

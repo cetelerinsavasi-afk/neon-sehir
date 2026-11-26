@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { usePlayer } from '../../hooks/usePlayer';
 import { cosmeticsAction } from '../../services/gameActions';
-import { buildAvatarSvgInner, buildFullAvatarSvgMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes';
+import { buildAvatarSvgInner, DEFAULT_AVATAR } from '../../lib/avatarShapes';
 import { LOOK_ART, LOOK_TINT, tintPalette, lookSkinnable, SKIN_PALETTE } from '../../lib/avatarLooks';
 import { LOOKS, LOOK_CATS, RARITY } from '../../../functions/cosmeticsData.js';
+import { Avatar3DView, Avatar3DThumb } from '../Avatar3D/Avatar3D';
 import './CostumeShop.css';
 
 // =============================================================================
@@ -18,11 +19,12 @@ const fmt = (n) => Math.round(Number(n) || 0).toLocaleString('tr-TR');
 const MAP = Object.fromEntries(LOOKS.map((l) => [l.id, l]));
 const CAT_NAME = Object.fromEntries(LOOK_CATS.map((c) => [c.id, `${c.icon} ${c.name}`]));
 const RC = Object.fromEntries(Object.entries(RARITY).map(([k, v]) => [k, v.color]));
+// v212: sahne 3D — avatar kendi kendine dönmez, oyuncu yana sürükleyerek çevirir
 const POSES = [
-  ['walk', 'Yürü'],
   ['idle', 'Dur'],
+  ['walk', 'Yürü'],
   ['sit', 'Otur'],
-  ['aim', 'Silah'],
+  ['dans', 'Dans'],
 ];
 const sameTint = (a, b) => JSON.stringify(a || {}) === JSON.stringify(b || {});
 const cleanT = (t) => {
@@ -53,34 +55,17 @@ function thumbSrc(id, tint) {
   return v;
 }
 
-// --- sahne: oyundaki önizleme gibi ileri geri yürür -------------------------------------
-function Stage({ avatar, pose }) {
+// --- sahne arka planı (gece şehri); avatar üstünde 3D çizilir (v212) ----------------------
+function Stage({ avatar }) {
   const ref = useRef(null);
   const avRef = useRef(avatar);
   avRef.current = avatar;
-  const poseRef = useRef(pose);
-  poseRef.current = pose;
   useEffect(() => {
     const cv = ref.current;
     if (!cv) return undefined;
     const ctx = cv.getContext('2d');
-    const imgs = new Map();
-    const img = (av, p) => {
-      const k = JSON.stringify(av) + p;
-      let e = imgs.get(k);
-      if (!e) {
-        e = { ok: false, im: new Image() };
-        e.im.onload = () => (e.ok = true);
-        e.im.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(buildFullAvatarSvgMarkup(av, { pose: p, animAura: true }));
-        imgs.set(k, e);
-        if (imgs.size > 40) imgs.delete(imgs.keys().next().value);
-      }
-      return e.ok ? e.im : null;
-    };
-    const P = { x: 0.5, dir: 1 };
     const stars = Array.from({ length: 36 }, () => [Math.random(), Math.random() * 0.5, Math.random() * 1.4 + 0.3]);
     let last = performance.now();
-    let prev = null;
     let raf = 0;
     const frame = (now) => {
       raf = requestAnimationFrame(frame);
@@ -134,26 +119,6 @@ function Stage({ avatar, pose }) {
         ctx.lineTo(W / 2 + i * 90, H);
         ctx.stroke();
       }
-      const walking = poseRef.current === 'walk';
-      if (walking) {
-        P.x += P.dir * dt * 0.09;
-        if (P.x > 0.68) P.dir = -1;
-        if (P.x < 0.32) P.dir = 1;
-      }
-      const p = walking ? (Math.floor(now / 230) % 2 ? 'walk1' : 'walk2') : poseRef.current;
-      const im = img(avRef.current, p) || prev;
-      if (im) prev = im;
-      const ah = H * 0.86;
-      const aw = ah * (320 / 580);
-      const cx = (walking ? P.x : 0.5) * W;
-      const footY = H * 0.97;
-      if (im) {
-        ctx.save();
-        ctx.translate(cx, 0);
-        if (walking && P.dir < 0) ctx.scale(-1, 1);
-        ctx.drawImage(im, -aw / 2, footY - ah, aw, ah);
-        ctx.restore();
-      }
     };
     raf = requestAnimationFrame(frame);
     return () => cancelAnimationFrame(raf);
@@ -174,12 +139,13 @@ export default function CostumeShop({ onBack }) {
   const [cat, setCat] = useState('all');
   const [rar, setRar] = useState('all');
   const [sort, setSort] = useState('katalog');
-  const [pose, setPose] = useState('walk');
+  const [pose, setPose] = useState('idle');
   const [ask, setAsk] = useState(false);
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState(null);
   const toastT = useRef(0);
   const topRef = useRef(null);
+  const rootRef = useRef(null);
   // oyuncu bilgisi sonradan gelirse kuşanılı kostümle aç (bir kez)
   const synced = useRef(Boolean(player));
   useEffect(() => {
@@ -257,9 +223,18 @@ export default function CostumeShop({ onBack }) {
     const p = list.length ? list : LOOKS;
     setSel(p[Math.floor(Math.random() * p.length)].id);
   };
+  // v212: karta dokununca en üste kay (kostümü giymiş hali sahnede görünsün). Eskiden yapışkan
+  // başlığa kaydırılıyordu — başlık hep ekranın üstünde durduğu için sayfa hiç kaymıyordu.
   const pick = (id) => {
     setSel(id);
-    topRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    const el = rootRef.current;
+    if (el) {
+      try {
+        el.scrollTo({ top: 0, behavior: 'smooth' });
+      } catch {
+        el.scrollTop = 0;
+      }
+    }
   };
 
   const slots = LOOK_TINT[sel] || [];
@@ -292,7 +267,7 @@ export default function CostumeShop({ onBack }) {
   }
 
   return (
-    <div className="cos-root">
+    <div className="cos-root" ref={rootRef}>
       <div className="cos-head" ref={topRef}>
         <button className="cos-back" onClick={onBack} aria-label="Geri">
           ←
@@ -306,7 +281,11 @@ export default function CostumeShop({ onBack }) {
       </div>
 
       <div className="cos-stage">
-        <Stage avatar={viewAvatar} pose={pose} />
+        <Stage avatar={viewAvatar} />
+        <div className="cos-3d">
+          <Avatar3DView avatar={viewAvatar} pose={pose} />
+        </div>
+        <div className="cos-drag">↔ Çevirmek için yana kaydır</div>
         <div className="cos-poses">
           {POSES.map(([k, n]) => (
             <button key={k} className={pose === k ? 'on' : ''} onClick={() => setPose(k)}>
@@ -407,7 +386,16 @@ export default function CostumeShop({ onBack }) {
             const tt = tints[x.id];
             return (
               <button key={x.id} className={`cos-card${x.r === 'l' ? ' l' : ''}${sel === x.id ? ' sel' : ''}`} style={sel === x.id ? undefined : { borderColor: `${RC[x.r]}44` }} onClick={() => pick(x.id)}>
-                <img className="cos-pic" src={thumbSrc(x.id, on && !tt ? savedTint : tt)} alt="" loading="lazy" decoding="async" />
+                {/* v212: kart resmi 3D (hazır olana kadar 2D resim görünür) */}
+                <Avatar3DThumb
+                  className="cos-pic"
+                  avatar={(() => {
+                    const ti = on && !tt ? savedTint : tt;
+                    return ti && Object.keys(ti).length ? { look: x.id, lookTint: ti } : { look: x.id };
+                  })()}
+                  fallback={thumbSrc(x.id, on && !tt ? savedTint : tt)}
+                  style={{ background: `radial-gradient(circle at 50% 38%, ${RC[x.r] || '#9aa4b2'}61 0, ${LOOK_ART[x.id]?.base?.background || '#0b0d17'} 55%, #05060c 100%)` }}
+                />
                 <span className="cos-rdot" style={{ color: RC[x.r] }}>
                   {RARITY[x.r].label}
                 </span>
