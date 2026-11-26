@@ -52,3 +52,13 @@ Düzeltme (`riderEject.js`):
 - Zemin bulunamazsa (su, boşluk) son bilinen zemin kullanılır.
 - Çarpışma düzeltmeleri gövdeye enerji katamaz (hız sınırı).
 Test: `rider-eject.test.mjs` › "basamak / kaldırım / köprü altı gövdeyi tekrar fırlatmaz".
+
+## v216.2 — yere düşünce titreme
+Avatar yere düşünce kalkmadan önce saniyelerce titriyordu. Sebep: "durdu" sayılmak için tam durgunluk
+bekleniyordu; şehir zeminindeki santimlik pürüzler gövdeyi sürekli "havada" saydırıp bunu bozuyordu
+(8 sn'lik yedek süre dolana kadar titreme). Ayrıca yere çarpınca kollarda bilerek konmuş bir sarsılma vardı.
+- Yerde ve yavaşken hız hızla söner; ≈ 0,3 sn'de "durdu" sayılır ve gövde **donar** (artık hesaplanmaz).
+- Zemine 3 cm'den yakın parçacık yerde sayılır; yere ilk değişten en geç 3,5 sn sonra kesin durur.
+- Kollardaki darbe sarsılması kaldırıldı; yerdeyken görüntü yumuşatılır.
+- Durunca ~0,5 sn sonra kalkar (eskiden 1,4 sn).
+Test: "pürüzlü zeminde de kısa sürede durur ve donar".

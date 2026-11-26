@@ -855,7 +855,7 @@ function stepSim(dt) {
     placeRagdoll(dt);
     if (rd.rest) {
       restT += dt;
-      if ((cfg.autoUp && restT > 1.4) || (!cfg.autoUp && (keys.KeyE || keys.KeyW))) {
+      if ((cfg.autoUp && restT > 0.5) || (!cfg.autoUp && (keys.KeyE || keys.KeyW))) {
         restT = 0;
         startGetUp();
       }

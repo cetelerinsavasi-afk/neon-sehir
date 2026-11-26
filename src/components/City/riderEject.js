@@ -110,6 +110,7 @@ const STEP_MAX = 0.4; // v216.1: bundan yüksek zemin farkı basamak değil duva
 
 // Bir adım ilerlet (sabit 1/120 sn alt adımlarla). Dönen: bu adımdaki en sert temas (m/sn) — ses / sarsıntı için
 export function stepRagdoll(rd, dt, world) {
+  if (rd.rest) return 0; // v216.2: durdu → gövde donar (titreme yok), artık hesaplanmaz
   let hit = 0;
   let acc = Math.min(dt, 0.1);
   while (acc > 1e-6) {
@@ -229,7 +230,14 @@ function subStep(rd, h, world) {
       a.v = [t[0] * fr + n[0] * vnOut, t[1] * fr + n[1] * vnOut, t[2] * fr + n[2] * vnOut];
       if (-vin > hit) hit = -vin;
       if (a.c === 1) ground++;
-    } else a.v = nv;
+    } else {
+      a.v = nv;
+      // v216.2: zemine 3 cm'den yakın parçacık da yerde sayılır (pürüzlü zeminde "havada" sanılmasın)
+      if (a.p[1] < a.gy + 0.03) {
+        ground++;
+        if (a.v[1] > 0.4) a.v[1] = 0.4;
+      }
+    }
     // enerji sınırı: hiçbir parçacık adım öncesindeki en hızlı parçacıktan belirgin hızlı olamaz
     const vl = len(a.v);
     const cap = vPre + 0.6;
@@ -254,8 +262,20 @@ function subStep(rd, h, world) {
   if (!ground) rd.airT += h;
   let vmax = 0;
   for (const a of ps) vmax = Math.max(vmax, len(a.v));
-  rd.still = vmax < 0.3 && ground >= 2 ? rd.still + h : 0;
-  if (rd.still > 0.5) rd.rest = 1;
+  // v216.2 — yerleşme: yerde ve yavaşken hız hızla söner, kısa sürede "durdu" sayılır ve gövde donar.
+  // Eskiden tam durgunluk (< 0,3 m/sn, 0,5 sn kesintisiz) bekleniyordu; şehir zeminindeki küçük
+  // oynamalar bunu sürekli bozuyor, avatar saniyelerce yerde titriyordu.
+  if (ground || rd.groundT) rd.groundT = (rd.groundT || 0) + h; // yere ilk değişten beri geçen süre
+  if (ground >= 2 && vmax < 1.2) {
+    const k = Math.exp(-7 * h);
+    for (const a of ps) {
+      a.v[0] *= k;
+      a.v[1] *= k;
+      a.v[2] *= k;
+    }
+    rd.still += h;
+  } else rd.still = 0;
+  if (rd.still > 0.3 || (rd.groundT || 0) > 3.5) rd.rest = 1; // yere ilk değişten en geç 3,5 sn sonra
   if (hit > rd.hitMax) rd.hitMax = hit;
   return hit;
 }
@@ -354,13 +374,13 @@ export function ragdollHeading(rd) {
 
 // --- kollar / bacaklar (Avatar3D eklemleri) --------------------------------------------
 // Dönen: arms[i] = { x, z, ex }, legs[i] = { x, k } (i: 0 sağ, 1 sol — Avatar3D sırası; sx = ∓1)
-// air: 0..1 (havada), t: sn, spin: gövde dönüş hızı (rad/sn), shock: son darbe (0..1)
-export function limbPose(air, t, spin = 0, shock = 0) {
+// air: 0..1 (havada), t: sn, spin: gövde dönüş hızı (rad/sn). (4. parametre eski sürümden; kullanılmıyor)
+export function limbPose(air, t, spin = 0) {
   const fl = Math.min(1, air * (0.6 + Math.min(1, spin / 6) * 0.6));
   const arms = [0, 1].map((i) => {
     const sx = i ? 1 : -1;
     const w = Math.sin(t * 13 + i * 2.1);
-    const limp = { x: -0.35 + shock * 0.3 * Math.sin(t * 30 + i), z: sx * 1.25, ex: -0.25 };
+    const limp = { x: -0.35, z: sx * 1.25, ex: -0.25 }; // v216.2: yerde kollar sakin (eski darbe titremesi kaldırıldı)
     const flail = { x: -2.0 + w * 1.1, z: sx * (1.35 + Math.sin(t * 9 + i) * 0.5), ex: -0.6 - Math.max(0, w) * 0.8 };
     return { x: mix(limp.x, flail.x, fl), z: mix(limp.z, flail.z, fl), ex: mix(limp.ex, flail.ex, fl) };
   });

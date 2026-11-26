@@ -3515,13 +3515,16 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       }
       const f = ragdollFrame(rd);
       ejM.makeBasis(ejA[0].set(...f.x), ejA[1].set(...f.y), ejA[2].set(...f.z));
-      F.q = (F.q || new THREE.Quaternion()).setFromRotationMatrix(ejM);
-      F.o = (F.o || new V()).set(...f.o);
-      F.shock = Math.max((F.shock ?? 1) * Math.exp(-dt * 5), Math.min(1, hit / 8));
-      me.rag = { o: F.o, q: F.q, lp: limbPose(rd.air, rd.t, ragdollSpin(rd), F.shock), k: 1 };
+      ejQ.setFromRotationMatrix(ejM);
+      // v216.2: yerdeyken görüntü yumuşatılır (küçük kıpırtılar ekrana titreme olarak yansımasın);
+      // havada fizik birebir (takla keskin kalsın)
+      const sm = !F.q || rd.air > 0.5 ? 1 : 1 - Math.exp(-dt * 14);
+      F.q = F.q ? F.q.slerp(ejQ, sm) : ejQ.clone();
+      F.o = F.o ? F.o.lerp(ejA[0].set(...f.o), sm) : new V(...f.o);
+      if (!rd.rest) me.rag = { o: F.o, q: F.q, lp: limbPose(rd.air, rd.t, ragdollSpin(rd)), k: 1 };
       F.rest = rd.rest ? F.rest + dt : 0;
-      // durduktan ~1,4 sn sonra kalkar (çok uzun sürerse — ör. suya / boşluğa düştü — 8 sn'de)
-      if (F.rest > 1.4 || rd.t > 8) {
+      // v216.2: durunca gövde donar, ~0,5 sn sonra kalkar (eskiden 1,4 sn + titreme). Yedek: 8 sn
+      if (F.rest > 0.5 || rd.t > 8) {
         const yaw = ragdollHeading(rd);
         F.up = { t: 0, q0: F.q.clone(), p0: F.o.clone(), q1: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0)), yaw };
       }

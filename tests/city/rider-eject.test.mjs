@@ -107,3 +107,22 @@ test('v216.1: basamak / kaldırım / köprü altı gövdeyi tekrar fırlatmaz', 
     assert.ok(rd.ps[0].p[1] < 2, `${n}: köprüye ışınlanmadı`);
   }
 });
+
+test('v216.2: pürüzlü zeminde de kısa sürede durur ve donar (titreme yok)', () => {
+  let s = 7;
+  const noise = () => ((s = (s * 1103515245 + 12345) % 2147483648) / 2147483648 - 0.5) * 0.03; // ±1,5 cm
+  const world = { groundY: () => noise() };
+  const rd = makeRagdoll({ pelvis: [0, 1.0, 0], frame: up, vel: [0, 0, 12], kind: 'moto', seed: 4 });
+  let t = 0;
+  let firstGround = null;
+  while (!rd.rest && t < 10) {
+    stepRagdoll(rd, 1 / 60, world);
+    t += 1 / 60;
+    if (rd.ground && firstGround == null) firstGround = t;
+  }
+  assert.ok(rd.rest, 'durdu');
+  assert.ok(t - firstGround <= 3.6, `yere değdikten ${(t - firstGround).toFixed(1)} sn sonra durdu`);
+  const before = JSON.stringify(rd.ps.map((p) => p.p));
+  stepRagdoll(rd, 0.5, world);
+  assert.equal(JSON.stringify(rd.ps.map((p) => p.p)), before, 'durduktan sonra hiç kıpırdamaz');
+});
