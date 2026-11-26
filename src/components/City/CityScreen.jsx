@@ -905,6 +905,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
             netRef.current?.releaseSeat();
             flash('🚗 Araba gitti');
           }
+          if (e.type === 'rideEject') netRef.current?.releaseSeat(); // v216.3: sürücü fırladı, yolcu da fırladı → koltuk boşalır
           // telefon grafik belleğini geri aldıysa şehir sessizce yeniden kurulur
           if (e.type === 'contextLost') setTimeout(() => setGen((g) => g + 1), 400);
         },

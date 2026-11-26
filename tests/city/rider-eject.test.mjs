@@ -126,3 +126,24 @@ test('v216.2: pürüzlü zeminde de kısa sürede durur ve donar (titreme yok)',
   stepRagdoll(rd, 0.5, world);
   assert.equal(JSON.stringify(rd.ps.map((p) => p.p)), before, 'durduktan sonra hiç kıpırdamaz');
 });
+
+test('v216.3: fırlama başlangıcı (fj) kısa, geri çözülür; iki cihazda birebir aynı uçuş', async () => {
+  const { encodeFj, decodeFj, launchFj } = await import('../../src/components/City/riderEject.js');
+  const L0 = { x: -1234.5678, y: 1.0371, z: 2345.6789, vx: -12.3456, vz: 18.9876, yaw: -2.71828, kind: 'camel', seed: 51234 };
+  const s = encodeFj(L0);
+  assert.ok(s.length <= 80, `kısa: ${s.length}`);
+  const L = decodeFj(s);
+  assert.equal(L.kind, 'camel');
+  assert.ok(Math.abs(L.x - L0.x) < 0.01 && Math.abs(L.vz - L0.vz) < 0.01);
+  // gönderen ve izleyen aynı fj'den başlar → aynı sonuç
+  const world = { groundY: (x, z) => (z > 2350 ? 0.17 : 0) };
+  const a = launchFj(decodeFj(s));
+  const b = launchFj(decodeFj(s));
+  for (let i = 0; i < 400; i++) {
+    stepRagdoll(a, 1 / 60, world);
+    stepRagdoll(b, 1 / 60, world);
+  }
+  assert.deepEqual(a.ps.map((p) => p.p), b.ps.map((p) => p.p));
+  // bozuk / kötü niyetli değerler reddedilir
+  for (const bad of ['', '1,2,3', 'a,b,c,d,e,f,m,1', '1,1,1,999,0,0,m,1', 'x'.repeat(90)]) assert.equal(decodeFj(bad), null, bad);
+});

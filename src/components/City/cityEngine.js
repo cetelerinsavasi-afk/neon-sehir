@@ -31,7 +31,7 @@ import { ANIMAL_BY_KEY } from '../../../functions/animalData.js'; // v198: evdek
 import { botAvatar, botDefaults, botJobOf, botLabel, cleanBotConfig } from '../../../functions/botData.js'; // v198: evdeki botlar
 import { createMap } from './world/map.js';
 import { applyImpact, findContact, impactParams, yawInertia, spring, airPitch } from './carImpact.js'; // v193 çarpma + uçuş
-import { riderKind, ejectCheck, makeRagdoll, stepRagdoll, ragdollFrame, ragdollHeading, ragdollSpin, limbPose, stepFallenBike } from './riderEject.js'; // v216 binekten fırlama
+import { riderKind, ejectCheck, encodeFj, decodeFj, launchFj, stepRagdoll, ragdollFrame, ragdollHeading, ragdollSpin, limbPose, stepFallenBike } from './riderEject.js'; // v216 binekten fırlama
 import { geo as rsGeo, fromPad } from './world/roadsideGeo.js';
 import { LOT_TYPES } from './cityPlan.js';
 import { VENUES as GAME_VENUES } from '../../../functions/venueLayouts.js';
@@ -2346,6 +2346,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   const rcars = new Map(); // uid → { v, id, x, z, y, yaw, tx, tz, tyaw, spd, steer, name }
   function upsertPlayer(uid, st) {
     let r = remotes.get(uid);
+    const prevSt = r ? r.st : null; // v216.3: fırlamadan önce hangi araçtaydı (sürücü / yolcu)
     if (!r) {
       const fig = new Fig(scene, layer, { id: uid, name: st.n || 'Oyuncu', avatar: st.a || null });
       fig.x = st.x;
@@ -2394,6 +2395,11 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       f.playEmote(st.e);
     }
     if ((st.h || null) !== (f.holding || null)) f.setHolding(st.h || null);
+    // v216.3: fırladı — başlangıç bir kez gelir, uçuşu bu cihaz oynatır
+    if (st.p === 'f' && st.fj && st.fj !== r.lastFj) {
+      r.lastFj = st.fj;
+      onRemoteFj(r, st, prevSt);
+    }
     r.st = st;
   }
   function removePlayer(uid) {
@@ -2427,6 +2433,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       c = { v, id: st.v, mk, x: st.x, z: st.z, y: groundY(st.x, st.z), yaw: st.y, tx: st.x, tz: st.z, tyaw: st.y, spd: 0, steer: 0, t: 0, yr: 0, ex: 0, ez: 0, eyaw: 0 };
       rcars.set(uid, c);
     }
+    c.dn = Number(st.dn) || 0; // v216.3: devrik motor / bisiklet (−1 / 1: hangi yana)
     // v149: kaydın ölçüldüğü an — gönderenin (sunucuya göre düzeltilmiş) saati. Sunucu damgası
     // (t) ağ gecikmesiyle oynar; her kayıtta araba ileri-geri sıçrıyordu ("yarım saniyede bir takılma").
     // v154 — SAAT FARKI DÜZELTMESİ (bilgisayarda "ışınlanan araba"): kaydın zamanı gönderenin
@@ -2627,11 +2634,16 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       f.inCar = false;
       f.sitting = false;
       let show = vis;
+      // v216.3: fırlıyor (uçuşu bu cihaz oynatır) / fırlamak üzere (aracı henüz çarpma noktasına gelmedi: koltukta)
+      const flying = r.fall ? stepRemoteFall(r, dt) : false;
+      const pend = r.fall?.pend || null;
       // araçta (sürücü ya da yolcu): koltuğa otur, kapalı arabada görünmez
-      const carOwner = st.p === 'd' ? r.uid : st.p === 'r' ? st.ro : null;
-      const carObj = carOwner ? (carOwner === myUid ? (myCar ? { v: myCar.v, yaw: myCar.yaw } : null) : rcars.get(carOwner)) : null;
-      if (carObj) {
-        const k = st.p === 'd' ? 0 : st.rk || 1;
+      const carOwner = pend ? pend.owner : st.p === 'd' ? r.uid : st.p === 'r' ? st.ro : null;
+      const carObj = flying ? null : carOwner ? (carOwner === myUid ? (myCar ? { v: myCar.v, yaw: myCar.yaw } : null) : rcars.get(carOwner)) : null;
+      if (flying) {
+        f.moving = false;
+      } else if (carObj) {
+        const k = pend ? pend.k : st.p === 'd' ? 0 : st.rk || 1;
         const p = seatWorld(carObj, k);
         f.x = p.x;
         f.z = p.z;
@@ -2726,7 +2738,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       // motor: dönüşe yatar
       if (c.v.moto) {
         const horse = c.v.ride === 'horse';
-        c.roll = (c.roll || 0) + (clamp((-c.spd * dy) / Math.max(dt, 1e-3) * (horse ? 0.008 : 0.045), horse ? -0.08 : -0.6, horse ? 0.08 : 0.6) - (c.roll || 0)) * Math.min(1, dt * 6);
+        const want = c.dn ? c.dn * 1.38 : clamp((-c.spd * dy) / Math.max(dt, 1e-3) * (horse ? 0.008 : 0.045), horse ? -0.08 : -0.6, horse ? 0.08 : 0.6); // v216.3: devrikse yan yatar
+        c.roll = (c.roll || 0) + (want - (c.roll || 0)) * Math.min(1, dt * (c.dn ? 5 : 6));
         c.v.tilt.rotation.z = c.roll;
       }
       c.v.gait?.(c.spd, dt, dy / Math.max(dt, 1e-3)); // v159.4: diğer oyuncuların atı da adım atar
@@ -2770,7 +2783,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     me.group.visible = c.v.open;
   }
   function rideStart(owner, k) {
-    if (driving) return false;
+    if (driving || fall) return false;
     if (self.seat) standUp();
     self.ride = { owner, k };
     self.target = null;
@@ -2818,6 +2831,10 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   let driving = false;
   let fall = null; // v216: binekten fırlama { rd, t, rest, up } — sadece bu cihazda, ağa yeni veri gitmez
   let ejectReq = null;
+  const twoWheel = (c) => {
+    const k = riderKind(c?.v);
+    return k === 'moto' || k === 'bike';
+  };
   const driveIn = { thr: 0, steer: 0, hand: false };
   let camShake = 0;
   let driveCamOff = 0;
@@ -3418,29 +3435,61 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   const ejQ = new THREE.Quaternion();
   const ejM = new THREE.Matrix4();
   const ejA = [new V(), new V(), new V()];
-  function ejectRider() {
-    const c = myCar;
-    const pre = ejectReq;
-    ejectReq = null;
-    if (!c || !driving) return;
-    c.v.root.updateMatrixWorld(true);
-    const s0 = c.v.seatPts?.[0] || [c.v.seat[0], c.v.seat[1], 0];
-    const sp = c.v.body.localToWorld(new V(s0[0], s0[1], s0[2]));
-    c.v.tilt.getWorldQuaternion(ejQ);
-    ejA[0].set(1, 0, 0).applyQuaternion(ejQ);
-    ejA[1].set(0, 1, 0).applyQuaternion(ejQ);
-    ejA[2].set(0, 0, 1).applyQuaternion(ejQ);
-    const kind = riderKind(c.v);
-    const rd = makeRagdoll({ pelvis: [sp.x, sp.y + 0.03, sp.z], frame: { x: ejA[0].toArray(), y: ejA[1].toArray(), z: ejA[2].toArray() }, vel: [pre.vx, 0, pre.vz], kind, speed: pre.spd, seed: (Date.now() & 0xffff) + 1 });
-    fall = { rd, rest: 0, up: null, kind, y0: c.y };
-    // binekten in (exitCar gibi, ama yere bırakmadan — gövde fizikte)
-    driving = false;
+  // v216.3 — ÇOK OYUNCULU: uçuş ağdan GÖNDERİLMEZ. Fırlayan oyuncu kendi durumuna bir kez başlangıcı
+  // ekler (fj: "x,y,z,vx,vz,yaw,tür,tohum", ≈ 50 harf — zaten giden konum yazımının içinde, ek yazım yok);
+  // her cihaz aynı fiziği aynı başlangıçtan kendisi oynatır. Arka yolcu sürücünün fırladığını görünce
+  // kendi cihazında da fırlar. Devrilen motor araç kaydında tek sayıyla (dn) gider.
+  let myFj = null;
+  const carObjOf = (uid) => (uid === myUid ? myCar : rcars.get(uid) || null);
+  const seatOf = (car, k) => {
+    const p = seatWorld(car, k);
+    return { x: p.x, y: p.y + 0.03, z: p.z };
+  };
+  // benim fırlamam (sürücü ya da yolcu): L = fırlatma, owner = bindiğim aracın sahibi
+  function startMyFall(L0, owner) {
+    myFj = encodeFj(L0);
+    const L = decodeFj(myFj) || L0; // ağa giden (yuvarlanmış) değerlerle başla → izleyenlerle birebir aynı uçuş
+    fall = { rd: launchFj(L), rest: 0, up: null, kind: L.kind, owner };
     self.target = null;
     self.path = null;
     me.sitting = false;
     me.inCar = false;
     me.group.visible = true;
     me.moving = false;
+    camShake = Math.max(camShake, 0.5);
+    stepFall(0);
+  }
+  // bu cihazda gösterilen başka bir oyuncu: bekleyen (aracı çarpma noktasına gelince) ya da uçan fırlama
+  function queueRemoteFall(r, L, owner, k, seedAdd = 0) {
+    if (r.fall) return;
+    r.fall = { pend: { L: { ...L, seed: L.seed + seedAdd }, owner, k, until: Date.now() + 1200 }, rd: null, rest: 0, up: null, kind: L.kind, owner };
+  }
+  // sürücünün fırladığı bilgisi geldi (ya da ben sürücüyüm): o araçtaki yolcular da fırlar
+  function cascadePassengers(owner, L) {
+    remotes.forEach((rr) => {
+      if (rr.st?.p === 'r' && rr.st.ro === owner && !rr.fall) queueRemoteFall(rr, L, owner, rr.st.rk || 1, rr.st.rk || 1);
+    });
+    if (owner !== myUid && self.ride?.owner === owner && !fall && !ridePend) ridePend = { L: { ...L, seed: L.seed + (self.ride.k || 1) }, until: Date.now() + 1200 };
+  }
+  let ridePend = null; // ben yolcuyum, sürücü fırladı: aracı çarpma noktasına gelince ben de fırlarım
+  function onRemoteFj(r, st, prev) {
+    const L = decodeFj(st.fj);
+    if (!L || !prev) return; // yeni gördüğüm oyuncu zaten fırlıyorsa (eski başlangıç) oynatılmaz
+    const owner = prev?.p === 'd' ? r.uid : prev?.p === 'r' ? prev.ro : null;
+    const k = prev?.p === 'd' ? 0 : prev?.rk || 1;
+    queueRemoteFall(r, L, owner, k);
+    if (prev?.p === 'd') cascadePassengers(r.uid, L);
+  }
+  function ejectRider() {
+    const c = myCar;
+    const pre = ejectReq;
+    ejectReq = null;
+    if (!c || !driving) return;
+    const kind = riderKind(c.v);
+    const sp = seatOf(c, 0);
+    const L = { x: sp.x, y: sp.y, z: sp.z, vx: pre.vx, vz: pre.vz, yaw: c.yaw, kind, seed: (Date.now() & 0xffff) + 1 };
+    // binekten in (exitCar gibi, ama yere bırakmadan — gövde fizikte)
+    driving = false;
     sound.idle(false);
     self.camYaw = c.yaw + Math.PI;
     zoneKey = '__exit__';
@@ -3451,8 +3500,27 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       c.fall = (c.spin || 0) > 0 ? -1 : 1;
       c.rollV = c.fall * 2.5;
     } else if (c.jp) c.jp.v -= 3.2;
-    camShake = Math.max(camShake, 0.5);
-    stepFall(0);
+    startMyFall(L, myUid);
+    cascadePassengers(myUid, L); // arkamdaki yolcu(lar) bu ekranda hemen fırlar
+  }
+  // ben yolcuyken: sürücünün aracı çarpma noktasına gelince (ya da en geç 1,2 sn sonra) ben de fırlarım
+  function checkRideEject() {
+    const P = ridePend;
+    const c = rideCar();
+    if (!self.ride) {
+      ridePend = null;
+      return;
+    }
+    if (c && Date.now() < P.until && Math.hypot(c.x - P.L.x, c.z - P.L.z) > 1.6) return;
+    ridePend = null;
+    const owner = self.ride.owner;
+    const sp = c ? seatOf(c, self.ride.k) : { x: P.L.x, y: P.L.y, z: P.L.z };
+    const L = { ...P.L, x: sp.x, y: sp.y, z: sp.z, yaw: c ? c.yaw : P.L.yaw };
+    self.ride = null;
+    zoneKey = '__rideend__';
+    self.camYaw = L.yaw + Math.PI;
+    onEvent?.({ type: 'rideEject' }); // koltuk boşaltılır (CityScreen → releaseSeat)
+    startMyFall(L, owner);
   }
   // sürücüsüz binek: hareket + engel (carFree), devrilen iki teker yan yatar
   function stepLooseCar(c, dt) {
@@ -3496,22 +3564,27 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     groundY: (x, z, y) => groundY(x, z, -1, y),
     blocked: (x, z, r) => blockedAt(x, z, Math.min(r, 0.3)),
   };
-  function stepFall(dt) {
-    const F = fall;
+  // Bir fırlama adımı (ben ya da uzak oyuncu). Dönen: true = kalkma bitti
+  function fallStep(F, fig, dt) {
     const rd = F.rd;
     if (!F.up) {
       // bineğin kendisi de engel (atın sırtı yuvarlak: üstüne düşen yana kayar; devrik motor alçak)
-      const c = myCar;
+      const c = F.owner ? carObjOf(F.owner) : null;
       if (c) {
-        const h = c.down ? 0.42 : F.kind === 'horse' || F.kind === 'camel' ? 1.3 : 0.75;
-        fallWorld.boxes[0] = { x: c.x, z: c.z, w: c.v.halfW * 2, d: c.v.len * 0.92, h, y0: c.y, ry: c.yaw, self: 'ride', round: !c.down };
+        const down = c.down || c.dn;
+        const h = down ? 0.42 : F.kind === 'horse' || F.kind === 'camel' ? 1.3 : 0.75;
+        fallWorld.boxes[0] = { x: c.x, z: c.z, w: c.v.halfW * 2, d: c.v.len * 0.92, h, y0: c.y || 0, ry: c.yaw, self: 'ride', round: !down };
       } else fallWorld.boxes.length = 0;
       const hit = dt > 0 ? stepRagdoll(rd, dt, fallWorld) : 0;
-      if (hit > 2.5) {
+      fallWorld.boxes.length = 0;
+      if (hit > 2.5 && fig === me) {
         const p = rd.ps[0].p;
         puff(p[0], p[1] - 0.15, p[2]);
         camShake = Math.max(camShake, Math.min(0.4, hit * 0.03));
         sound.thump(Math.min(20, hit));
+      } else if (hit > 4 && fig.group.visible) {
+        const p = rd.ps[0].p;
+        puff(p[0], p[1] - 0.15, p[2]);
       }
       const f = ragdollFrame(rd);
       ejM.makeBasis(ejA[0].set(...f.x), ejA[1].set(...f.y), ejA[2].set(...f.z));
@@ -3521,9 +3594,9 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       const sm = !F.q || rd.air > 0.5 ? 1 : 1 - Math.exp(-dt * 14);
       F.q = F.q ? F.q.slerp(ejQ, sm) : ejQ.clone();
       F.o = F.o ? F.o.lerp(ejA[0].set(...f.o), sm) : new V(...f.o);
-      if (!rd.rest) me.rag = { o: F.o, q: F.q, lp: limbPose(rd.air, rd.t, ragdollSpin(rd)), k: 1 };
+      if (!rd.rest) fig.rag = { o: F.o, q: F.q, lp: limbPose(rd.air, rd.t, ragdollSpin(rd)), k: 1 };
       F.rest = rd.rest ? F.rest + dt : 0;
-      // v216.2: durunca gövde donar, ~0,5 sn sonra kalkar (eskiden 1,4 sn + titreme). Yedek: 8 sn
+      // v216.2: durunca gövde donar, ~0,5 sn sonra kalkar. Yedek: 8 sn
       if (F.rest > 0.5 || rd.t > 8) {
         const yaw = ragdollHeading(rd);
         F.up = { t: 0, q0: F.q.clone(), p0: F.o.clone(), q1: new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0)), yaw };
@@ -3533,44 +3606,78 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       U.t += dt / 1.1;
       const k = Math.min(1, U.t);
       const e = k * k * (3 - 2 * k);
-      const hip = me.m3?.hipH || AVATAR_3D_HIP;
+      const hip = fig.m3?.hipH || AVATAR_3D_HIP;
       const gy = groundY(U.p0.x, U.p0.z, -1, U.p0.y);
       F.q.slerpQuaternions(U.q0, U.q1, e);
       F.o.set(U.p0.x, U.p0.y + (gy + hip - U.p0.y) * e, U.p0.z);
-      me.rag = { o: F.o, q: F.q, lp: limbPose(0, 0, 0, 0), k: 1 - e, crouch: Math.sin(e * Math.PI) };
+      fig.rag = { o: F.o, q: F.q, lp: limbPose(0, 0, 0), k: 1 - e, crouch: Math.sin(e * Math.PI) };
       if (U.t >= 1) {
-        me.rag = null;
-        fall = null;
-        let x = U.p0.x;
-        let z = U.p0.z;
-        if (blockedAt(x, z)) {
-          const fr = freeNear(x, z);
-          if (fr) {
-            x = fr.x;
-            z = fr.z;
-          }
-        }
-        self.x = x;
-        self.z = z;
-        me.x = x;
-        me.z = z;
-        me.y = groundY(x, z, -1, U.p0.y);
-        me.faceYaw(U.yaw);
-        self.target = null;
-        self.path = null;
-        return;
+        fig.rag = null;
+        fig.faceYaw(U.yaw);
+        return true;
       }
     }
-    // figür (etiket, kamera, mini harita, ağdaki konum) kalçayı izler
+    // figür (etiket, kamera, mini harita) kalçayı izler
     const o = F.o;
-    self.x = o.x;
-    self.z = o.z;
-    me.x = o.x;
-    me.z = o.z;
-    me.y = groundY(o.x, o.z, -1, o.y);
-    me.moving = false;
-    me.sitting = false;
-    me.inCar = false;
+    fig.x = o.x;
+    fig.z = o.z;
+    fig.y = groundY(o.x, o.z, -1, o.y);
+    fig.moving = false;
+    fig.sitting = false;
+    fig.inCar = false;
+    return false;
+  }
+  function stepFall(dt) {
+    const F = fall;
+    const done = fallStep(F, me, dt);
+    if (done) {
+      fall = null;
+      myFj = null;
+      const U = F.up;
+      let x = U.p0.x;
+      let z = U.p0.z;
+      if (blockedAt(x, z)) {
+        const fr = freeNear(x, z);
+        if (fr) {
+          x = fr.x;
+          z = fr.z;
+        }
+      }
+      self.x = x;
+      self.z = z;
+      me.x = x;
+      me.z = z;
+      me.y = groundY(x, z, -1, U.p0.y);
+      self.target = null;
+      self.path = null;
+      return;
+    }
+    self.x = me.x;
+    self.z = me.z;
+  }
+  // uzak oyuncu: bekleyen fırlama başlar mı, uçuyorsa adım. Dönen: true = konumu fırlama belirliyor
+  function stepRemoteFall(r, dt) {
+    const F = r.fall;
+    const f = r.fig;
+    if (F.pend) {
+      const P = F.pend;
+      const c = P.owner ? carObjOf(P.owner) : null;
+      if (c && Date.now() < P.until && Math.hypot(c.x - P.L.x, c.z - P.L.z) > 1.6) return false; // araç henüz çarpmadı (gecikme)
+      // uzakta / görünmüyorsa uçuş oynatılmaz (boşuna hesap yok)
+      if (r.d > VIS_DIST) {
+        r.fall = null;
+        return false;
+      }
+      const sp = c && P.owner ? seatOf(c, P.k) : null;
+      const L = sp ? { ...P.L, x: sp.x, y: sp.y, z: sp.z, yaw: c.yaw } : P.L;
+      F.rd = launchFj(L);
+      F.pend = null;
+    }
+    if (fallStep(F, f, dt)) {
+      r.fall = null;
+      return false;
+    }
+    return true;
   }
   function stepDrive(dt) {
     const c = myCar;
@@ -5146,7 +5253,10 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       stepDrive(dt);
       if (ejectReq) ejectRider();
     } else if (fall) stepFall(dt);
-    else if (self.ride) stepRide(dt);
+    else if (self.ride) {
+      stepRide(dt);
+      if (ridePend) checkRideEject(); // v216.3: sürücü fırladı → ben de
+    }
     else if (heist?.active) heist.step(dt, now); // v154: soygun dizisi oyuncuyu ve kamerayı yönetir
     else stepWalk(dt);
     // park halindeki araba / çağırma animasyonu
@@ -6579,7 +6689,9 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       if (fall) {
         fall = null; // v216: ışınlanma / doğma fırlamayı keser
         me.rag = null;
+        myFj = null;
       }
+      ridePend = null;
     },
     walkTo,
     // v196 — 3 KATLI EV ----------------------------------------------------------------------
@@ -6727,7 +6839,9 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       if (fall) {
         fall = null; // v216: ışınlanma / doğma fırlamayı keser
         me.rag = null;
+        myFj = null;
       }
+      ridePend = null;
       return true;
     },
     homeSurfaces(surf) {
@@ -6847,7 +6961,9 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       if (fall) {
         fall = null; // v216: ışınlanma / doğma fırlamayı keser
         me.rag = null;
+        myFj = null;
       }
+      ridePend = null;
     },
     // v157 — girilebilir mekânlar / dış dünya
     venueType: () => (curVenue ? curVenue.type : null),
@@ -6873,7 +6989,9 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       if (fall) {
         fall = null; // v216: ışınlanma / doğma fırlamayı keser
         me.rag = null;
+        myFj = null;
       }
+      ridePend = null;
       return true;
     },
     // v157.4 — ÇETE KARARGAHLARI: hangar (slot 0–5) → çetenin adı (kapının üstünde) + iç tasarımı
@@ -6923,7 +7041,9 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       if (fall) {
         fall = null; // v216: ışınlanma / doğma fırlamayı keser
         me.rag = null;
+        myFj = null;
       }
+      ridePend = null;
       return true;
     },
     // karargahların bulunduğu cebin merkezi (yaklaşınca bilgiler okunur)
@@ -6964,7 +7084,9 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       if (fall) {
         fall = null; // v216: ışınlanma / doğma fırlamayı keser
         me.rag = null;
+        myFj = null;
       }
+      ridePend = null;
     },
     world: () => W,
     // v157: geliştirme testleri (çarpışma / zemin simülasyonu) — canlıda yok
@@ -7177,7 +7299,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     },
     // ağa gönderilecek kendi durumum (kısa alan adları → az veri)
     getNetState() {
-      const st = { x: Math.round(self.x * 100) / 100, z: Math.round(self.z * 100) / 100, l: me.facingLeft ? 1 : 0, m: me.moving ? 1 : 0, p: driving ? 'd' : self.ride ? 'r' : self.seat && !self.seat.stand ? 's' : 'w' }; // v202: duşta ayakta
+      const st = { x: Math.round(self.x * 100) / 100, z: Math.round(self.z * 100) / 100, l: me.facingLeft ? 1 : 0, m: me.moving ? 1 : 0, p: fall ? 'f' : driving ? 'd' : self.ride ? 'r' : self.seat && !self.seat.stand ? 's' : 'w' }; // v202: duşta ayakta · v216.3: f = fırlıyor
+      if (fall && myFj) st.fj = myFj; // v216.3: fırlamanın başlangıcı (≈ 50 harf, sadece fırlarken)
       if (self.run && me.moving) st.r = 1;
       if (self.seat && !self.seat.stand) st.sy = Math.round(self.seat.y * 100) / 100;
       if (self.ride) {
@@ -7202,7 +7325,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       const fx = Math.sin(myCar.yaw);
       const fz = Math.cos(myCar.yaw);
       // ct: ölçüm anı (sunucu saatine göre) — alıcı tahmini buna göre yapar
-      return { ...(myCar.mk ? { m: myCar.mk } : {}), ct: Date.now(), v: myCar.id, x: Math.round(myCar.x * 100) / 100, z: Math.round(myCar.z * 100) / 100, y: Math.round(myCar.yaw * 1000) / 1000, s: Math.round((myCar.vx * fx + myCar.vz * fz) * 10) / 10, st: Math.round((myCar.steer || 0) * 100) / 100, d: driving ? 1 : 0, ...(myJob.on ? { j: 1 + myJob.pax } : {}) };
+      return { ...(myCar.mk ? { m: myCar.mk } : {}), ct: Date.now(), v: myCar.id, x: Math.round(myCar.x * 100) / 100, z: Math.round(myCar.z * 100) / 100, y: Math.round(myCar.yaw * 1000) / 1000, s: Math.round((myCar.vx * fx + myCar.vz * fz) * 10) / 10, st: Math.round((myCar.steer || 0) * 100) / 100, d: driving ? 1 : 0, ...(myJob.on ? { j: 1 + myJob.pax } : {}), ...(twoWheel(myCar) ? { dn: myCar.down ? myCar.fall || 1 : 0 } : {}) }; // v216.3: dn = devrik motor / bisiklet
     },
     myCarSeats: () => (myCar ? myCar.v.def.seats || 1 : 0),
     // --- v151 meslek ---------------------------------------------------------------

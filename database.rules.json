@@ -267,7 +267,7 @@
               ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1"
             },
             "p": {
-              ".validate": "newData.isString() && newData.val().matches(/^[wsdr]$/)"
+              ".validate": "newData.isString() && newData.val().matches(/^[wsdrf]$/)"
             },
             "sy": {
               ".validate": "newData.isNumber() && newData.val() >= -10 && newData.val() <= 300"
@@ -286,6 +286,9 @@
             },
             "rk": {
               ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 29"
+            },
+            "fj": {
+              ".validate": "newData.isString() && newData.val().length <= 80"
             },
             "t": {
               ".validate": "newData.isNumber() && newData.val() <= now + 1000"
@@ -334,6 +337,9 @@
             },
             "j": {
               ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 40"
+            },
+            "dn": {
+              ".validate": "newData.isNumber() && newData.val() >= -1 && newData.val() <= 1"
             },
             "$other": {
               ".validate": false

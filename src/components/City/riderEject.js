@@ -422,3 +422,29 @@ export function stepFallenBike(c, dt) {
   c.spin = (c.spin || 0) * Math.exp(-dt * (lying ? 2 : 0.8));
   return c;
 }
+
+// --- v216.3 çok oyunculu: fırlamanın başlangıcı (ağdaki "fj" alanı) ---------------------------------
+// Uçuş ağdan gönderilmez; fırlayan oyuncu başlangıcı bir kez yazar, her cihaz aynı fiziği oynatır.
+// L: { x, y, z: kalça (koltuk), vx, vz: çarpma öncesi hız, yaw: aracın yönü, kind, seed }
+const KIND_CODE = { moto: 'm', bike: 'b', horse: 'h', camel: 'c' };
+const CODE_KIND = { m: 'moto', b: 'bike', h: 'horse', c: 'camel' };
+const r2 = (v) => Math.round(v * 100) / 100;
+export function encodeFj(L) {
+  return [r2(L.x), r2(L.y), r2(L.z), r2(L.vx), r2(L.vz), Math.round(L.yaw * 1000) / 1000, KIND_CODE[L.kind] || 'm', Math.round(L.seed) >>> 0].join(',');
+}
+export function decodeFj(s) {
+  if (typeof s !== 'string' || s.length > 80) return null;
+  const a = s.split(',');
+  if (a.length !== 8) return null;
+  const n = a.map(Number);
+  const L = { x: n[0], y: n[1], z: n[2], vx: n[3], vz: n[4], yaw: n[5], kind: CODE_KIND[a[6]] || 'moto', seed: n[7] };
+  for (const k of ['x', 'y', 'z', 'vx', 'vz', 'yaw', 'seed']) if (!Number.isFinite(L[k])) return null;
+  if (Math.abs(L.vx) > 120 || Math.abs(L.vz) > 120 || Math.abs(L.x) > 5000 || Math.abs(L.z) > 5000) return null;
+  return L;
+}
+// Fırlatma: dik gövde, aracın yönünde (her cihazda aynı)
+export function launchFj(L) {
+  const cy = Math.cos(L.yaw);
+  const sy = Math.sin(L.yaw);
+  return makeRagdoll({ pelvis: [L.x, L.y, L.z], frame: { x: [cy, 0, -sy], y: [0, 1, 0], z: [sy, 0, cy] }, vel: [L.vx, 0, L.vz], kind: L.kind, speed: Math.hypot(L.vx, L.vz), seed: L.seed });
+}

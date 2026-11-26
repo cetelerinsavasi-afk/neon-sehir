@@ -62,3 +62,26 @@ bekleniyordu; şehir zeminindeki santimlik pürüzler gövdeyi sürekli "havada"
 - Kollardaki darbe sarsılması kaldırıldı; yerdeyken görüntü yumuşatılır.
 - Durunca ~0,5 sn sonra kalkar (eskiden 1,4 sn).
 Test: "pürüzlü zeminde de kısa sürede durur ve donar".
+
+## v216.3 — diğer oyuncular da görür, arka yolcu da fırlar
+- **Diğer oyuncular** fırladığını görür: takla, düşme, kalkma. Uçuş ağdan GÖNDERİLMEZ: fırlayan oyuncu
+  kendi konum kaydına bir kez başlangıcı ekler (`fj`: konum, hız, yön, tür, tohum — ≈ 50 harf); her cihaz
+  aynı fiziği aynı başlangıçtan kendisi oynatır. Gönderen de yuvarlanmış değerlerle başlar → birebir aynı.
+  İzleyenin ekranında uçuş, aracın çarpma noktasına gelmesini bekler (ağ gecikmesi kadar), sonra başlar.
+- **Arka yolcu** (iki kişilik motor, deve): sürücü fırlayınca yolcu da kendi cihazında fırlar, koltuğu boşalır.
+  Sürücünün ve izleyenlerin ekranında yolcu, kendi bilgisi gelmeden aynı anda fırlar (tahmin).
+- **Devrilen motor / bisiklet** diğerlerinde de yan yatar (araç kaydında `dn`: 0 / ±1, sadece iki tekerlide).
+- Yeni katılan biri, başkasının eski fırlamasını oynatmaz. Görüş mesafesi dışındaki fırlamalar hesaplanmaz.
+
+### Maliyet
+- **Firestore: 0.** RTDB: **ek yazım yok** — `fj` ve `dn` zaten giden konum / araç yazımlarının içinde.
+  Yolcu fırlayınca koltuk silinir (normal inişteki aynı tek silme).
+- RTDB kuralı güncellendi (`database.rules.json`: oyuncu `p` artık `f` de olabilir, `fj` ≤ 80 harf;
+  araç `dn` −1…1). **Kural siteden önce yayınlanmalı** — `v216-yayinla.bat` bu sırayla yapar.
+- Eski sürümdeki oyuncular yeni alanları görmezden gelir (fırlayanı yürüyor gibi görür), hata olmaz.
+
+### Kontrol listesi (iki cihaz)
+- [ ] A motorla sert çarpar: B'nin ekranında A takla atıp düşüyor, motor yan yatıyor; A kalkınca B'de de kalkıyor.
+- [ ] A sürücü, B arka yolcu: çarpınca ikisi de fırlıyor (her iki ekranda); B'nin koltuğu boşalıyor (B tekrar binebiliyor).
+- [ ] A motoru kaldırıp binince B'de motor düzeliyor.
+- [ ] Yavaş çarpma: kimse fırlamıyor.

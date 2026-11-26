@@ -363,7 +363,7 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
     if (!a || !b) return true;
     if (Math.hypot(a.x - b.x, a.z - b.z) > 0.2) return true;
     if (Math.abs((a.y ?? 0) - (b.y ?? 0)) > 0.3) return true; // v196: evde kat değişti
-    for (const k of ['l', 'm', 'p', 'sy', 'e', 'et', 'h', 'ro', 'rk', 'r', 'hm']) if (a[k] !== b[k]) return true; // v196: eve girdi / çıktı hemen gitsin
+    for (const k of ['l', 'm', 'p', 'sy', 'e', 'et', 'h', 'ro', 'rk', 'r', 'hm', 'fj']) if (a[k] !== b[k]) return true; // v196: eve girdi / çıktı hemen gitsin · v216.3: fırlama
     return false;
   };
   // v160 — ŞEHİR ÖRTÜLÜYKEN GÖRÜNMEZ: karargah / ev / işletme ekranı şehrin üstünde açıkken
@@ -440,7 +440,7 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
         myCarCell = cc;
         lastCar = null;
       }
-      const moved = !lastCar || Math.hypot(car.x - lastCar.x, car.z - lastCar.z) > 0.15 || Math.abs(car.y - lastCar.y) > 0.02 || car.d !== lastCar.d || car.v !== lastCar.v || car.m !== lastCar.m || car.j !== lastCar.j || Math.abs(car.s - lastCar.s) > 1.5;
+      const moved = !lastCar || Math.hypot(car.x - lastCar.x, car.z - lastCar.z) > 0.15 || Math.abs(car.y - lastCar.y) > 0.02 || car.d !== lastCar.d || car.dn !== lastCar.dn || car.v !== lastCar.v || car.m !== lastCar.m || car.j !== lastCar.j || Math.abs(car.s - lastCar.s) > 1.5;
       if ((moved && now - lastCarAt >= DRIVE_MS * Math.min(2, k)) || now - lastCarAt >= HEARTBEAT_MS * 3) {
         // tam kayıt: ilk yazım / hücre değişti / araç, modifiye ya da iş durumu değişti / 15 sn'de bir
         const full = !lastCar || car.v !== lastCar.v || car.m !== lastCar.m || car.j !== lastCar.j || now - lastCarFullAt > CAR_FULL_MS;
