@@ -25,7 +25,7 @@ let hiddenAt = 0;
 // değişikliği (sohbet, savaş, SMS, sayaçlar…) boşuna okumaya devam ediyordu.
 // Öne gelince ağ tekrar açılır; dinleyiciler kaldıkları yerden güncellenir
 // (zaten öne gelince yapılan yeniden bağlanmanın aynısı).
-const PAUSE_AFTER_HIDDEN_MS = 90_000;
+const PAUSE_AFTER_HIDDEN_MS = 45_000; // v220: 90 sn → 45 sn (arka planda boşuna okuma daha erken durur)
 let pauseTimer = null;
 let paused = false;
 function schedulePause() {

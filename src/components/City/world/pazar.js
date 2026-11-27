@@ -110,6 +110,8 @@ function stall(k, x, z, f, ti, si) {
   k.solid(lx(0), z, 0.55, L / 2 + 0.1);
   k.npcs.push({
     outer: !0,
+    still: !0, // v220: pazarcı tezgâhının başında sabit durur (dolaşmaz), tezgâha dönük
+    stand: !0,
     yaw: f > 0 ? Math.PI / 2 : -Math.PI / 2,
     x: lx(-0.95),
     z: z + (si % 2 ? 0.4 : -0.4),
@@ -263,7 +265,7 @@ export function buildPazar(E) {
       { clothing: `hoodie`, clothColor: `#39b54a`, pantsColor: `#1a1a1c` },
       { clothing: `jacket`, clothColor: `#e0a020`, pantsColor: `#2b3550`, hat: `cap`, hatColor: `#c8141e` },
     ];
-    for (var w = 0; w < (wide ? 3 : 2); w++) {
+    for (var w = 0; w < (wide ? 2 : 1); w++) { // v220: gezen müşteri sayısı azaldı (kasma)
       var ox = cx + (w - 1) * 0.9,
         za = s.z0 + 3 + w * 2,
         zb2 = s.z1 - 3 - w * 1.5;

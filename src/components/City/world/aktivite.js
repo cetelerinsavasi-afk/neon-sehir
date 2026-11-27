@@ -99,7 +99,7 @@ export function buildAktivite(k, v) {
     for (let q = -L / 2 + 1; q < L / 2 - 1; q += 2.2)
       k.box(w > d ? 1 : 0.1, 0.025, w > d ? 0.1 : 1, wl, w > d ? x + q : x, Y + 0.005, w > d ? z : z + q, { cast: !1 });
   }
-  k.sign(`pk_bisiklet`, `🚲 BİSİKLET YOLU`, 0.35, -31.6, 0.5 + Y, 10.4, 0, { color: `#ffffff`, bg: `#b5452e`, font: `900 100px Arial, sans-serif`, light: !1 });
+  // v220: "BİSİKLET YOLU" tabelası kaldırıldı (yolun üstünde duruyordu)
   const FX0 = -29.5,
     FX1 = -11.5,
     FZ = 6.5;
@@ -151,7 +151,9 @@ export function buildAktivite(k, v) {
       const pl = k.mesh(new soe.PlaneGeometry(b - a, h), net, cxs, Y + h / 2, czs, ry, { cast: !1, receive: !1 });
       pl.renderOrder = 5;
       k.box(Math.abs(dx) * (b - a) + 0.06, 0.06, Math.abs(dz) * (b - a) + 0.06, fp, cxs, Y + h, czs);
-      k.solid(cxs, czs, (Math.abs(dx) * (b - a)) / 2 + 0.08, (Math.abs(dz) * (b - a)) / 2 + 0.08);
+      // v220: çit engeli en az 0,6 m kalın — yürüme ızgarası 0,5 m; 16 cm'lik engel hücre merkezlerine
+      // denk gelmeyip içinden geçiliyordu. Sahalara artık sadece kapı boşluğundan girilir.
+      k.solid(cxs, czs, (Math.abs(dx) * (b - a)) / 2 + (Math.abs(dx) > 0.5 ? 0.08 : 0.32), (Math.abs(dz) * (b - a)) / 2 + (Math.abs(dz) > 0.5 ? 0.08 : 0.32));
       for (let q = a; q <= b + 0.01; q += Math.max(0.5, (b - a) / Math.ceil((b - a) / 2.5))) k.box(0.08, h, 0.08, fp, x0 + dx * q, Y, z0 + dz * q);
     });
   };
@@ -189,12 +191,12 @@ export function buildAktivite(k, v) {
     k.box(0.8, 0.1, 0.1, fp, px - sx * 0.4, Y + 3.3, 0);
     k.box(0.06, 1.05, 1.8, J(`#f4f4f2`, 0.3), sx * 7.15, Y + 2.9, 0);
     k.box(0.07, 0.45, 0.6, J(`#c8141e`, 0.4), sx * 7.13, Y + 3.05, 0);
-    const rim = k.mesh(new soe.TorusGeometry(0.23, 0.02, 8, 20), J(`#ff5a1a`, 0.4, 0.5), sx * 6.9, Y + 3.05, 0, 0, { rx: Math.PI / 2 });
+    const rim = k.mesh(new soe.TorusGeometry(0.32, 0.025, 8, 24), J(`#ff5a1a`, 0.4, 0.5), sx * 6.9, Y + 3.05, 0, 0, { rx: Math.PI / 2 });
     const nt = k.mesh(
-      new soe.CylinderGeometry(0.23, 0.15, 0.45, 16, 1, !0),
+      new soe.CylinderGeometry(0.32, 0.22, 0.5, 16, 1, !0),
       new soe.MeshBasicMaterial({ color: `#ffffff`, transparent: !0, opacity: 0.55, side: 2, wireframe: !0 }),
       sx * 6.9,
-      Y + 2.82,
+      Y + 2.8,
       0,
       0,
       { cast: !1 },

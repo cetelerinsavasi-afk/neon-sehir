@@ -683,7 +683,7 @@ export class Kit {
     if (solid && def) {
       itemBoxes(def).forEach(([bx, bz, hw, hd]) => this.solids.push({ o, x: bx * scale, z: bz * scale, hw: hw * scale, hd: hd * scale, item: def.cat, key: k })); // v161: key → ağaçlar araca engel
     }
-    if (def?.seats && def.cat !== 'araba' && def.cat !== 'motor') def.seats.forEach((sp) => this.seats.push({ o, x: sp[0] * scale, y: sp[1] * scale, z: sp[2] * scale, ...(sp[3] ? { yaw: sp[3] } : {}) }));
+    if (def?.seats && def.cat !== 'araba' && def.cat !== 'motor') def.seats.forEach((sp) => this.seats.push({ o, x: sp[0] * scale, y: sp[1] * scale, z: sp[2] * scale, ...(sp[3] ? { yaw: sp[3] } : {}), ...(def.lie ? { lie: true } : {}) })); // v220: lie → yatakta uzanılır
     if (ctl?.light) {
       const L = ctl.light;
       this.lights.push({ o, x: L.x, y: L.y, z: L.z, color: L.color, intensity: L.intensity, distance: L.distance });
@@ -757,11 +757,11 @@ export class Kit {
     this.labels.push({ text, o, kind });
   }
   // v147.3 — su (elips): yürüyerek girilir, içeri doğru batılır; arabalar giremez
-  water(x, z, rx, rz) {
+  water(x, z, rx, rz, { y = null, max = null } = {}) {
     const o = new THREE.Object3D();
     o.position.set(x, 0, z);
     this.group.add(o);
-    (this.waters ||= []).push({ o, rx, rz });
+    (this.waters ||= []).push({ o, rx, rz, y, max }); // v220: y → sadece o kattakiler batar · max → en derin batma
   }
   // neon/pano tabela: dikdörtgen düzlem; h = yükseklik (m)
   sign(key, text, h, x, y, z, ry = 0, opts = {}) {

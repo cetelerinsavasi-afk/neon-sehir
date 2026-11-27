@@ -594,7 +594,8 @@ export function buildRestoranVenue(e) {
   t.low[0].sign(`lm_kapi`, `· LA MAREA ·`, 0.26, 0, 3.25, FRONT + 3.03, 0, { color: `#d4af37`, bg: `#141418`, font: `italic 800 90px Georgia, serif`, light: !1 });
   t.base.item(`rugrunner`, 0, FRONT + 2.4, 0, 0, { solid: !1, y: 0.02 });
   t.base.item(`rugrunner`, 0, FRONT + 5.6, 0, 0, { solid: !1, y: 0.02 });
-  for (let z of [FRONT + 1.4, FRONT + 3.4, FRONT + 5.4]) for (let sx of [-1, 1]) t.base.item(`stanchion`, sx * 1.35, z, 0, 0);
+  // v220: kırmızı ipli bariyerler yolun iki yanında, ip yola paralel (eskiden ip yola dik / yan duruyordu)
+  for (let z of [FRONT + 1.6, FRONT + 2.8, FRONT + 4.0, FRONT + 5.2]) for (let sx of [-1, 1]) t.base.item(`stanchion`, sx * 1.35, z, 2, 0);
   for (let sx of [-1, 1])
     for (let z of [FRONT + 3.4, FRONT + 7.6]) {
       t.base.item(`cafetable`, sx * 4.4, z, 0, 1);
@@ -867,9 +868,10 @@ function sporUpper(k, o) {
   k.box(0.06, FL - 3.56, 5.7, M(`#d9dde3`, 0.6), 7.6, 3.56, -4.05);
   k.box(1.4, FL - 3.56, 0.06, M(`#d9dde3`, 0.6), 8.3, 3.56, -6.9);
   k.box(1.4, FL - 3.56, 0.06, M(`#d9dde3`, 0.6), 8.3, 3.56, -1.2);
-  k.floor(`havuz_karo`, 9.6, 7.2, 1.8, -7, FL + 0.005, { offset: !0 });
+  // v220: havuz biraz daraldı (X1 6,6 → 4,9) — sauna artık havuzun içinde değil, aradan geçilir
+  k.floor(`havuz_karo`, 8.6, 7.2, 0.95, -7, FL + 0.005, { offset: !0 });
   const X0 = -3,
-    X1 = 6.6,
+    X1 = 4.9,
     Z0 = -10.6,
     Z1 = -3.4,
     cx = (X0 + X1) / 2,
@@ -913,6 +915,8 @@ function sporUpper(k, o) {
     const t = k.mesh(new THREE.TorusGeometry(0.25, 0.035, 8, 16, Math.PI), ch, X1 - 0.4, FL + 1.2, z, 0, { cast: !1 });
     t.rotation.set(0, 0, 0);
   }
+  // v220: havuza girilir (2. kattaki su; sadece bu kattakiler batar, alt kat etkilenmez)
+  k.water(cx, cz, W / 2, D / 2, { y: FL + 0.25, max: 0.95 });
   k.sign(`spor_havuz`, `AQUA SPA`, 0.55, cx, FL + 3, Z0 - 1.4 + 0.02, 0, {
     color: `#ffffff`,
     glow: `#19e8ff`,
@@ -926,7 +930,12 @@ function sporUpper(k, o) {
     SZ1 = -9.15,
     scx = (SX0 + SX1) / 2,
     scz = (SZ0 + SZ1) / 2;
-  for (let x = SX0; x < SX1 - 0.05; x += 0.22) k.box(0.2, 2.6, 0.08, Math.round((x - SX0) / 0.22) % 2 ? wd : wd2, x + 0.1, FL, SZ1 - 0.04);
+  // v220: saunanın kapısı açık geçit (SX0+0,55 … SX0+1,45 arası lata yok)
+  for (let x = SX0; x < SX1 - 0.05; x += 0.22) {
+    if (x + 0.2 > SX0 + 0.55 && x < SX0 + 1.45) continue;
+    k.box(0.2, 2.6, 0.08, Math.round((x - SX0) / 0.22) % 2 ? wd : wd2, x + 0.1, FL, SZ1 - 0.04);
+  }
+  k.box(0.9, 0.5, 0.08, wd2, SX0 + 1.0, FL + 2.1, SZ1 - 0.04);
   for (let z = SZ0; z < SZ1 - 0.05; z += 0.22) k.box(0.08, 2.6, 0.2, Math.round((z - SZ0) / 0.22) % 2 ? wd : wd2, SX0 + 0.04, FL, z + 0.1);
   k.box(SX1 - SX0 + 0.2, 0.14, SZ1 - SZ0 + 0.2, wd2, scx, FL + 2.6, scz);
   const gd = new THREE.MeshStandardMaterial({
@@ -938,13 +947,19 @@ function sporUpper(k, o) {
     emissiveIntensity: 0.35,
     depthWrite: !1,
   });
-  k.mesh(new THREE.PlaneGeometry(0.9, 2.05), gd, SX0 + 1.0, FL + 1.05, SZ1 + 0.02, 0, { cast: !1 }).renderOrder = 5;
+  void gd; // v220: cam kapı kalktı (kapıdan girilir)
   k.box(1.0, 0.08, 0.08, dk, SX0 + 1, FL + 2.08, SZ1 + 0.03);
   for (const h of [0.45, 0.9]) k.box(SX1 - SX0 - 1.6, 0.08, 0.6, wd, (SX0 + 1.6 + SX1) / 2, FL + h, SZ0 + 0.5 + (h > 0.5 ? 0 : 0.6));
   k.box(0.6, 0.5, 0.5, M(`#3a3d42`, 0.6, 0.4), SX0 + 0.5, FL, SZ0 + 0.4);
   for (let q = 0; q < 6; q++)
     k.mesh(new THREE.SphereGeometry(0.07, 6, 4), M(`#6b6b6b`, 0.9), SX0 + 0.35 + (q % 3) * 0.15, FL + 0.55, SZ0 + 0.3 + Math.floor(q / 3) * 0.15, 0);
   k.light(scx, FL + 2.2, scz, `#ffb46a`, 4, 6);
+  // v220: saunada alt basamağa oturulur
+  {
+    const so = new THREE.Object3D();
+    k.group.add(so);
+    for (const x of [7.2, 7.8, 8.4]) k.seats.push({ o: so, x, y: FL + 0.53, z: SZ0 + 1.1, yaw: 0 });
+  }
   k.sign(`spor_sauna2`, `SAUNA`, 0.36, scx + 0.6, FL + 2.25, SZ1 + 0.06, 0, {
     color: `#fff1d6`,
     glow: `#ff9a3d`,
@@ -952,33 +967,7 @@ function sporUpper(k, o) {
     li: 3,
     ld: 5,
   });
-  const jx = -6,
-    jz = -8.6;
-  k.cyl(1.55, 1.6, 0.55, st, jx, FL, jz, 32, { open: !0 });
-  k.cyl(1.32, 1.32, 0.55, M(`#7fd3e6`, 0.3), jx, FL, jz, 32, { open: !0 });
-  k.mesh(new THREE.CircleGeometry(1.32, 32), M(`#5fc8e0`, 0.4), jx, FL + 0.02, jz, 0, { rx: -Math.PI / 2, cast: !1 });
-  k.mesh(
-    new THREE.CircleGeometry(1.32, 32),
-    new THREE.MeshStandardMaterial({ color: `#5ad8ff`, emissive: `#1aa0c8`, emissiveIntensity: 0.6, roughness: 0.05, transparent: !0, opacity: 0.85 }),
-    jx,
-    FL + 0.45,
-    jz,
-    0,
-    { rx: -Math.PI / 2, cast: !1 },
-  );
-  for (let q = 0; q < 10; q++) {
-    const a = (q / 10) * Math.PI * 2;
-    k.mesh(
-      new THREE.SphereGeometry(0.06, 6, 4),
-      new THREE.MeshBasicMaterial({ color: `#ffffff`, transparent: !0, opacity: 0.7 }),
-      jx + Math.cos(a) * 0.7,
-      FL + 0.52,
-      jz + Math.sin(a) * 0.7,
-      0,
-      { cast: !1 },
-    );
-  }
-  k.sign(`spor_jak`, `JAKUZİ`, 0.3, jx, FL + 2.4, jz - 1.9, 0, { color: `#06202a`, bg: `#5ad8ff`, font: `900 100px Arial, sans-serif`, light: !1 });
+  // v220: jakuzi kaldırıldı
   for (let z = -11.6; z < -4.8; z += 0.62) {
     k.box(0.5, 2, 0.58, M(Math.round(z * 10) % 2 ? `#1f6fd0` : `#2a7ae0`, 0.4, 0.3), -8.65, FL, z + 0.3);
     k.box(0.04, 0.04, 0.12, ch, -8.38, FL + 1.2, z + 0.3);
@@ -1005,6 +994,12 @@ function sporUpper(k, o) {
     const bk = k.box(0.66, 0.08, 0.8, M(i % 2 ? `#19b8c8` : `#ff7a3d`, 0.8), x, FL + 0.62, 0.9, { center: !0 });
     bk.rotation.x = -0.75;
     k.box(0.66, 0.04, 0.4, M(`#ffffff`, 0.7), x, FL + 0.48, -0.55);
+    // v220: şezlonga oturulur (sırt yastığına yaslanır, havuza dönük)
+    {
+      const so = new THREE.Object3D();
+      k.group.add(so);
+      k.seats.push({ o: so, x, y: FL + 0.46, z: 0.1, yaw: Math.PI });
+    }
     if (i < 3) {
       k.cyl(0.22, 0.22, 0.45, wh, x + 1.1, FL, 0.4, 14);
       k.cyl(0.04, 0.04, 0.18, M(`#ff9f1c`, 0.4), x + 1.1, FL + 0.45, 0.4, 8);

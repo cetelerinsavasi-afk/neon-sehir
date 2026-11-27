@@ -751,6 +751,9 @@ export function createMap({ city, cityExtraLots, solids, citySolidCount, town, s
   ];
   if (roadside) places.push(...roadside.pads.filter((pd) => pd.village).map((pd) => ({ x: pd.mx, z: pd.mz - 64, name: pd.name, cls: 'poi', min: 0.15 })));
   if (pistG) places.push({ ...pistG.label, name: PIST_PLAN.name.toLocaleUpperCase('tr-TR'), cls: 'poi', min: 0.12, max: 0.9 });
+  // v220: kıyafetçilerin olduğu dükkânlar sokağı — mini haritada da yazar
+  const MINI_PLACES = [{ x: 100, z: 60, name: 'MAĞAZALAR' }];
+  places.push(...MINI_PLACES.map((p) => ({ ...p, cls: 'poi', min: 0.45 })));
 
   // --- ÇİZİM ----------------------------------------------------------------------------------
   // view: { cx, cz, k (px/m, CSS px), rot (rad), dpr, ox, oy (ekran merkezi, CSS px) }
@@ -919,6 +922,20 @@ export function createMap({ city, cityExtraLots, solids, citySolidCount, town, s
           g.fillStyle = p.color;
           g.fillText(p.name, q[0], q[1] + (p.small ? r + 9 * dpr : 9 * dpr));
         }
+      });
+    }
+    // v220: mini haritada dükkânlar sokağının adı (büyük haritada yer adlarıyla birlikte çizilir)
+    if (!labels && k >= 0.6) {
+      MINI_PLACES.forEach((p) => {
+        const q = scr(p.x, p.z);
+        if (!inView(q)) return;
+        g.font = `800 ${10 * dpr}px system-ui, sans-serif`;
+        g.textAlign = 'center';
+        g.lineWidth = 3 * dpr;
+        g.strokeStyle = 'rgba(255,255,255,0.92)';
+        g.strokeText(p.name, q[0], q[1]);
+        g.fillStyle = '#7a2ad0';
+        g.fillText(p.name, q[0], q[1]);
       });
     }
     // yer adları

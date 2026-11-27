@@ -466,6 +466,20 @@ class Fig {
     if (this.tex.lazy) this.tex = texUse(null, avatarTextures(this.av0, true));
     return this.tex;
   }
+  // v220: uzun süre görünmeyen (tembel) NPC'nin dokusu ve 3D modeli bırakılır — tekrar görülünce yeniden
+  // çizilir. Pazar gibi kalabalık yerlerden geçince telefonda bellek birikip oyun kapanıyordu.
+  releaseLazy() {
+    if (!this.lazy || this.tex.lazy || this.holding || this.deliver) return;
+    if (this.m3) {
+      this.group.add(this.held);
+      this.m3.dispose();
+      this.m3 = null;
+    }
+    this.mat.map = null;
+    this.mat.needsUpdate = true;
+    texUse(this.tex, null);
+    this.tex = { ready: false, tex: {}, lazy: true };
+  }
   setForcePose(p) {
     this.forcePose = p || null;
     if (p) ensurePoseTex(this.ensureTex(), p);
@@ -629,7 +643,7 @@ class Fig {
         t: now / 1000,
         walkT: this.walkT * 1.3,
         walk: this.moving && !this.sitting && !this.inCar,
-        sit: this.sitting || this.inCar,
+        sit: (this.sitting || this.inCar) && !this.lie, // v220: yatakta düz uzanır
         drive: this.inCar,
         swim: deep && this.moving,
         tread: deep && !this.moving,
@@ -642,6 +656,18 @@ class Fig {
       let ry = stand + (seatOff - stand) * this.m3.kSit;
       ry += (-0.12 - ry) * this.m3.kSwim; // yüzerken gövde su yüzeyinde
       r.position.set(this.pivot.position.x, ry, 0);
+      // v220: yatakta uzanma — gövde yatar (baş yastığa / yatağın -z ucuna), yüz yukarı
+      if (this.lie && this.sitting && !this.inCar) {
+        const yw = this.yaw || 0;
+        const L = 0.82; // ayaktan bele ~ boyun yarısı: gövde yatağın ortasına gelsin
+        r.rotation.order = 'YXZ';
+        r.rotation.x = -Math.PI / 2;
+        r.position.set(Math.sin(yw) * L, (this.seatY ?? this.y) - this.y + 0.14, Math.cos(yw) * L);
+        this.lieOn = true;
+      } else if (this.lieOn) {
+        this.lieOn = false;
+        r.rotation.x = 0;
+      }
       r.scale.setScalar(this.m3.baseScale * (this.inCar ? 0.9 : 1)); // araçta biraz küçük (kâğıt figürdeki gibi)
       // v216: binekten fırlama — gövde fizikten gelir (kalça konumu + yön), kollar / bacaklar çırpınır / gevşer
       if (this.rag) {
@@ -1097,7 +1123,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     k.seats.forEach((st) => {
       const p = st.o.localToWorld(tv.set(st.x, st.y, st.z + 0.06));
       // v149: tribün koltuğunun kendi yönü (sahaya dönük) — eşya koltuklarında 0
-      seats.push({ x: p.x, y: p.y, z: p.z, yaw: yawOf(st.o.matrixWorld) + (st.yaw || 0), taken: false, tier: Boolean(st.tier), reach: st.reach || 0, front: Boolean(st.front) }); // v219: front — sadece önden oturulur (durak bankı)
+      seats.push({ x: p.x, y: p.y, z: p.z, yaw: yawOf(st.o.matrixWorld) + (st.yaw || 0), taken: false, tier: Boolean(st.tier), reach: st.reach || 0, front: Boolean(st.front), lie: Boolean(st.lie), ...(st.lie ? { label: '🛏️ Uzan', exitLabel: '🚶 Kalk' } : {}), ...(st.label ? { label: st.label } : {}) }); // v219: front — sadece önden oturulur (durak bankı)
     });
     k.solids.forEach((s) => {
       const p = s.o.localToWorld(tv.set(s.x, 0, s.z));
@@ -1132,7 +1158,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     (k.waters || []).forEach((wt) => {
       const p = wt.o.getWorldPosition(new V());
       const rot = Math.abs(Math.sin(yawOf(k.group.matrixWorld))) > 0.7;
-      waters.push({ x: p.x, z: p.z, rx: rot ? wt.rz : wt.rx, rz: rot ? wt.rx : wt.rz });
+      waters.push({ x: p.x, z: p.z, rx: rot ? wt.rz : wt.rx, rz: rot ? wt.rx : wt.rz, y: wt.y != null ? p.y + wt.y : null, max: wt.max ?? null });
     });
     k.blockers.forEach((b) => {
       b.userData.zone = doorZone;
@@ -1347,7 +1373,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     });
     k.seats.forEach((st) => {
       const p = st.o.localToWorld(tv.set(st.x, st.y, st.z + 0.06));
-      seats.push({ x: p.x, y: p.y, z: p.z, yaw: yawOf(st.o.matrixWorld) + (st.yaw || 0), taken: false, tier: false });
+      seats.push({ x: p.x, y: p.y, z: p.z, yaw: yawOf(st.o.matrixWorld) + (st.yaw || 0), taken: false, tier: false, lie: Boolean(st.lie), ...(st.lie ? { label: '🛏️ Uzan', exitLabel: '🚶 Kalk' } : {}) });
     });
     k.ticks.forEach((t) => ticks.push(t));
     k.blockers.forEach((b) => blockers.push(b));
@@ -1659,7 +1685,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       const p = fromRoom(EV, st.x, st.z);
       const def = CATALOG_MAP[st.k];
       // v202: duşakabin ayakta (stand) — "🚿 Duş al" / "🚪 Duştan çık", içindeyken su akar
-      seats.push({ x: p.x, y: st.y, z: p.z, yaw: EV.ry + st.yaw, taken: false, tier: false, ev: true, item: st.i, itemKey: st.k, ...(def?.stand ? { stand: true, label: def.seatLabel || '🚿 Duş al', exitLabel: def.exitLabel || '🚪 Duştan çık' } : {}) });
+      seats.push({ x: p.x, y: st.y, z: p.z, yaw: EV.ry + st.yaw, taken: false, tier: false, ev: true, item: st.i, itemKey: st.k, ...(def?.stand ? { stand: true, label: def.seatLabel || '🚿 Duş al', exitLabel: def.exitLabel || '🚪 Duştan çık' } : {}), ...(def?.lie ? { lie: true, label: '🛏️ Uzan', exitLabel: '🚶 Kalk' } : {}) });
     });
     // v202: evdeki lambaların / şöminenin ışığı şehrin ışık havuzuna (aç / kapat ışığı da söndürür)
     for (let i = lights.length - 1; i >= 0; i--) if (lights[i].ev) lights.splice(i, 1);
@@ -2091,15 +2117,17 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   // zemin yüksekliği (kaldırım / rıhtım)
   const blockRects = city.lots.map((l) => ({ x0: l.mx - l.bw / 2, x1: l.mx + l.bw / 2, z0: l.mz - l.bd / 2, z1: l.mz + l.bd / 2 }));
   // v147.3 — su: kıyıdan içeri doğru batma (mekânlardaki havuzla aynı ölçüler)
-  function sinkAt(x, z) {
+  function sinkAt(x, z, y = null) {
     for (const w of waters) {
+      if (w.y != null && (y == null || y < w.y - 1.2 || y > w.y + 1.5)) continue; // v220: üst kattaki havuz
       const nx = (x - w.x) / w.rx;
       const nz = (z - w.z) / w.rz;
       const r = Math.hypot(nx, nz);
       if (r >= 1) continue;
       const dist = (1 - r) * Math.min(w.rx, w.rz);
       const t = clamp((dist - 0.3) / 3.3, 0, 1);
-      return 0.55 + (1.2 - 0.55) * t;
+      const sk = 0.55 + (1.2 - 0.55) * t;
+      return w.max != null ? Math.min(w.max, sk) : sk;
     }
     return 0;
   }
@@ -2285,7 +2313,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       }
     }
   }
-  const self = { x: sp0f.x, z: sp0f.z, camYaw: sp0.yaw, camPitch: sp0.pitch ?? 0.32, camDist: 6.2, target: null, path: null, run: false, ride: null };
+  const self = { x: sp0f.x, z: sp0f.z, camYaw: sp0.yaw, camPitch: sp0.pitch ?? 0.32, camDist: 6.2, target: null, path: null, run: true, ride: null };
   let lastEmote = { e: null, et: 0 };
   const me = new Fig(scene, layer, { id: 'self', name, avatar, isSelf: true });
   me.x = self.x;
@@ -2307,6 +2335,12 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   const outerNpcIds = new Set(W.npcDefs.map((n) => n.id));
   // v219: tezgâhında / görevinde duran (dolaşmayan) dış dünya NPC'leri
   const FIXED_NPC = /Büfeci|Bakkal|Karpuzcu|Mısırcı|Pompacı|Kantar|Çaycı|Arıcı|Hızarcı|Tamirci|Garson|Kasiyer|Kasada|Bisikletçi|Polis|Komiser|Bekçi|Gişe|Danışma|Barista|Barmen|Hareket Memuru|Durakçı|Güvenlik|Hemşire|Dr\.|Fotoğrafçı|Usta/;
+  // v220: aynı anda çizilen NPC sınırı (telefonda 16, bilgisayarda 40) ve görüş yarıçapı
+  const NPC_MAX = IS_MOBILE ? 16 : 40;
+  const NPC_R = IS_MOBILE ? 40 : 55;
+  const npcShow = new Set();
+  const NPC_FREE_MS = IS_MOBILE ? 20_000 : 90_000; // v220: görünmeyen NPC'nin dokusu bu süre sonra bırakılır
+  let npcPickT = 0;
   const npcs = [...npcDefs, ...venueNpcDefs, ...W.npcDefs].map((n) => {
     const f = new Fig(scene, layer, { id: n.id, name: n.name, avatar: n.av, npc: true, lazy: true });
     // v157.4: köy / yol üstü / park botlarının isim etiketi yok (konuşma balonu kalır)
@@ -2821,6 +2855,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
         f.run = st.r === 1;
         f.facingLeft = st.l === 1;
         f.y += (standY(f.x, f.z, -1, st.y ?? f.y) - f.y) * Math.min(1, dt * 10);
+        f.lie = st.p === 's' && st.lz === 1; // v220
         if (st.p === 's') {
           f.sitting = true;
           f.seatY = st.sy ?? 0.5;
@@ -2841,7 +2876,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       }
       f.group.visible = show;
       if (show) {
-        f.sink = waters.length ? sinkAt(f.x, f.z) : 0;
+        f.sink = waters.length ? sinkAt(f.x, f.z, f.y) : 0;
         f.standYaw = !f.sitting && !f.inCar ? standsYaw(f.x, f.z) : null;
         // tribün koltuğunda oturan uzak oyuncu da sahaya dönük (ense)
         if (f.sitting && !f.inCar) f.seatYaw = standsYaw(f.x, f.z);
@@ -4524,7 +4559,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     keys[e.code] = false;
     if (e.code === 'ShiftLeft') self.run = runToggle;
   };
-  let runToggle = false;
+  let runToggle = true; // v220: her zaman hızlı yürü (yavaş yürüme yok)
   canvas.addEventListener('pointerdown', onDown);
   canvas.addEventListener('pointermove', onMove);
   canvas.addEventListener('pointerup', onUp);
@@ -5001,7 +5036,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     me.z = st.z;
     me.sitting = !st.stand; // v202: duşakabinde ayakta durulur
     me.seatY = st.y;
-    me.seat3Yaw = st.tier ? st.yaw ?? null : tableYaw(st.x, st.z) ?? st.yaw ?? null; // v207/v211: koltuğun yönü, yanında masa varsa masaya dönük
+    me.seat3Yaw = st.tier || st.lie ? st.yaw ?? null : tableYaw(st.x, st.z) ?? st.yaw ?? null; // v207/v211: koltuğun yönü, yanında masa varsa masaya dönük
+    me.lie = Boolean(st.lie); // v220: yatakta uzanır
     // v149: tribün koltuğu — yüz sahaya dönük, kamera arkadan sahaya bakar
     me.seatYaw = st.tier ? st.yaw : null;
     if (st.tier) glideCam(st.yaw + Math.PI, 0.28);
@@ -5036,6 +5072,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     me.sitting = false;
     me.seatYaw = null;
     me.seat3Yaw = null;
+    me.lie = false;
     // v159.1: kalkınca masa / tezgâh ile koltuk arasına sıkışılmasın — önce bolca boşluk olan yön
     // (önü, arkası, yanları; geniş yarıçapla) aranır, yoksa en yakın boş yer
     const sy = Math.sin(st.yaw);
@@ -5057,13 +5094,21 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     }
     zoneKey = '__stand__';
   }
+  // v220 — yayın kamerasının mekânı: önce içinde olduğum mekân, sonra şehirdeki (parselli) asıl mekân.
+  // Eskiden aynı türden ilk mekân alınıyordu (şehir dışındaki eş mekân) → kamera başka yere bakıyor,
+  // ekran donmuş gibi kalıyor ve yayıncı kendini göremiyordu.
+  function streamVenue(room) {
+    const ty = room || 'ev';
+    if (curVenue && curVenue.type === ty) return curVenue;
+    return W.venues.find((q) => q.type === ty && q.lot) || W.venues.find((q) => q.type === ty) || null;
+  }
   function placeCamera(dt) {
     camera.userData.billboardYaw = null;
     if (extras?.cam(dt)) return; // v219: helikopter kamerası
     if (heist?.active && heist.cam(dt)) return; // v154
     // v199 — YAYINDA: ana ekran yayın kamerasından (izleyicinin gördüğü açı; eski evdeki setFixedCamera gibi)
     if (streamCam && !evDesign) {
-      const v = W.venues.find((q) => q.type === (streamCam.room || 'ev'));
+      const v = streamVenue(streamCam.room); // v220: içinde olduğum mekân (aynı türden birden çok mekân olabilir)
       if (v) {
         const base = v.ml ? v.ml.floors[streamCam.f || 0] : 0.16;
         const p = fromRoom(v, streamCam.px, streamCam.pz);
@@ -5502,12 +5547,39 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     if (W.garages.length) W.tickGarages(dt, driving && myCar ? myCar.x : self.x, driving && myCar ? myCar.z : self.z, !driving);
     animals?.update(dt, { x: self.x, z: self.z }, camera.position);
     W.water?.tick?.(t);
+    // v220: kalabalık yerlerde (pazar sokağı ~60 NPC) telefon kasıyor / bellekten atıyordu — en yakın
+    // NPC_MAX tanesi çizilir (liste 0,4 sn'de bir yenilenir), uzak olanların animasyonu yok.
+    npcPickT -= dt;
+    if (npcPickT <= 0) {
+      npcPickT = 0.4;
+      const cx = camera.position.x;
+      const cz = camera.position.z;
+      const cand = [];
+      for (const n of npcs) {
+        if (n.storyHidden || n.off || (isoV && n.venue !== isoV)) continue;
+        const d2 = n.deliver ? 0 : (n.x - cx) ** 2 + (n.z - cz) ** 2; // servis yapan garson her zaman
+        if (d2 < NPC_R * NPC_R) cand.push([d2, n]);
+      }
+      if (cand.length > NPC_MAX) cand.sort((a, b) => a[0] - b[0]).length = NPC_MAX;
+      npcShow.clear();
+      for (const c of cand) npcShow.add(c[1]);
+    }
     npcs.forEach((n) => {
       // uzaktaki NPC çizilmez; mekân NPC'sinin etiketi sadece o mekânın içindeyken
-      const near = !n.storyHidden && !n.off && (n.x - camera.position.x) ** 2 + (n.z - camera.position.z) ** 2 < 55 * 55 && (!isoV || n.venue === isoV); // v168: storyHidden
+      const near = npcShow.has(n) && !n.storyHidden && !n.off; // v168: storyHidden · v220: en yakın NPC_MAX
       n.group.visible = near;
       n.hideLabel = Boolean(n.venue) && n.venue !== curVenue;
-      if (!near) return;
+      if (!near) {
+        if (n.lazy && !n.tex.lazy) {
+          n.hidT ||= now;
+          if (now - n.hidT > NPC_FREE_MS) {
+            n.releaseLazy();
+            n.hidT = 0;
+          }
+        }
+        return;
+      }
+      n.hidT = 0;
       n.moving = false;
       // v198: sipariş getiren garson — ürün elinde müşteriye yürür, yanına gelince ürün müşterinin eline geçer
       if (n.deliver) {
@@ -5604,7 +5676,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       o.pet.leash.visible = false;
     });
     if (harac) stepHarac(dt, now);
-    me.sink = waters.length ? sinkAt(me.x, me.z) : 0;
+    me.sink = waters.length ? sinkAt(me.x, me.z, me.y) : 0;
     me.standYaw = !me.sitting && !me.inCar ? standsYaw(self.x, self.z) : null;
     me.update(dt, camera, now);
     extras?.post(dt); // v219
@@ -5726,7 +5798,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     }
     if (self.seat) {
       const st = self.seat;
-      best = { id: 'seated', kind: 'seated', title: st.stand ? '🚿 Duştasın' : '🪑 Oturuyorsun', ...(st.exitLabel ? { exitLabel: st.exitLabel } : {}) };
+      best = { id: 'seated', kind: 'seated', title: st.stand ? '🚿 Duştasın' : st.lie ? '🛏️ Uzanıyorsun' : '🪑 Oturuyorsun', ...(st.exitLabel ? { exitLabel: st.exitLabel } : {}) };
       // v202: evde oturduğun eşyanın kendi düğmeleri (jakuzi köpüğü, küvet…) oturunca da çıkar
       if (st.ev) {
         const hz = zones.find((z) => z.kind === 'homeItem' && z.itemId === st.item);
@@ -6109,7 +6181,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     lastRenderAt = now;
     if (now - lastSweepAt > 15_000) {
       lastSweepAt = now;
-      sweepAvatarTextures(now);
+      sweepAvatarTextures(now, IS_MOBILE ? 25_000 : 60_000); // v220: telefonda kullanılmayan avatar dokusu daha erken bırakılır
     }
     const dt = Math.min(clock.getDelta(), 0.05);
     frame(dt);
@@ -6589,7 +6661,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
         f.walkT = p.wp ? 0.16 : 0;
         f.emote = p.e && EMOTE_EMOJI[p.e.k] ? { kind: p.e.k, t0: now - (Number(p.e.at) || 0) } : null;
         if (p.h) f.setHolding(p.h);
-        f.sink = waters.length ? sinkAt(f.x, f.z) : 0;
+        f.sink = waters.length ? sinkAt(f.x, f.z, f.y) : 0;
         f.sinkCur = f.sitting || f.inCar ? 0 : f.sink;
         if (i === 0 && icCar) f.group.visible = false; // iç kamerada çekenin kendisi görünmez (canlıdaki gibi)
         f.update(0, camera, now);
@@ -6830,9 +6902,10 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       driveCamIdle = 9;
     },
     getCarCam: () => carCam,
-    setRun(on) {
-      runToggle = on;
-      self.run = on;
+    setRun() {
+      // v220: yavaş yürüme kalktı — her zaman hızlı
+      runToggle = true;
+      self.run = true;
     },
     emote(k) {
       me.playEmote(k);
@@ -7066,7 +7139,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     },
     renderStreamView(pose, target) {
       if (!pose || !target) return false;
-      const v = W.venues.find((q) => q.type === (pose.room || 'ev'));
+      const v = streamVenue(pose.room); // v220
       if (!v) return false;
       try {
         const base = v.ml ? v.ml.floors[pose.f || 0] : 0.16;
@@ -7586,7 +7659,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     },
     // ağa gönderilecek kendi durumum (kısa alan adları → az veri)
     getNetState() {
-      const st = { x: Math.round(self.x * 100) / 100, z: Math.round(self.z * 100) / 100, l: me.facingLeft ? 1 : 0, m: me.moving ? 1 : 0, p: fall ? 'f' : driving ? 'd' : self.ride ? 'r' : self.seat && !self.seat.stand ? 's' : 'w' }; // v202: duşta ayakta · v216.3: f = fırlıyor
+      const st = { x: Math.round(self.x * 100) / 100, z: Math.round(self.z * 100) / 100, l: me.facingLeft ? 1 : 0, m: me.moving ? 1 : 0, p: fall ? 'f' : driving ? 'd' : self.ride ? 'r' : self.seat && !self.seat.stand ? 's' : 'w', ...(self.seat?.lie ? { lz: 1 } : {}) }; // v220: lz = yatakta uzanıyor // v202: duşta ayakta · v216.3: f = fırlıyor
       if (fall && myFj) st.fj = myFj; // v216.3: fırlamanın başlangıcı (≈ 50 harf, sadece fırlarken)
       if (self.run && me.moving) st.r = 1;
       if (self.seat && !self.seat.stand) st.sy = Math.round(self.seat.y * 100) / 100;

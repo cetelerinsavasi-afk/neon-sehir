@@ -521,7 +521,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const [toast, setToast] = useState(null);
   const [hitFx, setHitFx] = useState(null); // v193: çarpma ekran efekti
   const [msgs, setMsgs] = useState([]);
-  const [run, setRun] = useState(true); // v160.3: şehirde hızlı koşma varsayılan açık
+  const run = true; // v220: her zaman hızlı (koş düğmesi kalktı)
   const runRef = useRef(true);
   runRef.current = run;
   const [muted, setMuted] = useState(true);
@@ -1699,7 +1699,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       const ds = engineRef.current?.dineState?.();
       if (ds?.seated) {
         if (!ds.food && !ds.waiting) list.push({ label: '🍽️ Sipariş ver', cls: 'take', on: () => setPanel({ kind: 'restoran' }) });
-        list.push({ label: '🎁 Ismarla', on: () => setPanel({ kind: 'restoGift' }) });
+        // v220: "🎁 Ismarla" düğmesi kalktı — üstteki "N kişi yakında" açar (cafe / bardaki gibi)
       }
     }
     if (zone.kind === 'seated' && inPist) list.push({ label: '🏁 Yarış Pisti', cls: 'take', on: () => openIn('yaris_pisti') });
@@ -2005,7 +2005,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                     others={nearbyOthers}
                     rowActions={guest ? null : nearbyRowActions}
                     renderTrigger={(open) => (
-                      <button type="button" className="cs-nearby-link" onClick={open}>
+                      <button type="button" className="cs-nearby-link" onClick={venue === 'restoran' ? () => setPanel({ kind: 'restoGift' }) : open}>
                         👥 {online + 1} kişi yakında ›
                       </button>
                     )}
@@ -2115,7 +2115,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                   <circle cx="22" cy="21" r="2.6" fill="currentColor" stroke="none" />
                 </svg>
               </button>
-              <button className={`hs-side-btn${run ? ' on' : ''}`} onClick={() => { setRun(!run); engineRef.current.setRun(!run); }} title="Hızlı koş">{run ? '🏃' : '🚶'}</button>
+              {/* v220: hızlı koş düğmesi kalktı — avatar her zaman hızlı yürür */}
               <button className={`hs-side-btn${panel?.kind === 'emotes' ? ' on' : ''}`} onClick={() => setPanel(panel?.kind === 'emotes' ? null : { kind: 'emotes' })} title="Hareketler">😀</button>
               {panel?.kind === 'emotes' && (
                 <div className="hs-emotes cs-emotes">

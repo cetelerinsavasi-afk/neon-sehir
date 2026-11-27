@@ -156,9 +156,8 @@ export function installExtras(ctx) {
     sRamp = (b) => 0.16 + CL((b + 6.9) / 5.7, 0, 1) * (SF - 0.16),
     sBlk = (a, b) =>
       !(a >= -8.7 && a <= 8.7 && b >= -11.9 && b <= 1.45) ||
-      (a >= -3.4 && a <= 6.98 && b >= -10.98 && b <= -3.02) ||
-      (a >= 5.2 && b <= -9.05) ||
-      Math.hypot(a + 6, b + 8.6) < 1.75 ||
+      // v220: havuza girilir (engel değil); sauna ayrı oda — sadece kapısından (a 5,85–6,75) girilir
+      (a >= 5.2 && b <= -9.05 && !((a > 5.5 && a < 8.75 && b > -10.7 && b < -9.25) || (a > 5.85 && a < 6.75 && b >= -9.3))) ||
       (a < -8.25 && b < -4.5) ||
       (a < -8.2 && b > -4.2 && b < -1.6) ||
       (a > -7.65 && a < -7.05 && ((b > -11.15 && b < -9.25) || (b > -7.55 && b < -5.65))) ||
@@ -1154,7 +1153,8 @@ export function installExtras(ctx) {
   css.id = `nx-css`;
   css.textContent = `.nx-b{position:absolute;z-index:80;pointer-events:auto;user-select:none;-webkit-user-select:none;touch-action:none;font:700 14px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#ffe9a8;background:rgba(8,10,18,.84);border:1.5px solid rgba(255,210,63,.65);border-radius:999px;padding:10px 18px;cursor:pointer;box-shadow:0 4px 18px rgba(0,0,0,.45)}
 .nx-b:active{transform:scale(.96)}.nx-board{left:50%;bottom:150px;translate:-50% 0;font-size:15px;padding:12px 22px}.nx-hide{display:none!important}
-.nx-hud{position:absolute;z-index:80;top:104px;left:50%;translate:-50% 0;pointer-events:none;text-align:center;font:600 12.5px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#dff9ff;background:rgba(8,10,18,.72);border:1px solid rgba(25,232,255,.35);border-radius:12px;padding:7px 14px;white-space:nowrap}
+.nx-hud{position:absolute;z-index:80;top:104px;left:50%;translate:-50% 0;pointer-events:none;text-align:center;font:600 12.5px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#dff9ff;background:rgba(8,10,18,.72);border:1px solid rgba(25,232,255,.35);border-radius:12px;padding:7px 14px;white-space:nowrap;max-width:calc(100% - 20px);overflow:hidden;text-overflow:ellipsis}
+@media (pointer:coarse){.nx-hud{white-space:normal;font-size:11.5px;width:max-content}}
 .nx-hud b{color:#ffe9a8}.nx-hud small{display:block;opacity:.75;font-weight:500;margin-top:3px}
 .nx-pad{position:absolute;z-index:80;bottom:112px;display:grid;gap:6px;pointer-events:none}.nx-pad .nx-b{position:static;width:54px;height:54px;padding:0;font-size:20px;display:flex;align-items:center;justify-content:center;border-radius:14px}
 .nx-pl{left:84px;grid-template-columns:repeat(3,54px)}.nx-pr{right:84px;grid-template-columns:72px}.nx-pr .nx-b{width:72px;font-size:12px;flex-direction:column;line-height:1.1}
@@ -1166,24 +1166,37 @@ export function installExtras(ctx) {
     x != null && (d.textContent = x);
     return d;
   };
-  const stop = (ev) => {
-    ev.stopPropagation();
+  // v220: düğmeler .hs-stage içinde — telefonda orada touchstart iptal edildiği için `click` hiç gelmez.
+  // Dokunuş pointerdown → pointerup ile (aynı düğmenin üstünde kalkarsa) çalışır; masaüstünde de aynı yol.
+  const onTap = (b, fn) => {
+    let pid = null;
+    b.addEventListener(`pointerdown`, (ev) => {
+      ev.stopPropagation();
+      ev.preventDefault();
+      pid = ev.pointerId;
+      try {
+        b.setPointerCapture(ev.pointerId);
+      } catch {}
+    });
+    b.addEventListener(`pointerup`, (ev) => {
+      ev.stopPropagation();
+      if (pid !== ev.pointerId) return;
+      pid = null;
+      const r = b.getBoundingClientRect();
+      if (ev.clientX < r.left - 12 || ev.clientX > r.right + 12 || ev.clientY < r.top - 12 || ev.clientY > r.bottom + 12) return;
+      fn();
+    });
+    b.addEventListener(`pointercancel`, () => (pid = null));
+    b.addEventListener(`click`, (ev) => ev.stopPropagation());
+    b.addEventListener(`contextmenu`, (ev) => ev.preventDefault());
   };
-  const bBtn = el(`button`, `nx-b nx-board nx-hide`, `🚁 Helikoptere bin · F`);
-  bBtn.addEventListener(`pointerdown`, stop);
-  bBtn.addEventListener(`click`, (ev) => {
-    ev.stopPropagation();
-    HX.board();
-  });
+  const bBtn = el(`button`, `nx-b nx-board nx-hide`, `🚁 Helikoptere bin`);
+  onTap(bBtn, () => HX.board());
   CT.appendChild(bBtn);
   const hud = el(`div`, `nx-hud nx-hide`);
   CT.appendChild(hud);
-  const xBtn = el(`button`, `nx-b nx-exit nx-hide`, `🚪 İn · F`);
-  xBtn.addEventListener(`pointerdown`, stop);
-  xBtn.addEventListener(`click`, (ev) => {
-    ev.stopPropagation();
-    PAX.on ? paxExit() : HX.exit();
-  });
+  const xBtn = el(`button`, `nx-b nx-exit nx-hide`, `🚪 İn`);
+  onTap(xBtn, () => (PAX.on ? paxExit() : HX.exit()));
   CT.appendChild(xBtn);
   const mk = (par, k, txt) => {
     const b = el(`button`, `nx-b`);
@@ -1253,7 +1266,7 @@ export function installExtras(ctx) {
     show(pl, HX.on);
     show(pr, HX.on);
     const other = HN.node?.by && HN.node.by !== ctx.uid;
-    bBtn.textContent = other ? (H.gnd ? `🚁 Yolcu ol · F` : `🚁 Helikopter havada`) : `🚁 Helikoptere bin · F`;
+    bBtn.textContent = other ? (H.gnd ? `🚁 Yolcu ol` : `🚁 Helikopter havada`) : `🚁 Helikoptere bin`;
     show(bBtn, !HX.on && !PAX.on && HX.near && (!other || H.gnd));
   };
   let hudT = 0;
@@ -1265,9 +1278,9 @@ export function installExtras(ctx) {
     const f = floorAt(H.x, H.z, H.y),
       alt = Math.max(0, H.y - f.y),
       kmh = Math.round(Math.hypot(H.vx, H.vz) * 3.6),
-      st = H.rpm < 0.9 ? `Rotor ısınıyor %${Math.round((H.rpm / 0.9) * 100)}` : H.gnd ? `Kalkışa hazır · Space` : `Uçuşta`;
-    const coarse = matchMedia(`(pointer: coarse)`).matches;
-    hud.innerHTML = `🚁 <b>TC-NEON</b> · İrtifa <b>${alt.toFixed(0)} m</b> · Hız <b>${kmh} km/s</b> · ${st} · 👥 ${1 + paxCount()}/4<small>${coarse ? `Sol pad: ileri/geri/dön · Sağ: yüksel/alçal` : `W/S ileri-geri · A/D dön · Space yüksel · Shift/C alçal · Q/E yanlama · F in`}</small>`;
+      coarse = matchMedia(`(pointer: coarse)`).matches,
+      st = H.rpm < 0.9 ? `Rotor ısınıyor %${Math.round((H.rpm / 0.9) * 100)}` : H.gnd ? (coarse ? `Kalkışa hazır · YÜKSEL` : `Kalkışa hazır · Space`) : `Uçuşta`;
+    hud.innerHTML = `🚁 <b>TC-NEON</b> · İrtifa <b>${alt.toFixed(0)} m</b> · Hız <b>${kmh} km/s</b> · ${st} · 👥 ${1 + paxCount()}/4<small>${coarse ? `Sol pad: ileri/geri/dön · Sağ: yüksel/alçal` : `W/S ileri-geri · A/D dön · Space yüksel · Shift/C alçal · Q/E yanlama`}</small>`;
   };
   /* ---------- board / exit / crash ---------- */
   HX.board = async () => {
@@ -1650,9 +1663,9 @@ export function installExtras(ctx) {
     scene.add(m);
     return m;
   };
-  const FB = { x: -100.5, z: 80, y: 0.24, vx: 0, vy: 0, vz: 0, r: 0.11, m: mkBall(ballTex(`f`), 0.11), home: [-100.5, 80], cd: 0, goalT: 0 },
+  const FB = { x: -100.5, z: 80, y: 0.33, vx: 0, vy: 0, vz: 0, r: 0.2, m: mkBall(ballTex(`f`), 0.2), home: [-100.5, 80], cd: 0, goalT: 0 },
     FBB = { x0: -109.75, x1: -91.25, z0: 72.95, z1: 87.05 };
-  const BB = { x: -80, z: 80, y: 0.25, vx: 0, vy: 0, vz: 0, r: 0.12, m: mkBall(ballTex(`b`), 0.12), held: !1, fly: null, home: [-80, 80], cd: 0 },
+  const BB = { x: -80, z: 80, y: 0.32, vx: 0, vy: 0, vz: 0, r: 0.19, m: mkBall(ballTex(`b`), 0.19), held: !1, fly: null, home: [-80, 80], cd: 0 },
     BBB = { x0: -88.55, x1: -71.45, z0: 72.45, z1: 87.55 };
   const ballPhys = (b, B, dt, goal) => {
     b.vy -= 9.8 * dt;
@@ -1784,7 +1797,7 @@ export function installExtras(ctx) {
     }
     const d = Math.hypot(self.x - FB.x, self.z - FB.z),
       ps = Math.hypot(PVX, PVZ);
-    if (d < 0.62 && ps > 0.5 && FB.cd <= 0 && Math.abs(me.y - FB.y) < 1.2) {
+    if (d < 0.85 && ps > 0.5 && FB.cd <= 0 && Math.abs(me.y - FB.y) < 1.2) {
       const k = ps > 4.5 ? 1.95 : 1.45,
         dx = PVX / ps,
         dz = PVZ / ps;
@@ -1792,8 +1805,8 @@ export function installExtras(ctx) {
       FB.vz = dz * ps * k + PVZ * 0.2;
       FB.vy = ps > 4.5 ? 3.2 : 1.2;
       FB.cd = 0.35;
-      FB.x = self.x + dx * 0.65;
-      FB.z = self.z + dz * 0.65;
+      FB.x = self.x + dx * 0.8;
+      FB.z = self.z + dz * 0.8;
       thud(0.15);
       ballSend(`f`);
     }
@@ -1876,7 +1889,7 @@ export function installExtras(ctx) {
       d = Math.hypot(hp[0] - self.x, hp[1] - self.z),
       pr = CL(1.02 - d * 0.075, 0.15, 0.93),
       make = Math.random() < pr,
-      off = make ? 0 : 0.35 + Math.random() * 0.3,
+      off = make ? 0 : 0.45 + Math.random() * 0.3,
       oa = Math.random() * Math.PI * 2;
     BB.held = !1;
     BB.fly = {
@@ -2192,13 +2205,9 @@ export function installExtras(ctx) {
   /* ---------- action button (balls/skate) ---------- */
   const aBtn = el(`button`, `nx-b nx-board nx-act nx-hide`, ``);
   aBtn.style.bottom = `200px`;
-  aBtn.addEventListener(`pointerdown`, stop);
   CT.appendChild(aBtn);
   let aAct = null;
-  aBtn.addEventListener(`click`, (ev) => {
-    ev.stopPropagation();
-    aAct && aAct();
-  });
+  onTap(aBtn, () => aAct && aAct());
   const KIOSK = [-70.4, 88.6];
   const actTick = () => {
     let lbl = ``,
@@ -2229,10 +2238,10 @@ export function installExtras(ctx) {
           SK.busy = !1;
         };
       } else if (BB.held) {
-        lbl = `🏀 Şut at · G`;
+        lbl = `🏀 Şut at`;
         fn = bbShoot;
-      } else if (!BB.fly && !BB.remoteHold && Math.hypot(self.x - BB.x, self.z - BB.z) < 1.4 && BB.cd <= 0) {
-        lbl = `🏀 Topu al · G`;
+      } else if (!BB.fly && !BB.remoteHold && Math.hypot(self.x - BB.x, self.z - BB.z) < 1.8 && BB.cd <= 0) {
+        lbl = `🏀 Topu al`;
         fn = () => {
           BB.held = !0;
           BB.vx = BB.vz = BB.vy = 0;

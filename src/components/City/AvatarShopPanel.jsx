@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { avatarShopAction, cosmeticsAction } from '../../services/gameActions';
-import { PETS, ACCESSORIES, ACC_SLOTS, RARITY, priceOf } from '../../../functions/cosmeticsData.js';
+import { PETS, ACCESSORIES, ACC_SLOTS, RARITY, priceOf, LOOKS, LOOK_CATS } from '../../../functions/cosmeticsData.js';
 import { drawPet } from '../../lib/cosmeticsArt.js';
-import { DEFAULT_AVATAR, buildFullAvatarSvgMarkup, SKIN_TONES, EYE_COLORS, LIP_COLORS, HAIR_COLORS, CLOTH_COLORS, HAT_COLORS, PANTS_COLORS, SHOE_COLORS, bodyShapeOf } from '../../lib/avatarShapes';
+import { DEFAULT_AVATAR, buildFullAvatarSvgMarkup, buildAvatarSvgInner, SKIN_TONES, EYE_COLORS, LIP_COLORS, HAIR_COLORS, CLOTH_COLORS, HAT_COLORS, PANTS_COLORS, SHOE_COLORS, bodyShapeOf } from '../../lib/avatarShapes';
 import { AV_SHOP_FIELDS, avFieldPrice, avShopQuote } from '../../../functions/avatarShopData.js';
 import './AvatarShopPanel.css';
 
@@ -128,6 +128,23 @@ function thumb(av, crop) {
   }
 }
 
+// v220: kostümcü artık diğer dükkânlar gibi soldaki küçük panel (tüm ekranı kaplamaz). Kostüm kartının
+// resmi bir kez <img>'e çevrilir (100 kartta DOM hafif kalır)
+const lookThumbs = new Map();
+function lookThumb(id) {
+  let v = lookThumbs.get(id);
+  if (v) return v;
+  try {
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="10 30 300 330"><rect x="0" y="0" width="320" height="400" fill="#141a2e"/>${buildAvatarSvgInner({ look: id })}</svg>`;
+    v = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  } catch {
+    v = '';
+  }
+  lookThumbs.set(id, v);
+  return v;
+}
+const LOOK_BY = Object.fromEntries(LOOKS.map((l) => [l.id, l]));
+
 export default function AvatarShopPanel({ shop, player, engine, onClose, flash }) {
   const real = useMemo(() => {
     const a = { ...DEFAULT_AVATAR, ...(player?.avatar || {}) };
@@ -137,7 +154,8 @@ export default function AvatarShopPanel({ shop, player, engine, onClose, flash }
   const [want, setWant] = useState(real);
   const [tab, setTab] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [full, setFull] = useState(AV_SHOP_UI[shop]?.tabs === 'LOOKS' ? 'kostum' : null); // 'kostum' (zümrüt mağazası)
+  const [full, setFull] = useState(null); // v220: kostümcü artık panelin içinde (tam ekran mağaza açılmaz)
+  const [lcat, setLcat] = useState('all');
   const engRef = useRef(engine);
   engRef.current = engine;
   const realRef = useRef(real);
@@ -179,6 +197,87 @@ export default function AvatarShopPanel({ shop, player, engine, onClose, flash }
       </div>
     );
 
+  // ---- v220: KOSTÜMCÜ (zümrütle) — kart seç → üstünde dene → satın al / kuşan / çıkar ----
+  if (S.tabs === 'LOOKS') {
+    const looks = player?.cosmetics?.looks || {};
+    const gems = Number(player?.emerald) || 0;
+    const sel = want.look && LOOK_BY[want.look] ? LOOK_BY[want.look] : null;
+    const worn = real.look || null;
+    const list = LOOKS.filter((x) => (lcat === 'all' ? true : lcat === 'sende' ? looks[x.id] : x.cat === lcat));
+    const tryLook = (id) => setWant((w) => (id ? { ...w, look: id, lookTint: id === real.look ? real.lookTint : undefined } : { ...w, look: undefined, lookTint: undefined }));
+    const lookAct = async (payload, ok) => {
+      if (busy) return;
+      setBusy(true);
+      try {
+        await cosmeticsAction(payload);
+        flash?.(ok);
+      } catch (e) {
+        flash?.(e?.message || 'İşlem başarısız.');
+      } finally {
+        setBusy(false);
+      }
+    };
+    const changed = (want.look || null) !== worn;
+    return (
+      <div className="avs" onPointerDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+        <div className="avs-hd">
+          <h3>{S.n}</h3>
+          <span className="avs-gem">💎 {fmt(gems)}</span>
+          <button className="avs-x" onClick={close} aria-label="Kapat">
+            ✕
+          </button>
+        </div>
+        <div className="avs-tb">
+          {[['all', 'Tümü'], ['sende', '✓ Sende'], ...LOOK_CATS.map((c) => [c.id, `${c.icon} ${c.name}`])].map(([id, nm]) => (
+            <button key={id} className={lcat === id ? 'on' : ''} onClick={() => setLcat(id)}>
+              {nm}
+            </button>
+          ))}
+        </div>
+        <div className="avs-body">
+          <div className="avs-rw">
+            <div className="avs-og">
+              <button className={`avs-ocd${!want.look ? ' on' : ''}${!worn ? ' cur' : ''}`} onClick={() => tryLook(null)}>
+                <span className="avs-th" dangerouslySetInnerHTML={{ __html: thumb(baseAv(want), 'body') }} />
+                <span className="avs-nm">Kendi görünümüm</span>
+                <i>{!worn ? 'Üstünde' : 'Ücretsiz'}</i>
+              </button>
+              {list.map((it) => (
+                <button key={it.id} className={`avs-ocd${want.look === it.id ? ' on' : ''}${worn === it.id ? ' cur' : ''}`} style={{ borderColor: RC(it.r) }} onClick={() => tryLook(it.id)}>
+                  <img className="avs-limg" src={lookThumb(it.id)} alt="" loading="lazy" decoding="async" />
+                  <span className="avs-nm">{it.name}</span>
+                  <i>{worn === it.id ? 'Üstünde' : looks[it.id] ? '✓ Sende' : `💎 ${it.gem}`}</i>
+                </button>
+              ))}
+            </div>
+            {!list.length && <p className="avs-note">Bu bölümde kostümün yok.</p>}
+          </div>
+        </div>
+        <div className="avs-ft">
+          {sel && !looks[sel.id] ? (
+            <button className="avs-act pr" disabled={busy || gems < sel.gem} onClick={() => lookAct({ op: 'buy', kind: 'look', id: sel.id }, `🎉 ${sel.name} artık senin!`)}>
+              {busy ? '…' : gems < sel.gem ? `Zümrüt yetmiyor · 💎 ${sel.gem}` : `Satın al · 💎 ${sel.gem}`}
+            </button>
+          ) : sel && changed ? (
+            <button className="avs-act pr" disabled={busy} onClick={() => lookAct({ op: 'equip', kind: 'look', id: sel.id }, `${sel.name} kuşanıldı ✓`)}>
+              {busy ? '…' : 'Kuşan'}
+            </button>
+          ) : !sel && worn ? (
+            <button className="avs-act pr" disabled={busy} onClick={() => lookAct({ op: 'unequip', kind: 'look' }, 'Kendi görünümüne döndün')}>
+              {busy ? '…' : 'Kostümü çıkar'}
+            </button>
+          ) : (
+            <button className="avs-act pr" disabled>
+              Bir kostüm seç, üstünde dene
+            </button>
+          )}
+          <button className="avs-act" disabled={!changed || busy} onClick={() => setWant(real)}>
+            ↩️ Geri al
+          </button>
+        </div>
+      </div>
+    );
+  }
   const T = S.tabs[tab] || S.tabs[0];
   const b = baseAv(want);
   // ---- v219: zümrüt / altınla satılan evcil hayvan ve aksesuarlar (üstünde denenir) ----

@@ -235,24 +235,7 @@ export const NEW_VENUES = {
           },
           lines: [`Levrek tam kıvamında!`, `Mutfak açık, istediğinizi hazırlarız.`],
         },
-        {
-          id: `npc_lm_piyanist`,
-          name: `Piyanist Elif`,
-          x: -6.4,
-          z: 4.4,
-          av: {
-            gender: `kadin`,
-            build: `standart`,
-            skin: `#f1c27d`,
-            hairStyle: `long`,
-            hairColor: `#1a1a1a`,
-            clothing: `tuxedo`,
-            clothColor: `#1a1a1a`,
-            pantsColor: `#1a1a1a`,
-            eyelash: `long`,
-          },
-          lines: [`Bu akşam caz standartları çalıyorum.`, `İsteğiniz var mı?`],
-        },
+        // v220: Piyanist Elif kaldırıldı
       ],
     },
   // --- İNTERNET KAFE ---------------------------------------------------------------------
@@ -266,26 +249,27 @@ export const NEW_VENUES = {
     // v197: ayakta oynanmaz / yayın açılmaz — bilgisayarın karşısındaki koltuğa (konsolda kanepeye) oturunca
     // "🎮 Oyun oyna", yayın setinin koltuğuna oturunca "🔴 Yayın aç" (cityEngine: seatOnly istasyonlar)
     items: [
+      // v220: cam cepheye (ön) asılı kalan dart / grafiti / menü panosu yan duvarlara alındı; duvardan taşanlar içeri çekildi
       // v219: cam cepheli yeni düzen — bilgisayarlar arka duvara yaslandı, kasa kapının yanına, oyun salonu köşesi
       ...[-7.6, -5.6, -3.6, -1.6].flatMap((x, n) => [it(`npc${n + 1}`, 'pcstation', x, -6.6), it(`nkc${n + 1}`, 'gamer', x, -5.65, 4), it(`npc${n + 5}`, 'pcstation', x, -3), it(`nkc${n + 5}`, 'gamer', x, -2.05, 4)]),
       it('nspc', 'pc', 3.6, -6.9), it('nsch', 'gamer', 3.6, -5.95, 4), it('nsrl', 'ringlight', 2.7, -6.5),
       it('nspc2', 'pc', 7, -6.9), it('nsch2', 'gamer', 7, -5.95, 4), it('nsrl2', 'ringlight', 8.1, -6.5),
-      it('nk_neon', 'neon3', 5.3, -7.7, 0),
+      it('nk_neon', 'neon3', 5.3, -7, 0),
       it('nk_rug', 'rugshag', 5.3, -0.3),
       it('nps1', 'console', 3.6, -2.2), it('nss1', 'sofa2', 3.6, 0.9, 4), it('nps2', 'console', 7, -2.2), it('nss2', 'sofa2', 7, 0.9, 4),
       it('nk_ar1', 'armchair', 1.6, -0.4, 2), it('nk_ar2', 'armchair', 9, -0.4, 6),
       it('nk_ck', 'checkout', 7.2, 4.4, 4),
-      it('nk_df', 'drinkfridge', 9.1, 3.3, 6),
-      it('nk_mb', 'menuboard', 7.2, 7.6, 4),
+      it('nk_df', 'drinkfridge', 8.75, 3.3, 6),
+      it('nk_mb', 'menuboard', 9, 5.4, 6),
       it('nk_bt1', 'bartable', 5.6, 4.7, 0), it('nk_bs1', 'stool', 5.1, 5.3, 0), it('nk_bs2', 'stool', 6.1, 5.3, 0),
-      it('nk_am1', 'arcade', -9.1, 0.9, 2), it('nk_am2', 'arcade', -9.1, 2.35, 2), it('nk_am3', 'arcade', -9.1, 3.8, 2), it('nk_am4', 'arcade', -9.1, 5.25, 2),
+      it('nk_am1', 'arcade', -8.75, 0.9, 2), it('nk_am2', 'arcade', -8.75, 2.35, 2), it('nk_am3', 'arcade', -8.75, 3.8, 2), it('nk_am4', 'arcade', -8.75, 5.25, 2),
       it('nk_am5', 'arcade', -3.2, 1.2, 6), it('nk_am6', 'arcade', -3.2, 2.6, 6),
-      it('nk_dart', 'dart', -5.6, 7.6, 4),
-      it('nk_jb', 'jukebox', -1.4, 7.2, 4),
-      it('nk_gr', 'graffiti', -3.4, 7.6, 4),
-      it('nk_neon2', 'neon4', -9.6, -4.2, 2),
-      it('nk_sp', 'speaker', -8.6, 6.8),
-      it('nk_pl', 'plantb', 9, 6.9),
+      it('nk_dart', 'dart', -9, 6.4, 2),
+      it('nk_jb', 'jukebox', -1.4, 6.5, 4),
+      it('nk_gr', 'graffiti', -9, -1.5, 2),
+      it('nk_neon2', 'neon4', -9, -4.2, 2),
+      it('nk_sp', 'speaker', -8.4, 6.4),
+      it('nk_pl', 'plantb', 8.5, 6.5),
     ],
     stations: {
       ...Object.fromEntries([1, 2, 3, 4, 5, 6, 7, 8].map((n) => [`npc${n}`, [{ act: `play:npc${n}`, label: '🎮 Oyun oyna' }]])),

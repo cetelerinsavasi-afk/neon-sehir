@@ -60,7 +60,7 @@ export const AVATAR_STYLES = {
   // v216 — Dengeli + çene: görünüm aynı (saç, yüz, gövde, gölge), sadece kafa–boyun bağlantısı düzeltildi.
   //   jaw: çene öne-aşağı çıkar, çene hattı (kulak altı) geniş kalır · nape: kafatasının arka-altı düzleşir
   //   hz: kafa boynun biraz önünde · nk: boyun (kısalık, geriye kayma, öne eğim, kalınlık)
-  cene: { name: 'Dengeli + çene', s: 0.84, rx: 0.95, ry: 1.03, rz: 0.92, taper: 0.26, flat: 0.88, box: false, legs: 1.06, neck: -0.06, jaw: 1, nape: 1, hz: 0.05, nk: { z: -0.07, tilt: 0.2, r: 1.12 } },
+  cene: { name: 'Dengeli + çene', s: 0.84, rx: 0.95, ry: 1.03, rz: 0.92, taper: 0.26, flat: 0.88, box: false, legs: 1.06, neck: -0.06, jaw: 1, nape: 1, hz: 0.01, nk: { z: -0.02, tilt: 0.04, r: 1.12 } }, // v220: dik duruş (kafa öne, boyun eğik → kambur görünüyordu)
   cene2: { name: 'Çene + kısa boyun', s: 0.86, rx: 0.95, ry: 1.03, rz: 0.92, taper: 0.26, flat: 0.88, box: false, legs: 1.06, neck: -0.13, jaw: 1.25, nape: 1, hz: 0.06, nk: { z: -0.08, tilt: 0.22, r: 1.2 } },
 };
 let STYLE_ID = 'cene'; // v218: oyunun avatar tipi (Dengeli + çene). Geri almak için 'dengeli'
@@ -665,9 +665,13 @@ export function makeAvatar3DLook(frontTex, backTex, avatar, { plain = false, bac
     th.colorSpace = THREE.SRGBColorSpace;
     hairMat = new THREE.MeshMatcapMaterial({ map: th, matcap: matcap(), toneMapped: false, alphaTest: 0.5, side: THREE.DoubleSide });
   }
+  // v220: pardösü — gövdenin altından dizlere inen gerçek 3D etek (eskiden palto eteği bacaklara boyanıyor, ceket gibi duruyordu)
+  const coat = plain && avatar?.clothing === 'trenchcoat' ? avatar?.clothColor || '#8a6a44' : null;
   return {
     build,
     shape: body,
+    coat,
+    coatKey: coat || '',
     body: bodyMat,
     card,
     gear,
@@ -1251,6 +1255,7 @@ function gearParts(g) {
 }
 
 // --- model ----------------------------------------------------------------------
+const COAT_G = new Map(); // v220: pardösü eteği geometrileri
 export class Avatar3D {
   constructor(look) {
     const st = styleFace(look.face);
@@ -1338,6 +1343,31 @@ export class Avatar3D {
       mk(l.shin, look.body, knee);
       return { hip: pv, knee };
     });
+    // v220: pardösü eteği (kalçadan diz altına, hafif açılan; oturunca / yüzerken gizlenir)
+    this.coatG = null;
+    if (look.coat) {
+      const g = new THREE.Group();
+      g.position.y = HIP_Y + 0.04; // lift zaten bacak boyu kadar yükseltilmiş
+      this.lift.add(g);
+      const H = KNEE * st.legs * 1.12;
+      const rx = (P.W / 2) * 1.02;
+      const rz = (P.D / 2) * 1.08;
+      const ck = [H, rx, rz].map((v) => v.toFixed(3)).join('|');
+      let cg = COAT_G.get(ck);
+      if (!cg) {
+        cg = {
+          sk: new THREE.CylinderGeometry(1, 1.22, H, 20, 1, true).translate(0, -H / 2, 0).scale(rx, 1, rz),
+          // önde düğme hattı + kuşak
+          ln: new THREE.BoxGeometry(0.05, H * 0.98, 0.03).translate(0, -H / 2, rz * 1.11 + 0.005),
+          belt: new THREE.CylinderGeometry(1.02, 1.02, 0.1, 20, 1, true).scale(rx, 1, rz),
+        };
+        COAT_G.set(ck, cg); // paylaşımlı (aynı vücut yapısındaki herkes)
+      }
+      mk(cg.sk, colorMat(shade(look.coat, -6)), g).userData.gear = true;
+      mk(cg.ln, colorMat(shade(look.coat, -35)), g).userData.gear = true;
+      mk(cg.belt, colorMat(shade(look.coat, -30)), g).userData.gear = true;
+      this.coatG = g;
+    }
     this.root.rotation.order = 'YXZ';
     this.kSit = 0;
     this.kSwim = 0;
@@ -1348,7 +1378,7 @@ export class Avatar3D {
   setLook(look) {
     if (look === this.look) return true;
     // vücut yapısı / saç / şapka / kabuk değişti → yeniden kur
-    if (this.styleId !== STYLE_ID || look.build !== this.look.build || look.shape !== this.look.shape || look.gearKey !== this.look.gearKey || look.propsKey !== this.look.propsKey || look.headKey !== this.look.headKey || look.hasBack !== this.look.hasBack || look.hasHair !== this.look.hasHair || look.noHeadCard !== this.look.noHeadCard) return false;
+    if (this.styleId !== STYLE_ID || look.build !== this.look.build || look.shape !== this.look.shape || look.gearKey !== this.look.gearKey || look.propsKey !== this.look.propsKey || look.headKey !== this.look.headKey || look.hasBack !== this.look.hasBack || look.hasHair !== this.look.hasHair || look.noHeadCard !== this.look.noHeadCard || (look.coatKey || '') !== (this.look.coatKey || '')) return false;
     this.meshes.forEach((m) => {
       if (m.userData.gear) return;
       if (m.userData.hair) {
@@ -1500,6 +1530,7 @@ export class Avatar3D {
       bob *= 1 - sk;
     }
     this.root.rotation.x = sk * 1.32;
+    if (this.coatG) this.coatG.visible = this.kSit < 0.35 && sk < 0.3 && this.kTread < 0.3;
 
     L.forEach((l, i) => {
       l.hip.rotation.x = leg[i].x;

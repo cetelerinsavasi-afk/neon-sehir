@@ -3166,21 +3166,20 @@ function extinguisher(g) {
   TUBE(g, [0.02, 1.15, 0.11], [0.12, 0.8, 0.14], 0.01, BLACK());
 }
 function pcStation(g, ctx) {
+  // v220: istasyon başına TEK bilgisayar (eskiden 2 ekran + 2 kasa vardı, koltuk 1'di → bilgisayar koltuktan fazlaydı)
   const rgb = tintHex(ctx, '#19e8ff');
-  B(g, 2.2, 0.04, 0.75, 0, 0.75, 0, M('#141416', 0.35));
-  B(g, 2.2, 0.7, 0.03, 0, 0.37, -0.36, M('#141416', 0.35));
-  [-1.08, 0, 1.08].forEach((x) => B(g, 0.04, 0.73, 0.72, x, 0.365, 0, M('#141416', 0.35)));
-  B(g, 0.02, 0.4, 0.7, 0, 0.97, 0, M('#2a2d32', 0.4));
+  B(g, 1.3, 0.04, 0.75, 0, 0.75, 0, M('#141416', 0.35));
+  B(g, 1.3, 0.7, 0.03, 0, 0.37, -0.36, M('#141416', 0.35));
+  [-0.63, 0.63].forEach((x) => B(g, 0.04, 0.73, 0.72, x, 0.365, 0, M('#141416', 0.35)));
   const scr = own(new THREE.MeshStandardMaterial({ color: '#000', emissive: '#ffffff', emissiveMap: codeTexture(), emissiveIntensity: 0.9 }));
-  [-0.55, 0.55].forEach((x) => {
-    RB(g, 0.6, 0.36, 0.03, 0.01, x, 1.08, -0.22, BLACK());
-    PLANE(g, 0.56, 0.32, scr, x, 1.08, -0.204);
-    C(g, 0.012, 0.012, 0.25, x, 0.9, -0.24, BLACK());
-    B(g, 0.45, 0.02, 0.15, x, 0.78, 0.08, BLACK());
-    B(g, 0.42, 0.005, 0.12, x, 0.792, 0.08, emissiveMat(rgb, 1.2));
-    RB(g, 0.2, 0.42, 0.42, 0.01, x + 0.38, 0.22, 0.05, BLACK());
-    B(g, 0.005, 0.36, 0.36, x + 0.27, 0.22, 0.05, emissiveMat(rgb, 1.5));
-  });
+  const x = -0.1;
+  RB(g, 0.66, 0.38, 0.03, 0.01, x, 1.08, -0.22, BLACK());
+  PLANE(g, 0.62, 0.34, scr, x, 1.08, -0.204);
+  C(g, 0.012, 0.012, 0.25, x, 0.9, -0.24, BLACK());
+  B(g, 0.45, 0.02, 0.15, x, 0.78, 0.08, BLACK());
+  B(g, 0.42, 0.005, 0.12, x, 0.792, 0.08, emissiveMat(rgb, 1.2));
+  RB(g, 0.2, 0.42, 0.42, 0.01, 0.4, 0.22, 0.05, BLACK());
+  B(g, 0.005, 0.36, 0.36, 0.29, 0.22, 0.05, emissiveMat(rgb, 1.5));
   return { light: { x: 0, y: 1.0, z: 0.4, color: rgb, intensity: 2.5, distance: 4 }, on: true, setOn() {}, noToggle: true };
 }
 function consoleSet(g, ctx) {
@@ -3554,8 +3553,8 @@ export const CATALOG = [
   { k: 'jacuzzi', name: 'Jakuzi', cat: 'banyo', icon: '🫧', price: E(120), build: jacuzzi, box: [1.15, 1.15], seats: [[0, 0.45, 0.6], [0.6, 0.45, 0], [-0.6, 0.45, 0]] },
 
   // YATAK
-  { k: 'bed2', name: 'Çift Kişilik Yatak', cat: 'yatak', icon: '🛏️', price: G(12000), tints: 'bed', build: bedBuild(1.6), box: [0.85, 1.08], seats: [[-0.4, 0.6, 0.8], [0.4, 0.6, 0.8]] },
-  { k: 'bed1', name: 'Tek Kişilik Yatak', cat: 'yatak', icon: '🛏️', price: G(6000), tints: 'bed', build: bedBuild(0.95), box: [0.53, 1.08], seats: [[0, 0.6, 0.8]] },
+  { k: 'bed2', name: 'Çift Kişilik Yatak', cat: 'yatak', icon: '🛏️', price: G(12000), tints: 'bed', build: bedBuild(1.6), box: [0.85, 1.08], seats: [[-0.4, 0.66, -0.05], [0.4, 0.66, -0.05]], lie: true }, // v220: yatağa uzanılır
+  { k: 'bed1', name: 'Tek Kişilik Yatak', cat: 'yatak', icon: '🛏️', price: G(6000), tints: 'bed', build: bedBuild(0.95), box: [0.53, 1.08], seats: [[0, 0.66, -0.05]], lie: true }, // v220: yatağa uzanılır
   { k: 'wardrobe', name: 'Gardırop', cat: 'yatak', icon: '🚪', price: G(8000), tints: 'wood', build: wardrobe, box: [0.9, 0.32] },
   { k: 'dresser', name: 'Şifonyer & Ayna', cat: 'yatak', icon: '🪞', price: G(6000), tints: 'wood', build: dresser, box: [0.65, 0.26] },
   { k: 'nightst', name: 'Komodin & Lamba', cat: 'yatak', icon: '🛋️', price: G(2000), tints: 'wood', build: nightstand, box: [0.25, 0.21] },
@@ -3673,7 +3672,7 @@ export const CATALOG = [
   { k: 'officedesk', name: 'Makam Masası', cat: 'masa', icon: '💼', tints: 'wood', build: officeDesk, boxes: [[0, 0, 1.0, 0.45], [0, 0.95, 0.3, 0.3]], seats: [[0, 0.55, 0.97]] },
   { k: 'washer', name: 'Çamaşır Makinesi', cat: 'banyo', icon: '🫧', tints: 'appliance', build: washer(false), box: [0.31, 0.3] },
   { k: 'dryer', name: 'Kurutma Makinesi', cat: 'banyo', icon: '🌀', tints: 'appliance', build: washer(true), box: [0.31, 0.3] },
-  { k: 'pcstation', name: 'İnternet Kafe İstasyonu', cat: 'elektronik', icon: '🖥️', tints: 'neon', build: pcStation, box: [1.1, 0.38] },
+  { k: 'pcstation', name: 'İnternet Kafe İstasyonu', cat: 'elektronik', icon: '🖥️', tints: 'neon', build: pcStation, box: [0.66, 0.38] },
   { k: 'console', name: 'Konsol & TV Seti', cat: 'elektronik', icon: '🎮', tints: 'wood', build: consoleSet, box: [0.8, 0.23] },
   // v92 — rafta 5 çeşit ürün (çikolata, cips, bisküvi, makarna, kola)
   { k: 'shelf', name: 'Market Rafı', cat: 'dukkan', icon: '🛒', tints: 'appliance', build: marketShelfV92, box: [0.82, 0.26] },

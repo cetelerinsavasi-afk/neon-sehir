@@ -114,12 +114,5 @@ export default defineConfig({
       },
     },
   },
-  // v187 GEÇİCİ ÖLÇÜM (3 gün) — okuma kaynağı sayacı (bkz. src/lib/fsMeter). v170'te bu satır
-  // kaldırılmıştı, ölçüm kodu hiç yüklenmiyordu. Bitiş: src/lib/fsMeter/meter.js READ_STATS_END
-  // (o tarihten sonra sarmalayıcı doğrudan orijinali çağırır). Kaldırmak için bu alias'ı sil.
-  resolve: {
-    alias: [
-      { find: /^firebase\/firestore$/, replacement: fileURLToPath(new URL('./src/lib/fsMeter/firestoreShim.js', import.meta.url)) },
-    ],
-  },
+  // v220: geçici okuma ölçümü bitti (27 Kasım) — firebase/firestore sarmalayıcısı (fsMeter) artık yüklenmez
 })

@@ -81,7 +81,14 @@ export function shopFront(e, c) {
   e.box(w - 0.4, 0.05, 0.05, glowMat(D.c, 2.4), x, H - 0.3, z0 + 0.12, { cast: false });
   for (const s of [-1, 1]) e.box(0.18, H, 0.22, dk, x + s * (hw - 0.09), 0, zf - 0.11);
   e.box(w, 0.5, 0.22, dk, x, H - 0.5, zf - 0.11);
-  e.sign(`shop_${K}`, `${D.ic} ${D.t}`, 0.62, x, H - 0.25, zf + 0.02, 0, { color: '#ffffff', glow: D.c, font: '900 110px Arial, sans-serif', li: 5, ld: 9 });
+  // v220: tabela bozuk görünüyordu (cepheye 2 cm, kuşağın dışına taşan saydam yazı → titreme / kesik).
+  // Artık kuşağın önünde, koyu zeminli, kuşağa sığan bir pano; yazı dükkân enini aşmaz.
+  {
+    const sg = e.sign(`shop2_${K}`, `${D.ic} ${D.t}`, 0.44, x, H - 0.25, zf + 0.09, 0, { color: '#ffffff', bg: '#14161b', border: D.c, font: '900 110px Arial, sans-serif', light: false });
+    const sw = sg.userData.signW || 1;
+    if (sw > w - 0.6) sg.scale.set((w - 0.6) / sw, (w - 0.6) / sw, 1);
+    e.box(Math.min(w - 0.3, sw * sg.scale.x + 0.2), 0.04, 0.05, glowMat(D.c, 2.2), x, H - 0.03, zf + 0.06, { cast: false });
+  }
   if (K === 'berber') {
     e.cyl(0.12, 0.12, 1.4, new THREE.MeshStandardMaterial({ map: berberPoleTex(), roughness: 0.3 }), x + hw + 0.35, 1, zf + 0.15, 16);
     e.cyl(0.16, 0.16, 0.12, M('#d9dde3', 0.2, 0.9), x + hw + 0.35, 0.88, zf + 0.15, 16);
