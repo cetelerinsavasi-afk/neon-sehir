@@ -327,10 +327,11 @@ export default function BorsaApp({ selected, onSelect, embed = false }) {
       const blockedOp = queued && queued.op !== 'al';
       const full = buyRoom(myU, co.u) <= 0; // v193: kişi başı alım sınırı
       const poor = b.x > 0 && goldNow < b.total;
+      const shut = Boolean(meta.closed); // v219: Cafe / Bar — alım kapandı, satış serbest
       return (
-        <button key={`al-${k}`} className="borsa-btn gr" disabled={!b.x || poor || otherBusy || blockedOp} onClick={() => press(sel, 'al', b.x, b.total)}>
-          {full ? 'Alım sınırı' : `${fmtSharesShort(b.x)} hisse al`}
-          <small>{full ? '—' : fmt(b.total)}</small>
+        <button key={`al-${k}`} className="borsa-btn gr" disabled={shut || !b.x || poor || otherBusy || blockedOp} onClick={() => press(sel, 'al', b.x, b.total)}>
+          {shut ? 'Alım kapandı' : full ? 'Alım sınırı' : `${fmtSharesShort(b.x)} hisse al`}
+          <small>{shut || full ? '—' : fmt(b.total)}</small>
         </button>
       );
     };

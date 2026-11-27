@@ -92,7 +92,7 @@ function StatChip({ label, children }) {
   );
 }
 
-function ProfileHeader({ player, onEditAvatar, onCostumes, onAccessories, onReport, onFurniture }) {
+function ProfileHeader({ player, onReport }) {
   const [editingName, setEditingName] = useState(false);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -159,25 +159,11 @@ function ProfileHeader({ player, onEditAvatar, onCostumes, onAccessories, onRepo
         <StatChip label="Altın"><i className="gold-coin-icon" style={{ width: 14, height: 14 }} /> <b>{Math.round(Number(player?.gold) || 0).toLocaleString('tr-TR')}</b></StatChip>
       </div>
 
-      <button className="home-btn" onClick={onEditAvatar}>
-        🎭 Avatarım ve Kostümler
+      {/* v219: avatar / kostüm / aksesuar şehirdeki dükkânlarda (berber, butik, aksesuarcı, kostümcü);
+          mobilyalar evin Tasarla modunda. Profilde sadece Günlük Rapor kaldı. */}
+      <button className="home-btn home-report-btn" onClick={onReport}>
+        📊 Günlük Rapor
       </button>
-      {/* v146 — yan yana kare butonlar: Aksesuarlar (v78) · Günlük Rapor (v92) · Mobilyalar */}
-      <div className="home-sq-row">
-        {/* v212: Kostümler artık Avatar düzenleyicinin içinde (sekme) */}
-        <button className="home-sq home-sq-acc" onClick={onAccessories}>
-          <span>🐾</span>
-          Aksesuarlar
-        </button>
-        <button className="home-sq home-sq-report" onClick={onReport}>
-          <span>📊</span>
-          Günlük Rapor
-        </button>
-        <button className="home-sq home-sq-furn" onClick={onFurniture}>
-          <span>🛋️</span>
-          Mobilyalar
-        </button>
-      </div>
     </div>
   );
 }
@@ -287,7 +273,7 @@ export default function HomeScreen() {
 
   return (
     <div className="home-screen">
-      <ProfileHeader player={player} onEditAvatar={() => setEditingAvatar(true)} onCostumes={() => setCosShop(true)} onAccessories={() => setAccShop(true)} onReport={() => setReport(true)} onFurniture={() => setFurn(true)} />
+      <ProfileHeader player={player} onReport={() => setReport(true)} />
 
       {/* UGC D3: yalnızca yetkililere görünür */}
       <AdminPanelEntry uid={user.uid} player={player} />

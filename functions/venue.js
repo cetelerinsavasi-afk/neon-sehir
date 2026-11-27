@@ -27,7 +27,7 @@
 // =============================================================================
 
 import { cafeDevicePrice } from './stream.js';
-import { MENU_PRICES, NET_MINUTE_PRICE, V196_GONE_TEXT, GAME_VENUE_HOUSES } from './v196Shared.js';
+import { MENU_PRICES, NET_MINUTE_PRICE, V196_GONE_TEXT, GAME_VENUE_HOUSES, RESTORAN_MENU } from './v196Shared.js';
 import { HOUSE_TAKEABLES, HOUSE_PRODUCTS } from './houseCatalogData.js';
 import { midnightDayKey } from './businessCatalogData.js';
 import { bizTax } from './tax.js';
@@ -98,7 +98,7 @@ export const waiterSalary = (price) => Math.max(0, Math.round((Number(price) || 
 const PRESENCE_ACTIVE_MS = 2 * 60 * 1000;
 export const NET_LOCK_PAD_MS = 5 * 60 * 1000;
 
-export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, business, office = null, now = () => Date.now() }) {
+export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, business, office = null, now = () => Date.now(), rtdb = null, isBlockedBy = null }) {
   const fail = (code, msg) => {
     throw new HttpsError(code, msg);
   };
@@ -211,6 +211,37 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
       result = { ok: true, product, label: HOUSE_PRODUCTS[product].label, price, spent: spent + price, limit: MENU_DAILY_LIMIT, untilMs: t + HELD_MS };
     });
     return result;
+  }
+
+  // ---- v219: La Marea Restoran — { product, expect, to? } -----------------------------------------
+  // Sadece masaya oturan sipariş verir (istemci); garson ürünü masaya koyar. Para yok olur (hisse / vergi yok).
+  // to: ısmarlanan oyuncu (o da oturuyor ve masası boş olmalı — istemci listeler); haber RTDB kutusuyla
+  // (cityBox/{to}/r) gider, Firestore'a ek yazım yok.
+  async function restoranBuy(uid, p) {
+    const product = String(p?.product || '');
+    if (!Object.prototype.hasOwnProperty.call(RESTORAN_MENU, product) || !HOUSE_PRODUCTS[product]) fail('invalid-argument', 'Geçersiz ürün.');
+    const price = RESTORAN_MENU[product];
+    if (Number(p.expect) !== price) fail('aborted', `price-changed:${price}`);
+    const to = p?.to == null ? null : String(p.to);
+    if (to !== null && (!/^[A-Za-z0-9_-]{1,128}$/.test(to) || to === uid)) fail('invalid-argument', 'Geçersiz oyuncu.');
+    if (to && !rtdb) fail('unavailable', 'Şu an yapılamıyor.');
+    if (to && isBlockedBy) {
+      const [a, b] = await Promise.all([isBlockedBy(uid, to), isBlockedBy(to, uid)]);
+      if (a || b) fail('failed-precondition', 'Bu oyuncuya ısmarlanamıyor.');
+    }
+    const t = now();
+    let name = '';
+    await db.runTransaction(async (tx) => {
+      const us = await tx.get(userRef(uid));
+      if (Number(us.data()?.gold || 0) < price) fail('failed-precondition', 'gold');
+      name = String(us.data()?.displayName || 'Bir oyuncu').slice(0, 40);
+      tx.update(userRef(uid), { gold: FieldValue.increment(-price), goldTag: goldTag('menu') });
+    });
+    if (to) {
+      const rt = await rtdb();
+      await rt.ref(`cityBox/${to}/r`).set({ f: uid, n: name, i: product, t });
+    }
+    return { ok: true, product, label: HOUSE_PRODUCTS[product].label, price, to };
   }
 
   // ---- v92 GARSON ----------------------------------------------------------------------
@@ -578,6 +609,6 @@ export function createVenue({ db, FieldValue, HttpsError, splitIncomeForDebt, bu
     }
     return { ok: true, houses: out };
   }
-  const ops = { cafeCalm, menuPrices, menuBuy, netPrice, netStart, netTick, netLeave, waiterJoin, waiterQuit, orderDeliver, orderSweep, venueEnsureGame: () => venueEnsureGame() };
+  const ops = { cafeCalm, menuPrices, menuBuy, restoranBuy, netPrice, netStart, netTick, netLeave, waiterJoin, waiterQuit, orderDeliver, orderSweep, venueEnsureGame: () => venueEnsureGame() };
   return { ops, cleanup, venueEnsureGame };
 }

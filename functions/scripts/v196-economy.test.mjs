@@ -120,7 +120,8 @@ test('cafe / bar: sabit menü, günlük harcama sınırı YOK (v196d), gelir pay
   assert.ok(w.G('houses/game_cafe').bizGame);
   const r = await w.act('ali', { op: 'menuBuy', houseId: 'game_cafe', product: 'kahve', expect: MENU_PRICES.kahve });
   assert.equal(r.price, 100);
-  assert.equal(statSum(w.db, `hs_${VENUE_CO_SK.cafe}`), 40);
+  assert.equal(statSum(w.db, `hs_${VENUE_CO_SK.cafe}`), 0); // v219: cafe hissesi kapandı — pay yok olur
+  assert.equal(taxSum(w.db), 0); // v219: cafe / bar'da vergi de yok, para yok olur
   await assert.rejects(() => w.act('ali', { op: 'menuBuy', houseId: 'game_bar', product: 'kahve', expect: 50 }), /price-changed/);
   for (let i = 0; i < 21; i++) await w.act('ali', { op: 'menuBuy', houseId: 'game_bar', product: 'viski', expect: 500 }); // 10.500 — sınır yok
   assert.equal(w.db._store.has(`bizSpend/game_bar_ali_${'x'}`), false);

@@ -9,6 +9,7 @@ export default function BlockedPlayersList() {
   const { list } = useBlocks();
   const [busyUid, setBusyUid] = useState(null);
   const [error, setError] = useState('');
+  const [open, setOpen] = useState(false); // v219: açılır-kapanır, başta kapalı
 
   const handleUnblock = async (uid) => {
     setBusyUid(uid);
@@ -23,9 +24,14 @@ export default function BlockedPlayersList() {
   };
 
   return (
-    <div className="home-section blocked-list">
-      <p className="home-section-title">Engellenen oyuncular</p>
-      {list.length === 0 ? (
+    <div className={`home-section home-fold blocked-list${open ? ' open' : ''}`}>
+      <button type="button" className={`home-fold-head${open ? ' open' : ''}`} onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <span className="home-fold-icon">🚫</span>
+        <span className="home-fold-title">Engellenen oyuncular</span>
+        <span className="home-fold-count">{list.length}</span>
+        <span className="home-fold-chev">▾</span>
+      </button>
+      {!open ? null : list.length === 0 ? (
         <p className="home-hint">Kimseyi engellemedin. Bir oyuncuyu, mesajının ya da paylaşımının yanındaki ⋯ menüsünden engelleyebilirsin.</p>
       ) : (
         <ul className="blocked-ul">

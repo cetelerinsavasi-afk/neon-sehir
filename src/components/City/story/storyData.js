@@ -7,18 +7,20 @@ import { ONBOARDING_ORDER } from '../../../../functions/onboardingData.js';
 import { AMCA_ID, AMCA_CAR_ID, AMCA_AVATAR } from '../../../../functions/storyNpcs.js';
 
 // Şehirdeki yerler: at = kapının önü (oyuncu buraya gelince "there" sözü), park = Amca'nın arabası
+// v219: yeni şehir planı (harita düzeni 5) — kapı önleri / yol kenarı
 export const PLACES = {
-  karakol: { at: { x: -55, z: -75 }, park: { x: -50, z: -60 }, name: 'Karakol' },
-  fabrika: { at: { x: -23, z: -35 }, park: { x: -19, z: -20 }, name: 'Fabrika' },
-  liman: { at: { x: -102, z: 86 }, park: { x: -96, z: 100 }, name: 'Liman & Depo' },
-  park: { at: { x: 13, z: 8 }, park: { x: 10, z: 20 }, name: 'Park' },
-  camii: { at: { x: 60, z: -75 }, park: { x: 64, z: -60 }, name: 'Camii' }, // v197: camii (4,0) — eski konum v196'dan beri yanlıştı
-  silah: { at: { x: -100, z: 5 }, park: { x: -96, z: 20 }, name: 'Silahçı' },
-  kofteci: { at: { x: -56, z: 58 }, park: { x: -52, z: 60 }, name: 'Köfteci' },
-  kokorec: { at: { x: -90, z: 51 }, park: { x: -86, z: 60 }, name: 'Kokoreççi' },
-  galeri: { at: { x: -60, z: -35 }, park: { x: -56, z: -20 }, name: 'Galeri' },
-  pist: { at: { x: -21, z: 31 }, park: { x: -26, z: 20 }, name: 'Yarış Pisti' },
-  banka: { at: { x: -15, z: -75 }, park: { x: -11, z: -60 }, name: 'Banka' },
+  karakol: { at: { x: -34, z: -40 }, park: { x: -42, z: -46 }, name: 'Karakol' },
+  fabrika: { at: { x: 178, z: -26 }, park: { x: 172, z: -18 }, name: 'Fabrika' },
+  liman: { at: { x: 160, z: 93 }, park: { x: 150, z: 98 }, name: 'Liman & Depo' },
+  park: { at: { x: 40, z: 93 }, park: { x: 30, z: 98 }, name: 'Park' },
+  camii: { at: { x: -46, z: 40 }, park: { x: -38, z: 46 }, name: 'Camii' },
+  silah: { at: { x: 180, z: 54 }, park: { x: 172, z: 58 }, name: 'Silahçı' },
+  kofteci: { at: { x: 193.6, z: -126 }, park: { x: 198, z: -116 }, name: 'Köfteci' },
+  kokorec: { at: { x: -51.5, z: -111.5 }, park: { x: -58, z: -102 }, name: 'Kokoreççi' },
+  galeri: { at: { x: 100, z: -14 }, park: { x: 92, z: -18 }, name: 'Galeri' },
+  pist: { at: { x: 486, z: -214 }, park: { x: 481, z: -208 }, name: 'Yarış Pisti' }, // şehir dışı, pist girişi
+  banka: { at: { x: -34, z: -120 }, park: { x: -42, z: -114 }, name: 'Banka' },
+  berber: { at: { x: 100, z: 40 }, park: { x: 92, z: 58 }, name: 'Berber' }, // berber / giyim (5,3)
   hurdalik: { at: { x: 266, z: 30 }, park: { x: 258, z: 30 }, name: 'Hurdalık' },
 };
 // Amca'nın mezarı: hurdalıkta, karargah kapılarının solundaki boşlukta (taş girişe bakar)
@@ -145,7 +147,7 @@ const SCENES = {
   12: { chapter: 3, to: 'pist', go: ['Piste!'], there: ['Arabanı tanı. Antrenmanda ustalaşan şampiyonada kazanır.'], done: ['Babanın oğlusun!'] },
   13: { chapter: 3, to: 'pist', go: ['Her gün şampiyona var. Günün birincisi ödülü alır.'], done: ['Kendine bir yer ediyorsun evlat.'], call: true },
   14: { chapter: 3, to: 'banka', go: ['Bankaya. Sana lazım olacak.'], there: ['Kredi çek, zamanında öde. Öderken puanın yükselir, banka sana daha çok güvenir.'] },
-  16: { chapter: 3, go: ["Kılığını değiştir. Nevzat'ın adamları seni tanımasın."] },
+  16: { chapter: 3, to: 'berber', go: ["Kılığını değiştir. Nevzat'ın adamları seni tanımasın."], there: ['Berber, butik, aksesuarcı… hepsi sırada. Beğendiğini al.'] }, // v219: dükkânlar
   17: { chapter: 3, go: ['Birine yaz. Bu şehirde yalnız kalan çabuk düşer.'], done: ['...Ben olmasam bile.'] },
   19: { chapter: 3, to: 'silah', go: ["Arayan Nevzat'tı. Bu gece hurdalıkta."], there: ['Gelişmiş silah, büyük iş demek. Bu gece lazım olacak.'], done: ['Hazırız.'] },
   22: { chapter: 4, to: 'hurdalik', go: ['Hurdalığa.'], ride: ["Emre'yi Nevzat vurdu, biliyorum.", 'Şahitlik edecektim, bana "hain" dediler.', 'Bu gece hesap kapanacak.'], finale: true },

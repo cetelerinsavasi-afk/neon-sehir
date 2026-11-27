@@ -73,18 +73,26 @@ export const BORSA_INC_LEN = 10; // son 10 günün geliri
 export const BORSA_DOC = 'borsa/piyasa';
 export const BORSA_TAX_RATE_ID = 'hisse';
 export const BORSA_MARKET_V = 2;
-import { VENUE_SHARE_TYPES, VENUE_CO_ID, VENUE_CO_SK, VENUE_CO_NAME } from './v196Shared.js';
+import { VENUE_SHARE_TYPES, VENUE_CO_ID, VENUE_CO_SK, VENUE_CO_NAME, VENUE_SHARE_CLOSED } from './v196Shared.js';
 export const BORSA_HOLD_V = 2;
 export const BORSA_RTDB_PATH = 'borsaFiyat'; // v189: canlı fiyat yayını { <mekân>: u }
 
 // Mekânlar (kimlik = vendorData VENDORS[..].venue) · sk: buyFromVendor istatistik kodu
-export const BORSA_COS = [
+// v219: 6 seyyar satıcının ayrı hisseleri TEK "Seyyar Satıcılar" hissesinde birleşti (bkz. planSeyyarMerge).
+// Eski kimlikler yalnızca tek seferlik birleştirme için tutulur (işlem / liste yok).
+export const LEGACY_SEYYAR_COS = [
   { id: 'kokorecci', vendor: 'seyyar_satici_1', sk: 'kk', name: 'Kokoreçci' },
   { id: 'simitci', vendor: 'seyyar_satici_2', sk: 'sm', name: 'Simitçi' },
   { id: 'donerci', vendor: 'seyyar_satici_3', sk: 'dn', name: 'Balık Ekmekçi' },
   { id: 'kofteci', vendor: 'seyyar_satici_4', sk: 'kf', name: 'Köfteci' },
   { id: 'midyeci', vendor: 'seyyar_satici_5', sk: 'md', name: 'Midyeci' },
   { id: 'dondurmaci', vendor: 'seyyar_satici_6', sk: 'dd', name: 'Dondurmacı' },
+];
+export const LEGACY_SEYYAR_IDS = LEGACY_SEYYAR_COS.map((c) => c.id);
+export const SEYYAR_CO_ID = 'seyyar';
+export const BORSA_COS = [
+  // gelir: 6 tezgâhın hissedar payı (yeni kayıt 'sv'; birleşme günü eski kodlarla yazılanlar da sayılır)
+  { id: SEYYAR_CO_ID, vendors: LEGACY_SEYYAR_COS.map((c) => c.vendor), sk: 'sv', sks: ['sv', ...LEGACY_SEYYAR_COS.map((c) => c.sk)], name: 'Seyyar Satıcılar' },
   // v177 — şirketler: gelir = o gün satılan yeni ticari araç + şoför gelirlerinin %10'u (v201: %50 masraf + şirket vergisi düşülür)
   { id: 'hastane', sk: 'hn', name: 'Hastane', kind: 'sirket' },
   { id: 'nakliye', sk: 'nk', name: 'Nakliye', kind: 'sirket' },
@@ -92,8 +100,10 @@ export const BORSA_COS = [
   { id: 'taksi', sk: 'tk', name: 'Taksi Durağı', kind: 'sirket' },
   // v196 — oyunun mekânları: gelir = brüt − %50 masraf − belediye vergisi (business.recordGameIncomeTx).
   // v201: toplarken hisse gelir vergisi her hissede (mekân dahil) kesilir.
-  ...VENUE_SHARE_TYPES.map((t) => ({ id: VENUE_CO_ID[t], sk: VENUE_CO_SK[t], name: VENUE_CO_NAME[t], kind: 'mekan', venueType: t })),
+  ...VENUE_SHARE_TYPES.map((t) => ({ id: VENUE_CO_ID[t], sk: VENUE_CO_SK[t], name: VENUE_CO_NAME[t], kind: 'mekan', venueType: t, ...(VENUE_SHARE_CLOSED.includes(t) ? { closed: true } : {}) })),
 ];
+// v219: kapanan hisse (alım yok, satış serbest; piyasada 0 kalınca listeden kalkar)
+export const isClosedCo = (id) => Boolean(BORSA_CO_BY_ID[id]?.closed);
 // v202: Hisse Senedi Gelir Vergisi KALKTI — hisse geliri toplanırken vergi kesilmez (borç payı sürer).
 // (sunucu taxFrac da 0 verir; bu işlev eski çağrılar için duruyor)
 export const isTaxFreeCo = () => true;
@@ -103,7 +113,7 @@ export function collectTaxFrac(by, taxFrac) {
 }
 export const BORSA_CO_IDS = BORSA_COS.map((c) => c.id);
 export const BORSA_CO_BY_ID = Object.fromEntries(BORSA_COS.map((c) => [c.id, c]));
-export const borsaCoOfVendor = (vendorId) => BORSA_COS.find((c) => c.vendor === vendorId) || null;
+export const borsaCoOfVendor = (vendorId) => BORSA_COS.find((c) => c.vendor === vendorId || c.vendors?.includes(vendorId)) || null;
 export const isBorsaCo = (id) => typeof id === 'string' && Object.prototype.hasOwnProperty.call(BORSA_CO_BY_ID, id);
 // v200 — SEYYAR SATICI GELİRİ: oyunun mekânları gibi %50 masraf + belediyenin seyyar satıcı vergisi
 // (Ticaret, varsayılan %10), kalan kâr hissedarlara (hs_<kod>). Hisse gelir vergisi toplarken ayrıca kesilir.
@@ -122,7 +132,12 @@ export const companyIncomeSplit = vendorIncomeSplit;
 // buyFromVendor'un devlet defteri parçasına eklediği gelir sayacı
 export const borsaIncomeStatKey = (sk) => `hs_${sk}`;
 // v177: şirket kimliğinden gelir sayacı (fleet.js)
-export const borsaCompanyStatKey = (coId) => (BORSA_CO_BY_ID[coId] ? borsaIncomeStatKey(BORSA_CO_BY_ID[coId].sk) : null);
+// v219: eski seyyar satıcı kimliği (kurye: malı alınan tezgâh) kendi kodunu yazar → birleşik hissede toplanır (sks)
+export const borsaCompanyStatKey = (coId) => {
+  if (BORSA_CO_BY_ID[coId]) return borsaIncomeStatKey(BORSA_CO_BY_ID[coId].sk);
+  const old = LEGACY_SEYYAR_COS.find((c) => c.id === coId);
+  return old ? borsaIncomeStatKey(old.sk) : null;
+};
 
 // ---- sayı yardımcıları --------------------------------------------------------
 const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
@@ -365,7 +380,8 @@ export const avgIncome = (inc) => (inc?.length ? inc.reduce((a, b) => a + num(b)
 // v189: hisse başına son 10 günlük ortalama gelir (liste ve sıralama)
 export const avgPerShare = (co) => avgIncome(co?.ps);
 export function sortCos(market) {
-  return [...BORSA_COS].sort((a, b) => avgPerShare(coState(market, b.id)) - avgPerShare(coState(market, a.id)) || a.name.localeCompare(b.name, 'tr'));
+  // v219: kapanan hisse (Cafe / Bar) piyasada hiç kalmayınca listeden kalkar
+  return BORSA_COS.filter((c) => !c.closed || coState(market, c.id).u > 0).sort((a, b) => avgPerShare(coState(market, b.id)) - avgPerShare(coState(market, a.id)) || a.name.localeCompare(b.name, 'tr'));
 }
 // Elindeki birimlerin hepsini satarsan eline geçecek (komisyon düşülmüş)
 export const sellAllValue = (holdU, coU) => (int(holdU) > 0 ? sellQuote(coU, Math.min(int(holdU), int(coU))).net : 0);
@@ -434,6 +450,85 @@ export function releaseMarket(user, market) {
 }
 
 // =============================================================================
+// v219 — SEYYAR SATICI HİSSELERİNİ BİRLEŞTİRME (tek seferlik, saf hesap)
+// -----------------------------------------------------------------------------
+// Herkesin "şimdi hepsini satsam eline geçecek" tutarı (6 tezgâhın toplamı, komisyon düşülmüş) yeni
+// hissede AYNEN korunur: yeni birim h' öyle seçilir ki sellQuote(S', h').net ≥ eski toplam. S' = Σ h'.
+// S'nin bulunması: f(S) = Σ h'(S) azalan → f(S) ≥ S olan en büyük S (ikiye bölme) → S' = f(S) ≥ S, yani
+// herkes en az eski tutarı alır (kazanç birim yuvarlaması kadar, binde birlerin altında).
+// Biriken (toplanmamış) gelir, maliyet ve piyasa kâr/zararı toplanarak aynen taşınır.
+// holders: [{ uid, user }] · market: piyasa belgesi
+// =============================================================================
+export function planSeyyarMerge(holders, market) {
+  const dd = market?.distDay ?? null;
+  const rows = [];
+  for (const { uid, user } of holders) {
+    let V = 0;
+    let pq = 0n;
+    let c = 0;
+    let g = 0;
+    let any = false;
+    for (const id of LEGACY_SEYYAR_IDS) {
+      if (!user?.borsa?.[id]) continue;
+      any = true;
+      const co = coState(market, id);
+      const h = settle(holdState(user, id), co, dd);
+      if (h.u > 0) {
+        V += sellQuote(co.u, Math.min(h.u, co.u)).net;
+        c += h.c;
+        g += marketGain(h, co.u);
+      }
+      pq += h.pq;
+    }
+    if (any) rows.push({ uid, V, pq, c, g, u: 0 });
+  }
+  const need = (S, V) => {
+    // sellQuote(S, x).net ≥ V olan en küçük x (0 ≤ x ≤ S); yetmezse S
+    if (V <= 0) return 0;
+    if (sellQuote(S, S).net < V) return S;
+    let lo = 1;
+    let hi = S;
+    while (lo < hi) {
+      const m = Math.floor((lo + hi) / 2);
+      if (sellQuote(S, m).net >= V) hi = m;
+      else lo = m + 1;
+    }
+    return lo;
+  };
+  const f = (S) => rows.reduce((a, r) => a + need(S, r.V), 0);
+  const oldU = LEGACY_SEYYAR_IDS.reduce((a, id) => a + coState(market, id).u, 0);
+  let lo = 0;
+  let hi = Math.max(BORSA_UNITS, oldU * 4);
+  while (f(hi) >= hi) hi *= 2;
+  // f(lo) ≥ lo her zaman (lo = 0); f(hi) < hi
+  while (hi - lo > 1) {
+    const m = Math.floor((lo + hi) / 2);
+    if (f(m) >= m) lo = m;
+    else hi = m;
+  }
+  rows.forEach((r) => (r.u = need(lo, r.V)));
+  let S = rows.reduce((a, r) => a + r.u, 0);
+  // güvence: yuvarlamadan kimse eksik almasın (S büyüdükçe herkesin tutarı artar)
+  for (let k = 0; k < 50; k++) {
+    let bump = 0;
+    for (const r of rows) {
+      if (r.V > 0 && sellQuote(S, Math.min(r.u, S)).net < r.V) {
+        r.u += Math.max(1, Math.ceil(r.u / 1e6));
+        bump++;
+      }
+    }
+    if (!bump) break;
+    S = rows.reduce((a, r) => a + r.u, 0);
+  }
+  // eski piyasanın geçmişi: günlük gelirler toplanır (sağa hizalı), hisse başı gelir yeni S'ye göre
+  const incs = LEGACY_SEYYAR_IDS.map((id) => coState(market, id).inc);
+  const L = Math.max(0, ...incs.map((a) => a.length));
+  const inc = Array.from({ length: L }, (_, i) => incs.reduce((a, arr) => a + (arr[arr.length - L + i] || 0), 0));
+  const ps = inc.map((x) => (S > 0 ? Math.floor((x * BORSA_UNITS) / S) : x));
+  return { S, rows, inc, ps, holders: rows.filter((r) => r.u > 0).length };
+}
+
+// =============================================================================
 // Sunucu
 // =============================================================================
 // deps: { db, FieldValue, HttpsError, goldTag, stateWrite, taxFrac: () => oran (0..1),
@@ -488,6 +583,101 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
     }
   };
 
+  // ---- v219: seyyar hisselerini tek seferde birleştir ---------------------------
+  // borsa/seyyarPlan: { st: 'yapiliyor'|'hazir'|'bitti', at, S, parts } + borsa/seyyarPlan_<k> { rows }
+  // Plan bir kez hesaplanır ve saklanır; uygulama tekrarlansa da aynı değerler yazılır (yarıda kalırsa
+  // bir sonraki saat başı kaldığı yerden tamamlar). Bitene kadar seyyar hissesinde işlem / gece dağıtımı yok.
+  const planRef = (k = null) => db.doc(k == null ? 'borsa/seyyarPlan' : `borsa/seyyarPlan_${k}`);
+  const PLAN_ROWS = 1500;
+  async function mergeSeyyar() {
+    const t = now();
+    const m0 = (await marketRef().get()).data() || null;
+    if (!m0 || m0.seyyarMerged) return true;
+    if (!m0.distDay) return true; // hiç kurulmamış piyasa: birleştirilecek bir şey yok (hourly kurar)
+    // kilit
+    const go = await db.runTransaction(async (tx) => {
+      const ps = await tx.get(planRef());
+      const p = ps.data() || null;
+      if (p?.st === 'hazir') return 'uygula';
+      if (p?.st === 'yapiliyor' && t - Number(p.at || 0) < 9 * 60_000) return null;
+      tx.set(planRef(), { st: 'yapiliyor', at: t });
+      return 'hesapla';
+    });
+    if (!go) return false;
+    if (go === 'hesapla') {
+      const seen = new Map();
+      for (const id of LEGACY_SEYYAR_IDS) {
+        let last = null;
+        for (;;) {
+          let q = db.collection('users').orderBy(`borsa.${id}`).limit(500);
+          if (last) q = q.startAfter(last);
+          const snap = await q.get();
+          snap.docs.forEach((d) => seen.set(d.id, d.data()));
+          if (snap.size < 500) break;
+          last = snap.docs[snap.docs.length - 1];
+        }
+      }
+      const plan = planSeyyarMerge([...seen].map(([uid, user]) => ({ uid, user })), m0);
+      const parts = Math.ceil(plan.rows.length / PLAN_ROWS);
+      for (let k = 0; k < parts; k++) {
+        const rows = {};
+        plan.rows.slice(k * PLAN_ROWS, (k + 1) * PLAN_ROWS).forEach((r) => (rows[r.uid] = [r.u, r.pq.toString(), r.c, r.g]));
+        await planRef(k).set({ rows });
+      }
+      await planRef().set({ st: 'hazir', at: now(), S: plan.S, n: plan.holders, parts, inc: plan.inc, ps: plan.ps, distDay: m0.distDay });
+      log.log?.(`borsa: seyyar birleştirme planı — ${plan.rows.length} oyuncu, ${sharesOf(plan.S)} hisse`);
+    }
+    const P = (await planRef().get()).data();
+    if (P?.st !== 'hazir') return false;
+    // oyuncular: yeni hisse yazılır, eski 6 alan silinir (aynı değer → tekrar güvenli)
+    const r0 = chartPrice(P.S);
+    for (let k = 0; k < P.parts; k++) {
+      const rows = (await planRef(k).get()).data()?.rows || {};
+      const ents = Object.entries(rows);
+      for (let i = 0; i < ents.length; i += 400) {
+        const batch = db.batch();
+        const chunk = ents.slice(i, i + 400);
+        chunk.forEach(([uid, [u, pq, c, g]]) => {
+          const up = {};
+          LEGACY_SEYYAR_IDS.forEach((id) => (up[`borsa.${id}`] = FieldValue.delete()));
+          const h = { u, a: 0n, pq: big(pq), b: 0, c: u > 0 ? c : 0, ...(u > 0 ? { r: r0, g } : {}) };
+          up[`borsa.${SEYYAR_CO_ID}`] = u > 0 || h.pq >= BORSA_Q ? holdDoc(h) : FieldValue.delete();
+          if (u > 0 || h.pq >= BORSA_Q) up.borsaSon = t; // 20 gün sayacı birleşmeden başlar
+          batch.update(userRef(uid), up);
+        });
+        try {
+          await batch.commit();
+        } catch {
+          // silinmiş hesap vb.: tek tek dene
+          for (const [uid] of chunk) {
+            const [u, pq, c, g] = rows[uid];
+            const up = {};
+            LEGACY_SEYYAR_IDS.forEach((id) => (up[`borsa.${id}`] = FieldValue.delete()));
+            const h = { u, a: 0n, pq: big(pq), b: 0, c: u > 0 ? c : 0, ...(u > 0 ? { r: r0, g } : {}) };
+            up[`borsa.${SEYYAR_CO_ID}`] = u > 0 || h.pq >= BORSA_Q ? holdDoc(h) : FieldValue.delete();
+            await userRef(uid)
+              .update(up)
+              .catch(() => {});
+          }
+        }
+      }
+    }
+    // piyasa: yeni hisse, eski 6 mekân silinir
+    await db.runTransaction(async (tx) => {
+      const mSnap = await tx.get(marketRef());
+      const market = mSnap.data() || {};
+      if (market.seyyarMerged) return;
+      const co = { u: P.S, h: P.n, A: 0n, bt: 0, btd: market.distDay ?? null, aH: [], inc: P.inc || [], ps: P.ps || [], ch: [chartPrice(P.S)] };
+      const patch = { co: { [SEYYAR_CO_ID]: coDoc(co) }, seyyarMerged: t, updatedAtMs: t };
+      LEGACY_SEYYAR_IDS.forEach((id) => (patch.co[id] = FieldValue.delete()));
+      tx.set(marketRef(), patch, { merge: true });
+      tx.set(planRef(), { st: 'bitti', at: t }, { merge: true });
+    });
+    await publish({ [SEYYAR_CO_ID]: P.S });
+    log.log?.('borsa: seyyar satıcı hisseleri birleştirildi');
+    return true;
+  }
+
   // ---- Al / Sat ---------------------------------------------------------------
   // data: { op: 'al'|'sat', co, x? (birim; yoksa 1 hisse — eski istemci), all? (sat: elindekinin
   //         hepsi), expect? (ekranda yazan tutar: alışta bundan pahalıysa, satışta bundan azsa yapılmaz) }
@@ -504,6 +694,7 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
       if (!user) fail('failed-precondition', 'Oyuncu bulunamadı.');
       rateCheck(user, t);
       const market = mSnap.data() || {};
+      if (id === SEYYAR_CO_ID && market.distDay && !market.seyyarMerged) return { wait: true }; // v219
       const dd = market.distDay ?? null;
       const co = coState(market, id);
       const was = holdState(user, id);
@@ -514,6 +705,7 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
       let x;
       let paid;
       if (op === 'al') {
+        if (isClosedCo(id)) fail('failed-precondition', 'Bu hissenin alımı kapandı.'); // v219
         const room = buyRoom(hold.u, co.u); // v193
         if (room <= 0) fail('failed-precondition', 'Alım sınırı');
         x = Math.min(want, room);
@@ -554,6 +746,10 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
       marketWrite(tx, market, { [id]: next }, { updatedAtMs: t });
       return { ok: true, op, co: id, x, price: paid, u: hold.u, coU: next.u };
     });
+    if (res.wait) {
+      await mergeSeyyar().catch((err) => log.error?.('borsa seyyar birleştirme', err));
+      fail('unavailable', 'Seyyar satıcı hisseleri birleştirildi, tekrar dene.');
+    }
     await publish({ [id]: res.coU });
     return res;
   }
@@ -651,7 +847,7 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
     const out = Object.fromEntries(BORSA_CO_IDS.map((id) => [id, 0]));
     snap.docs.forEach((d) => {
       const st = d.data()?.stat || {};
-      for (const c of BORSA_COS) out[c.id] += int(st[borsaIncomeStatKey(c.sk)]);
+      for (const c of BORSA_COS) for (const sk of c.sks || [c.sk]) out[c.id] += int(st[borsaIncomeStatKey(sk)]);
     });
     return out;
   }
@@ -665,13 +861,15 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
       .sort((a, b) => (a.dayKey < b.dayKey ? -1 : 1))
       .slice(-BORSA_INC_LEN);
     const inc = Object.fromEntries(BORSA_CO_IDS.map((id) => [id, []]));
-    days.forEach((d) => BORSA_COS.forEach((c) => inc[c.id].push(int(d.stat?.[`sy_${c.sk}_ciro`]))));
+    days.forEach((d) => BORSA_COS.forEach((c) => inc[c.id].push((c.sks || [c.sk]).reduce((a, sk) => a + int(d.stat?.[`sy_${sk}_ciro`]), 0))));
     return inc;
   }
 
   // Saat başı (cronTick): grafik noktası + (gerekirse) biten günlerin dağıtımı + 20 gün kuralı.
   // Dağıtım kaçırılan günleri de (en çok 7) sırayla yapar; distDay ile iki kez yapılmaz.
   async function hourly() {
+    // v219: seyyar birleştirmesi bitmeden dağıtım / grafik yapılmaz (gelir sahipsiz sanılmasın)
+    if (!(await mergeSeyyar())) return { distributed: [], waiting: 'seyyar' };
     const t = now();
     const today = dayKey(t);
     const yday = addDayKey(today, -1);
@@ -850,5 +1048,5 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
     return sharesOf(res.units);
   }
 
-  return { trade, sellAll, collect, hourly, sweepIdle, liquidate, releaseForDeletion, incomesOf, publish };
+  return { trade, sellAll, collect, hourly, sweepIdle, liquidate, releaseForDeletion, incomesOf, publish, mergeSeyyar };
 }

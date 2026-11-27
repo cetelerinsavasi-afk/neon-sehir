@@ -33,7 +33,7 @@ import { ownListingStock } from './autoSupply.js'; // v186
 import { BIZ_TYPES, ALL_BIZ_KEYS, bizDayKey, prevDayKey, bizOpenAllDay } from './businessCatalogData.js';
 import { taxLedgerWrite } from './tax.js';
 import { statWrite } from './stateTreasury.js';
-import { VENUE_SHARE_TYPES, VENUE_CO_SK, venueIncomeSplit, isAddonTaxVenue, addonTaxOf } from './v196Shared.js';
+import { VENUE_SHARE_TYPES, VENUE_SHARE_CLOSED, VENUE_CO_SK, venueIncomeSplit, isAddonTaxVenue, addonTaxOf } from './v196Shared.js';
 import { STOCK_KIND, clampStockPrice, stockQty } from './shopStockRules.js'; // v195 pasif → teklifler
 import { VEHICLE_CATALOG, WEAPON_CATALOG } from './catalogData.js';
 import { vehicleShopOf } from './fleet.js';
@@ -159,8 +159,12 @@ export function createBusiness({ db, FieldValue, HttpsError = null, now = () => 
     const t = atMs ?? now();
     const sp = venueIncomeSplit(amount, venueTaxFrac(type, t), { addon: addon == null ? isAddonTaxVenue(type) : Boolean(addon) && isAddonTaxVenue(type) });
     if (sp.addon && vat != null) sp.tax = Math.max(0, Math.round(Number(vat) || 0));
+    // v219: Cafe / Bar'da harcanan para yok olur — ne hissedara ne devlete (vergi yok). La Marea zaten buraya yazmaz.
+    if (VENUE_SHARE_CLOSED.includes(type)) Object.assign(sp, { tax: 0, share: 0, expense: sp.gross });
     if (!sp.gross) return sp;
-    const stat = { [`hs_${VENUE_CO_SK[type]}`]: sp.share, [`isl_${type}_ciro`]: sp.gross, [`isl_${type}_n`]: 1 };
+    const stat = { [`isl_${type}_ciro`]: sp.gross, [`isl_${type}_n`]: 1 };
+    // v219: Cafe / Bar hissesi kapandı — hissedar payı yazılmaz (yok olur)
+    if (!VENUE_SHARE_CLOSED.includes(type)) stat[`hs_${VENUE_CO_SK[type]}`] = sp.share;
     recordIncomeTx(tx, { houseId: gameVenueId(type), h: { biz: { type }, ownerUid: GAME_VENUE_OWNER }, amount: sp.gross, kind, customerUid, products, materialsUsed, atMs: t, tax: sp.tax, taxSource: 'isletme', stat });
     if (!(sp.tax > 0)) statWrite(tx, db, FieldValue, { atMs: t, stat });
     return sp;

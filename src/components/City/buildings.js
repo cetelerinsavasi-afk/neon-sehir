@@ -5,6 +5,7 @@
 // (ör. Camii: mermer kaplama + ahşap kapı; Silahçı: tuğla + metal kapı).
 // Yerel koordinat: önü +z. lot = { w, d } parsel iç ölçüsü.
 // =============================================================================
+import { shopFront, assignShops } from './world/avatarShops.js'; // v219
 import { THREE, M, boxGeo, planeGeo, facadeMat, isRealFacade, facadeTrim, facadeKind, FACADE_TILE, glowMat, basicGlow, GLASS, canvasTex, rng, hash, roundRect } from './kit.js';
 
 const PI = Math.PI;
@@ -32,11 +33,22 @@ export function tower(kit, { w, d, h, x = 0, z = 0, style = 'apt_warm', roof = '
     const g = planeGeo(b - a, yb - ya, (b - a) / FACADE_TILE.w, (yb - ya) / FACADE_TILE.h, ou + (a + w / 2) / FACADE_TILE.w, ov + (ya - y0) / FACADE_TILE.h);
     kit.mesh(g, mat, x + (a + b) / 2, (ya + yb) / 2, z + sz, 0, { cast: false });
   };
+  // v219: birden çok oyuk (yan yana dükkânlar) — spans: [[x0, x1], …]
+  const spans = hole ? (hole.spans || [[hole.x0, hole.x1]]).slice().sort((a, b) => a[0] - b[0]) : [];
+  const gapsOf = (lo, hi) => {
+    const g = [];
+    let a = lo;
+    spans.forEach(([s0, s1]) => {
+      g.push([a, s0]);
+      a = s1;
+    });
+    g.push([a, hi]);
+    return g.filter(([a0, b0]) => b0 - a0 > 0.001);
+  };
   sides.forEach(([sw, sx, sz, ry], si) => {
     if (si === 0 && hole) {
       facePiece(-w / 2, w / 2, Math.max(y0, hole.h), h, sz);
-      facePiece(-w / 2, hole.x0, y0, hole.h, sz);
-      facePiece(hole.x1, w / 2, y0, hole.h, sz);
+      gapsOf(-w / 2, w / 2).forEach(([a, b]) => facePiece(a, b, y0, hole.h, sz));
       return;
     }
     const g = planeGeo(sw, hh, sw / FACADE_TILE.w, hh / FACADE_TILE.h, ou, ov);
@@ -49,8 +61,7 @@ export function tower(kit, { w, d, h, x = 0, z = 0, style = 'apt_warm', roof = '
     const zf = z + d / 2 - 0.04;
     kit.box(w - 0.08, h, d - 0.08 - dz, bodyM, x, 0, z - dz / 2, { receive: false });
     kit.box(w - 0.08, h - hole.h, dz, bodyM, x, hole.h, zf - dz / 2, { receive: false });
-    kit.box(hole.x0 + w / 2 - 0.04, hole.h, dz, bodyM, x + (-w / 2 + 0.04 + hole.x0) / 2, 0, zf - dz / 2, { receive: false });
-    kit.box(w / 2 - 0.04 - hole.x1, hole.h, dz, bodyM, x + (hole.x1 + w / 2 - 0.04) / 2, 0, zf - dz / 2, { receive: false });
+    gapsOf(-w / 2 + 0.04, w / 2 - 0.04).forEach(([a, b]) => kit.box(b - a, hole.h, dz, bodyM, x + (a + b) / 2, 0, zf - dz / 2, { receive: false }));
   } else kit.box(w - 0.08, h, d - 0.08, bodyM, x, 0, z, { receive: false });
   kit.box(w + 0.3, 0.5, d + 0.3, M(real ? '#d8d1c3' : roof, 0.85), x, h, z); // korkuluk / parapet
   kit.box(w - 0.6, 0.12, d - 0.6, M(real ? '#8e8a83' : '#1d2028', 0.95), x, h + 0.02, z, { cast: false });
@@ -62,8 +73,7 @@ export function tower(kit, { w, d, h, x = 0, z = 0, style = 'apt_warm', roof = '
     if (hole) {
       // subasman oyuğun önünden geçmez (vitrin yere kadar)
       kit.box(w + 0.14, 0.7, d + 0.14 - hole.depth, subM, x, 0, z - hole.depth / 2, { cast: false });
-      kit.box(hole.x0 + w / 2 + 0.07, 0.7, hole.depth, subM, x + (-w / 2 - 0.07 + hole.x0) / 2, 0, z + d / 2 + 0.07 - hole.depth / 2, { cast: false });
-      kit.box(w / 2 + 0.07 - hole.x1, 0.7, hole.depth, subM, x + (hole.x1 + w / 2 + 0.07) / 2, 0, z + d / 2 + 0.07 - hole.depth / 2, { cast: false });
+      gapsOf(-w / 2 - 0.07, w / 2 + 0.07).forEach(([a, b]) => kit.box(b - a, 0.7, hole.depth, subM, x + (a + b) / 2, 0, z + d / 2 + 0.07 - hole.depth / 2, { cast: false }));
     } else kit.box(w + 0.14, 0.7, d + 0.14, subM, x, 0, z, { cast: false });
     // kat silmeleri (gölge çizgisi veren çıkıntı) — konutlarda
     if (facadeKind(style) === 'apt' || facadeKind(style) === 'stone') {
@@ -237,7 +247,7 @@ export function buildCamii(kit, lot) {
   kit.mesh(new THREE.SphereGeometry(0.22, 12, 10), gold, 0, 14.0, bz);
   // yarım kubbeler
   for (const [px, pz, ry] of [[0, bz + bd / 2 - 1.2, 0], [0, bz - bd / 2 + 1.2, PI], [bw / 2 - 1.2, bz, PI / 2], [-bw / 2 + 1.2, bz, -PI / 2]]) {
-    const hd = kit.mesh(new THREE.SphereGeometry(2.6, 24, 12, -PI / 2, PI, 0, PI / 2), lead, px, 7.3, pz, ry);
+    const hd = kit.mesh(new THREE.SphereGeometry(2.6, 24, 12, -PI / 2, PI, 0, PI / 2), lead, px, 7.3, pz, ry + PI / 2); // v219: yarım kubbeler dışa baksın
     hd.scale.y = 0.85;
   }
   // köşe küçük kubbeler
@@ -974,9 +984,9 @@ const CROWNS = [null, null, null, '#19e8ff', null, null, null, null];
 // camlı vitrinden içi görünen showroom (içine girilmez; kapıda motor galerileri listesi). rng sırası
 // değişmez (önce tüm hücreler hesaplanır, sonra çizilir) → diğer binalar aynı kalır.
 const MOTO_SHOW = ['moto_sport', 'moto_chopper', 'moto_scooter', 'moto_cross'];
-const SHOW_DEPTH = 5.4;
+export const SHOW_DEPTH = 5.4;
 const SHOW_H = 3.0;
-export function buildFiller(kit, lot, seed, { tall = 1, plaza = false, motoShop = false, tamirShop = false } = {}) {
+export function buildFiller(kit, lot, seed, { tall = 1, plaza = false, motoShop = false, tamirShop = false, shops = null } = {}) {
   const { w, d } = lot;
   const r = rng(seed * 7919 + 13);
   kit.floor('kaldirim', w, d, 0, 0);
@@ -1006,11 +1016,26 @@ export function buildFiller(kit, lot, seed, { tall = 1, plaza = false, motoShop 
   const mc = motoShop ? fronts.find((c) => c.front.street && c.front.sh[0] === 'ECZANE') || fronts.find((c) => c.front.street) || null : null;
   // v198: oto tamirci = caddeye bakan ilk dükkân (en geniş olanı)
   const tc = tamirShop ? fronts.filter((c) => c.front.street).sort((a, b) => b.front.w - a.front.w)[0] || null : null;
+  // v219: berber / giyim / aksesuar / kostümcü — caddeye bakan dükkânlara soldan sağa yerleşir
+  // 3+ dükkân: blok caddeye bakan TEK geniş bina olur, zemin katında yan yana dükkânlar (dükkânlar sokağı)
+  if (shops && shops.length > 2) {
+    const tw = w - 2;
+    const td = d - 2;
+    const c0 = plan[0];
+    const sw = Math.min(7.2, tw / shops.length - 1.4);
+    const row = shops.map((K, i) => ({ K, x: -tw / 2 + (tw / shops.length) * (i + 0.5) }));
+    tower(kit, { w: tw, d: td, h: Math.max(c0.h, 15), x: 0, z: 0, style: c0.style, crown: c0.crown, seed: c0.seed, hole: { h: 3.4, depth: 6.2, spans: row.map((q) => [q.x - sw / 2, q.x + sw / 2]) } });
+    row.forEach((q) => shopFront(kit, { x: q.x, z: 0, td, front: { x: q.x, w: sw }, avShop: q.K }));
+    kit.item('streetlamp', w / 2 - 0.6, d / 2 - 0.6, 4);
+    return;
+  }
+  if (shops) assignShops(plan, shops);
   plan.forEach((c) => {
-    const hole = c === mc && c.td > SHOW_DEPTH + 2 ? { x0: -c.front.w / 2, x1: c.front.w / 2, h: SHOW_H, depth: SHOW_DEPTH } : c === tc && c.td > TAMIR_DEPTH + 2 ? { x0: -c.front.w / 2, x1: c.front.w / 2, h: TAMIR_H, depth: TAMIR_DEPTH } : null;
+    const hole = c.avShop ? { x0: -c.front.w / 2, x1: c.front.w / 2, h: 3.4, depth: 6.2 } : c === mc && c.td > SHOW_DEPTH + 2 ? { x0: -c.front.w / 2, x1: c.front.w / 2, h: SHOW_H, depth: SHOW_DEPTH } : c === tc && c.td > TAMIR_DEPTH + 2 ? { x0: -c.front.w / 2, x1: c.front.w / 2, h: TAMIR_H, depth: TAMIR_DEPTH } : null;
     tower(kit, { w: c.tw, d: c.td, h: c.h, x: c.x, z: c.z, style: c.style, crown: c.crown, seed: c.seed, hole });
     if (!c.front) return;
-    if (c === tc) tamirGarage(kit, { x: c.front.x, zf: c.z + c.td / 2, w: c.front.w, inside: Boolean(hole) });
+    if (c.avShop) shopFront(kit, c);
+    else if (c === tc) tamirGarage(kit, { x: c.front.x, zf: c.z + c.td / 2, w: c.front.w, inside: Boolean(hole) });
     else if (c === mc) motoShowroom(kit, { x: c.front.x, zf: c.z + c.td / 2, w: c.front.w, inside: Boolean(hole) });
     else shopfront(kit, { x: c.front.x, z: c.front.z, w: c.front.w, text: c.front.sh[0], color: c.front.sh[1], awn: c.front.sh[2] });
   });
@@ -1022,7 +1047,7 @@ export function buildFiller(kit, lot, seed, { tall = 1, plaza = false, motoShop 
 
 // v177 — NEON MOTOR GALERİSİ: kulenin zemin katındaki oyukta camlı showroom (dışarıdan görünür)
 const SIDEWALK_Y = 0.14; // kit.floor('kaldirim') yüksekliği — eşyalar kaldırıma gömülmesin
-function motoShowroom(kit, { x, zf, w, inside }) {
+export function motoShowroom(kit, { x, zf, w, inside }) {
   const hw = w / 2;
   const zb = zf - SHOW_DEPTH;
   const zm = (zf + zb) / 2;
@@ -1082,9 +1107,9 @@ function motoShowroom(kit, { x, zf, w, inside }) {
 
 // v198 — OTO TAMİRCİ: hastane ile belediyenin yanındaki binanın (6,0) zemin katı. Kepenkleri açık bir
 // tamir atölyesi (lift, alet panosu, tezgâh, lastikler, usta). İçine yürünür; içeride "🔧 Araba tamiri".
-const TAMIR_DEPTH = 6.2;
-const TAMIR_H = 3.4;
-function tamirGarage(kit, { x, zf, w, inside }) {
+export const TAMIR_DEPTH = 6.2;
+export const TAMIR_H = 3.4;
+export function tamirGarage(kit, { x, zf, w, inside }) {
   const hw = w / 2;
   const zb = zf - TAMIR_DEPTH;
   const zm = (zf + zb) / 2;
@@ -1150,7 +1175,7 @@ export const VENDOR_STYLE = {
   midyeci: { cart: 'midyetezgahi', neon: 'neon_midye', glow: '#2dd4bf', npc: 'npc_midyeci' }, // v154
   dondurmaci: { cart: 'dondurmaarabasi', neon: 'neon_dondurma', glow: '#ff7aa8', npc: 'npc_dondurmaci' }, // v154
 };
-export function buildVendor(kit, key, venue, { compact = false, along = false } = {}) {
+export function buildVendor(kit, key, venue, { compact = false, along = false, nolamp = false } = {}) {
   const st = VENDOR_STYLE[key];
   // v157.9: arkadaki siyah tabela (direk + neon) kalktı — tezgâhın kendisi neci olduğunu gösteriyor
   kit.item(st.cart, 0, 0, 0, 0);
@@ -1164,9 +1189,16 @@ export function buildVendor(kit, key, venue, { compact = false, along = false } 
       kit.item('plastiktabure', mx, -0.45, 0, 1);
     }
     kit.item('umbrella', -4.2, 0.3, 0, 0, { solid: false });
-  } else {
+  } else if (!nolamp) {
     kit.item('streetlamp', -3.4, 0.2, 0, 0);
     kit.item('copkutusu', 3.2, -0.6, 0, 0);
+  }
+  // v219: dar kaldırımdaki (compact) satıcının yanında da tek masa
+  if (compact && !along) {
+    kit.item('plastikmasa', 2.7, 1.9, 0, 0);
+    kit.item('plastiktabure', 1.95, 1.9, 0, 1);
+    kit.item('plastiktabure', 3.45, 1.9, 0, 1);
+    kit.item('plastiktabure', 2.7, 2.65, 0, 1);
   }
   // plastik masalar (v157.4: dar kaldırımda masa yok — yola taşıyordu)
   if (!compact && !along) for (const [mx, mz] of [[-2.2, 2.6], [1.8, 3.0]]) {

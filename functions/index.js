@@ -85,6 +85,7 @@ import { VENUES } from './venueLayouts.js';
 import { VENDORS, VENDOR_COST as VENDOR_DAILY_COST } from './vendorData.js';
 import { goldTag, recordGoldChange, cleanupMoneyLog, realizeSale, realizeBankWithdraw } from './moneyLog.js';
 import { stateWrite, statWrite, closeStateDays, readStateReport, stateDayKey } from './stateTreasury.js';
+import { AV_SHOP_FIELDS, avCurrent, avShopQuote } from './avatarShopData.js'; // v219 görünüm dükkânları
 import { createBorsa, borsaCoOfVendor, borsaIncomeStatKey, borsaCompanyStatKey, vendorIncomeSplit, VENDOR_TAX_RATE_ID } from './borsa.js'; // v176 Neon Borsa
 import { createFleet, SOFOR_TAX_RATE_ID, TICARI_TAX_RATE_ID, canResell, NO_RESALE_TEXT } from './fleet.js'; // v177 ticari araçlar
 import { createStable } from './stable.js'; // v177 at / deve / bisiklet
@@ -262,6 +263,8 @@ const venue = createVenue({
   splitIncomeForDebt: (debt, amount) => splitIncomeForDebt(debt, amount),
   business,
   office,
+  rtdb: () => cityDb(), // v219: La Marea'da ısmarla (cityBox)
+  isBlockedBy: (a, b) => moderation.isBlockedBy(a, b),
 });
 const gym = createGym({
   db,
@@ -723,10 +726,8 @@ export const checkOnboardingProgress = onCall(async (request) => {
         pass();
       }
     } else if (currentStep === 16) {
-      // Avatarını daha önce düzenlemiş (varsayılan değil) → otomatik geç
-      if (user.avatar) {
-        pass();
-      }
+      // v219: görev artık şehirdeki dükkânlardan (berber / butik / aksesuarcı / kostümcü) bir şey almak —
+      // kendiliğinden geçmez, satın alma functions/avatarShop.js'te ilerletir
     } else if (currentStep === 19) {
       // Elinde 2. ya da 3. seviye silah varsa → otomatik geç
       // (tek alanlı sorgu — ek composite index gerektirmez)
@@ -3835,6 +3836,15 @@ const INVESTMENT_TIME_WEIGHT_BUCKETS = [
   { maxHours: 12, weight: 2 },
   { maxHours: 24, weight: 1 },
 ];
+// v219: kripto ve elmas — son 48 saat: 0–12 sa 4x · 12–24 sa 3x · 24–36 sa 2x · 36–48 sa 1x (hisse eskisi gibi)
+const INVESTMENT_TIME_WEIGHT_BUCKETS_LONG = [
+  { maxHours: 12, weight: 4 },
+  { maxHours: 24, weight: 3 },
+  { maxHours: 36, weight: 2 },
+  { maxHours: 48, weight: 1 },
+];
+const INVESTMENT_BUCKETS_OF = { crypto: INVESTMENT_TIME_WEIGHT_BUCKETS_LONG, diamond: INVESTMENT_TIME_WEIGHT_BUCKETS_LONG };
+const INVESTMENT_LOOKBACK_MS = 48 * 60 * 60 * 1000;
 // Fiyat eşikleri: üstü = TERS rejim (ekranda "düşme eğiliminde"); eşiğin
 // YARISININ altı = KOŞULSUZ normal rejim (taban kuralı).
 // v50: taban eşiğin 1/10'u iken 1/2'si oldu (ör. kripto 200.000 → taban 100.000).
@@ -3842,10 +3852,11 @@ const INVESTMENT_REGIME_THRESHOLD = { diamond: 20000, stock: 200000000, crypto: 
 const INVESTMENT_REGIME_FLOOR_RATIO = 1 / 2;
 const INVESTMENT_BUY_PRESSURE_REVERSE = 0.5; // v67: arada: alıcılar çoğunlukta (> %50) → gizli ters rejim
 
-function investmentTradeWeight(ageMs) {
+function investmentTradeWeight(ageMs, assetType) {
+  const B = INVESTMENT_BUCKETS_OF[assetType] || INVESTMENT_TIME_WEIGHT_BUCKETS;
   const ageHours = ageMs / (60 * 60 * 1000);
-  if (ageHours < 0) return INVESTMENT_TIME_WEIGHT_BUCKETS[0].weight;
-  for (const bucket of INVESTMENT_TIME_WEIGHT_BUCKETS) {
+  if (ageHours < 0) return B[0].weight;
+  for (const bucket of B) {
     if (ageHours <= bucket.maxHours) return bucket.weight;
   }
   return 0;
@@ -3859,7 +3870,7 @@ function computeInvestmentBuyRatios(trades, nowMs) {
   for (const t of trades) {
     const bucket = acc[t.assetType];
     if (!bucket || !t.uid || !t.createdAtMs) continue;
-    const w = investmentTradeWeight(nowMs - t.createdAtMs);
+    const w = investmentTradeWeight(nowMs - t.createdAtMs, t.assetType);
     if (w <= 0) continue;
     const weighted = Number(t.goldAmount || 0) * w;
     if (!(weighted > 0)) continue;
@@ -3901,7 +3912,7 @@ function pickInvestmentRegime(price, threshold, buyRatio) {
 }
 
 async function loadInvestmentTradesLast24h(nowMs) {
-  const cutoff = admin.firestore.Timestamp.fromMillis(nowMs - 24 * 60 * 60 * 1000);
+  const cutoff = admin.firestore.Timestamp.fromMillis(nowMs - INVESTMENT_LOOKBACK_MS); // v219: kripto/elmas 48 saat
   const snap = await db.collection('investmentTrades').where('createdAt', '>=', cutoff).get();
   const trades = [];
   snap.forEach((doc) => {
@@ -4066,7 +4077,7 @@ export const hourlyInvestmentUpdate = onSchedule(
 
     // investmentTrades temizliği — hesap son 24 saate bakıyor; 2 günden eski
     // kayıtlar silinir (tüm varlık türleri).
-    const tradesCutoff = admin.firestore.Timestamp.fromMillis(Date.now() - 2 * 24 * 60 * 60 * 1000);
+    const tradesCutoff = admin.firestore.Timestamp.fromMillis(Date.now() - INVESTMENT_LOOKBACK_MS - 60 * 60 * 1000); // v219: 48 sa + 1 sa pay
     const oldTradesSnap = await db.collection('investmentTrades').where('createdAt', '<', tradesCutoff).limit(400).get();
     if (!oldTradesSnap.empty) {
       const tradesCleanupBatch = db.batch();
@@ -8331,12 +8342,42 @@ export const setAvatar = onCall(async (request) => {
   const avatarUserRef = db.collection('users').doc(uid);
   await db.runTransaction(async (tx) => {
     const cur = (await tx.get(avatarUserRef)).data() || {};
+    // v219: görünüm artık şehirdeki dükkânlarda altınla değişir — ücretsiz kayıt yalnızca ilk avatar için
+    if (cur.avatar) throw new HttpsError('failed-precondition', 'Görünümünü şehirdeki berber, butik ve aksesuarcıda değiştirebilirsin.');
     Object.assign(avatar, cleanEquipped(cur.avatar, cur.cosmetics));
     tx.update(avatarUserRef, { avatar });
   });
   // Onboarding görev 16 — "profile gir ve avatarını düzenle" (v65).
   await advanceOnboardingStep(uid, 16);
   return { ok: true };
+});
+
+// v219 — ŞEHİRDEKİ GÖRÜNÜM DÜKKÂNLARI (functions/avatarShopData.js): { shop, avatar: { alan: değer }, expect }
+// Değişen her alan ücretli (eski görünüme dönmek de). Para yok olur. Görev 16 burada geçer.
+export const avatarShopAction = onCall(async (request) => {
+  const uid = requireAuth(request);
+  const shop = request.data?.shop;
+  const want = request.data?.avatar;
+  if (!AV_SHOP_FIELDS[shop] || !want || typeof want !== 'object') throw new HttpsError('invalid-argument', 'Geçersiz istek.');
+  const ref = db.collection('users').doc(uid);
+  return db.runTransaction(async (tx) => {
+    const user = (await tx.get(ref)).data();
+    if (!user) throw new HttpsError('failed-precondition', 'Oyuncu bulunamadı.');
+    const cur = avCurrent(user.avatar);
+    const q = avShopQuote(shop, cur, want);
+    if (q.bad) throw new HttpsError('invalid-argument', 'Geçersiz seçim.');
+    if (!q.total) throw new HttpsError('failed-precondition', 'Değişiklik yok.');
+    if (request.data?.expect != null && Number(request.data.expect) !== q.total) throw new HttpsError('aborted', `price-changed:${q.total}`);
+    if ((user.gold || 0) < q.total) throw new HttpsError('failed-precondition', 'Yetersiz altın.');
+    const up = { gold: admin.firestore.FieldValue.increment(-q.total), goldTag: goldTag('gorunum') };
+    if (!user.avatar) up.avatar = { ...cur, ...q.changes };
+    else for (const [f, v] of Object.entries(q.changes)) up[`avatar.${f}`] = v;
+    // görev 16 ("görünümünü değiştir") — aynı işlemde
+    const pos = onboardingPosOf(user);
+    if (onboardingTaskIdAt(pos) === 16 && storyStarted(user)) Object.assign(up, { onboardingStep: pos + 1, onboardingV: ONBOARDING_V });
+    tx.update(ref, up);
+    return { ok: true, total: q.total, changes: q.changes };
+  });
 });
 
 // v78 — Evcil hayvan & aksesuar mağazası (Profil › Aksesuarlar)
@@ -8357,7 +8398,10 @@ export const streamAction = onCall(async (request) => {
 const cosmetics = createCosmetics({ db, FieldValue: admin.firestore.FieldValue, HttpsError });
 export const cosmeticsAction = onCall(async (request) => {
   const uid = requireAuth(request);
-  return cosmetics.action(uid, request.data || {});
+  const r = await cosmetics.action(uid, request.data || {});
+  // v219: görev 16 — şehirdeki dükkânlardan (petshop / aksesuarcı / kostümcü) bir şey almak da sayılır
+  if (request.data?.op === 'buy') await advanceOnboardingStep(uid, 16);
+  return r;
 });
 
 // =============================================================================

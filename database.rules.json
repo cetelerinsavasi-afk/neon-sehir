@@ -267,7 +267,7 @@
               ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1"
             },
             "p": {
-              ".validate": "newData.isString() && newData.val().matches(/^[wsdrf]$/)"
+              ".validate": "newData.isString() && newData.val().matches(/^[wsdrfh]$/)"
             },
             "sy": {
               ".validate": "newData.isNumber() && newData.val() >= -10 && newData.val() <= 300"
@@ -292,6 +292,12 @@
             },
             "t": {
               ".validate": "newData.isNumber() && newData.val() <= now + 1000"
+            },
+            "hl": {
+              ".validate": "newData.isString() && newData.val().length <= 96"
+            },
+            "fd": {
+              ".validate": "newData.isString() && newData.val().length <= 24"
             },
             "$other": {
               ".validate": false
@@ -392,6 +398,84 @@
             ".validate": "newData.isString()"
           },
           ".write": "auth != null && auth.uid === $owner && !newData.exists()"
+        }
+      },
+      "heli": {
+        ".read": "auth != null",
+        ".write": "auth != null && (!data.exists() || !data.child('by').exists() || data.child('by').val() === '' || data.child('by').val() === auth.uid || newData.child('by').val() === data.child('by').val())",
+        ".validate": "newData.hasChildren(['by']) && newData.child('by').isString() && (newData.child('by').val() === '' || newData.child('by').val() === auth.uid || newData.child('by').val() === data.child('by').val())",
+        "by": {
+          ".validate": "newData.isString() && newData.val().length <= 128"
+        },
+        "x": {
+          ".validate": "newData.isNumber() && newData.val() >= -3200 && newData.val() <= 3200"
+        },
+        "y": {
+          ".validate": "newData.isNumber() && newData.val() >= -1000 && newData.val() <= 1000"
+        },
+        "z": {
+          ".validate": "newData.isNumber() && newData.val() >= -3200 && newData.val() <= 3200"
+        },
+        "yw": {
+          ".validate": "newData.isNumber() && newData.val() >= -100 && newData.val() <= 100"
+        },
+        "t": {
+          ".validate": "newData.isNumber() && newData.val() <= now + 1000"
+        },
+        "s1": {
+          ".write": "auth != null",
+          ".validate": "newData.isString() && (newData.val() === '' || newData.val() === auth.uid || data.val() === auth.uid || data.parent().child('by').val() === auth.uid)"
+        },
+        "s2": {
+          ".write": "auth != null",
+          ".validate": "newData.isString() && (newData.val() === '' || newData.val() === auth.uid || data.val() === auth.uid || data.parent().child('by').val() === auth.uid)"
+        },
+        "s3": {
+          ".write": "auth != null",
+          ".validate": "newData.isString() && (newData.val() === '' || newData.val() === auth.uid || data.val() === auth.uid || data.parent().child('by').val() === auth.uid)"
+        },
+        "$other": {
+          ".validate": false
+        }
+      },
+      "ball": {
+        ".read": "auth != null",
+        "$k": {
+          ".write": "auth != null && $k.matches(/^[fb]$/)",
+          ".validate": "newData.hasChildren(['x','y','z','by','t']) && newData.child('by').val() === auth.uid",
+          "x": {
+            ".validate": "newData.isNumber() && newData.val() >= -3200 && newData.val() <= 3200"
+          },
+          "y": {
+            ".validate": "newData.isNumber() && newData.val() >= -50 && newData.val() <= 200"
+          },
+          "z": {
+            ".validate": "newData.isNumber() && newData.val() >= -3200 && newData.val() <= 3200"
+          },
+          "vx": {
+            ".validate": "newData.isNumber() && newData.val() >= -200 && newData.val() <= 200"
+          },
+          "vy": {
+            ".validate": "newData.isNumber() && newData.val() >= -200 && newData.val() <= 200"
+          },
+          "vz": {
+            ".validate": "newData.isNumber() && newData.val() >= -200 && newData.val() <= 200"
+          },
+          "by": {
+            ".validate": "newData.isString() && newData.val().length <= 128"
+          },
+          "h": {
+            ".validate": "newData.isString() && (newData.val() === '' || newData.val() === auth.uid)"
+          },
+          "fl": {
+            ".validate": "newData.isString() && newData.val().length <= 140"
+          },
+          "t": {
+            ".validate": "newData.isNumber() && newData.val() <= now + 1000"
+          },
+          "$other": {
+            ".validate": false
+          }
         }
       }
     },

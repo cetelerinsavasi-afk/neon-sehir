@@ -29,6 +29,16 @@ import './AmcaStory.css';
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const near = (a, b, r) => Boolean(a && b) && dist(a, b) < r;
+// v219: hedef yer — berberin gerçek kapısı motorun dükkân bölgesinden (şehir planı değişse de doğru yer)
+let placeEng = null;
+const placeOf = (k) => {
+  const pl = k ? PLACES[k] : null;
+  if (pl && k === 'berber') {
+    const d = placeEng?.avShopDoor?.('berber');
+    if (d) return { ...pl, at: d };
+  }
+  return pl;
+};
 const CANCEL = new Error(CANCELLED);
 // şehir yol ızgarası: en yakın yol çizgisi (Amca'nın arabası yola park eder)
 const ROAD_X = [-160, -120, -80, -40, 0, 40, 80, 120, 160];
@@ -61,7 +71,7 @@ const lsSet = (k, v) => {
   }
 };
 const TITLE_BY_ID = Object.fromEntries(ONBOARDING_TASKS.map((t) => [t.id, t]));
-const STATUS_TASK_IDS = [5, 9, 11, 12, 13, 14, 16, 19, 20]; // sunucu "zaten sağlanıyorsa" otomatik geçirir
+const STATUS_TASK_IDS = [5, 9, 11, 12, 13, 14, 19, 20]; // v219: 16 (görünüm) artık satın almayla geçer // sunucu "zaten sağlanıyorsa" otomatik geçirir
 
 // player → senaryo durumu
 // pre: yeni oyuncu, hikâye başlamadı (sadece ⏪ 3 yıl önce düğmesi) · new: görevlerde, Amca yanında
@@ -97,6 +107,7 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, gang = null,
 
   const R = useRef({}).current; // tüm değişken durum (zamanlayıcı döngüsü ve sahneler için)
   R.eng = eng;
+  placeEng = eng;
   R.uid = uid;
   R.busy = busy || jobActive;
   R.jobActive = jobActive;
@@ -246,7 +257,7 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, gang = null,
     const a = ensureAmca();
     a.setAvatar(amcaFace());
     const self = R.eng.getSelf();
-    const pl = t?.to ? PLACES[t.to] : null;
+    const pl = placeOf(t?.to);
     const spot = pl ? pl.park : inCityRect(self) ? nearestRoad(self) : PLACES.karakol.park;
     a.placeCar(spot.x, spot.z, Math.PI / 2);
     a.getOut();
@@ -372,7 +383,7 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, gang = null,
         a.getIn();
       }
       R.z = 'drive';
-      a.driveTo(PLACES[t.to].park).then(() => {
+      a.driveTo(placeOf(t.to).park).then(() => {
         if (R.z === 'drive' && !R.eng?.isRiding()) {
           a.getOut();
           R.z = 'wait';
@@ -1008,7 +1019,7 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, gang = null,
   // Görev başına en sık 6 sn'de bir (sunucu zaten şart sağlanmıyorsa hiçbir şey yazmaz).
   const curTaskId = mode === 'new' ? STORY_TASKS[pos - 1]?.taskId : null;
   const statusReady =
-    curTaskId === 9 ? Number(player?.suspicion || 0) >= 20 : curTaskId === 16 ? Boolean(player?.avatar) : curTaskId === 14 ? Boolean(player?.credit) : null;
+    curTaskId === 9 ? Number(player?.suspicion || 0) >= 20 : curTaskId === 14 ? Boolean(player?.credit) : null;
   useEffect(() => {
     if (!curTaskId || !STATUS_TASK_IDS.includes(curTaskId) || busy) return;
     if (statusReady === false) return; // şart henüz yok — sormaya gerek yok
@@ -1071,7 +1082,7 @@ const AmcaStory = forwardRef(function AmcaStory({ eng, uid, player, gang = null,
       const riding = e.isRiding() && e.story.riding();
       const driving = e.isDriving();
       const probe = e.jobProbe();
-      const pl = t.to ? PLACES[t.to] : null;
+      const pl = placeOf(t.to);
       const car = a.carPos;
       const d = car ? dist(car, me) : 99;
       if (riding && t.leave) {

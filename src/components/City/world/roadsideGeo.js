@@ -4,6 +4,7 @@
 // gidiş şeridinin yanı; sol (−1) = dönüş şeridinin yanı.
 // =============================================================================
 import { frameAt, ROAD_HALF, RIVER, riverMeander, naturalH } from './route.js';
+import { PIST_AREAS, PIST_ROAD } from './pistPlan.js'; // v219: Neon Şehir Pisti
 
 const PI = Math.PI;
 export const ss = (a, b, x) => {
@@ -27,7 +28,7 @@ export const SPOT_DEFS = [
 ];
 // köyler: sapak s'i, yönü, köy merkezi (yoldan uzaklık d), köy yüksekliği
 export const VILLAGE_DEFS = [
-  { key: 'golyaka', name: 'Gölyaka Köyü', s: 560, side: 1, d: 158, along: 22, y: 4.2, W: 110, D: 92 },
+  { key: 'golyaka', name: 'Gölyaka Köyü', s: 560, side: 1, d: 158, along: 72, y: 4.2, W: 110, D: 92 }, // v219: pist için 50 m kuzeye kaydı
   { key: 'camlica', name: 'Çamlıca Köyü', s: 3330, side: -1, d: 190, along: 18, y: 2.0, W: 110, D: 92 },
 ];
 export const BR_HALF = 3.4; // köy yolu yarı genişliği
@@ -546,6 +547,30 @@ export function geo() {
     hashBranch(br);
     branches.push(br);
   }
+  // v219 — NEON ŞEHİR PİSTİ: pist + pist girişi (festival) cepleri (köşeleri yuvarlatılmış) ve Neon Petrol'den pist yolu
+  PIST_AREAS.forEach((a) => {
+    const hw = (a.x1 - a.x0) / 2;
+    const hd = (a.z1 - a.z0) / 2;
+    const pd = { key: a.key, kind: a.kind, name: a.name, glyph: a.glyph, cx: a.x0 + hw, cz: a.z0 + hd, ry: 0, y0: 5, x0: -hw, x1: hw, z0: -hd, z1: hd, soft: true, round: a.round || 0, roundT: a.roundT || 0 };
+    pd.yAt = () => 5.05;
+    pd.r = Math.hypot(hw, hd) + 2;
+    pd.mx = pd.cx;
+    pd.mz = pd.cz;
+    pads.unshift(pd);
+  });
+  {
+    const pts = catmull(PIST_ROAD, 2);
+    const S = [0];
+    let L = 0;
+    for (let i = 1; i < pts.length; i++) S.push((L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1])));
+    const y0 = (pads.find((q) => q.key === 'benzin_gidis')?.yAt(40.1, -26) ?? 5) - 0.02;
+    const ys = pts.map((_, i) => y0 + (5.02 - y0) * (S[i] / (L || 1)));
+    const xs = pts.map((q) => q[0]);
+    const zs = pts.map((q) => q[1]);
+    const br = { key: 'pist_yolu', kind: 'sapak', noMesh: true, pts, ys, S, L, x0: Math.min(...xs) - 12, x1: Math.max(...xs) + 12, z0: Math.min(...zs) - 12, z1: Math.max(...zs) + 12 };
+    hashBranch(br);
+    branches.push(br);
+  }
   // bariyer boşlukları (yan + s aralığı)
   const gaps = pads.filter((p) => p.road).map((p) => ({ side: p.side, s0: p.s - p.len / 2 - 2, s1: p.s + p.len / 2 + 2 }));
   branches.filter((b) => b.s != null).forEach((b) => {
@@ -556,11 +581,21 @@ export function geo() {
   return G;
 }
 
+// v219: köşesi yuvarlatılmış cep (pist) — işaretli uzaklık (içeride < 0). round: kuzey (+z) köşeler, roundT: güney
+function roundDist(p, lx, lz) {
+  const r = lz < 0 ? p.roundT || 0 : p.round || 0;
+  const qx = Math.abs(lx) - (p.x1 - r);
+  const qz = Math.abs(lz) - (p.z1 - r);
+  return Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0) - r;
+}
 export function padAt(x, z, m = 0) {
   for (const p of geo().pads) {
     if (Math.abs(x - p.mx) > p.r + 40 || Math.abs(z - p.mz) > p.r + 40) continue;
     const l = toPad(p, x, z);
-    if (l.x >= p.x0 - m && l.x <= p.x1 + m && l.z >= p.z0 - m && l.z <= p.z1 + m) return p;
+    if (l.x >= p.x0 - m && l.x <= p.x1 + m && l.z >= p.z0 - m && l.z <= p.z1 + m) {
+      if ((p.round || p.roundT) && roundDist(p, l.x, l.z) > m) continue;
+      return p;
+    }
   }
   return null;
 }
@@ -615,7 +650,7 @@ export function carve(x, z, h) {
     const l = toPad(p, x, z);
     const cx = Math.max(p.road ? 0 : p.x0, Math.min(p.x1, l.x));
     const cz = Math.max(p.z0, Math.min(p.z1, l.z));
-    const dd = Math.hypot(l.x - cx, l.z - cz);
+    const dd = p.round || p.roundT ? Math.max(0, roundDist(p, l.x, l.z)) : Math.hypot(l.x - cx, l.z - cz);
     if (dd > 46) continue;
     const ty = p.yAt(cx, cz) - (p.village || p.soft ? 0.12 : 0.35);
     const k = ss(2, 46, dd);
@@ -633,7 +668,13 @@ export function carve(x, z, h) {
     const k = ss(BR_HALF + 1.5, 30, b.d);
     out = ty + (out - ty) * k;
   }
-  return out;
+  return pistFlat(x, z, out);
+}
+// v219: pist girişi + festival alanı (x 482…688, z −250,5…−199) düz kalsın; dışarı doğru yumuşak yükselir
+function pistFlat(x, z, h) {
+  const dx = Math.max(482 - x, 0, x - 688);
+  const dz = Math.max(-250.5 - z, 0, z + 199);
+  return Math.min(h, 4.9 + Math.hypot(dx, dz) * 0.45);
 }
 // ağaç / kaya koymama
 export function nearFeature(x, z, m = 8) {

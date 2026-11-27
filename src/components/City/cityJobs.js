@@ -16,7 +16,7 @@ import { LIMAN_BAY, DEPOTS, HOSPITAL, BUS_STOPS, ROAD_SPOTS, KURYE_PICKUPS, KURY
 import { JOBS, jobDailyOf } from '../../../functions/vehicleKinds.js';
 import { frameAt, LEN, LANE, TOWN, fromTown, toTown, inTownRect, nearest } from './world/route.js';
 import { geo as roadsideGeo, padAt as roadsidePadAt } from './world/roadsideGeo.js';
-import { LAYOUT_LOTS, P, BLOCK, COLS, ROWS, cx, cz } from './cityLayout.js';
+import { LAYOUT_LOTS, P, BLOCK, COLS, ROWS, cx, cz, ALLEY_X } from './cityLayout.js';
 
 const STOP_V = 1.4;
 
@@ -29,7 +29,9 @@ const RX = Array.from({ length: COLS + 3 }, (_, k) => cx(k) - P / 2); // −120 
 const RZ = Array.from({ length: ROWS + 3 }, (_, k) => cz(k - 2) - P / 2); // −180 … 100
 // birden çok hücreyi kaplayan lotlar (park, pist, liman, otogar, stadyum) aradaki yolları kapatır
 const BIG = LAYOUT_LOTS.filter((l) => l.x1 - l.x0 > BLOCK + 1 || l.z1 - l.z0 > BLOCK + 1).map((l) => [l.x0, l.x1, l.z0, l.z1]);
-const coveredRoad = (x, z) => BIG.some(([x0, x1, z0, z1]) => x > x0 + 1 && x < x1 - 1 && z > z0 + 1 && z < z1 - 1);
+// v219: dar ara sokaklar (x = −80 pazar sokağı, x = 160 sanayi) araçlara kapalı — iki yanındaki bloklar yolu kaplar
+const alleyClosed = (x, z) => ALLEY_X.some((ax) => Math.abs(x - ax) < 1) && z > RZ[0] + 1 && z < RZ[RZ.length - 1] - 1;
+const coveredRoad = (x, z) => alleyClosed(x, z) || BIG.some(([x0, x1, z0, z1]) => x > x0 + 1 && x < x1 - 1 && z > z0 + 1 && z < z1 - 1);
 const NODES = [];
 RX.forEach((x, i) => RZ.forEach((z, j) => NODES.push({ i, j, x, z, id: i * RZ.length + j })));
 const nodeAt = (i, j) => (i >= 0 && j >= 0 && i < RX.length && j < RZ.length ? NODES[i * RZ.length + j] : null);
@@ -242,11 +244,12 @@ function navGraph() {
   };
   // kavşaklar: yan yolun uçları (ve otoyola değen noktaları) en yakın başka yola bağlanır
   const padNodes = new Map(); // köy meydanı → merkez düğüm
-  brLines.forEach(({ ids }) => {
+  brLines.forEach(({ b, ids }) => {
     [ids[0], ids.at(-1)].forEach((end) => {
       const others = lines.filter((l) => !l.includes(end));
       const n = nearestOn(nodes[end].x, nodes[end].z, others);
-      if (n.id >= 0 && n.d < 16) {
+      // v219: pist yolu benzinlik cebinden (otoyolun yanı) başlar → otoyola daha uzaktan bağlanır
+      if (n.id >= 0 && (n.d < 16 || (b.key === 'pist_yolu' && end === ids[0] && n.d < 60))) {
         link(end, n.id);
         return;
       }

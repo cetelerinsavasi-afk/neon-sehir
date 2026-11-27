@@ -210,6 +210,13 @@ export const HOUSE_PRODUCTS = {
   // v154 — yeni seyyar satıcılar
   balikekmek: { label: 'Balık Ekmek', emoji: '🐟' },
   midye: { label: 'Midye Dolma', emoji: '🦪' },
+  // v219 — La Marea (lüks restoran)
+  sarap: { label: 'Kırmızı Şarap', emoji: '🍷' },
+  sampanya: { label: 'Şampanya', emoji: '🥂' },
+  biftek: { label: 'Biftek', emoji: '🥩' },
+  istakoz: { label: 'Istakoz', emoji: '🦞' },
+  sushi: { label: 'Suşi', emoji: '🍣' },
+  tiramisu: { label: 'Tiramisu', emoji: '🍰' },
   tabanca: { label: 'Tabanca', emoji: '🔫' },
   tufek: { label: 'Tüfek', emoji: '🔫' },
   pompali: { label: 'Pompalı', emoji: '🔫' },

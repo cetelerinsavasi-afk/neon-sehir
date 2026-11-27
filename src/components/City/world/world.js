@@ -655,8 +655,8 @@ export function buildToll(group, G = GISE) {
     const gl = new THREE.Mesh(new THREE.BoxGeometry(1.14, 1.0, 2.0), glassM);
     gl.position.set(a, 2.1, 0);
     g.add(gl);
-    const col = new THREE.Mesh(new THREE.BoxGeometry(0.5, 4.4, 0.5), boothM);
-    col.position.set(a, 5, 4.5);
+    const col = new THREE.Mesh(new THREE.BoxGeometry(0.5, 6.2, 0.5), boothM); // v219: sütun yere iner (havada kalıyordu)
+    col.position.set(a, 3.4, 4.5);
     g.add(col);
     const col2 = col.clone();
     col2.position.z = -4.5;

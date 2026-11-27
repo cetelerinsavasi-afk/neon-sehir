@@ -40,6 +40,9 @@ export const animalPrice = (kind) => VEHICLE_CATALOG[ANIMALS[kind]?.cid]?.price 
 // inmişken süre dolarsa bisiklet kaybolur. Bisiklet Firestore'da araç olmaz (sadece şehirde).
 //   users/{uid}.bikeRentUntil (ms) — en fazla 2 dakika ileriye ödenebilir
 export const BIKE_RENT = { perMin: 100, slotMs: 60_000, maxAheadMs: 90_000, paint: '#2fb35a' };
+// v219 — KAYKAY (aktivite parkındaki büfe): bisiklet gibi dakikalık kira ya da bir kez satın alma.
+// users/{uid}.skate = true (sahip) · users/{uid}.skateRentUntil (ms). Araç belgesi yok (sadece şehirde).
+export const SKATE = { price: 5000, rentPerMin: 100, slotMs: 60_000, maxAheadMs: 90_000 };
 
 export function createStable({ db, FieldValue, HttpsError, goldTag, statWrite, newVehicleDoc, dayKey, now = () => Date.now() }) {
   const fail = (code, msg) => {
@@ -85,5 +88,34 @@ export function createStable({ db, FieldValue, HttpsError, goldTag, statWrite, n
     });
     return { ok: true, until, now: t, price: BIKE_RENT.perMin };
   }
-  return { animalBuy, bikeRent, ops: { animalBuy, bikeRent } };
+  async function skateRent(uid) {
+    const t = now();
+    let until = 0;
+    await db.runTransaction(async (tx) => {
+      const u = (await tx.get(userRef(uid))).data();
+      if (!u) fail('failed-precondition', 'Oyuncu bulunamadı.');
+      if (u.skate) {
+        until = t + SKATE.slotMs; // kendi kaykayı var: ücret yok
+        return;
+      }
+      const cur = Math.max(t, Number(u.skateRentUntil) || 0);
+      if (cur - t > SKATE.maxAheadMs) fail('failed-precondition', 'already-paid');
+      if ((u.gold || 0) < SKATE.rentPerMin) fail('failed-precondition', 'Yetersiz altın.');
+      until = cur + SKATE.slotMs;
+      tx.update(userRef(uid), { gold: FieldValue.increment(-SKATE.rentPerMin), goldTag: goldTag('kaykayKira'), skateRentUntil: until });
+    });
+    return { ok: true, until, now: t, price: SKATE.rentPerMin };
+  }
+  async function skateBuy(uid, p) {
+    if (p?.expect != null && Number(p.expect) !== SKATE.price) fail('aborted', `price-changed:${SKATE.price}`);
+    await db.runTransaction(async (tx) => {
+      const u = (await tx.get(userRef(uid))).data();
+      if (!u) fail('failed-precondition', 'Oyuncu bulunamadı.');
+      if (u.skate) fail('failed-precondition', 'Zaten bir kaykayın var.');
+      if ((u.gold || 0) < SKATE.price) fail('failed-precondition', 'Yetersiz altın.');
+      tx.update(userRef(uid), { gold: FieldValue.increment(-SKATE.price), goldTag: goldTag('arac'), skate: true, skateRentUntil: FieldValue.delete() });
+    });
+    return { ok: true, price: SKATE.price };
+  }
+  return { animalBuy, bikeRent, skateRent, skateBuy, ops: { animalBuy, bikeRent, skateRent, skateBuy } };
 }

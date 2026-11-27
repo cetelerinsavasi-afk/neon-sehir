@@ -22,6 +22,7 @@ import { PARK, inPark, parkCarve, buildNorthPark, pondY, inPond } from './northP
 import { BEACH_RECT, DECKS, coastH, SEA_Y } from '../coast.js';
 import { geo as rsGeo, padAt, branchAt, toPad, fromPad, carve as rsCarve, nearFeature, BR_HALF, pierLocal } from './roadsideGeo.js';
 import { KORDON_X, COAST_X, OUTER, EAST_GATE_Z } from '../cityLayout.js';
+import { inPistArea, PIST_NAME } from './pistPlan.js'; // v219
 
 const PI = Math.PI;
 const V = THREE.Vector3;
@@ -33,6 +34,11 @@ export const EXIT = { x0: 196, x1: 206, z0: -146.4, z1: -133.6 }; // v158: yol +
 export const inExit = (x, z) => x > EXIT.x0 && x < EXIT.x1 && z > EXIT.z0 && z < EXIT.z1;
 // motordaki şehir ızgarasının kapsadığı alan
 export const CITY_GRID = { x0: WALK.x0 - 2, x1: EXIT.x1 + 12, z0: BOUNDS.z0 - 2, z1: WALK.z1 + 1 };
+// v219 — AÇIK DENİZ: yürüme ızgarasının dışında da yüzülür (batıda ~600 m, güneyde ~260 m daha). Izgara
+// büyümez (açılış / bellek aynı); ızgaranın dışındaki deniz engelsiz sayılır, sınırı deniz yüzeyinin içinde.
+export const SEA_OPEN = { x0: -960, z1: COAST_Z + 380 };
+export const inOpenSea = (x, z) =>
+  (x >= SEA_OPEN.x0 && x < WALK.x0 + 2 && z >= OUTER.z0 && z <= SEA_OPEN.z1) || (z > WALK.z1 - 2 && z <= SEA_OPEN.z1 && x >= SEA_OPEN.x0 && x <= BOUNDS.x1 - 4);
 
 // mekân türü → oyundaki 3D mekân (functions/venueLayouts.js VENUES) — içeride oyunun işlemleri
 // v159 — oyuncuların işletme açabildiği dükkânlar artık şehirde içine girilmeyen binalar: kapı kapalı
@@ -105,8 +111,9 @@ function patchCity(city) {
     l.kit.group.removeFromParent();
     l.kit.__cut = true;
     const rot = l.face === 'e' || l.face === 'w';
-    const v = VENUE_BUILDERS[l.type]({ w: (rot ? l.bd : l.bw) - 6, d: (rot ? l.bw : l.bd) - 6 });
-    v.rebuild = () => VENUE_BUILDERS[l.type]({ w: (rot ? l.bd : l.bw) - 6, d: (rot ? l.bw : l.bd) - 6 }); // v157.2: iç mekân yeniden kurulumu
+    const mg = l.type === 'belediye' ? 2 : 6; // v219: belediye kanatlarıyla lotu doldurur
+    const v = VENUE_BUILDERS[l.type]({ w: (rot ? l.bd : l.bw) - mg, d: (rot ? l.bw : l.bd) - mg });
+    v.rebuild = () => VENUE_BUILDERS[l.type]({ w: (rot ? l.bd : l.bw) - mg, d: (rot ? l.bw : l.bd) - mg }); // v157.2: iç mekân yeniden kurulumu
     if (v.ml) v.rebuild = null; // v196: evin katları kalıcı (eşyalar setHome ile değişir)
     v.root.position.set(l.mx, 0, l.mz);
     v.ry = { s: 0, e: PI / 2, n: PI, w: -PI / 2 }[l.face] || 0;
@@ -907,6 +914,7 @@ export function finishCityWorld(W, scene) {
     if (inTownRect(x, z, 2)) return 'town';
     if (x > BOUNDS.x1 - 2 && Math.abs(z - EAST_GATE_Z) < 4 && x < BOUNDS.x1 + 3) return x < BOUNDS.x1 ? 'city' : 'hwy';
     if ((x >= WALK.x0 && x <= BOUNDS.x1 + 1 && z >= OUTER.z0 && z <= WALK.z1) || inExit(x, z)) return 'city';
+    if (inOpenSea(x, z)) return 'city'; // v219: açık deniz
     return 'hwy';
   }
   W.modeAt = modeAt;
@@ -925,8 +933,8 @@ export function finishCityWorld(W, scene) {
   W.cityWalkInit = (x, z) => {
     if (x > EXIT.x0 && z > EXIT.z0 && z < EXIT.z1) return false;
     if (x > BOUNDS.x1 - 2 && Math.abs(z - EAST_GATE_Z) < 3.6) return false;
-    if (x < KORDON_X + 0.5) return x < WALK.x0 + 2 || (z > COAST_Z + 2.9 && x > KORDON_X - 2); // kumsal + deniz (yüzülür)
-    if (z > COAST_Z + 2.9) return z > WALK.z1 - 2 || x > BOUNDS.x1; // güney denizi + marina (yüzülür)
+    if (x < KORDON_X + 0.5) return z > COAST_Z + 2.9 && x > KORDON_X - 2; // kumsal + deniz (yüzülür) · v219: açık denize sınır yok
+    if (z > COAST_Z + 2.9) return x > BOUNDS.x1; // güney denizi + marina (yüzülür)
     return x < BOUNDS.x0 - 3 || x > BOUNDS.x1 || z > BOUNDS.z1;
   };
 
@@ -1246,6 +1254,7 @@ export function finishCityWorld(W, scene) {
   W.zoneName = (x, z, mode, s) => {
     if (mode === 'town') return 'Kervankent';
     if (mode === 'city') return null;
+    if (inPistArea(x, z)) return PIST_NAME; // v219: Neon Şehir Pisti (yolu dahil)
     const b = branchAt(x, z);
     if (b && b.d < 14) return { vadi: 'Akçay Vadisi Köy Yolu', golyaka: 'Gölyaka Köyü', camlica: 'Çamlıca Köyü', gol_yolu: 'Kuğu Gölü Yolu', maden_yolu: 'Maden Yolu', cete_yol: 'Hurdalık Yolu' }[b.b.key] || 'Köy yolu';
     const p = padAt(x, z);

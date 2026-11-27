@@ -8,8 +8,11 @@ import * as THREE from 'three';
 import { Kit, M, glowMat, floorMat, floorRep, canvasTex } from '../kit.js';
 import { buildVehicle } from '../vehicles.js';
 import { ROAD_HALF, frameAt } from './route.js';
-import { geo, fromPad, BR_HALF, STABLES } from './roadsideGeo.js';
+import { geo, fromPad, toPad, BR_HALF, STABLES } from './roadsideGeo.js';
+import { paintBay } from '../jobBuildings.js';
+import { DEPOTS } from '../../../../functions/cityJobsData.js';
 import { buildBenzinlikVenue, buildHqVenue, HQ_SLOTS, ROOM as VROOM_RS, stripVenueInt } from './venues.js';
+import { buildPistPad, buildPistGirisPad } from './pist.js'; // v219: Neon Şehir Pisti
 
 const PI = Math.PI;
 
@@ -301,6 +304,73 @@ function fenceRun(kit, x0, z0, x1, z1, y) {
   kit.solid((x0 + x1) / 2, (z0 + z1) / 2, L / 2, 0.08, ry);
 }
 
+// v219 — Neon Petrol (gidiş): pist yoluna sapan yeşil şerit çizgileri + "PİST →" tabelası
+function pistExitMarks(kit, p) {
+  const y = Yp(p);
+  const pts = [[16.5, 6], [16.5, -14], [19, -20], [24, -24.5], [32, -26], [40.4, -26]];
+  const m = M('#39ff88', 0.5);
+  for (let k = 0; k < pts.length - 1; k++) {
+    const [ax, az] = pts[k];
+    const [bx, bz] = pts[k + 1];
+    const L = Math.hypot(bx - ax, bz - az);
+    const ry = -Math.atan2(bz - az, bx - ax);
+    for (const sd of [-1, 1]) {
+      const ox = (-(bz - az) / L) * 3.2 * sd;
+      const oz = ((bx - ax) / L) * 3.2 * sd;
+      const b = kit.box(L, 0.02, 0.18, m, (ax + bx) / 2 + ox, y((ax + bx) / 2, (az + bz) / 2) + 0.012, (az + bz) / 2 + oz, { cast: false, ry });
+      b.renderOrder = 1;
+    }
+  }
+  for (const [x, z, ry] of [[16.5, 0, -PI / 2], [16.5, -10, -PI / 2], [32, -26, 0]]) {
+    const b = kit.box(2.4, 0.02, 0.5, m, x, y(x, z) + 0.013, z, { cast: false, ry });
+    b.renderOrder = 1;
+  }
+  kit.sign('pist_yon', 'PİST →', 0.5, 16.5, y(16.5, -12) + 5.4, -12.5, 0, { color: '#06202a', bg: '#39ff88', font: '900 100px Arial, sans-serif', light: false });
+}
+// v219 — cebin dış kenarından araziye inen çakıl şev (cep havada kalmasın)
+function padSkirt(kit, p, key = 'cakil', W = 4.5) {
+  const groundAt = p.groundAt;
+  if (!groundAt) return;
+  const edges = [
+    [[p.x1, p.z0], [p.x1, p.z1], [1, 0]],
+    [[ROAD_HALF + 1.2, p.z0], [p.x1, p.z0], [0, -1]],
+    [[ROAD_HALF + 1.2, p.z1], [p.x1, p.z1], [0, 1]],
+  ];
+  const rep = floorRep(key);
+  edges.forEach(([a, b, [nx, nz]]) => {
+    const L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const n = Math.max(2, Math.ceil(L / 2));
+    const pos = [];
+    const uv = [];
+    const idx = [];
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      const x = a[0] + (b[0] - a[0]) * t;
+      const z = a[1] + (b[1] - a[1]) * t;
+      const y0 = p.yAt(x, z) - p.y0 - 0.02;
+      const ox = x + nx * W;
+      const oz = z + nz * W;
+      const w = fromPad(p, ox, oz);
+      const y1 = groundAt(w.x, w.z) - p.y0 + 0.02;
+      pos.push(x, y0, z, ox, y1, oz);
+      uv.push(x / rep, z / rep, ox / rep, oz / rep);
+    }
+    for (let i = 0; i < n; i++) {
+      const k = i * 2;
+      idx.push(k, k + 2, k + 1, k + 1, k + 2, k + 3);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    const mesh = new THREE.Mesh(g, floorMat(key).clone());
+    mesh.material.side = THREE.DoubleSide;
+    mesh.receiveShadow = true;
+    kit.add(mesh);
+  });
+}
+
 // --- CEP İÇERİKLERİ ---------------------------------------------------------------------------
 // her biri: (kit, p, ctx) → zones (yerel): [{ x, z, r, acts: [{ id, label }], truck?: true }]
 const B = {};
@@ -311,7 +381,11 @@ B.benzin = (kit, p, ctx) => {
   padGround(kit, p, X0, p.x1, p.z0, p.z1, 'asfalt');
   // yol ile istasyon arası ada (giriş/çıkış uçlarda)
   island(kit, p, ROAD_HALF + 2.2, p.z0 + 16, p.z1 - 16);
-  curb(kit, p, p.x1, p.z0, p.x1, p.z1);
+  // v219: gidiş istasyonunun arkasında pist yoluna çıkış (bordürde boşluk)
+  if (p.key === 'benzin_gidis') {
+    curb(kit, p, p.x1, p.z0, p.x1, -31);
+    curb(kit, p, p.x1, -21, p.x1, p.z1);
+  } else curb(kit, p, p.x1, p.z0, p.x1, p.z1);
   curb(kit, p, ROAD_HALF + 1.2, p.z0, p.x1, p.z0);
   curb(kit, p, ROAD_HALF + 1.2, p.z1, p.x1, p.z1);
   // sundurma (tır geçer: 6,2 m) — v157.4: market içine girilebilir oldu, kanopi 1 m yola yaklaştı
@@ -369,11 +443,17 @@ B.benzin = (kit, p, ctx) => {
   parkVehicle(kit, 2, mx - 9, y(mx - 9, 25.5), 25.5, PI / 2);
   for (const [x, z] of [[p.x1 - 1.2, p.z0 + 4], [p.x1 - 1.2, p.z1 - 4], [mx - 6, -20]]) lampPost(kit, x, y(x, z), z, 0);
   ctx.npc.push({ x: cx - 2.4, z: 2.5, name: 'Pompacı', av: { clothing: 'jacket', clothColor: '#ff2d8a', hat: 'cap', hatColor: '#14161b', pantsColor: '#2b3550' }, lines: ['Depoyu dolduralım mı abi?', 'Camları da silelim.', 'Motorin tarafı içeride, tır şeridi.'] });
+  if (p.key === 'benzin_gidis') pistExitMarks(kit, p);
   return [{ x: cx, z: 0, r: 9, acts: [{ id: 'yakit', label: '⛽ Depoyu doldur' }], truck: true, foot: true }];
 };
 
+// v219 — Neon Şehir Pisti: pist + pist girişi / festival alanı (world/pist.js)
+B.pist = (kit, p, ctx) => buildPistPad(kit, p, ctx);
+B.pistgiris = (kit, p, ctx) => buildPistGirisPad(kit, p, ctx);
+
 B.polis = (kit, p, ctx) => {
   const y = Yp(p);
+  padSkirt(kit, p); // v219
   padGround(kit, p, ROAD_HALF - 1.6, p.x1, p.z0, p.z1, 'asfalt');
   curb(kit, p, p.x1, p.z0, p.x1, p.z1);
   // koniler: cep girişini işaretleyen huni
@@ -986,6 +1066,11 @@ B.maden = (kit, p, ctx) => {
   const gm = ruinGravelMat();
   gm.color = new THREE.Color('#c9b896');
   padGround(kit, p, p.x0, p.x1, p.z0, p.z1, gm, 0);
+  // v219: tır mal teslim alanı (cityJobsData.DEPOTS[0] — yakın mesafe tır işi limandan buraya)
+  {
+    const tl = toPad(p, DEPOTS[0].x, DEPOTS[0].z);
+    paintBay(kit, tl.x, tl.z, 9, 7, '#e8b923', 'TESLİM', Y + 0.1);
+  }
   const rock = new THREE.MeshStandardMaterial({ color: '#6f6a62', roughness: 1, flatShading: true });
   // arkadaki kaya tepesi (ocak bunun içine açılır)
   const hill = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 2), rock);
@@ -1734,6 +1819,7 @@ function branchMat() {
   return brMat;
 }
 function buildBranch(group, b) {
+  if (b.noMesh) return; // v219: pist yolu kendi asfaltını world/pist.js'te çizer
   const pos = [];
   const uv = [];
   const idx = [];
@@ -1902,6 +1988,7 @@ export function buildRoadside(groundAt = () => 0) {
     root.add(kit.group);
     kits.push(kit);
     const ctx = { npc: [], animals: [], venues: [] };
+    p.groundAt = groundAt; // v219: cep kenarı şevleri araziye insin
     const fn = B[p.kind];
     p.zones = fn ? fn(kit, p, ctx) || [] : [];
     p.kit = kit;

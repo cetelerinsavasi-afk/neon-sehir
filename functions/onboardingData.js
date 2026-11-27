@@ -32,7 +32,8 @@
 //     Sunucu ilk ilerlemede yeni sırayı onboardingV: 4 ile yazar.
 export const ONBOARDING_V = 4;
 export const ONBOARDING_REMOVED_IDS = [8, 15, 18];
-export const ONBOARDING_ORDER = [1, 21, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 14, 16, 17, 19, 22, 20];
+// v219: kredi görevi (14) silah geliştirmenin (19) hemen önüne alındı: şampiyona → avatar → ChatsApp → kredi → silah
+export const ONBOARDING_ORDER = [1, 21, 2, 3, 4, 5, 6, 7, 9, 10, 11, 12, 13, 16, 17, 14, 19, 22, 20];
 export const ONBOARDING_TASK_COUNT = ONBOARDING_ORDER.length; // 19
 export const AMCA_FINALE_TASK_ID = 22; // "Rıza Amca ile hurdalığa git" (istemci senaryosu)
 

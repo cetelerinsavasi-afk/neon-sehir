@@ -16,7 +16,7 @@
 // Kontrol: açılışta + açıkken 5 dakikada bir neon-flags.json (küçük statik dosya; Firestore /
 // RTDB okuması YOK). Dosya yoksa / bozuksa / minBuild yoksa hiçbir şey yapılmaz.
 // =============================================================================
-export const BUILD = 216; // v216: tasma elde, fotoğrafta / görünüm değişince avatar dönmesin
+export const BUILD = 219; // v219: yeni şehir planı — eski istemciler (misafirler dahil) kendiliğinden yenilensin
 export const CHECK_MS = 5 * 60 * 1000;
 export const IDLE_MS = 3 * 60 * 1000;
 export const FIRST_TOUCH_MS = 30 * 1000;

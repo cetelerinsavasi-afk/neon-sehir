@@ -9,16 +9,17 @@ const src = (p) => readFileSync(new URL(`../../src/${p}`, import.meta.url), 'utf
 const code = (p) => src(p).replace(/\/\/.*$/gm, '').replace(/\{\/\*[\s\S]*?\*\/\}/g, '');
 
 test('withLive: canlı S belgenin üstüne yazılır; eski (v1) belge de çevrilir', () => {
-  const legacy = { v: 1, distDay: '2026-12-01', co: { simitci: { n: 14, acc: 5, ch: [1, 2], ps: [9] } } };
-  const m = withLive(legacy, { simitci: 15.5 * U, kofteci: 3 * U, bozuk: 'x' });
+  // v219: seyyar satıcılar tek hisse (seyyar)
+  const legacy = { v: 1, distDay: '2026-12-01', co: { seyyar: { n: 14, acc: 5, ch: [1, 2], ps: [9] } } };
+  const m = withLive(legacy, { seyyar: 15.5 * U, hastane: 3 * U, bozuk: 'x' });
   assert.equal(m.v, 2);
   assert.equal(m.distDay, '2026-12-01');
-  assert.equal(coState(m, 'simitci').u, 15.5 * U);
-  assert.deepEqual(coState(m, 'simitci').ch, [1, 2]);
-  assert.equal(coState(m, 'kofteci').u, 3 * U);
-  assert.equal(coState(withLive(legacy, null), 'simitci').u, 14 * U, 'canlı yoksa belge');
-  assert.equal(fmtShares(coState(m, 'simitci').u), '15,5');
-  assert.equal(sortCos(m)[0].id, 'simitci', 'hisse başına gelire göre sıralı');
+  assert.equal(coState(m, 'seyyar').u, 15.5 * U);
+  assert.deepEqual(coState(m, 'seyyar').ch, [1, 2]);
+  assert.equal(coState(m, 'hastane').u, 3 * U);
+  assert.equal(coState(withLive(legacy, null), 'seyyar').u, 14 * U, 'canlı yoksa belge');
+  assert.equal(fmtShares(coState(m, 'seyyar').u), '15,5');
+  assert.equal(sortCos(m)[0].id, 'seyyar', 'hisse başına gelire göre sıralı');
 });
 
 test('piyasa kancası: onSnapshot yok, getDoc + RTDB borsaFiyat', () => {

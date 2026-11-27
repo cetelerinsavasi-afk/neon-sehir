@@ -1,5 +1,6 @@
 // v176 — Neon Borsa: seyyar satıcıların profil resimleri (çizim SVG, dış görsel yok)
 export const VENDOR_LOOK = {
+  seyyar: { c: '#ffb347', bg: '#33200a' }, // v219: 6 tezgâh tek hisse
   kokorecci: { c: '#ff8a3d', bg: '#3a1d0e' },
   simitci: { c: '#ffc845', bg: '#3a2a0a' },
   donerci: { c: '#5cc8ff', bg: '#0b2a3d' },
@@ -25,6 +26,22 @@ export const VENDOR_LOOK = {
 
 function Art({ id }) {
   switch (id) {
+    case 'seyyar':
+      return (
+        <>
+          <path d="M14 30h52l-4-10H18z" fill="#ff5a6e" />
+          <path d="M22 20l-3 10M32 20l-1 10M42 20v10M52 20l1 10M62 20l3 10" stroke="#fff3e0" strokeWidth="3" />
+          <rect x="18" y="30" width="44" height="22" rx="3" fill="#ffc845" />
+          <rect x="22" y="34" width="36" height="8" rx="2" fill="#3a2a0a" />
+          <circle cx="30" cy="38" r="2.6" fill="#ff8a3d" />
+          <circle cx="40" cy="38" r="2.6" fill="#f2a65a" />
+          <circle cx="50" cy="38" r="2.6" fill="#7df0c0" />
+          <circle cx="26" cy="58" r="6" fill="#222" />
+          <circle cx="54" cy="58" r="6" fill="#222" />
+          <circle cx="26" cy="58" r="2.4" fill="#aaa" />
+          <circle cx="54" cy="58" r="2.4" fill="#aaa" />
+        </>
+      );
     case 'kokorecci':
       return (
         <>

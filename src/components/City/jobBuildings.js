@@ -184,7 +184,7 @@ export function buildBusStop(kit, stop) {
   }
   add(new THREE.BoxGeometry(2.6, 0.08, 0.45), M('#6b4423', 0.7), 0, 0.5, -0.65); // bank
   // v159.1: duraktaki banka oturulabilir (3 kişilik, yüz yola dönük)
-  for (const x of [-0.85, 0, 0.85]) kit.seats.push({ o: g, x, y: 0.54, z: -0.66, reach: 2.1 }); // v159.3: önden de (yoldan) erişilir
+  for (const x of [-0.85, 0, 0.85]) kit.seats.push({ o: g, x, y: 0.54, z: -0.66, reach: 2.1, front: true }); // v159.3: önden de (yoldan) erişilir · v219: sadece önden
   // tabela direği + durak levhası
   add(new THREE.CylinderGeometry(0.05, 0.05, 3.1, 8), frame, 2.1, 1.55, 0.55);
   const tex = signTex(stop);
@@ -205,8 +205,24 @@ export function buildBusStop(kit, stop) {
     bay.add(o);
   };
   for (let i = -5; i <= 5; i++) zig(i * 1.2, 0, 0.18, 1.4, i % 2 ? 0.7 : -0.7);
-  const alongX = Math.abs(stop.fz) > 0.5;
-  kit.solid(stop.sx + stop.fx * 0.6, stop.sz + stop.fz * 0.6, alongX ? 1.8 : 0.8, alongX ? 0.8 : 1.8);
+  // v219: tek kutu yerine durağın gerçek parçaları (arka cam, yan camlar, bank, direk) — içine girilip banka oturulur
+  {
+    const q = Math.atan2(-stop.fx, -stop.fz);
+    const qc = Math.cos(q);
+    const qs = Math.sin(q);
+    const cx = stop.sx + stop.fx * 0.4;
+    const cz = stop.sz + stop.fz * 0.4;
+    const at = (a, b) => [cx + a * qc + b * qs, cz - a * qs + b * qc];
+    const S = (a, b, w, d) => {
+      const p = at(a, b);
+      kit.solid(p[0], p[1], w, d, q);
+    };
+    S(0, -1, 1.85, 0.1);
+    S(-1.75, -0.2, 0.08, 0.75);
+    S(1.75, -0.2, 0.08, 0.75);
+    S(0, -0.66, 1.3, 0.2);
+    S(2.1, 0.55, 0.08, 0.08);
+  }
   kit.label(`🚏 ${stop.name}`, stop.sx, 3.4, stop.sz, 'vendor');
 }
 function signTex(stop) {

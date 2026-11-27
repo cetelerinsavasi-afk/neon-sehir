@@ -60,7 +60,7 @@ test('kurallar: galeri ticari satmaz, ömür değeri, şoför geliri bölüşüm
   assert.equal(JOBS.tir.avg, 9000);
   assert.equal(JOBS.otobus.avg, 18750);
   assert.equal(JOBS.taksi.avg, 2250);
-  assert.equal(JOBS.ambulans.avg, 5250);
+  assert.equal(JOBS.ambulans.avg, 6825); // v219: ambulans geliri +%30
 });
 
 test('durakdan taksi: 1 tane; v202 Ticari Araç Vergisi fiyatın üstüne (alıcı öder), şirkete %50 vergisiz; hurda sayılmaz', async () => {

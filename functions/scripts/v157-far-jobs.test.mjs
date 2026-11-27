@@ -26,7 +26,7 @@ const runOne = async (ops, clock, vid, range) => {
 
 test('v157: tek şehir deposu kaldı (limana yakın olan kalktı), uzak depo Kervankent', () => {
   assert.equal(DEPOTS.length, 1);
-  assert.equal(DEPOTS[0].key, 'dogu');
+  assert.equal(DEPOTS[0].key, 'maden'); // v219: teslim Neon Elmas Madeni'nde
   assert.ok(FAR_DEPOT.x > 2000 && FAR_DEPOT.z < -2000);
   assert.equal(OTOGARS.length, 2);
 });

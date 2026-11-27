@@ -55,7 +55,7 @@ const TASK_DEFS = {
   12: { emoji: '🏎️', title: 'Yarış pistinden antrenmana gir ve 1. seviyeyi tamamla', info: 'Hem kendini geliştir hem para kazan.' },
   13: { emoji: '🏆', title: 'Yarış pistinden Şampiyonaya gir', info: 'Günün şampiyonu para ödülünü alır.' },
   14: { emoji: '🏦', title: 'Bankadan kredi çek', info: 'Kredi puanını yükselterek daha fazla kredi çekebilirsin.' },
-  16: { emoji: '👤', title: 'Profile gir ve avatarını düzenle', info: "Alttaki Profil sekmesinden avatarını düzenleyebilir, adını değiştirebilirsin." },
+  16: { emoji: '👤', title: 'Görünümünü değiştir', info: 'Şehirdeki berber, butik, takı & şapka, aksesuarcı, petshop ya da kostümcüye gir; beğendiğin bir şeyi al.' }, // v219: avatar artık dükkânlarda
   17: { emoji: '💬', title: 'Telefon > ChatsApp uygulamasına gir ve bi mesaj gönder', info: 'Diğer oyuncularla konuş.' },
   19: { emoji: '🔧', title: 'Silahçıda silahını geliştir', info: 'Silah Mağazası ya da bir oyuncunun silahçı dükkânında 🛠️ Atölye\'den silahını geliştirerek daha büyük soygunlar yapabilirsin.' },
   // v168: Rıza Amca senaryosunun son sahnesi (sadece hurdalığa gidip sahne bitince geçer)

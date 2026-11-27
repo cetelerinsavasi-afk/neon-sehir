@@ -47,11 +47,12 @@ export const JOBS = {
   // taksi 1.000→1.500, ambulans 3.000→3.500). Polis arabası oyundan kalktı (görev kayıtları için tanım duruyor).
   // v195: ticari ücretler ×1,5 (tır 6.000→9.000, otobüs 12.500→18.750, taksi 1.500→2.250, ambulans 3.500→5.250).
   // farMul, jobPerf, vergi ve şirket payı aynı. Polis ve kurye değişmedi.
+  // v219: ambulans geliri %30 arttı (5.250 → 6.825).
   tir: { id: 11, name: 'Tır', icon: '🚛', daily: 5, dailyFar: 2, farMul: 3, avg: 9000, unit: 'sevkiyat', verb: 'Sevkiyat' },
   otobus: { id: 12, name: 'Otobüs', icon: '🚌', daily: 1, dailyFar: 1, farMul: 1.5, avg: 18750, unit: 'sefer', verb: 'Sefer' },
   taksi: { id: 13, name: 'Taksi', icon: '🚕', daily: 10, avg: 2250, unit: 'yolcu', verb: 'Yolcu' },
   polis: { id: 14, name: 'Polis', icon: '🚓', daily: 10, avg: 4000, unit: 'görev', verb: 'Görev' },
-  ambulans: { id: 15, name: 'Ambulans', icon: '🚑', daily: 10, avg: 5250, unit: 'hasta', verb: 'Hasta' },
+  ambulans: { id: 15, name: 'Ambulans', icon: '🚑', daily: 10, avg: 6825, unit: 'hasta', verb: 'Hasta' },
   // v154: motokurye — HER motorla (21-24); satıcıdan al → mekâna götür. Ücret mesafeyle artar.
   // v199: kurye geliri 2 katı (500 → 1.000); şoförlük vergisi + %10 sipariş parası (seyyar satıcıya) kesilir
   kurye: { id: 21, name: 'Motokurye', icon: '🛵', daily: 10, avg: 1000, unit: 'sipariş', verb: 'Teslimat', motor: true },

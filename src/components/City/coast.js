@@ -553,7 +553,11 @@ function buildWestCoast(kit) {
 }
 
 // --- NEON MARİNA (güney kıyısı, liman sağında) ------------------------------------------
-export const MARINA = { x0: 30, x1: OUTER.x1, z0: COAST_Z + 2.9, z1: COAST_Z + 80, gates: [62, 170] };
+// v219: marina şehrin güneybatısına taşındı (liman doğuda). Kit yerel koordinatta kurulur, grup MARINA_DX kayar;
+// MARINA (dünya) korkuluk boşlukları / harita için.
+export const MARINA_DX = -142;
+const MARINA_GATES_LOCAL = [62, 170];
+export const MARINA = { x0: 30 + MARINA_DX, x1: OUTER.x1 + MARINA_DX, z0: COAST_Z + 2.9, z1: COAST_Z + 80, gates: MARINA_GATES_LOCAL.map((g) => g + MARINA_DX) };
 function buildMarina(kit) {
   const MZ = COAST_Z + 2.9;
   const Y = -0.05;
@@ -570,7 +574,7 @@ function buildMarina(kit) {
   const mainZ0 = MZ + 4;
   const mainZ1 = MZ + 7.5;
   pont(36, mainZ0, 196, mainZ1);
-  MARINA.gates.forEach((gx) => {
+  MARINA_GATES_LOCAL.forEach((gx) => {
     pont(gx - 1.6, MZ - 0.4, gx + 1.6, mainZ0);
     // giriş kemeri
     const archM = M('#14161b', 0.4, 0.6);
@@ -675,6 +679,15 @@ export function buildCoast() {
   const west = new Kit('bati_sahil');
   buildWestCoast(west);
   const marina = new Kit('marina');
+  const nd = DECKS.length;
+  const np = BEACH_POIS.length;
   buildMarina(marina);
+  // v219: marina batıya kaydı — yürünebilir iskeleler ve harita noktaları da kayar
+  marina.group.position.x = MARINA_DX;
+  for (let i = nd; i < DECKS.length; i++) {
+    DECKS[i].x0 += MARINA_DX;
+    DECKS[i].x1 += MARINA_DX;
+  }
+  for (let i = np; i < BEACH_POIS.length; i++) BEACH_POIS[i].x += MARINA_DX;
   return [west, marina];
 }

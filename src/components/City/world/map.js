@@ -9,7 +9,7 @@ import { COAST_X, KORDON_X, OUTER, COAST_Z } from '../cityLayout.js';
 import { DECKS, BEACH_POIS } from '../coast.js';
 import { fromPad } from './roadsideGeo.js';
 import { PATHS as PARK_PATHS, POND, PARK } from './northPark.js';
-import { PIST_PLAN, pistMapGeom } from './pistPlan.js'; // v160 taslak: yeni yarış pisti (sadece harita)
+import { PIST_PLAN, pistMapGeom } from './pistPlan.js'; // v219: Neon Şehir Pisti (şehir dışı)
 
 const PI = Math.PI;
 export const PAL = {
@@ -35,18 +35,20 @@ const TYPE_COL = {
   banka: '#c7d6ea', karakol: '#c4cce0', belediye: '#e6dbc4', camii: '#cfe3dc', galeri: '#e2d6e8', silah: '#d9cfcf',
   modifiye: '#d8d5cc', casino: '#e3cde6', spor: '#d3e0ea', fabrika: '#d6d1c4', netkafe: '#cfdbe6', bar: '#ead1d8', cafe: '#eadfcc',
   ev: '#e8dcc8', hastane: '#f0d4d4', benzinlik: '#d4e6d4', taksi_duragi: '#f2e3a6', otogar: '#e6d0d0', ofis: '#dfe6ee', mustakil: '#e4ead2',
+  motor: '#d8d5cc', tamir: '#d8d5cc', konteyner: '#d6d1c4', bos: '#e3dccb', aktivite: '#d4e6d4', restoran: '#ead1d8', otopark2: '#dcdcd6', // v219
 };
 const ICON_COL = {
   banka: '#2f6fd0', karakol: '#1d3f8a', belediye: '#a8792a', camii: '#2d8a7a', galeri: '#7d3fa8', silah: '#8a2b2b', modifiye: '#5a5f68',
   casino: '#a8318a', spor: '#2f8ac2', fabrika: '#6b5a3a', netkafe: '#2a7ab8', bar: '#c23a6a', cafe: '#a8682a', ev: '#c2702a',
   stadyum: '#2f9e44', park: '#2f9e44', pist: '#d0402a', liman: '#1d6fa8', hastane: '#d0302a', benzinlik: '#2f9e5a', taksi_duragi: '#d9a400', otogar: '#c8141e', ofis: '#2a6fb5', mustakil: '#5a8a3a',
+  konteyner: '#6b5a3a', bos: '#c8941e', aktivite: '#2f8ac2', restoran: '#b8862a', otopark2: '#1d4f9a', // v219
 };
 // sokak adları (yer tutucu — oyunda değiştirilebilir)
-const STREETS_X = [ // yatay yollar: z
-  [-180, 'Kuzey Servis Yolu'], [-140, 'Kuzey Çevre Yolu'], [-100, 'Banka Caddesi'], [-60, 'Cumhuriyet Caddesi'], [-20, 'Park Caddesi'], [20, 'Stadyum Caddesi'], [60, 'Liman Caddesi'], [100, 'Sahil Yolu'],
+const STREETS_X = [ // yatay yollar: z — v219: yeni harita
+  [-180, 'Orman Yolu'], [-140, 'Hastane Caddesi'], [-100, 'Casino Caddesi'], [-60, 'Stadyum Caddesi'], [-20, 'Oto Sanayi Caddesi'], [20, 'Camii Caddesi'], [60, 'Park Caddesi'], [100, 'Marina Caddesi'],
 ];
 const STREETS_Z = [ // dikey yollar: x
-  [-120, 'Sahil Bulvarı'], [-80, 'Galeri Sokak'], [-40, 'Fabrika Sokak'], [0, 'Merkez Bulvarı'], [40, 'Kafe Sokak'], [80, 'Spor Sokak'], [120, 'Belediye Sokak'], [160, 'Doğu Çevre Yolu'], [200, 'Doğu Servis Yolu'],
+  [-120, 'Sahil Bulvarı'], [-80, 'Pazar Sokağı'], [-40, 'Belediye Caddesi'], [0, 'Cumhuriyet Bulvarı'], [40, 'Spor Caddesi'], [80, 'Galeri Caddesi'], [120, 'Tamirciler Sokağı'], [160, 'Otogar Caddesi'], [200, 'Doğu Çevre Yolu'],
 ];
 
 function canvas(w, h) {
@@ -70,6 +72,7 @@ const GLYPH_OF = {
   camii: 'mosque', banka: 'bank', karakol: 'police', belediye: 'gov', galeri: 'car', silah: 'target', modifiye: 'wrench',
   casino: 'spade', spor: 'dumbbell', fabrika: 'factory', netkafe: 'monitor', bar: 'cocktail', cafe: 'cup', ev: 'house',
   stadyum: 'ball', park: 'tree', pist: 'flag', liman: 'anchor', hastane: 'cross', benzinlik: 'fuel', taksi_duragi: 'car', otogar: 'bus', ofis: 'gov', mustakil: 'house',
+  konteyner: 'box', bos: 'truck', aktivite: 'ball', restoran: 'fork', otopark2: 'parking', // v219
   melon: 'fork', rest: 'cup', honey: 'fork', corn: 'fork', village: 'house', light: 'flag', anchor2: 'anchor', boat: 'anchor', view: 'eye', beach: 'umbrella',
 };
 // birim koordinat (−1…1), beyaz
@@ -654,6 +657,7 @@ export function createMap({ city, cityExtraLots, solids, citySolidCount, town, s
   city.lots.forEach((l) => {
     const d = lotTypes[l.type];
     if (!d || l.kit.__cut) return;
+    if (l.type === 'motor' || l.type === 'tamir') return; // v219: simgeleri zemin kat dükkânından gelir (extraPois)
     let p = { x: l.mx, z: l.mz };
     if (l.info?.door && l.kit.group.parent) {
       const v = l.kit.group.localToWorld(l.kit.group.position.clone().set(l.info.door.x, 0, l.info.door.z));
@@ -666,8 +670,8 @@ export function createMap({ city, cityExtraLots, solids, citySolidCount, town, s
   town.pois.forEach((p) => pois.push(p));
   pois.push({ ...frameAt(TAGS.gise), type: 'gise', glyph: 'toll', icon: '🚧', name: 'Gişeler', color: '#1f6fd0' });
   pois.push({ ...frameAt(LEN - 46), type: 'gise', glyph: 'toll', icon: '🚧', name: 'Kervankent Gişeleri', color: '#1f6fd0' });
-  const RS_COL = { cete: '#6a1a1a', piknik: '#2f7a3a', benzin: '#2f9e5a', polis: '#1d3f8a', karpuz: '#2f8f4a', seyir: '#2a7ab8', dinlenme: '#a8682a', cep: '#1d4f9a', bal: '#c2862a', kantar: '#5a5f68', misir: '#c8501a', koy: '#6b8f2a' };
-  const GL_OF = { fuel: 'fuel', police: 'police', melon: 'fork', view: 'eye', rest: 'cup', parking: 'parking', honey: 'fork', scale: 'scale', corn: 'fork', village: 'house', skull: 'target' };
+  const RS_COL = { pist: '#c8141e', pistgiris: '#c8141e', cete: '#6a1a1a', piknik: '#2f7a3a', benzin: '#2f9e5a', polis: '#1d3f8a', karpuz: '#2f8f4a', seyir: '#2a7ab8', dinlenme: '#a8682a', cep: '#1d4f9a', bal: '#c2862a', kantar: '#5a5f68', misir: '#c8501a', koy: '#6b8f2a' };
+  const GL_OF = { flag: 'flag', fuel: 'fuel', police: 'police', melon: 'fork', view: 'eye', rest: 'cup', parking: 'parking', honey: 'fork', scale: 'scale', corn: 'fork', village: 'house', skull: 'target' };
   let rsDraw = null;
   if (roadside) {
     roadside.pads.forEach((pd) => {
@@ -681,8 +685,8 @@ export function createMap({ city, cityExtraLots, solids, citySolidCount, town, s
     };
   }
   if (park) park.pois.forEach((q) => pois.push({ ...q, type: `park_${q.key}` }));
-  // v160 taslak — yeni yarış pisti + köy yolu (3D dünyada henüz yok)
-  const pistG = PIST_PLAN.show ? pistMapGeom() : null;
+  // v219 — Neon Şehir Pisti (şehrin dışında; simgesi yol üstü ceplerinden gelir)
+  const pistG = pistMapGeom();
   if (pistG) {
     // pist katmanı bir kez çizilir (2 px/m): saha, asfalt, tribün, pit; köprü en üstte gölgeli
     const xs = pistG.segs.flatMap((q) => q.ground.map((p) => p[0]));
@@ -711,6 +715,14 @@ export function createMap({ city, cityExtraLots, solids, citySolidCount, town, s
       pistG.segs.forEach((q) => q.bridge === bridge && poly(q.asphalt, '#575b64', '#575b64', 0.6));
     };
     poly(pistG.park, '#e3dfd5', '#cfc8ba');
+    // v219: servis yolu (pit → son viraj)
+    if (pistG.service) {
+      g.beginPath();
+      pistG.service.forEach(([x, z], i) => (i ? g.lineTo(x, z) : g.moveTo(x, z)));
+      g.lineWidth = 7;
+      g.strokeStyle = '#ffffff';
+      g.stroke();
+    }
     layer(false);
     poly(pistG.stands, '#c9ccd4', '#9aa0aa');
     poly(pistG.pits, '#dfe3ea', '#9aa0aa');
@@ -723,7 +735,7 @@ export function createMap({ city, cityExtraLots, solids, citySolidCount, town, s
     pistG.canvas = pc;
     pistG.cb = cb;
     pistG.cs = cs;
-    pois.push({ ...pistG.poi, type: 'pist_yeni', glyph: 'flag', name: PIST_PLAN.name, color: ICON_COL.pist, big: true });
+    if (PIST_PLAN.show) pois.push({ ...pistG.poi, type: 'pist_yeni', glyph: 'flag', name: PIST_PLAN.name, color: ICON_COL.pist, big: true });
   }
   BEACH_POIS.forEach((b) => pois.push({ ...b, type: `plaj_${b.key}`, glyph: GLYPH_OF[b.glyph] || b.glyph, color: b.key === 'marina' || b.key === 'yatkulubu' ? '#1d6fa8' : '#e07a1f', big: b.key === 'neon_plaji' || b.key === 'marina' }));
   // yer adları

@@ -363,7 +363,7 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
     if (!a || !b) return true;
     if (Math.hypot(a.x - b.x, a.z - b.z) > 0.2) return true;
     if (Math.abs((a.y ?? 0) - (b.y ?? 0)) > 0.3) return true; // v196: evde kat değişti
-    for (const k of ['l', 'm', 'p', 'sy', 'e', 'et', 'h', 'ro', 'rk', 'r', 'hm', 'fj']) if (a[k] !== b[k]) return true; // v196: eve girdi / çıktı hemen gitsin · v216.3: fırlama
+    for (const k of ['l', 'm', 'p', 'sy', 'e', 'et', 'h', 'ro', 'rk', 'r', 'hm', 'fj', 'hl', 'fd']) if (a[k] !== b[k]) return true; // v196: eve girdi / çıktı hemen gitsin · v216.3: fırlama · v219: helikopter, masadaki yemek
     return false;
   };
   // v160 — ŞEHİR ÖRTÜLÜYKEN GÖRÜNMEZ: karargah / ev / işletme ekranı şehrin üstünde açıkken
@@ -424,9 +424,9 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
       }
       lastSent = null;
     }
-    const inCar = state.p === 'd' || state.p === 'r';
+    const inCar = state.p === 'd' || state.p === 'r' || state.p === 'h'; // v219: helikopter (konumu hl taşır, sürüş sıklığında)
     // arabadayken sadece konum değiştiyse seyrek (konumu araba kaydı taşır); yürürken kalabalığa göre
-    const minGap = inCar ? (sameButPos(state, lastSent) ? IN_CAR_POS_MS : DRIVE_MS) : MOVE_MS * k;
+    const minGap = state.hl ? DRIVE_MS : inCar ? (sameButPos(state, lastSent) ? IN_CAR_POS_MS : DRIVE_MS) : MOVE_MS * k;
     if ((changed(state, lastSent) && now - lastSentAt >= minGap) || now - lastSentAt >= HEARTBEAT_MS) {
       lastSent = state;
       lastSentAt = now;
@@ -565,4 +565,86 @@ export function clearCityBox(uid, key) {
   rt()
     .then(({ m, db }) => m.remove(m.ref(db, `cityBox/${uid}/${key}`)))
     .catch(() => {});
+}
+
+// =============================================================================
+// v219 — paylaşılan küçük düğümler (helikopter kilidi, aktivite parkı topları): city/heli, city/ball/{f|b}
+// Sadece motor (cityExtras.js) kullanır. Misafir (readOnly) okur ama yazamaz.
+// =============================================================================
+export function createSharedNet({ readOnly = false } = {}) {
+  let offset = 0;
+  let offOff = null;
+  let dead = false;
+  rt()
+    .then(({ m, db }) => {
+      if (dead) return;
+      offOff = m.onValue(m.ref(db, '.info/serverTimeOffset'), (s) => (offset = Number(s.val()) || 0));
+    })
+    .catch(() => {});
+  const subs = new Set();
+  const TS = { '.sv': 'timestamp' };
+  return {
+    TS: () => TS,
+    now: () => Date.now() + offset,
+    sub(path, cb) {
+      let off = null;
+      let gone = false;
+      rt()
+        .then(({ m, db }) => {
+          if (gone || dead) return;
+          off = m.onValue(m.ref(db, path), (s) => cb(s.val()), () => {});
+        })
+        .catch(() => {});
+      const un = () => {
+        gone = true;
+        subs.delete(un);
+        try {
+          off?.();
+        } catch {
+          /* yoksay */
+        }
+      };
+      subs.add(un);
+      return un;
+    },
+    set(path, val) {
+      if (readOnly || dead) return;
+      rt().then(({ m, db }) => withTimeout(m.set(m.ref(db, path), val), 8000)).catch(() => {});
+    },
+    update(path, val) {
+      if (readOnly || dead) return;
+      rt().then(({ m, db }) => withTimeout(m.update(m.ref(db, path), val), 8000)).catch(() => {});
+    },
+    // transaction: fn(cur) → yeni değer | undefined (vazgeç). Promise<boolean> (yazıldı mı)
+    async tx(path, fn) {
+      if (readOnly || dead) return false;
+      try {
+        const { m, db } = await rt();
+        const r = await withTimeout(m.runTransaction(m.ref(db, path), (cur) => fn(cur), { applyLocally: false }), 8000);
+        return Boolean(r?.committed);
+      } catch {
+        return false;
+      }
+    },
+    onDisc(path, val) {
+      if (readOnly || dead) return;
+      rt()
+        .then(({ m, db }) => (val && typeof val === 'object' ? m.onDisconnect(m.ref(db, path)).update(val) : m.onDisconnect(m.ref(db, path)).set(val)))
+        .catch(() => {});
+    },
+    cancelDisc(path) {
+      rt()
+        .then(({ m, db }) => m.onDisconnect(m.ref(db, path)).cancel())
+        .catch(() => {});
+    },
+    dispose() {
+      dead = true;
+      subs.forEach((u) => u());
+      try {
+        offOff?.();
+      } catch {
+        /* yoksay */
+      }
+    },
+  };
 }

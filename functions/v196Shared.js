@@ -26,6 +26,9 @@ export const CLOSING_STREAM_OPS = ['price'];
 // (brüt üzerinden, mekânın oranı) + kalan → mekân hissedarları (Neon Borsa).
 // v198: + tamirci (Oto Tamirci — hastane ile belediyenin yanındaki binanın zemin katı)
 export const VENUE_SHARE_TYPES = ['silahci', 'galeri', 'motogaleri', 'modifiye', 'spor', 'cafe', 'bar', 'internet', 'tamirci'];
+// v219: Cafe ve Bar hisseleri KAPANDI — alım yok, satış serbest; yeni gelir hissedarlara gitmez (yok olur).
+// Hepsi satılınca (piyasada 0) Neon Borsa'dan kalkar.
+export const VENUE_SHARE_CLOSED = ['cafe', 'bar'];
 export const VENUE_EXPENSE_FRAC = 0.5;
 // Belediye vergi kalemi (belediyeRates.js 'isletme' grubu)
 export const VENUE_TAX_ITEM = {
@@ -98,6 +101,10 @@ export const NET_MINUTE_PRICE = { play: 100, stream: 200 };
 export const SLOT_SPIN_PRICE = 1400;
 export const LOTTERY_TICKET_PRICE = 100;
 export const DEPO_CONTRABAND_BUY_PRICE = 2000; // oyuncu depodan alır
+// v219 — La Marea Restoran (lüks): bar fiyatlarının 2–3 katı. Alınan eldedir; para yok olur (hisse / sahip yok).
+export const RESTORAN_MENU = Object.freeze({
+  sampanya: 1500, istakoz: 1500, sarap: 1000, kokteyl: 900, biftek: 900, sushi: 800, makarna: 700, tiramisu: 600, su: 150,
+});
 export const MENU_PRICES = Object.freeze({
   cay: 50, su: 50, kola: 100, ayran: 100, meyveSuyu: 100, kahve: 100, espresso: 150, latte: 150, enerji: 150,
   simit: 100, kurabiye: 150, tost: 150, pasta: 200, sosisli: 200, pizza: 300, kebap: 300, kokteyl: 300, viski: 500,

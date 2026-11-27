@@ -422,6 +422,135 @@ const ART = {
     g.fillRect(-23, 14, 46, 6);
     g.restore();
   },
+  // v219 — La Marea (lüks restoran) menüsü
+  // Şarap: uzun ayaklı kadeh, koyu kırmızı
+  sarap(g) {
+    g.beginPath();
+    g.moveTo(40, 22);
+    g.quadraticCurveTo(36, 70, 64, 74);
+    g.quadraticCurveTo(92, 70, 88, 22);
+    g.closePath();
+    fillOut(g, 'rgba(230,240,248,0.45)');
+    g.beginPath();
+    g.moveTo(39, 44);
+    g.quadraticCurveTo(40, 70, 64, 72);
+    g.quadraticCurveTo(88, 70, 89, 44);
+    g.closePath();
+    g.fillStyle = lin(g, 0, 44, 0, 72, [[0, '#9c1b3a'], [1, '#5a0a1e']]);
+    g.fill();
+    rr(g, 61, 74, 6, 34, 2);
+    fillOut(g, 'rgba(230,240,248,0.7)', 2);
+    g.beginPath();
+    g.ellipse(64, 112, 22, 6, 0, 0, Math.PI * 2);
+    fillOut(g, 'rgba(230,240,248,0.7)', 2);
+    shine(g, 46, 28, 4, 30);
+  },
+  // Şampanya: flüt kadeh, altın köpük
+  sampanya(g) {
+    g.beginPath();
+    g.moveTo(50, 14);
+    g.lineTo(78, 14);
+    g.lineTo(72, 78);
+    g.lineTo(56, 78);
+    g.closePath();
+    fillOut(g, 'rgba(230,240,248,0.45)');
+    g.beginPath();
+    g.moveTo(52, 30);
+    g.lineTo(76, 30);
+    g.lineTo(71, 76);
+    g.lineTo(57, 76);
+    g.closePath();
+    g.fillStyle = lin(g, 0, 30, 0, 76, [[0, '#ffe08a'], [1, '#e0a92a']]);
+    g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.9)';
+    [[60, 46], [66, 58], [62, 66], [68, 40]].forEach(([x, y]) => {
+      g.beginPath();
+      g.arc(x, y, 2.2, 0, Math.PI * 2);
+      g.fill();
+    });
+    rr(g, 61, 78, 6, 30, 2);
+    fillOut(g, 'rgba(230,240,248,0.7)', 2);
+    g.beginPath();
+    g.ellipse(64, 112, 20, 6, 0, 0, Math.PI * 2);
+    fillOut(g, 'rgba(230,240,248,0.7)', 2);
+  },
+  // Biftek: tabakta ızgara izli et, yeşillik
+  biftek(g) {
+    g.beginPath();
+    g.ellipse(64, 76, 56, 30, 0, 0, Math.PI * 2);
+    fillOut(g, '#f4f4f2');
+    g.beginPath();
+    g.ellipse(58, 72, 34, 20, -0.2, 0, Math.PI * 2);
+    fillOut(g, '#8a3b1c');
+    g.strokeStyle = '#4a1a08';
+    g.lineWidth = 4;
+    [-14, -2, 10].forEach((d) => {
+      g.beginPath();
+      g.moveTo(40 + d, 60);
+      g.lineTo(60 + d, 86);
+      g.stroke();
+    });
+    [[96, 70, '#4caf50'], [100, 82, '#7cc242'], [90, 86, '#e53935']].forEach(([x, y, c]) => {
+      g.beginPath();
+      g.arc(x, y, 7, 0, Math.PI * 2);
+      g.fillStyle = c;
+      g.fill();
+    });
+  },
+  // Istakoz: kırmızı gövde, iki kıskaç
+  istakoz(g) {
+    g.beginPath();
+    g.ellipse(64, 80, 30, 18, 0, 0, Math.PI * 2);
+    fillOut(g, '#f4f4f2');
+    g.beginPath();
+    g.ellipse(64, 72, 12, 26, 0, 0, Math.PI * 2);
+    fillOut(g, '#e2452b');
+    [-1, 1].forEach((sx) => {
+      g.beginPath();
+      g.moveTo(64 + sx * 8, 54);
+      g.quadraticCurveTo(64 + sx * 30, 40, 64 + sx * 34, 24);
+      g.lineWidth = 6;
+      g.strokeStyle = '#c8301b';
+      g.stroke();
+      g.beginPath();
+      g.ellipse(64 + sx * 36, 20, 10, 14, sx * 0.4, 0, Math.PI * 2);
+      fillOut(g, '#e2452b', 2.5);
+    });
+    g.fillStyle = '#111';
+    [-4, 4].forEach((dx) => {
+      g.beginPath();
+      g.arc(64 + dx, 52, 2.2, 0, Math.PI * 2);
+      g.fill();
+    });
+  },
+  // Suşi: tahtada 3 parça
+  sushi(g) {
+    rr(g, 14, 72, 100, 22, 6);
+    fillOut(g, '#b9864a');
+    [30, 64, 98].forEach((x, i) => {
+      rr(g, x - 14, 52, 28, 22, 8);
+      fillOut(g, '#fbfaf5', 2);
+      rr(g, x - 15, 44, 30, 14, 6);
+      fillOut(g, i === 1 ? '#f4a259' : '#ff7a6b', 2);
+      g.fillStyle = '#1f2a1f';
+      g.fillRect(x - 3, 44, 6, 30);
+    });
+  },
+  // Tiramisu: kare dilim, kakao
+  tiramisu(g) {
+    g.beginPath();
+    g.ellipse(64, 96, 52, 14, 0, 0, Math.PI * 2);
+    fillOut(g, '#f4f4f2');
+    rr(g, 30, 44, 68, 50, 6);
+    fillOut(g, '#f3e3c3');
+    g.fillStyle = '#8a5a2b';
+    g.fillRect(31, 58, 66, 6);
+    g.fillRect(31, 76, 66, 6);
+    rr(g, 30, 40, 68, 10, 4);
+    fillOut(g, '#5a3417', 2);
+    rr(g, 30, 44, 68, 50, 6);
+    outline(g);
+  },
   // Kokteyl: kadeh, renkli içki, şemsiye, limon
   kokteyl(g) {
     g.beginPath();

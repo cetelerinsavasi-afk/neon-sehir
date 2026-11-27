@@ -12,7 +12,10 @@ import { VENUES } from '../../../functions/venueLayouts.js';
 import * as J from './jobBuildings.js';
 import { BUS_STOPS, LIMAN_BAY, VENDOR_SPOTS } from '../../../functions/cityJobsData.js';
 
-import { P, BLOCK, SIDE, COLS, ROWS, cx, cz, COAST_Z, BOUNDS, LOTS, COAST_X, OUTER, PARK_GATES, EAST_GATE_Z } from './cityLayout.js';
+import { P, BLOCK, SIDE, COLS, ROWS, cx, cz, COAST_Z, BOUNDS, LOTS, COAST_X, OUTER, PARK_GATES, EAST_GATE_Z, CELL_LOTS, EXTRA_LOTS, FILLER_SEEDS, ALLEY_X, ALLEY_EXT } from './cityLayout.js';
+import * as SN from './world/sanayi.js'; // v219: sanayi sitesi, inşaat alanı
+import { buildPazar, buildOtopark, buildOtoparkLot } from './world/pazar.js'; // v219: pazar yeri + otopark
+import { buildAktivite } from './world/aktivite.js'; // v219: aktivite parkı
 import { buildCoast, MARINA } from './coast.js';
 export { P, BLOCK, SIDE, COLS, ROWS, cx, cz, COAST_Z, BOUNDS, COAST_X, OUTER };
 
@@ -46,7 +49,17 @@ const T = {
   // v157.4 — müstakil evler mahallesi (girilmez; bahçeli 4 ev) + ofis binası (girilir: danışma lobisi)
   mustakil: { build: B.buildMustakil, name: 'Müstakil Evler', icon: '🏡', open: true },
   ofis: { build: B.buildOfisDis, region: 'ofis', name: 'Ofisler', icon: '🏢', label: '🏢 Ofisler' },
+  // v219 — yeni harita: sanayi sitesi (girilmez; motor galerisi + oto tamirci zemin kat dükkânları içerir)
+  motor: { build: SN.buildMotorLot, name: 'Neon Motor Galerisi', icon: '🏍️', open: true },
+  tamir: { build: SN.buildTamirLot, name: 'Oto Tamirci', icon: '🔧', open: true },
+  konteyner: { build: SN.buildKonteyner, name: 'Konteyner Sahası', icon: '📦', open: true },
+  bos: { build: SN.buildInsaat, name: 'İnşaat Alanı', icon: '🏗️', open: true },
+  aktivite: { build: buildAktivite, region: 'aktivite', name: 'Aktivite Parkı', icon: '🏀' },
+  restoran: { build: () => ({}), region: 'restoran', name: 'La Marea Restoran', icon: '🍽️' }, // bina: world/venues.js (girilir)
+  otopark2: { build: buildOtoparkLot, region: 'otopark', name: 'Açık Otopark', icon: '🅿️' },
 };
+// v219: sanayi tipleri — kaldırım lambası/ağaç dizilmez (kendi çevre düzenleri var)
+const NO_SIDEWALK = new Set(['motor', 'modifiye', 'fabrika', 'galeri', 'tamir', 'konteyner', 'bos']);
 
 // Seyyar satıcılar: mekân değil, sokakta (lot yerel koordinatı)
 // v154: tek kaynak functions/cityJobsData.js (motokurye alma noktaları da buradan)
@@ -71,9 +84,13 @@ export function buildCity() {
   ground.mesh(planeGeo(X1 - X0, Z1 - Z0, (X1 - X0) / rep, (Z1 - Z0) / rep), floorMat('asfalt'), (X0 + X1) / 2, 0, (Z0 + Z1) / 2, 0, { cast: false, rx: -Math.PI / 2 });
 
   // lot ayırma
-  const lotDefs = LOTS.map(([type, i0, j0, i1 = i0, j1 = j0, face = 's']) => {
+  let lotDefs = LOTS.map(([type, i0, j0, i1 = i0, j1 = j0, face = 's', ext = {}]) => {
     for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) used.add(`${i},${j}`);
-    return { type, i0, j0, i1, j1, face };
+    return { type, i0, j0, i1, j1, face, ...ext };
+  });
+  // v219: birleşik ek lotların hücrelerinde dolgu olmaz
+  EXTRA_LOTS.forEach(([, i0, j0, i1 = i0, j1 = j0]) => {
+    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) used.add(`${i},${j}`);
   });
   // v155: batıda (i < 0) bina yok — deniz. Dış halka lotları artık uzatılmaz: aralarındaki
   // sokaklar açık, arkalarında servis yolu var (araçlar girer).
@@ -82,11 +99,17 @@ export function buildCity() {
       if (used.has(`${i},${j}`)) continue;
       const outer = i >= COLS || j < 0;
       const far = i > COLS || j < -1;
-      // v157.9: simitçinin bloğu (eski plaza) da müstakil evler; satıcı kaydı 'plaza' adıyla kalır
-      if (i === 2 && j === 4) lotDefs.push({ type: 'mustakil', alias: 'plaza', alt: 2, i0: i, j0: j, i1: i, j1: j, face: 's', outer, far });
-      else lotDefs.push({ type: 'filler', i0: i, j0: j, i1: i, j1: j, face: 's', outer, far });
+      // v219: bazı dolgu hücreleri mekân olur (restoran, otopark) ya da zemin katında dükkân açar (CELL_LOTS)
+      lotDefs.push({ type: 'filler', i0: i, j0: j, i1: i, j1: j, face: 's', outer, far, ...(CELL_LOTS[`${i},${j}`] || {}) });
     }
   }
+  EXTRA_LOTS.forEach(([type, i0, j0, i1 = i0, j1 = j0, face = 's']) => lotDefs.push({ type, i0, j0, i1, j1, face }));
+  // v219: dar ara sokaklar (x = −80, 160) — iki yanındaki bloklar yola 4 m uzar
+  lotDefs.forEach((l) => {
+    if (ALLEY_X.includes(cx(l.i1) + P / 2)) l.ex1 = Math.max(l.ex1 || 0, ALLEY_EXT);
+    if (ALLEY_X.includes(cx(l.i0) - P / 2)) l.ex0 = Math.max(l.ex0 || 0, ALLEY_EXT);
+  });
+  lotDefs = lotDefs.filter(Boolean);
 
   // yol orta çizgileri (kesikli) ve yaya geçitleri
   const lineM = M('#e9e4d4', 0.7);
@@ -110,7 +133,8 @@ export function buildCity() {
   for (let k = 0; k <= COLS + 2; k++) roadsZ.push(cx(k) - P / 2);
   const dash = (x, z, alongX) => ground.box(alongX ? 2.2 : 0.16, 0.02, alongX ? 0.16 : 2.2, lineM, x, 0.005, z, { cast: false, receive: true });
   roadsX.forEach((z) => {
-    for (let x = X0 + 4; x < X1 - 4; x += 5) if (!covered(x, z) && !nearCross(x, roadsZ)) dash(x, z, true);
+    // v219: sanayi iç caddesi (z = −20, x > 70) ve otogar önündeki kapalı bölüm çizgisiz
+    for (let x = X0 + 4; x < X1 - 4; x += 5) if (!covered(x, z) && !nearCross(x, roadsZ) && !(z === -20 && x > 70) && !(z === -100 && x > 128 && x < 165)) dash(x, z, true);
   });
   roadsZ.forEach((x) => {
     for (let z = Z0 + 4; z < Z1 - 6; z += 5) if (!covered(x, z) && !nearCross(z, roadsX)) dash(x, z, false);
@@ -118,7 +142,7 @@ export function buildCity() {
   // yaya geçitleri: her kavşağın dört kolu
   roadsX.forEach((z) => {
     roadsZ.forEach((x) => {
-      if (covered(x, z)) return;
+      if (covered(x, z) || (Math.abs(x - 160) < 1 && Math.abs(z + 100) < 1)) return; // v219: otogar önü kapalı kavşak
       for (const [dx, dz, along] of [[0, 6.2, true], [0, -6.2, true], [6.2, 0, false], [-6.2, 0, false]]) {
         if (covered(x + dx * 1.6, z + dz * 1.6)) continue;
         // v155: asfaltın dışına (yeşil alan / kordon) taşan yaya geçidi çizilmesin
@@ -161,9 +185,13 @@ export function buildCity() {
       for (const x of [-9, 9]) kit.item('palm', x, lot.d / 2 - 2, 0, 0);
       kit.item('parkbench', -5, lot.d / 2 - 1.2, 4, 0);
       kit.item('parkbench', 5, lot.d / 2 - 1.2, 4, 0);
-    } else B.buildFiller(kit, lot, n * 31 + l.i0 * 7 + l.j0 * 13, { tall: l.far ? 1.7 : l.outer ? 1.25 : 1, motoShop: l.i0 === 0 && l.j0 === 0, tamirShop: l.i0 === 6 && l.j0 === 0 }); // v177: camiinin arkası · v198: hastane + belediyenin yanı (oto tamirci)
+    } else {
+      // v219: motor galerisi ve oto tamirci artık sanayi sitesinde (kendi lotları); dolgularda dükkân sırası olabilir
+      const fs = FILLER_SEEDS[`${l.i0},${l.j0}`];
+      B.buildFiller(kit, lot, fs ? fs[0] : n * 31 + l.i0 * 7 + l.j0 * 13, { tall: fs ? fs[1] : l.far ? 1.7 : l.outer ? 1.25 : 1, shops: l.shops || null });
+    }
     // kaldırım lambaları + ağaçlar (blok kenarları)
-    if (l.type !== 'park') sidewalkProps(kit, lot, n, l);
+    if (l.type !== 'park' && !NO_SIDEWALK.has(l.type)) sidewalkProps(kit, lot, n, l);
     const entry = { ...l, kit, info, def, mx, mz, bw, bd, ry, lot };
     lots.push(entry);
     if (def && info.door) {
@@ -182,6 +210,7 @@ export function buildCity() {
     }
     if (info.mapLabel) kit.label(info.mapLabel.text, info.mapLabel.x || 0, info.mapLabel.y, info.mapLabel.z || 0, 'map');
   });
+  SN.buildSanayiStreet(ground); // v219: sanayi sitesi iç caddesi (kemer, tabela, park eden kamyonlar)
 
   // --- v151 otobüs durakları (iç halka, saat yönü) -------------------------------
   const stops = new Kit('duraklar');
@@ -269,6 +298,8 @@ export function buildCity() {
 
   // --- v155: batı kıyısı (kumsal, beach club, iskele) + Neon Marina ---------------------------
   kits.push(...buildCoast());
+  buildPazar(kits); // v219: pazar yeri (kuzeybatı)
+  buildOtopark(kits); // v219: otopark
 
   return { kits, lots, roadsX, roadsZ, covered, X0, X1, Z0, Z1 };
 }
@@ -306,9 +337,19 @@ function sidewalkProps(kit, lot, n, l) {
       const pz = sz === 0 ? t * len : sz;
       // lamba: yola baksın (r ters yönde)
       if ((k + s + n) % 2 === 0) kit.item('streetlamp', px, pz, (r + 4) % 8 === 0 ? 0 : (r + 4) % 8, 0, { y: 0.12 });
-      else if (!l.outer && (k + n) % 3 === 0) kit.item('tree', px, pz, 0, 0, { y: 0.12 });
+      else if (!l.outer && (k + n) % 3 === 0 && alleyFree(kit, px, pz)) kit.item('tree', px, pz, 0, 0, { y: 0.12 });
     }
   });
+}
+
+// v219: batıdaki dar ara sokağa (x = −80) ağaç dikilmez
+function alleyFree(kit, x, z) {
+  const g = kit.group;
+  const c = Math.cos(g.rotation.y);
+  const sn = Math.sin(g.rotation.y);
+  const wx = g.position.x + x * c + z * sn;
+  const wz = g.position.z - x * sn + z * c;
+  return !(Math.abs(wx + 80) < 6 && wz > -180 && wz < 100);
 }
 
 export { T as LOT_TYPES };

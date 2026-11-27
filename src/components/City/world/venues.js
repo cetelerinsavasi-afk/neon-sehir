@@ -16,6 +16,7 @@ import './newItems.js';
 import * as J from '../jobBuildings.js';
 import { makeCoach } from './otogar.js';
 import { buildHouseFloors, HOUSE_EXT_H } from './houseFloors.js'; // v196
+import { bulbs } from './pazar.js'; // v219: restoran ampul zinciri
 import { surfaceTexture, wallDef, floorDef } from '../../HouseScreen/houseTextures.js';
 
 const PI = Math.PI;
@@ -270,8 +271,9 @@ export function buildCamiiVenue(lot) {
   dome.scale.y = 0.92;
   hi.cyl(0.09, 0.13, 1.5, gold, 0, extH + 7.2, bz, 8);
   hi.mesh(new THREE.SphereGeometry(0.24, 12, 10), gold, 0, extH + 8.0, bz);
-  for (const [px, pz, ry] of [[0, bz + bd / 2 - 1.4, 0], [0, bz - bd / 2 + 1.4, PI], [bw / 2 - 1.4, bz, PI / 2], [-bw / 2 + 1.4, bz, -PI / 2]]) {
-    const hd = hi.mesh(new THREE.SphereGeometry(3.0, 24, 12, -PI / 2, PI, 0, PI / 2), lead, px, extH + 0.3, pz, ry);
+  // v219: yarım kubbeler ana kubbeye yaslandı ve dışa bakıyor
+  for (const [px, pz, ry] of [[0, bz + 4.2, 0], [0, bz - 4.2, PI], [5.3, bz, PI / 2], [-5.3, bz, -PI / 2]]) {
+    const hd = hi.mesh(new THREE.SphereGeometry(3.0, 24, 12, -PI / 2, PI, 0, PI / 2), lead, px, extH + 0.3, pz, ry + PI / 2);
     hd.scale.y = 0.85;
   }
   for (const sx of [-1, 1]) {
@@ -511,7 +513,127 @@ export function buildBelediyeVenue(lot) {
   P.base.item('streetlamp', -w / 2 + 1, d / 2 - 1.2, 0);
   P.base.item('streetlamp', w / 2 - 1, d / 2 - 1.2, 4);
   P.base.light(0, 6, pz + 3, '#ffe3ae', 8, 16);
+  // v219: geniş parselde iki yan kanat + arka kütle (revak önü merdiven)
+  if (w > 27) {
+    const ex = w / 2 - 0.6;
+    const z0 = bz - bd / 2 - 1.2;
+    const z1 = FZ;
+    const H = 12.9;
+    for (const sd of [-1, 1]) {
+      const a = (bw / 2) * sd;
+      const b = sd * ex;
+      const mx = (a + b) / 2;
+      const ww = Math.abs(b - a);
+      P.base.box(ww, H, z1 - z0, stone, mx, 0, (z0 + z1) / 2);
+      P.base.box(ww + 0.4, 0.5, z1 - z0 + 0.4, stone2, mx, H, (z0 + z1) / 2);
+      P.base.box(ww + 0.3, 0.5, 0.2, stone2, mx, 0, z1 + 0.1);
+      P.base.solid(mx, (z0 + z1) / 2, ww / 2, (z1 - z0) / 2);
+      P.base.blocker(ww, H, z1 - z0, mx, 0, (z0 + z1) / 2);
+      for (let f = 0; f < 3; f++) for (let k = 0; k < 2; k++) archWindow(P.base, mx + (k - 0.5) * (ww / 2), 1 + f * 3.9, z1 + 0.02, 0.9, 2.1, 0, '#ffe3ae', 1.1);
+      for (let f = 0; f < 3; f++) for (let k = 0; k < 6; k++) archWindow(P.base, b + sd * 0.02, 1 + f * 3.9, z0 + 1.6 + k * ((z1 - z0 - 3.2) / 5), 0.9, 2.1, (sd * PI) / 2, '#ffe3ae', 1.1);
+      P.base.box(0.8, H, 0.8, stone2, b - sd * 0.4, 0, z1 - 0.3);
+    }
+    const zb = -d / 2 + 0.6;
+    if (z0 - zb > 0.5) {
+      P.base.box(bw, H, z0 - zb, stone, 0, 0, (zb + z0) / 2);
+      P.base.solid(0, (zb + z0) / 2, bw / 2, (z0 - zb) / 2);
+    }
+    P.high.box(bw, 3.4, bd, stone, 0, 10, bz);
+    P.high.box(bw + 0.6, 0.45, bd + 0.6, stone2, 0, 13.4, bz);
+    for (let i = 0; i < 8; i++) {
+      const x = -bw / 2 + 1.4 + i * 2.45;
+      if (Math.abs(x) >= 2.4) archWindow(P.high, x, 10.5, FZ + 0.02, 0.9, 2, 0, '#ffe3ae', 1.1);
+    }
+    for (let i = 0; i < 3; i++) P.base.box(w - 4 - i * 0.6, 0.1 * (3 - i), 0.6, stone2, 0, 0, pz + 2.6 + i * 0.6, { cast: false });
+  }
   return finish(P, 'belediye', venue, { x: DOOR.x, z: FZ + 1.3 });
+}
+
+// v219 — LA MAREA RESTORAN (lüks): antrasit cephe, altın kornişler, bordo tente, ampul zinciri. Prototipten aktarıldı.
+export function buildRestoranVenue(e) {
+  DOOR.x = 0;
+  let t = newParts(`restoran`),
+    { w: n, d: r } = e,
+    gold = M(`#d4af37`, 0.25, 0.9),
+    dk = M(`#141418`, 0.45, 0.4),
+    bord = M(`#5a0f1a`, 0.7);
+  t.base.floor(`kaldirim`, n, r, 0, 0);
+  t.base.floor(`parke_ceviz`, n - 2, r / 2 - FRONT - 0.6, 0, (FRONT + r / 2) / 2, 0.16);
+  let H = 7.4;
+  shell(t, { ext: wallExt(`boya_antrasit`), extH: H, venue: NEW_VENUES.restoran, doorKey: `door_klasik`, vitrine: !0, ceil: `#2a1d16` });
+  t.high.box(BW + 0.7, 0.5, BD + 0.7, dk, 0, H, RZ);
+  t.high.box(BW + 0.78, 0.08, BD + 0.78, gold, 0, H + 0.5, RZ);
+  t.high.box(BW + 0.2, 0.12, 0.12, gold, 0, 3.66, FRONT + 0.2);
+  for (let i = 0; i < 4; i++) {
+    let x = -6.3 + i * 4.2;
+    t.high.mesh(new THREE.PlaneGeometry(2.6, 1.9), glowMat(`#ffd9a0`, 1.1), x, 5.5, FRONT + 0.02, 0, { cast: !1 });
+    t.high.box(2.9, 0.1, 0.12, gold, x, 4.48, FRONT + 0.08);
+    t.high.box(2.9, 0.1, 0.12, gold, x, 6.5, FRONT + 0.08);
+  }
+  for (let sx of [-1, 1]) {
+    t.low[0].box(0.34, H, 0.34, gold, sx * (BW / 2 + 0.05), 0, FRONT + 0.12);
+  }
+  t.low[0].box(BW, 0.18, 1.5, bord, 0, 3.72, FRONT + 0.8);
+  t.low[0].box(BW, 0.06, 0.06, gold, 0, 3.72, FRONT + 1.55);
+  t.low[0].box(4.6, 0.24, 3, dk, 0, 3.0, FRONT + 1.5);
+  t.low[0].box(4.7, 0.08, 0.08, gold, 0, 3.2, FRONT + 3);
+  t.low[0].mesh(new THREE.PlaneGeometry(4.2, 2.6), glowMat(`#ffd9a0`, 1.5), 0, 2.99, FRONT + 1.5, 0, { cast: !1, rx: Math.PI / 2 });
+  for (let sx of [-1, 1]) {
+    t.low[0].cyl(0.07, 0.07, 3, gold, sx * 2.15, 0, FRONT + 2.85, 10);
+    t.base.solid(sx * 2.15, FRONT + 2.85, 0.1, 0.1);
+    t.low[0].box(0.3, 0.48, 0.3, dk, sx * 1.5, 1.85, FRONT + 0.36);
+    t.low[0].mesh(new THREE.PlaneGeometry(0.22, 0.36), glowMat(`#ffd27a`, 2.4), sx * 1.5, 2.09, FRONT + 0.52, 0, { cast: !1 });
+  }
+  t.high.sign(`lm_ad`, `LA MAREA`, 1.6, 0, 5.5, FRONT + 0.1, 0, { color: `#f7e7b4`, glow: `#d4af37`, font: `italic 900 130px Georgia, serif`, li: 8, ld: 16 });
+  t.high.sign(`lm_ad2`, `RISTORANTE · DENİZ ÜRÜNLERİ`, 0.36, 0, 4.18, FRONT + 0.1, 0, {
+    color: `#d4af37`,
+    bg: `#141418`,
+    font: `700 90px Georgia, serif`,
+    light: !1,
+  });
+  t.low[0].sign(`lm_kapi`, `· LA MAREA ·`, 0.26, 0, 3.25, FRONT + 3.03, 0, { color: `#d4af37`, bg: `#141418`, font: `italic 800 90px Georgia, serif`, light: !1 });
+  t.base.item(`rugrunner`, 0, FRONT + 2.4, 0, 0, { solid: !1, y: 0.02 });
+  t.base.item(`rugrunner`, 0, FRONT + 5.6, 0, 0, { solid: !1, y: 0.02 });
+  for (let z of [FRONT + 1.4, FRONT + 3.4, FRONT + 5.4]) for (let sx of [-1, 1]) t.base.item(`stanchion`, sx * 1.35, z, 0, 0);
+  for (let sx of [-1, 1])
+    for (let z of [FRONT + 3.4, FRONT + 7.6]) {
+      t.base.item(`cafetable`, sx * 4.4, z, 0, 1);
+      t.base.item(`cafetable`, sx * 7.8, z, 0, 1);
+    }
+  for (let sx of [-1, 1]) for (let z of [FRONT + 5.5]) t.base.item(`umbrella`, sx * 6.1, z, 0, 0, { solid: !1 });
+  const P = [
+    [-9.3, FRONT + 1.2],
+    [-9.3, r / 2 - 1.1],
+    [9.3, FRONT + 1.2],
+    [9.3, r / 2 - 1.1],
+    [-2.6, r / 2 - 1.1],
+    [2.6, r / 2 - 1.1],
+  ];
+  P.forEach(([x, z]) => {
+    t.base.box(0.1, 3.9, 0.1, dk, x, 0, z);
+    t.base.solid(x, z, 0.08, 0.08);
+  });
+  bulbs(t.base, [-9.3, FRONT + 1.2], [-9.3, r / 2 - 1.1], 3.9);
+  bulbs(t.base, [9.3, FRONT + 1.2], [9.3, r / 2 - 1.1], 3.9);
+  bulbs(t.base, [-9.3, r / 2 - 1.1], [-2.6, r / 2 - 1.1], 3.9);
+  bulbs(t.base, [2.6, r / 2 - 1.1], [9.3, r / 2 - 1.1], 3.9);
+  bulbs(t.base, [-9.3, FRONT + 1.2], [-2.6, r / 2 - 1.1], 3.9);
+  bulbs(t.base, [9.3, FRONT + 1.2], [2.6, r / 2 - 1.1], 3.9);
+  t.base.item(`car_classic`, 11.5, FRONT + 6.4, 4, 4);
+  t.base.npcs.push({
+    outer: !1,
+    x: 2.4,
+    z: FRONT + 3.6,
+    name: `Kapı Görevlisi Emre`,
+    av: { clothing: `tuxedo`, clothColor: `#0d0d0d`, pantsColor: `#0d0d0d`, neckAcc: `bow`, hat: `none` },
+    lines: [`İyi akşamlar, rezervasyonunuz var mı?`, `Buyurun, kapı açık.`, `Arabanızı vale alsın mı?`],
+  });
+  t.base.pool(0, FRONT + 4.5, `#ffd9a0`, 16, 0.17, 0.42);
+  t.base.light(0, 3.2, FRONT + 3.5, `#ffd9a0`, 8, 14);
+  t.base.light(-6, 3.2, FRONT + 6, `#ffd9a0`, 6, 12);
+  t.base.light(6, 3.2, FRONT + 6, `#ffd9a0`, 6, 12);
+  terraceRail(t, r, 2.2);
+  return finish(t, `restoran`, NEW_VENUES.restoran, { x: 0, z: FRONT + 1.3 });
 }
 
 function finish(P, type, venue, door) {
@@ -641,27 +763,398 @@ export function buildCasinoVenue(lot) {
 }
 
 // --- SPOR SALONU (cam kutu, içi görünen, üstte havuz) ------------------------------
+function holeBox(k, w, h, d, m, cx, y, cz, H, o) {
+  var x0 = cx - w / 2,
+    x1 = cx + w / 2,
+    z0 = cz - d / 2,
+    z1 = cz + d / 2,
+    hx0 = Math.max(x0, H[0]),
+    hx1 = Math.min(x1, H[1]),
+    hz0 = Math.max(z0, H[2]),
+    hz1 = Math.min(z1, H[3]);
+  var b = function (a, c, e, f) {
+    if (c - a > 0.01 && f - e > 0.01) k.box(c - a, h, f - e, m, (a + c) / 2, y, (e + f) / 2, o || {});
+  };
+  b(x0, hx0, z0, z1);
+  b(hx1, x1, z0, z1);
+  b(hx0, hx1, z0, hz0);
+  b(hx0, hx1, hz1, z1);
+}
+function sporStairs(k, fm) {
+  var n = 12,
+    L = 5.7,
+    Z0 = -6.9,
+    H0 = 0.16,
+    H1 = 4.4,
+    run = L / n,
+    rise = (H1 - H0) / n,
+    cx = 8.275,
+    W = 1.25;
+  var st = M(`#d9dde3`, 0.5),
+    no = glowMat(`#5ad8ff`, 1.6),
+    dk = M(`#2a2e36`, 0.4, 0.7),
+    gl = GLASS();
+  for (var i = 0; i < n; i++) {
+    var hh = (i + 1) * rise;
+    k.box(W, hh, run + 0.01, st, cx, H0, Z0 + (i + 0.5) * run);
+    k.box(W, 0.025, 0.05, no, cx, H0 + hh - 0.01, Z0 + i * run + 0.03, { cast: !1 });
+  }
+  var ang = Math.atan2(H1 - H0, L),
+    len = Math.hypot(L, H1 - H0);
+  var r = k.box(0.06, 0.06, len, dk, 7.66, H0 + (H1 - H0) / 2 + 0.95, Z0 + L / 2, { center: !0 });
+  r.rotation.x = -ang;
+  for (var j = 0; j <= 4; j++) {
+    var zz = Z0 + 0.2 + (j * (L - 0.4)) / 4,
+      yy = H0 + (H1 - H0) * ((zz - Z0) / L);
+    k.box(0.05, 0.95, 0.05, dk, 7.66, yy, zz);
+  }
+  var gp = k.mesh(new THREE.PlaneGeometry(len, 0.85), gl, 7.64, H0 + (H1 - H0) / 2 + 0.5, Z0 + L / 2, Math.PI / 2, { cast: !1, receive: !1 });
+  gp.rotation.order = `YXZ`;
+  gp.rotation.x = ang;
+  gp.renderOrder = 5;
+  k.box(0.06, 0.06, L + 0.1, dk, 7.58, H1 + 1, Z0 + L / 2);
+  for (var q = 0; q <= 3; q++) k.box(0.05, 1, 0.05, dk, 7.58, H1, Z0 + (q * L) / 3);
+  var g2 = k.mesh(new THREE.PlaneGeometry(L, 0.9), gl, 7.58, H1 + 0.5, Z0 + L / 2, Math.PI / 2, { cast: !1, receive: !1 });
+  g2.renderOrder = 5;
+  k.box(1.4, 0.06, 0.06, dk, 8.3, H1 + 1, Z0 - 0.02);
+  k.box(0.05, 1, 0.05, dk, 8.95, H1, Z0 - 0.02);
+  var g3 = k.mesh(new THREE.PlaneGeometry(1.35, 0.9), gl, 8.28, H1 + 0.5, Z0 - 0.02, 0, { cast: !1, receive: !1 });
+  g3.renderOrder = 5;
+  k.sign(`spor_merdiven`, `↑ 2. KAT · HAVUZ & SPA`, 0.32, 8.28, 2.05, Z0 - 0.12, Math.PI, {
+    color: `#06202a`,
+    bg: `#5ad8ff`,
+    font: `900 100px Arial, sans-serif`,
+    light: !1,
+  });
+}
+function sporCeil(j) {
+  try {
+    const hide = [];
+    j.group.traverse((o) => {
+      const g = o.geometry && o.geometry.parameters;
+      if (o.isMesh && g && Math.abs(g.width - 18) < 0.01 && Math.abs(g.height - 14) < 0.01 && o.position.y > 3 && Math.abs(o.rotation.x - Math.PI / 2) < 0.01)
+        hide.push(o);
+    });
+    hide.forEach((o) => {
+      o.visible = !1;
+      const m = o.material,
+        y = o.position.y;
+      [
+        [-9, 7.6, -7, 7],
+        [7.6, 9, -7, -1.7],
+        [7.6, 9, 4, 7],
+      ].forEach(([x0, x1, z0, z1]) => {
+        const p = new THREE.Mesh(new THREE.PlaneGeometry(x1 - x0, z1 - z0), m);
+        p.rotation.x = Math.PI / 2;
+        p.position.set((x0 + x1) / 2, y, (z0 + z1) / 2);
+        j.group.add(p);
+      });
+    });
+  } catch (err) {
+    console.warn(err);
+  }
+}
+function sporUpper(k, o) {
+  const s = o.s,
+    FL = s,
+    wh = M(`#f4f4f2`, 0.35),
+    st = M(`#e9e4da`, 0.45),
+    dk = M(`#2a2e36`, 0.4, 0.7),
+    ch = M(`#c9ccd2`, 0.2, 0.9),
+    wd = M(`#a0683a`, 0.75),
+    wd2 = M(`#7a4a26`, 0.8),
+    tq = M(`#19b8c8`, 0.5);
+  k.box(0.06, FL - 3.56, 5.7, M(`#d9dde3`, 0.6), 7.6, 3.56, -4.05);
+  k.box(1.4, FL - 3.56, 0.06, M(`#d9dde3`, 0.6), 8.3, 3.56, -6.9);
+  k.box(1.4, FL - 3.56, 0.06, M(`#d9dde3`, 0.6), 8.3, 3.56, -1.2);
+  k.floor(`havuz_karo`, 9.6, 7.2, 1.8, -7, FL + 0.005, { offset: !0 });
+  const X0 = -3,
+    X1 = 6.6,
+    Z0 = -10.6,
+    Z1 = -3.4,
+    cx = (X0 + X1) / 2,
+    cz = (Z0 + Z1) / 2,
+    W = X1 - X0,
+    D = Z1 - Z0,
+    rh = 0.32,
+    rw = 0.35;
+  k.box(W + 2 * rw, rh, rw, st, cx, FL, Z0 - rw / 2);
+  k.box(W + 2 * rw, rh, rw, st, cx, FL, Z1 + rw / 2);
+  k.box(rw, rh, D, st, X0 - rw / 2, FL, cz);
+  k.box(rw, rh, D, st, X1 + rw / 2, FL, cz);
+  for (const [x, z, w, dd] of [
+    [cx, Z0 + 0.03, W, 0.06],
+    [cx, Z1 - 0.03, W, 0.06],
+    [X0 + 0.03, cz, 0.06, D],
+    [X1 - 0.03, cz, 0.06, D],
+  ])
+    k.box(w, rh - 0.06, dd, M(`#7fd3e6`, 0.35), x, FL, z, { cast: !1 });
+  const wm = new THREE.MeshStandardMaterial({
+    color: `#22b8e0`,
+    emissive: `#0b6f99`,
+    emissiveIntensity: 0.55,
+    roughness: 0.04,
+    metalness: 0.15,
+    transparent: !0,
+    opacity: 0.82,
+  });
+  k.mesh(new THREE.PlaneGeometry(W, D), wm, cx, FL + rh - 0.07, cz, 0, { rx: -Math.PI / 2, cast: !1 }).renderOrder = 2;
+  for (let i = 1; i < 4; i++) {
+    const z = Z0 + (D / 4) * i;
+    for (let q = 0; q < Math.floor(W / 0.5); q++)
+      k.mesh(new THREE.SphereGeometry(0.07, 8, 6), M(q % 4 < 2 ? `#ff2d8a` : `#ffd23f`, 0.5), X0 + 0.25 + q * 0.5, FL + rh - 0.06, z, 0, { cast: !1 });
+  }
+  for (const z of [cz - 1, cz + 1]) {
+    k.box(0.05, 0.05, 0.7, glowMat(`#bff4ff`, 2.6), X0 + 0.1, FL + 0.12, z, { cast: !1 });
+    k.box(0.05, 0.05, 0.7, glowMat(`#bff4ff`, 2.6), X1 - 0.1, FL + 0.12, z, { cast: !1 });
+  }
+  for (const z of [Z1 - 1.2, Z1 - 2]) {
+    k.cyl(0.035, 0.035, 1.2, ch, X1 - 0.15, FL, z, 8);
+    const t = k.mesh(new THREE.TorusGeometry(0.25, 0.035, 8, 16, Math.PI), ch, X1 - 0.4, FL + 1.2, z, 0, { cast: !1 });
+    t.rotation.set(0, 0, 0);
+  }
+  k.sign(`spor_havuz`, `AQUA SPA`, 0.55, cx, FL + 3, Z0 - 1.4 + 0.02, 0, {
+    color: `#ffffff`,
+    glow: `#19e8ff`,
+    font: `900 110px Arial, sans-serif`,
+    li: 5,
+    ld: 9,
+  });
+  const SX0 = 5.3,
+    SX1 = 8.95,
+    SZ0 = -12.15,
+    SZ1 = -9.15,
+    scx = (SX0 + SX1) / 2,
+    scz = (SZ0 + SZ1) / 2;
+  for (let x = SX0; x < SX1 - 0.05; x += 0.22) k.box(0.2, 2.6, 0.08, Math.round((x - SX0) / 0.22) % 2 ? wd : wd2, x + 0.1, FL, SZ1 - 0.04);
+  for (let z = SZ0; z < SZ1 - 0.05; z += 0.22) k.box(0.08, 2.6, 0.2, Math.round((z - SZ0) / 0.22) % 2 ? wd : wd2, SX0 + 0.04, FL, z + 0.1);
+  k.box(SX1 - SX0 + 0.2, 0.14, SZ1 - SZ0 + 0.2, wd2, scx, FL + 2.6, scz);
+  const gd = new THREE.MeshStandardMaterial({
+    color: `#ffcf8a`,
+    roughness: 0.1,
+    transparent: !0,
+    opacity: 0.35,
+    emissive: `#ff9a3d`,
+    emissiveIntensity: 0.35,
+    depthWrite: !1,
+  });
+  k.mesh(new THREE.PlaneGeometry(0.9, 2.05), gd, SX0 + 1.0, FL + 1.05, SZ1 + 0.02, 0, { cast: !1 }).renderOrder = 5;
+  k.box(1.0, 0.08, 0.08, dk, SX0 + 1, FL + 2.08, SZ1 + 0.03);
+  for (const h of [0.45, 0.9]) k.box(SX1 - SX0 - 1.6, 0.08, 0.6, wd, (SX0 + 1.6 + SX1) / 2, FL + h, SZ0 + 0.5 + (h > 0.5 ? 0 : 0.6));
+  k.box(0.6, 0.5, 0.5, M(`#3a3d42`, 0.6, 0.4), SX0 + 0.5, FL, SZ0 + 0.4);
+  for (let q = 0; q < 6; q++)
+    k.mesh(new THREE.SphereGeometry(0.07, 6, 4), M(`#6b6b6b`, 0.9), SX0 + 0.35 + (q % 3) * 0.15, FL + 0.55, SZ0 + 0.3 + Math.floor(q / 3) * 0.15, 0);
+  k.light(scx, FL + 2.2, scz, `#ffb46a`, 4, 6);
+  k.sign(`spor_sauna2`, `SAUNA`, 0.36, scx + 0.6, FL + 2.25, SZ1 + 0.06, 0, {
+    color: `#fff1d6`,
+    glow: `#ff9a3d`,
+    font: `900 100px Georgia, serif`,
+    li: 3,
+    ld: 5,
+  });
+  const jx = -6,
+    jz = -8.6;
+  k.cyl(1.55, 1.6, 0.55, st, jx, FL, jz, 32, { open: !0 });
+  k.cyl(1.32, 1.32, 0.55, M(`#7fd3e6`, 0.3), jx, FL, jz, 32, { open: !0 });
+  k.mesh(new THREE.CircleGeometry(1.32, 32), M(`#5fc8e0`, 0.4), jx, FL + 0.02, jz, 0, { rx: -Math.PI / 2, cast: !1 });
+  k.mesh(
+    new THREE.CircleGeometry(1.32, 32),
+    new THREE.MeshStandardMaterial({ color: `#5ad8ff`, emissive: `#1aa0c8`, emissiveIntensity: 0.6, roughness: 0.05, transparent: !0, opacity: 0.85 }),
+    jx,
+    FL + 0.45,
+    jz,
+    0,
+    { rx: -Math.PI / 2, cast: !1 },
+  );
+  for (let q = 0; q < 10; q++) {
+    const a = (q / 10) * Math.PI * 2;
+    k.mesh(
+      new THREE.SphereGeometry(0.06, 6, 4),
+      new THREE.MeshBasicMaterial({ color: `#ffffff`, transparent: !0, opacity: 0.7 }),
+      jx + Math.cos(a) * 0.7,
+      FL + 0.52,
+      jz + Math.sin(a) * 0.7,
+      0,
+      { cast: !1 },
+    );
+  }
+  k.sign(`spor_jak`, `JAKUZİ`, 0.3, jx, FL + 2.4, jz - 1.9, 0, { color: `#06202a`, bg: `#5ad8ff`, font: `900 100px Arial, sans-serif`, light: !1 });
+  for (let z = -11.6; z < -4.8; z += 0.62) {
+    k.box(0.5, 2, 0.58, M(Math.round(z * 10) % 2 ? `#1f6fd0` : `#2a7ae0`, 0.4, 0.3), -8.65, FL, z + 0.3);
+    k.box(0.04, 0.04, 0.12, ch, -8.38, FL + 1.2, z + 0.3);
+  }
+  k.sign(`spor_soy`, `SOYUNMA`, 0.3, -8.38, FL + 2.3, -8.2, Math.PI / 2, { color: `#ffffff`, bg: `#1f6fd0`, font: `900 100px Arial, sans-serif`, light: !1 });
+  for (const z of [-3.6, -2.2]) {
+    k.cyl(0.03, 0.03, 2.1, ch, -8.7, FL, z, 8);
+    k.cyl(0.16, 0.12, 0.06, ch, -8.5, FL + 2.05, z, 12);
+    k.box(0.6, 0.02, 0.8, M(`#d9dde3`, 0.3), -8.55, FL + 0.01, z, { cast: !1 });
+  }
+  for (const z of [-10.2, -6.6]) {
+    k.box(0.45, 0.08, 1.8, wd, -7.35, FL + 0.42, z);
+    for (const dz of [-0.7, 0.7]) k.box(0.35, 0.42, 0.08, dk, -7.35, FL, z + dz);
+  }
+  k.box(2.4, 1.05, 0.6, M(`#f4f4f2`, 0.3), -7.6, FL, 0.75);
+  k.box(2.5, 0.06, 0.7, M(`#19b8c8`, 0.3), -7.6, FL + 1.05, 0.75);
+  k.box(0.05, 0.05, 2.3, glowMat(`#19e8ff`, 2.2), -7.6, FL + 0.3, 0.44, { ry: Math.PI / 2, cast: !1 });
+  for (let q = 0; q < 4; q++) k.cyl(0.05, 0.05, 0.18, M([`#ff9f1c`, `#7fb800`, `#ff4d8d`, `#ffd23f`][q], 0.3), -8.4 + q * 0.5, FL + 1.08, 0.8, 10);
+  k.sign(`spor_bar`, `SMOOTHIE BAR`, 0.3, -7.6, FL + 2.2, 1.75, Math.PI, { color: `#ffffff`, bg: `#19b8c8`, font: `900 100px Arial, sans-serif`, light: !1 });
+  [-1.4, 0.8, 3, 5.2].forEach((x, i) => {
+    k.box(0.7, 0.08, 1.9, wh, x, FL + 0.32, 0.2);
+    for (const dz of [-0.8, 0.8]) for (const dx of [-0.28, 0.28]) k.box(0.05, 0.32, 0.05, ch, x + dx, FL, 0.2 + dz);
+    const cu = k.box(0.66, 0.08, 1.25, M(i % 2 ? `#19b8c8` : `#ff7a3d`, 0.8), x, FL + 0.4, -0.12);
+    const bk = k.box(0.66, 0.08, 0.8, M(i % 2 ? `#19b8c8` : `#ff7a3d`, 0.8), x, FL + 0.62, 0.9, { center: !0 });
+    bk.rotation.x = -0.75;
+    k.box(0.66, 0.04, 0.4, M(`#ffffff`, 0.7), x, FL + 0.48, -0.55);
+    if (i < 3) {
+      k.cyl(0.22, 0.22, 0.45, wh, x + 1.1, FL, 0.4, 14);
+      k.cyl(0.04, 0.04, 0.18, M(`#ff9f1c`, 0.4), x + 1.1, FL + 0.45, 0.4, 8);
+    }
+  });
+  for (const [x, z] of [
+    [-3.3, 1.2],
+    [6.9, 1.2],
+    [-3.3, -11.8],
+    [4.9, -11.8],
+  ])
+    k.item(`plantb`, x, z, 0, 0, { y: FL });
+  k.light(cx, FL + 3, cz, `#7fe8ff`, 6, 11);
+  k.light(-6, FL + 3, -6, `#fff1d6`, 4, 9);
+}
+function glassExt(fr) {
+  const solid = wallExt(`boya_mor`),
+    fm = M(fr || `#2a2440`, 0.4, 0.6);
+  const o = (e, t, n, r, i, s, c) => {
+    if (s >= 3.5) {
+      solid(e, t, n, r, i, s, c);
+      return;
+    }
+    if (t > 1 && r > 1) {
+      o(e, t, n, 0.1, i, s, c - r / 2);
+      o(e, t, n, 0.1, i, s, c + r / 2);
+      o(e, 0.1, n, r, i - t / 2, s, c);
+      o(e, 0.1, n, r, i + t / 2, s, c);
+      return;
+    }
+    e.box(t, Math.min(0.45, n), r, M(`#241f33`, 0.5, 0.4), i, s, c);
+    if (n > 0.5) {
+      const w = t >= r,
+        l = w ? t : r;
+      const u = e.mesh(new THREE.PlaneGeometry(l, n - 0.45), GLASS(), i, s + 0.45 + (n - 0.45) / 2, c, w ? 0 : PI / 2, { cast: !1, receive: !1 });
+      u.renderOrder = 5;
+      const d = Math.max(1, Math.round(l / 2.2));
+      for (let k = 0; k <= d; k++) {
+        const q = -l / 2 + (k * l) / d;
+        e.box(0.1, n, 0.12, fm, i + (w ? q : 0), s, c + (w ? 0 : q));
+      }
+      e.box(w ? t : 0.14, 0.14, w ? 0.14 : r, fm, i, s + n - 0.14, c);
+    }
+  };
+  return o;
+}
+function nkInner(t) {
+  t.lowInner.forEach((e) =>
+    e.children.forEach((e) => {
+      e.isMesh && e.geometry?.type === `PlaneGeometry` && (e.material = GLASS());
+    }),
+  );
+  const k = t.int,
+    H = ROOM.H,
+    hw = ROOM.W / 2,
+    hd = ROOM.D / 2;
+  const strip = (c, x, z, w, d, y) => k.box(w, 0.03, d, glowMat(c, 2.4), x, y == null ? 0.165 : y, z, { cast: !1 });
+  strip(`#3ad6ff`, -4.9, -0.55, 8.6, 0.06);
+  strip(`#3ad6ff`, -0.55, -4.2, 0.06, 7.2);
+  strip(`#ff3d6e`, 5.2, -3.3, 8.8, 0.06);
+  strip(`#7a5bff`, 0.6, -0.9, 0.06, 4.8);
+  strip(`#7a5bff`, 5.2, 2.5, 8.8, 0.06);
+  strip(`#ffcf3a`, -4.9, 0.25, 8.6, 0.06);
+  strip(`#ffcf3a`, -0.55, 4, 0.06, 7.4);
+  for (const [c, x0, x1, z] of [
+    [`#3ad6ff`, -9.6, -0.6, -4],
+    [`#ff3d6e`, 1, 9.6, -5.5],
+    [`#7a5bff`, 1, 9.6, -0.5],
+    [`#ffcf3a`, -9.6, -0.6, 4],
+  ])
+    k.box(x1 - x0, 0.05, 0.05, glowMat(c, 2.2), (x0 + x1) / 2, H - 0.1, z, { cast: !1 });
+  const sg = (key, txt, h, x, y, z, ry, c, g) =>
+    k.sign(key, txt, h, x, y, z, ry, { color: c || `#ffffff`, glow: g, font: `900 110px Arial, sans-serif`, light: !1 });
+  sg(`nk_z_pc`, `PC ARENA`, 0.42, -4.6, 2.98, -hd + 0.14, 0, `#e8fbff`, `#3ad6ff`);
+  sg(`nk_z_st`, `● YAYIN STÜDYOSU`, 0.38, hw - 0.08, 2.8, -5.6, -PI / 2, `#ffe1e8`, `#ff3d6e`);
+  sg(`nk_z_ps`, `PLAYSTATION LOUNGE`, 0.38, hw - 0.08, 2.8, -0.4, -PI / 2, `#efe9ff`, `#7a5bff`);
+  sg(`nk_z_ar`, `ARCADE`, 0.55, -hw + 0.08, 2.75, 3.4, PI / 2, `#fff4c2`, `#ffb020`);
+  k.box(3.8, 1.6, 0.06, M(`#0b0d14`, 0.3, 0.4), -4.6, 0.95, -hd + 0.06, { cast: !1 });
+  k.mesh(new THREE.PlaneGeometry(3.6, 1.4), glowMat(`#1b3d6e`, 1.2), -4.6, 1.75, -hd + 0.1, 0, { cast: !1 });
+  k.mesh(new THREE.PlaneGeometry(3.4, 0.22), glowMat(`#ff3d6e`, 1.6), -4.6, 2.25, -hd + 0.11, 0, { cast: !1 });
+  for (let i = 0; i < 5; i++) k.box(0.6, 0.6, 0.05, M([`#2b2140`, `#1d1830`][i % 2], 0.95), hw - 0.06, 1.2 + (i % 2) * 0.7, -7 + i * 0.75, { cast: !1 });
+  k.box(0.08, 2.2, 3.4, M(`#14121e`, 0.6), 2.2, 0.16, -5.6, { cast: !1 });
+  k.box(0.1, 0.06, 3.4, glowMat(`#ff3d6e`, 2.2), 2.2, 2.36, -5.6, { cast: !1 });
+  k.box(3.2, 1.7, 0.08, M(`#0b0d14`, 0.3, 0.4), 5.3, 0.8, -3.05, { cast: !1 });
+  for (const x of [3.6, 7]) k.mesh(new THREE.PlaneGeometry(2.3, 1.3), glowMat(`#2a6bd6`, 1.1), x, 1.45, -2.35, 0, { cast: !1 });
+  k.box(0.06, 1.5, 0.06, M(`#222`, 0.5, 0.5), -0.55, 0.16, -0.55, { cast: !1 });
+  for (let i = 0; i < 4; i++) {
+    const z = 0.9 + i * 1.45;
+    k.box(0.05, 0.9, 0.9, glowMat([`#ff3fd1`, `#3ad6ff`, `#ffcf3a`, `#7cff6b`][i], 1.3), -hw + 0.05, 2.05, z, { cast: !1 });
+  }
+  k.box(2.4, 0.08, 2.4, glowMat(`#ffcf3a`, 0.6), -5.6, 0.17, 4.1, { cast: !1 });
+  k.item(`discoball`, -5.6, 4.1, 0, 0, { y: H - 0.9, solid: !1 });
+  k.item(`plantb`, -0.9, -0.2, 0, 0);
+  k.item(`plantb`, 1.2, -3.2, 0, 0);
+  k.item(`speaker`, 1.4, -7.3, 0, 0);
+}
+
+// v219 — SPOR SALONU: cam cephe + 2. kat (havuz & spa), iç merdiven. Prototipten aktarıldı.
+// 2. kata yürüme: cityExtras.js (yürüme bölgeleri) — kat yüksekliği 4,4 m.
 export function buildSporVenue(lot) {
   DOOR.x = 0;
   const P = newParts('spor');
   const { w, d } = lot;
   P.base.floor('beton', w, d, 0, 0);
-  const extH = 8.4;
-  shell(P, { ext: wallExt('beton_duvar'), extH, venue: NEW_VENUES.spor, doorKey: 'door_cam', vitrine: true });
+  const extH = 8.6;
+  const dk = M('#2a2e36', 0.4, 0.7);
+  // cam giydirme cephe: alt kuşak + cam + dikmeler (köşelerde dört kenar)
+  const glassWall = (kit, gw, gh, gd, x, y, z) => {
+    if (gw > 1 && gd > 1) {
+      glassWall(kit, gw, gh, 0.1, x, y, z - gd / 2);
+      glassWall(kit, gw, gh, 0.1, x, y, z + gd / 2);
+      glassWall(kit, 0.1, gh, gd, x - gw / 2, y, z);
+      glassWall(kit, 0.1, gh, gd, x + gw / 2, y, z);
+      return;
+    }
+    kit.box(gw, Math.min(0.45, gh), gd, M('#3a3f48', 0.5, 0.4), x, y, z);
+    if (gh > 0.5) {
+      const along = gw >= gd;
+      const L = along ? gw : gd;
+      const g = kit.mesh(new THREE.PlaneGeometry(L, gh - 0.45), GLASS(), x, y + 0.45 + (gh - 0.45) / 2, z, along ? 0 : PI / 2, { cast: false, receive: false });
+      g.renderOrder = 5;
+      const n = Math.max(1, Math.round(L / 2.2));
+      for (let i = 0; i <= n; i++) {
+        const o = -L / 2 + (i * L) / n;
+        kit.box(0.1, gh, 0.12, dk, x + (along ? o : 0), y, z + (along ? 0 : o));
+      }
+      kit.box(along ? gw : 0.14, 0.14, along ? 0.14 : gd, dk, x, y + gh - 0.14, z);
+    }
+  };
+  shell(P, { ext: glassWall, extH, venue: NEW_VENUES.spor, doorKey: 'door_cam', vitrine: true });
+  P.lowInner.forEach((g) => g.children.forEach((o) => {
+    if (o.isMesh && o.geometry?.type === 'PlaneGeometry') o.material = GLASS();
+  }));
+  holeBox(P.high, BW, 0.35, BD, M('#d9dde3', 0.6), 0, 4.05, RZ, [7.6, 9.6, -6.9, -1.2]); // ara kat (merdiven boşluğu)
   P.high.box(BW + 0.5, 0.6, BD + 0.5, M('#1a1d24', 0.5, 0.3), 0, extH, RZ);
-  P.high.box(BW, 0.3, BD, M('#222630', 0.6), 0, 4.2, RZ);
-  for (const sx of [-1, 1]) P.high.mesh(new THREE.PlaneGeometry(BD, extH), GLASS(), sx * (BW / 2 + 0.02), extH / 2, RZ, PI / 2, { cast: false });
-  P.high.mesh(new THREE.PlaneGeometry(BW, extH - 2.9), GLASS(), 0, 2.9 + (extH - 2.9) / 2, FRONT + 0.03, 0, { cast: false });
-  for (let i = 0; i <= 5; i++) {
-    const x = -BW / 2 + i * (BW / 5);
-    if (offDoor(x, 0.55)) P.low[0].box(0.16, extH, 0.16, M('#2a2e36', 0.4, 0.7), x, 0, FRONT + 0.08);
-  }
-  // üst kat: havuz
-  P.high.box(9, 0.5, 6, M('#cfe6f2', 0.2), 4.5, 4.5, RZ - 2.5);
-  P.high.mesh(new THREE.PlaneGeometry(8, 5), new THREE.MeshStandardMaterial({ color: '#1c8fd8', emissive: '#0d6bb0', emissiveIntensity: 1.3, roughness: 0.05 }), 4.5, 5.02, RZ - 2.5, 0, { rx: -PI / 2, cast: false });
-  for (let i = 0; i < 3; i++) P.high.box(5, 0.06, 0.4, glowMat('#e9fbff', 2.5), -6 + i * 6, 8.0, RZ, { cast: false });
-  P.base.light(4, 6.8, RZ - 2, '#5ad8ff', 6, 9);
-  P.high.sign('spor', 'SPOR SALONU', 1.1, -3, 9.4, FRONT + 0.3, 0, { color: '#ffffff', glow: '#5ad8ff', font: '900 110px Arial, sans-serif', li: 7, ld: 12 });
+  P.high.box(BW + 0.52, 0.08, 0.08, glowMat('#5ad8ff', 2.4), 0, 4, FRONT + 0.27, { cast: false });
+  const s = 4.4;
+  const c = RZ - BD / 2 + T;
+  const l = RZ + BD / 2 - T;
+  const u = -BW / 2 + T;
+  const dd = BW / 2 - T;
+  holeBox(P.high, dd - u, 0.02, l - c, M('#e6eef2', 0.3), 0, s - 0.02, RZ, [7.6, 9.6, -6.9, -1.2], { cast: false });
+  sporUpper(P.high, { s, l, c, u, d: dd });
+  sporStairs(P.high, dk);
+  sporCeil(P.int);
+  for (let i = 0; i < 3; i++) P.high.box(5, 0.06, 0.4, glowMat('#e9fbff', 2.5), -6 + i * 6, extH - 0.1, RZ, { cast: false });
+  P.base.light(2.1, 7, RZ - 1.4, '#5ad8ff', 7, 11);
+  P.base.light(-5, 7, RZ, '#fff1d6', 5, 9);
+  P.high.sign('spor', 'SPOR SALONU', 1.1, -3, 9.6, FRONT + 0.3, 0, { color: '#ffffff', glow: '#5ad8ff', font: '900 110px Arial, sans-serif', li: 7, ld: 12 });
+  P.high.sign('spor_kat2', '2. KAT · HAVUZ & SPA', 0.5, 4.5, 7.8, FRONT + 0.2, 0, { color: '#06202a', bg: '#5ad8ff', font: '900 100px Arial, sans-serif', light: false });
   P.base.pool(0, FRONT + 1.5, '#9fe6ff', 14, 0.17, 0.4);
   return finish(P, 'spor', NEW_VENUES.spor, { x: 0, z: FRONT + 1.2 });
 }
@@ -721,7 +1214,8 @@ export function buildNetKafeVenue(lot) {
   const { w, d } = lot;
   P.base.floor('kaldirim', w, d, 0, 0);
   const extH = 7;
-  shell(P, { ext: wallExt('boya_mor'), extH, venue: NEW_VENUES.netkafe, doorKey: 'door_cam', vitrine: true, ceil: '#14161c' });
+  shell(P, { ext: glassExt('#2a2440'), extH, venue: NEW_VENUES.netkafe, doorKey: 'door_cam', vitrine: true, ceil: '#14161c' }); // v219: cam cephe
+  nkInner(P); // v219: iç duvar kaplaması + neon şeritler
   P.high.box(BW + 0.4, 0.5, BD + 0.4, M('#181226', 0.5), 0, extH, RZ);
   P.high.mesh(new THREE.PlaneGeometry(BW, extH - 2.9), GLASS(), 0, 2.9 + (extH - 2.9) / 2, FRONT + 0.03, 0, { cast: false });
   P.high.mesh(new THREE.PlaneGeometry(BD, extH), GLASS(), BW / 2 + 0.03, extH / 2, RZ, PI / 2, { cast: false });
@@ -1240,6 +1734,7 @@ export const VENUE_BUILDERS = {
   spor: buildSporVenue,
   fabrika: buildFabrikaVenue,
   netkafe: buildNetKafeVenue,
+  restoran: buildRestoranVenue, // v219
   bar: buildBarVenue,
   cafe: buildCafeVenue,
   ev: buildEvVenue,

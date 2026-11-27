@@ -20,7 +20,7 @@ import { createJobWorld } from './jobWorld.js';
 import { EngineSound } from './sound.js';
 import { createStadiumMatch, matchAvatar } from './stadiumMatch.js';
 // v157 — genişletilmiş dünya (otoyol, Kervankent, köyler, orman, kumsal) + girilebilir mekânlar
-import { bakeGeo, canonMat, makeLod, lodTag, dropVenueInt, buildVenueInt, swapVenueInt, prepareCityWorldSync, finishCityWorld, mergeCityWorld, mergeVenue, buildAnimals, CITY_GRID, VENUE_GAME_KEY, toRoom, fromRoom, VROOM, nearest as hwyNearest, inTunnel } from './world/outerWorld.js';
+import { bakeGeo, canonMat, makeLod, lodTag, dropVenueInt, buildVenueInt, swapVenueInt, prepareCityWorldSync, finishCityWorld, mergeCityWorld, mergeVenue, buildAnimals, CITY_GRID, inOpenSea, VENUE_GAME_KEY, toRoom, fromRoom, VROOM, nearest as hwyNearest, inTunnel } from './world/outerWorld.js';
 import { NEW_VENUES } from './world/layouts.js';
 import { HQ_CACHE } from './world/venues.js';
 import { Kit } from './kit.js';
@@ -36,6 +36,8 @@ import { geo as rsGeo, fromPad } from './world/roadsideGeo.js';
 import { LOT_TYPES } from './cityPlan.js';
 import { VENUES as GAME_VENUES } from '../../../functions/venueLayouts.js';
 import { isPhotoNpc } from '../../../functions/storyNpcs.js'; // v168.1
+import { installExtras } from './cityExtras.js'; // v219: helikopter, toplar, kaykay, çatılar, spor salonu 2. kat
+import { pistOffAsphalt, PIST_SPOTS } from './world/pistPlan.js'; // v219: pistte asfalt dışı (çim) yavaşlatır · pist girişi
 
 const IS_ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
 const IS_MOBILE = IS_ANDROID || (typeof navigator !== 'undefined' && /iPhone|iPad|Mobile/i.test(navigator.userAgent || ''));
@@ -470,11 +472,17 @@ class Fig {
   }
   setHolding(p) {
     this.holding = p || null;
-    if (p) {
-      this.held.material.map = heldTexture(p);
+    const show = p || this.eat;
+    if (show) {
+      this.held.material.map = heldTexture(show);
       this.held.material.needsUpdate = true;
     }
-    this.held.visible = Boolean(p);
+    this.held.visible = Boolean(show);
+  }
+  // v219: masada yemek — ürünü bir süre elde tutup ağzına götürür (sadece görüntü; ağa "eldeki" olarak gitmez)
+  setEat(p) {
+    this.eat = p || null;
+    this.setHolding(this.holding);
   }
   say(text) {
     const el = document.createElement('div');
@@ -627,7 +635,7 @@ class Fig {
         tread: deep && !this.moving,
         tilt: em ? 0 : tilt,
         emote: em,
-        hold: Boolean(this.holding), // v213: yiyecek / içecek elde, kol önde bükük, ara sıra ağza
+        hold: Boolean(this.holding || this.eat), // v213: yiyecek / içecek elde, kol önde bükük, ara sıra ağza · v219: masada yerken
       });
       const stand = lift - this.sinkCur;
       const seatOff = (this.seatY ?? this.y) - this.y - (this.m3.hipH || AVATAR_3D_HIP) + 0.03;
@@ -660,7 +668,7 @@ class Fig {
       this.group.add(this.held);
       this.held.scale.set(0.34, 0.34, 1);
     }
-    if (this.holding && !(look3 && this.m3)) {
+    if ((this.holding || this.eat) && !(look3 && this.m3)) {
       const bob = Math.sin(now / 480) * 0.02;
       {
         const side = this.facingLeft ? -1 : 1;
@@ -743,7 +751,8 @@ function slimGeometries(root) {
   });
 }
 
-export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 'Sen', spawn = 'ev', onInteract, onTick, onReady, onEvent, onPlayerTap, snapshot = false, world = null } = {}) {
+export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 'Sen', spawn = 'ev', onInteract, onTick, onReady, onEvent, onPlayerTap, snapshot = false, world = null, guest = false, cityAction = null, skateState = null, sharedNet = null } = {}) {
+  let extras = null; // v219: cityExtras.js (helikopter, toplar, kaykay…)
   // snapshot: ekran dışı, döngüsüz motor — sadece paylaşılan şehir fotoğraflarını çizer (CityPhoto)
   // v147.1: telefonda logaritmik derinlik KAPALI (GPU'nun erken derinlik testini bozuyor → çok yavaş)
   // v147.1: mekânlarla AYNI ortak çizici (WebGL bağlamı) — şehir ↔ mekân geçişinde yeni bağlam
@@ -1088,7 +1097,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     k.seats.forEach((st) => {
       const p = st.o.localToWorld(tv.set(st.x, st.y, st.z + 0.06));
       // v149: tribün koltuğunun kendi yönü (sahaya dönük) — eşya koltuklarında 0
-      seats.push({ x: p.x, y: p.y, z: p.z, yaw: yawOf(st.o.matrixWorld) + (st.yaw || 0), taken: false, tier: Boolean(st.tier), reach: st.reach || 0 });
+      seats.push({ x: p.x, y: p.y, z: p.z, yaw: yawOf(st.o.matrixWorld) + (st.yaw || 0), taken: false, tier: Boolean(st.tier), reach: st.reach || 0, front: Boolean(st.front) }); // v219: front — sadece önden oturulur (durak bankı)
     });
     k.solids.forEach((s) => {
       const p = s.o.localToWorld(tv.set(s.x, 0, s.z));
@@ -1149,8 +1158,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   // v198: spor salonunda aletin yanına gelince alt ortada "⭐ Görev" (sadece sıradaki görevin aleti — SporPart hideAct)
   const GYM_EQ = { bag: '🥊 Boks Torbası', treadmill: '🏃 Koşu Bandı', bench: '🏋️ Bench Press', dumbbells: '💪 Dambıl' };
   // v198: cafe / bar tezgâhına yaklaşınca da "Sipariş ver" (menü) — sol üstteki menü düğmesine ek
-  const CITY_MENU_KEY = { cafe: 'cafe_mekan', bar: 'bar_mekan' };
-  const menuStations = (v) => Object.fromEntries(Object.entries(NEW_VENUES[v.type]?.stations || {}).filter(([, acts]) => acts.some((a) => a.act === 'cafe' || a.act === 'bar')).map(([iid]) => [iid, [{ act: 'menu', label: v.type === 'bar' ? '🍸 Sipariş ver' : '☕ Sipariş ver' }]]));
+  const CITY_MENU_KEY = { cafe: 'cafe_mekan', bar: 'bar_mekan', restoran: 'restoran_mekan' }; // v219: La Marea
+  const menuStations = (v) => Object.fromEntries(Object.entries(NEW_VENUES[v.type]?.stations || {}).filter(([, acts]) => acts.some((a) => a.act === 'cafe' || a.act === 'bar')).map(([iid]) => [iid, [{ act: 'menu', label: v.type === 'bar' ? '🍸 Sipariş ver' : v.type === 'restoran' ? '🍽️ Sipariş ver' : '☕ Sipariş ver' }]]));
   const gymStations = (v) => Object.fromEntries((v.venue.items || []).filter((q) => GYM_EQ[q.k]).map((q) => [q.i, [{ act: `train_${q.k}`, label: `⭐ Görev: ${GYM_EQ[q.k]}` }]]));
   const venueNpcDefs = [];
   W.venues.forEach((v) => {
@@ -1497,7 +1506,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   const cellBlocked = (x, z) => {
     const i = Math.floor((x - GX0) / RES);
     const j = Math.floor((z - GZ0) / RES);
-    if (i < 0 || j < 0 || i >= GW || j >= GH) return true;
+    if (i < 0 || j < 0 || i >= GW || j >= GH) return !inOpenSea(x, z); // v219: ızgaranın dışı açık denizse yüzülür
     return grid[j * GW + i] === 1;
   };
   // v196 — 3 KATLI EV: şehirdeki ev binası (world/houseFloors.js). Ayak yüksekliği kat-farkında; çarpışma
@@ -2117,6 +2126,11 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   // v157: zemin = şehirde kaldırım / kumsal / iskele / deniz tabanı / mekân odası; dışarıda
   // otoyol, köprü (curY: köprü üstü mü altı mı), köy yolu, cep, arazi; kasabada düz
   function groundY(x, z, hint = -1, curY = null) {
+    // v219: çatı / festival sahnesi / spor salonu 2. kat / helikopter pisti / kaykay rampaları
+    if (curY != null && extras) {
+      const h = extras.g(x, z, curY);
+      if (h != null) return h;
+    }
     if (EV) {
       const ep = evLocal(x, z);
       if (ep) {
@@ -2238,6 +2252,13 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     if (lt === 'pist') {
       const pz = zones.find((z) => z.kind === 'pist');
       if (pz) return { x: pz.x + Math.sin(pz.out) * 1.2, z: pz.z + Math.cos(pz.out) * 1.2, yaw: pz.out, pitch: 0.42 };
+      // v219: Neon Şehir Pisti şehrin dışında — pist girişi (festival alanının önü)
+      return { x: PIST_SPOTS.giris.x, z: PIST_SPOTS.giris.z, yaw: PIST_SPOTS.giris.yaw, pitch: 0.42, world: true };
+    }
+    // v219: görünüm dükkânları (berber / giyim / aksesuar / kostüm) — dükkânın içi
+    if (lt === 'berber' || lt === 'giyim' || lt === 'aksesuar' || lt === 'kostum' || lt === 'petshop' || lt === 'ozel' || lt === 'avshop') {
+      const az = zones.find((z) => z.kind === 'avshop' && (lt === 'avshop' || z.shop === lt));
+      if (az) return { x: az.x + Math.sin(az.out) * 1.2, z: az.z + Math.cos(az.out) * 1.2, yaw: az.out, pitch: 0.3 };
     }
     const dz = zones.find((z) => z.kind === 'door' && z.type === lt) || (lt === 'pist' ? zones.find((z) => z.kind === 'pist') : null);
     // v147.3: kapının önünde, yüz YOLA dönük (kamera arkada, binanın tarafında)
@@ -2284,6 +2305,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   // --- NPC'ler (satıcılar, büfeci, şüpheli adam) ----------------------------------
   // v157: mekân içi NPC'ler + yol üstü / köy / orman NPC'leri de aynı listede
   const outerNpcIds = new Set(W.npcDefs.map((n) => n.id));
+  // v219: tezgâhında / görevinde duran (dolaşmayan) dış dünya NPC'leri
+  const FIXED_NPC = /Büfeci|Bakkal|Karpuzcu|Mısırcı|Pompacı|Kantar|Çaycı|Arıcı|Hızarcı|Tamirci|Garson|Kasiyer|Kasada|Bisikletçi|Polis|Komiser|Bekçi|Gişe|Danışma|Barista|Barmen|Hareket Memuru|Durakçı|Güvenlik|Hemşire|Dr\.|Fotoğrafçı|Usta/;
   const npcs = [...npcDefs, ...venueNpcDefs, ...W.npcDefs].map((n) => {
     const f = new Fig(scene, layer, { id: n.id, name: n.name, avatar: n.av, npc: true, lazy: true });
     // v157.4: köy / yol üstü / park botlarının isim etiketi yok (konuşma balonu kalır)
@@ -2292,6 +2315,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     f.z = n.z;
     f.y = n.y != null ? n.y : groundY(n.x, n.z);
     f.facingLeft = Boolean(n.left);
+    if (n.yaw != null) f.standYaw = f.yaw = f.yawT = n.yaw; // v219: tezgâhtaki NPC'nin yönü
     f.lines = n.lines || [];
     f.vendor = n.vendor;
     f.venue = n.venue || null; // etiketi sadece o mekânın içindeyken görünür
@@ -2303,7 +2327,39 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       f.seatY = f.y + n.sit;
     }
     if (n.route) f.route = n.route; // v196: devriye (bot garson)
+    f.noSit = Boolean(n.stand) || /Garson|Kapı Görevlisi|Güvenlik|Polis|Komiser/.test(n.name || ''); // v219: ayakta çalışan (berber, garson…)
+    // v219: sabit durmayan dış dünya NPC'leri (köylüler, yol kenarı) evinin çevresinde biraz dolaşır
+    if (!n.sit && !n.route && !n.vendor && !n.venue && (n.outer || outerNpcIds.has(n.id)) && !n.still && !FIXED_NPC.test(n.name || '')) f.wander = { hx: n.x, hz: n.z, r: 2.6, w: 1 + Math.random() * 4, tx: null, tz: null };
     return f;
+  });
+  // v219: dükkân / mekân NPC'si bir sandalyenin üstüne konmuşsa oturur (eskiden sandalyenin önünde ayakta dururdu)
+  npcs.forEach((f) => {
+    if (f.sitting || f.route || f.vendor || f.noSit) return;
+    let best = null;
+    let bd = 1.2; // NPC çoğu zaman sandalyesinin hemen önüne konmuş (≈1 m)
+    // araya tezgâh / duvar giriyorsa (müşteri taburesi tezgâhın öbür yanında) o sandalye onun değildir
+    const clear = (st) => {
+      for (const t of [0.3, 0.5]) if (blockedAt(f.x + (st.x - f.x) * t, f.z + (st.z - f.z) * t, 0.05)) return false;
+      return true;
+    };
+    for (const st of seats) {
+      if (st.npc || st.ev || st.stand || st.tier) continue;
+      const dy = st.y - f.y;
+      if (dy < -0.25 || dy > 0.95) continue;
+      const d = Math.hypot(st.x - f.x, st.z - f.z);
+      if (d < bd && (d < 0.65 || clear(st))) {
+        bd = d;
+        best = st;
+      }
+    }
+    if (!best) return;
+    best.npc = true; // oyuncu NPC'nin kucağına oturmasın
+    f.wander = null;
+    f.x = best.x;
+    f.z = best.z;
+    f.sitting = true;
+    f.seatY = best.y;
+    f.seat3Yaw = tableYaw(best.x, best.z) ?? best.yaw ?? null;
   });
   // v151 — meslek görselleri (hedef işareti, bot yolcular, şüpheli araç) — sadece şoförde
   const jobWorld = snapshot ? null : createJobWorld({ scene, layer, Fig, groundY: (x, z) => groundY(x, z), buildVehicle, placeLabel: (...a) => placeLabel(...a) });
@@ -2342,6 +2398,76 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     }
   });
 
+
+  // =============================================================================
+  // v219 — LA MAREA: oturunca sipariş, garson ürünü masaya koyar, ara sıra yenir; kalkınca kalkar.
+  // Masadaki yemek ağa tek alanla gider (fd); başkalarının masasındaki yemek ve yeme hareketi her
+  // cihazda kendiliğinden oynar (ek yazım yok).
+  // =============================================================================
+  const DINE_TABLE = /diningset|dining|table|masa|^bar$|kisland/i;
+  const dine = new Map(); // 'me' | uid → { fig, product, spr, next, end }
+  let dineWait = null; // garson yolda
+  const restoV = W.venues.find((q) => q.type === 'restoran') || null;
+  const inResto = (x, z) => {
+    if (!restoV) return false;
+    const r = toRoom(restoV, x, z);
+    return Math.abs(r.x) < 9.6 && Math.abs(r.z) < 7.4;
+  };
+  function tableSpot(x, z) {
+    let best = null;
+    let bd = 1.9 * 1.9;
+    for (const s2 of solids) {
+      if (!s2.key || !DINE_TABLE.test(s2.key)) continue;
+      const d = (s2.x - x) ** 2 + (s2.z - z) ** 2;
+      if (d < bd) {
+        bd = d;
+        best = s2;
+      }
+    }
+    if (!best) return null;
+    const dx = x - best.x;
+    const dz = z - best.z;
+    const L = Math.hypot(dx, dz) || 1;
+    const reach = Math.min(0.42, Math.max(0.15, Math.min(best.hw, best.hd) * 0.55), L - 0.2);
+    const bar = /bar$/i.test(best.key);
+    const sx = best.x + (dx / L) * Math.max(0, bar ? Math.min(0.25, L - 0.2) : reach);
+    const sz = best.z + (dz / L) * Math.max(0, bar ? Math.min(0.25, L - 0.2) : reach);
+    return { x: sx, z: sz, y: groundY(sx, sz) + (bar ? 1.08 : 0.8) };
+  }
+  function dineSet(id, fig, product) {
+    const cur = dine.get(id);
+    if (cur) {
+      cur.spr.removeFromParent();
+      cur.spr.material.dispose();
+      cur.fig?.setEat?.(null);
+      dine.delete(id);
+    }
+    if (!product || !fig) return;
+    const spot = tableSpot(fig.x, fig.z);
+    if (!spot) return;
+    const spr = new THREE.Sprite(new THREE.SpriteMaterial({ map: heldTexture(product), transparent: true, depthWrite: false }));
+    spr.scale.set(0.34, 0.34, 1);
+    spr.position.set(spot.x, spot.y + 0.15, spot.z);
+    scene.add(spr);
+    dine.set(id, { fig, product, spr, next: 2 + Math.random() * 4, end: 0 });
+  }
+  function dineTick(dt) {
+    dine.forEach((d, id) => {
+      if (id === 'me' && !self.seat) return dineSet('me', null, null);
+      if (d.end > 0) {
+        d.end -= dt;
+        if (d.end <= 0) {
+          d.fig.setEat(null);
+          d.spr.visible = true;
+          d.next = 5 + Math.random() * 6;
+        }
+      } else if ((d.next -= dt) <= 0) {
+        d.fig.setEat(d.product);
+        d.spr.visible = false;
+        d.end = 2.4 + Math.random() * 1.2;
+      }
+    });
+  }
 
   // =============================================================================
   // DİĞER OYUNCULAR (çevrimiçi) — konum/araba verisi dışarıdan (cityNet) gelir.
@@ -2407,6 +2533,11 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       f.playEmote(st.e);
     }
     if ((st.h || null) !== (f.holding || null)) f.setHolding(st.h || null);
+    // v219: La Marea — masasında yemek var (oturuyorken)
+    {
+      const fd = st.p === 's' && typeof st.fd === 'string' ? st.fd : null;
+      if ((dine.get(uid)?.product || null) !== fd) dineSet(uid, f, fd);
+    }
     // v216.3: fırladı — başlangıç bir kez gelir, uçuşu bu cihaz oynatır
     if (st.p === 'f' && st.fj && st.fj !== r.lastFj) {
       r.lastFj = st.fj;
@@ -2417,6 +2548,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   function removePlayer(uid) {
     const r = remotes.get(uid);
     if (!r) return;
+    dineSet(uid, null, null);
     r.fig.dispose(scene);
     remotes.delete(uid);
   }
@@ -2654,6 +2786,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       const carObj = flying ? null : carOwner ? (carOwner === myUid ? (myCar ? { v: myCar.v, yaw: myCar.yaw } : null) : rcars.get(carOwner)) : null;
       if (flying) {
         f.moving = false;
+      } else if (st.p === 'h' && extras?.remoteFig(f, st)) {
+        show = vis; // v219: helikopterde (koltukta)
       } else if (carObj) {
         const k = pend ? pend.k : st.p === 'd' ? 0 : st.rk || 1;
         const p = seatWorld(carObj, k);
@@ -3783,6 +3917,11 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       const maxV = Math.max(2, P.vmax * (0.3 - 0.2 * k));
       if (Math.abs(vF) > maxV) vF += (Math.sign(vF) * maxV - vF) * Math.min(1, dt * 2.5);
     }
+    // v219: Neon Şehir Pisti — asfalttan çıkınca (çim / çakıl) yavaşlar
+    if (!c.flying && c.x > 460 && c.x < 900 && c.z > -260 && c.z < 110 && pistOffAsphalt(c.x, c.z)) {
+      const maxV = Math.max(4, P.vmax * 0.3);
+      if (Math.abs(vF) > maxV) vF += (Math.sign(vF) * maxV - vF) * Math.min(1, dt * 1.8);
+    }
     const grip = hand ? 1.4 : Math.max(3.2, P.grip - Math.abs(vF) * 0.09);
     if (!c.flying) vL *= Math.exp(-grip * dt);
     c.vx = fx * vF + sx * vL;
@@ -4670,7 +4809,10 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
 
   // v147.5 — akıllı yürüme: önce düz, sonra duvar boyunca kay, olmazsa engelin etrafından dön
   // v167: köprü / tünel duvarı yayaya da engel (zemine atlanmaz) — bkz. outerWorld › railWalkBlocked
-  const canStand = (x, z) => !blockedAt(x, z) && !hitsParked(x, z) && !W.railWalkBlocked(x, z, PLAYER_R, me.y, false, walkHint);
+  const canStand = (x, z) => {
+    const w = extras ? extras.w(x, z, me.y) : null; // v219: yürünebilir bölgeler (2. kat, sahne, çatı)
+    return w != null ? w : !blockedAt(x, z) && !hitsParked(x, z) && !W.railWalkBlocked(x, z, PLAYER_R, me.y, false, walkHint);
+  };
   function moveSmart(vx, vz, dt) {
     const ox = self.x;
     const oz = self.z;
@@ -4824,7 +4966,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     } else walkHint = -1;
     const swim = isSwimming(self.x, self.z);
     me.swim = swim;
-    me.y += (standY(self.x, self.z, walkHint, me.y) - me.y) * Math.min(1, dt * (swim ? 4 : 12));
+    if (extras) extras.ys(dt, swim); // v219: çatıdan düşme + yumuşak yükseklik
+    else me.y += (standY(self.x, self.z, walkHint, me.y) - me.y) * Math.min(1, dt * (swim ? 4 : 12));
     me.moving = moving;
     me.run = self.run && !swim;
   }
@@ -4846,6 +4989,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   const seatHolds = new Set();
   function sitAt(st) {
     if (driving || !st || st.taken || seatBusy(st)) return;
+    if (st.front && (self.x - st.x) * Math.sin(st.yaw) + (self.z - st.z) * Math.cos(st.yaw) < -0.05) return; // v219: arkadan (camın arkasından) oturulmaz
     self.target = null;
     self.path = null;
     ring.visible = false;
@@ -4868,7 +5012,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     let best = null;
     let bd = 1.3;
     seats.forEach((st) => {
-      if (st.taken) return;
+      if (st.taken || st.npc) return; // v219: NPC'nin oturduğu sandalye
       const dy = st.y - me.y;
       if (dy > 1.15 || dy < -0.3) return;
       const d = Math.hypot(st.x - self.x, st.z - self.z);
@@ -4882,6 +5026,11 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   function standUp() {
     const st = self.seat;
     if (!st) return;
+    if (dine.has('me') || dineWait) {
+      dineWait = null;
+      dineSet('me', null, null); // v219: masadan kalkınca yemek kalkar
+      onEvent?.({ type: 'dineEnd' });
+    }
     self.seat = null;
     st.taken = false;
     me.sitting = false;
@@ -4892,7 +5041,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     const sy = Math.sin(st.yaw);
     const cy = Math.cos(st.yaw);
     let f = null;
-    for (const [fw, sd] of [[0.75, 0], [1.1, 0], [-0.75, 0], [-1.1, 0], [0, 0.85], [0, -0.85], [1.2, 0.8], [1.2, -0.8]]) {
+    const offs = st.front ? [[0.8, 0], [1.1, 0], [1.4, 0], [1.1, 0.6], [1.1, -0.6], [1.7, 0], [2.1, 0]] : [[0.75, 0], [1.1, 0], [-0.75, 0], [-1.1, 0], [0, 0.85], [0, -0.85], [1.2, 0.8], [1.2, -0.8]]; // v219: önden oturulan bank → önüne kalkılır
+    for (const [fw, sd] of offs) {
       const x = st.x + sy * fw + cy * sd;
       const z = st.z + cy * fw - sy * sd;
       if (!blockedAt(x, z, PLAYER_R * 1.6)) {
@@ -4909,6 +5059,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   }
   function placeCamera(dt) {
     camera.userData.billboardYaw = null;
+    if (extras?.cam(dt)) return; // v219: helikopter kamerası
     if (heist?.active && heist.cam(dt)) return; // v154
     // v199 — YAYINDA: ana ekran yayın kamerasından (izleyicinin gördüğü açı; eski evdeki setFixedCamera gibi)
     if (streamCam && !evDesign) {
@@ -5177,7 +5328,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
         const wp = fromRoom(v, clamp(lp.x, -VROOM.W / 2 - 3.5, VROOM.W / 2 + 3.5), clamp(lp.z, -VROOM.D / 2 - 3.5, VROOM.D / 2 + 3.5));
         want.x = wp.x;
         want.z = wp.z;
-        want.y = clamp(want.y, 0.4 + (v.y0 || 0), 0.16 + VROOM.H - 0.2 + (v.y0 || 0));
+        const up = me.y > 3 ? 1 : 0; // v219: spor salonunun 2. katı (4,4 m)
+        want.y = clamp(want.y, 0.4 + (v.y0 || 0) + (up ? me.y - 0.1 : 0), 0.16 + VROOM.H - 0.2 + (v.y0 || 0) + (up ? 4.3 : 0));
       } else if (W.modeAt(self.x, self.z) === 'city') want.y = Math.max(want.y, 0.5, me.y + 0.3);
       else want.y = Math.max(want.y, groundY(want.x, want.z, walkHint, me.y) + 0.8, me.y + 0.3);
       look = new V(fx, eyeY - 0.15, fz);
@@ -5265,7 +5417,9 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       stepDrive(dt);
       if (ejectReq) ejectRider();
     } else if (fall) stepFall(dt);
-    else if (self.ride) {
+    else if (extras?.mv(dt)) {
+      /* v219: helikopter / kaykay / çatıdan düşme adımı */
+    } else if (self.ride) {
       stepRide(dt);
       if (ridePend) checkRideEject(); // v216.3: sürücü fırladı → ben de
     }
@@ -5323,7 +5477,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       if (p.t >= 1) p.sp.visible = false;
     });
     // v157: mekân durumu (yürürken), kesit, iç mekânların görünürlüğü, garaj kepenkleri, hayvanlar
-    setVenue((!driving || myCar?.v.walker) && !self.ride && !heist?.active ? W.inVenueRoom(self.x, self.z, -0.1) : null); // v157.4: binekle mekâna girilir
+    setVenue((!driving || myCar?.v.walker) && !self.ride && !heist?.active && !extras?.noVenue() ? W.inVenueRoom(self.x, self.z, -0.1) : null); // v157.4: binekle mekâna girilir
     if (LAZY_INT) lazyInteriors(dt);
     {
       const want = curVenue?.isolated && view !== '2d' ? curVenue : null; // v196: evde dış dünya çizilir (kapıdan / pencereden dışarısı görünsün); diğer oyuncular gizli
@@ -5359,16 +5513,17 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       if (n.deliver) {
         const dv = n.deliver;
         dv.t += dt;
-        const dx = self.x - n.x;
-        const dz = self.z - n.z;
+        const tg = dv.to || self; // v219: masaya servis
+        const dx = tg.x - n.x;
+        const dz = tg.z - n.z;
         const d = Math.hypot(dx, dz);
-        if (d < 1.1 || dv.t > 25) {
+        if (d < (dv.to ? 0.95 : 1.1) || dv.t > 25) {
           n.deliver = null;
           n.setHolding(null);
           n.say(dv.line || 'Afiyet olsun! 🙂');
           dv.done?.();
         } else {
-          const st = Math.min(d - 1.0, dt * 1.9);
+          const st = Math.max(0, Math.min(d - (dv.to ? 0.8 : 1.0), dt * 1.9));
           n.x += (dx / d) * st;
           n.z += (dz / d) * st;
           n.facingLeft = dx < 0;
@@ -5376,6 +5531,42 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
         }
         n.update(dt, camera, now);
         return;
+      }
+      // v219: köylü vb. — evinin çevresinde (2,6 m) ara sıra birkaç adım atar; oyuncu yanındayken durur
+      if (n.wander) {
+        const w = n.wander;
+        if (w.tx == null) {
+          w.w -= dt;
+          if (w.w <= 0 && Math.hypot(self.x - n.x, self.z - n.z) > 2.2) {
+            for (let k = 0; k < 4 && w.tx == null; k++) {
+              const a = Math.random() * Math.PI * 2;
+              const rr = 0.6 + Math.random() * w.r;
+              const tx = w.hx + Math.cos(a) * rr;
+              const tz = w.hz + Math.sin(a) * rr;
+              if (!blockedAt(tx, tz) && sinkAt(tx, tz) <= 0) {
+                w.tx = tx;
+                w.tz = tz;
+              }
+            }
+            if (w.tx == null) w.w = 2 + Math.random() * 3;
+          }
+        } else {
+          const dx = w.tx - n.x;
+          const dz = w.tz - n.z;
+          const d = Math.hypot(dx, dz);
+          if (d < 0.12 || Math.hypot(self.x - n.x, self.z - n.z) < 1.6) {
+            w.tx = null;
+            w.w = 3 + Math.random() * 6;
+          } else {
+            const st = Math.min(d, dt * 0.9);
+            n.x += (dx / d) * st;
+            n.z += (dz / d) * st;
+            n.y = groundY(n.x, n.z);
+            n.facingLeft = dx < 0;
+            n.standYaw = null;
+            n.moving = true;
+          }
+        }
       }
       // v196: devriye yolu olan NPC (cafe / bar bot garsonu) noktadan noktaya yürür, her noktada biraz bekler
       if (n.route?.length > 1) {
@@ -5416,6 +5607,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     me.sink = waters.length ? sinkAt(me.x, me.z) : 0;
     me.standYaw = !me.sitting && !me.inCar ? standsYaw(self.x, self.z) : null;
     me.update(dt, camera, now);
+    extras?.post(dt); // v219
+    dineTick(dt);
     updateRemotes(dt, now);
     stadium?.update(dt, camera, now, self.x, self.z);
     // NPC'ler sırayla konuşur (yakındakiler)
@@ -5466,6 +5659,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     }
     moonL.target.position.set(self.x, 0, self.z);
     placeCamera(dt);
+    extras?.after(dt); // v219: sarsıntı
     cutaway(); // v157: mekân içi kesit (kameraya bakan duvar)
     camFade(dt); // v158.2
     porchCut(); // v157.1: dışarıda kamera tente / saçak altına girince ön cephe kesilir
@@ -5512,6 +5706,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       let sdBest = Infinity;
       seats.forEach((st) => {
         if (st.taken) return;
+        if (st.front && (self.x - st.x) * Math.sin(st.yaw) + (self.z - st.z) * Math.cos(st.yaw) < -0.05) return; // v219: arkadan değil
         // v149: başka basamaktaki koltuk sayılmaz (tribün)
         const dy = st.y - me.y;
         if (dy > 1.15 || dy < -0.3) return;
@@ -5557,7 +5752,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       });
       if (rb) best = rb;
     }
-    if (driving || self.ride) best = null;
+    if (driving || self.ride || extras?.busy()) best = null;
     const zk = best ? best.id : '';
     if (zk !== zoneKey) {
       zoneKey = zk;
@@ -6522,7 +6717,85 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
         },
       });
 
+  // v219 — şehir ekleri (helikopter, toplar, kaykay, çatılar, 2. katlar). Fotoğraf motorunda yok.
+  if (!snapshot && sharedNet) {
+    try {
+      extras = installExtras({
+        uid: myUid,
+        guest,
+        container,
+        scene,
+        camera,
+        self,
+        me,
+        W,
+        keys,
+        sound,
+        camRay,
+        ring,
+        blockers,
+        camPos,
+        groundY,
+        standY,
+        blockedAt,
+        canStand,
+        freeNear,
+        driving: () => Boolean(driving),
+        venue: () => curVenue,
+        walkHint: () => walkHint,
+        isFirst: () => first,
+        snap: () => {
+          first = true;
+        },
+        setEye: (v) => {
+          eyeSm = v;
+        },
+        cityAction: (p) => (cityAction ? cityAction(p) : Promise.reject(new Error('Şu an olmuyor'))),
+        net: sharedNet,
+        remoteRec: (id) => remotes.get(id)?.st || null,
+        figOf: (id) => remotes.get(id)?.fig || null,
+        skate: () => (skateState ? skateState() : null),
+        setSkateRent: (until, srvNow) => onEvent?.({ type: 'skateRent', until, now: srvNow }),
+      });
+    } catch (err) {
+      console.warn('[ekler] kurulamadı', err);
+      extras = null;
+    }
+  }
   const api = {
+    // v219 — La Marea
+    dineState: () => ({ seated: Boolean(self.seat && !self.seat.stand && inResto(self.x, self.z)), food: dine.get('me')?.product || null, waiting: Boolean(dineWait) }),
+    restoGuests: () => {
+      const out = [];
+      remotes.forEach((r, id) => {
+        const q = r.st;
+        if (q && q.p === 's' && !q.fd && !isStoryId(id) && inResto(r.fig.x, r.fig.z) && !dine.has(id)) out.push({ uid: id, name: q.n || 'Oyuncu' });
+      });
+      return out;
+    },
+    // garson ürünü masama getirir (oturuyorsam); done: masaya kondu
+    restoranServe(product, done) {
+      if (!self.seat || self.seat.stand || !inResto(self.x, self.z)) return false;
+      const spot = tableSpot(self.x, self.z);
+      if (!spot) return false;
+      const token = {};
+      dineWait = token;
+      const put = () => {
+        if (dineWait !== token || !self.seat) return;
+        dineWait = null;
+        dineSet('me', me, product);
+        done?.();
+      };
+      const n = npcs.find((q) => q.id === 'npc_lm_garson');
+      if (!n || n.off) {
+        put();
+        return true;
+      }
+      n.setHolding(product);
+      n.say('Siparişiniz geliyor! 🍽️');
+      n.deliver = { product, t: 0, to: { x: spot.x, z: spot.z }, line: 'Afiyet olsun! 🙂', done: put };
+      return true;
+    },
     heist,
     photoState,
     renderAtt,
@@ -6686,6 +6959,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       zoneKey = '__exit__';
     },
     teleport(x, z) {
+      extras?.reset();
       if (driving) exitCar();
       if (self.seat) standUp();
       const f = freeNear(x, z);
@@ -7065,6 +7339,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     },
     // dünya üzerindeki herhangi bir noktaya (Kervankent, köy, kumsal…) yürüyerek ışınlan
     teleportWorld(x, z, yaw) {
+      extras?.reset();
       if (driving) exitCar();
       if (self.ride) rideEnd();
       if (self.seat) standUp();
@@ -7324,12 +7599,15 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
         st.et = lastEmote.et;
       }
       if (me.holding) st.h = me.holding;
+      if (self.seat && dine.has('me')) st.fd = dine.get('me').product; // v219: masamdaki yemek
       // v196: evin içinde — hangi evdeyim (ayrı oda) + kat yüksekliği
       // (ev belgesi henüz gelmediyse de "evde" sayılır: dışarıdakilere kapıda görünmeyiz)
       if (curVenue?.ml) {
         st.hm = evHome?.id || '_';
         st.y = Math.round(me.y * 100) / 100;
       }
+      const hx = extras?.presence(); // v219: helikopterde (p: h, rk koltuk, hl helikopterin durumu)
+      if (hx) Object.assign(st, hx);
       return st;
     },
     getNetCar() {
@@ -7403,6 +7681,11 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     rideStart,
     rideEnd,
     isRiding: () => Boolean(self.ride),
+    // v219: görünüm dükkânının kapısı (hikâye hedefi) — { x, z } ya da null
+    avShopDoor(shop = 'berber') {
+      const az = zones.find((z) => z.kind === 'avshop' && z.shop === shop);
+      return az ? { x: az.x + Math.sin(az.out) * 3.6, z: az.z + Math.cos(az.out) * 3.6 } : null;
+    },
     spawnAt(key) {
       const p = spawnPoint(key);
       api.teleport(p.x, p.z);
@@ -7502,6 +7785,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     haracActive: () => Boolean(harac),
     dispose() {
       engineGone = true;
+      extras?.dispose(); // v219
       haracFinish();
       try {
         heist?.stop(); // v154
