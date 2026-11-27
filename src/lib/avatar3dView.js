@@ -11,7 +11,7 @@
 // =============================================================================
 import * as THREE from 'three';
 import { Avatar3D, makeAvatar3DLook, avatar3DPlain, avatar3DUsesPlain, avatar3DBackSrc, AVATAR_3D_HIP } from '../components/City/avatar3d.js';
-import { buildFullAvatarSvgMarkup, buildFullAvatarBackSvgMarkup, buildAvatarBackLayerMarkup, DEFAULT_AVATAR } from './avatarShapes';
+import { buildFullAvatarSvgMarkup, buildFullAvatarBackSvgMarkup, buildAvatarBackLayerMarkup, buildAvatarHairCardMarkup, DEFAULT_AVATAR } from './avatarShapes';
 
 const SHADOW_RE = /<ellipse cx="160" cy="562"[^>]*\/>/;
 const IS_MOBILE = typeof navigator !== 'undefined' && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent || '');
@@ -38,7 +38,7 @@ function raster(svg, w, h) {
 // belleği dolup telefonda WebView çöküyordu (oyundan atma). Bırakılan bir görünüm tekrar
 // kullanılırsa three.js dokusunu yeniden yükler — sorun çıkmaz.
 const LOOKS = new Map();
-const LOOKS_MAX = IS_MOBILE ? 6 : 16;
+const LOOKS_MAX = IS_MOBILE ? 3 : 16; // v218: telefonda 6 → 3 (kostüm önizlemesi başına ~3,5 MB ekran kartı)
 const keyOf = (av, q) => q + JSON.stringify(av);
 const dropLook = (p) => p?.then((l) => l?.dispose?.()).catch(() => {});
 function buildLook3D(avatar, quality) {
@@ -48,7 +48,12 @@ function buildLook3D(avatar, quality) {
   const [w, h] = quality === 'hi' ? (IS_MOBILE ? [288, 522] : [384, 696]) : [208, 377];
   // v215: pelerin / kanat katmanı ayrıca (varsa) → 3D'de sırt kartı
   const bo = buildAvatarBackLayerMarkup(avatar3DBackSrc(full));
-  return Promise.all([raster(buildFullAvatarSvgMarkup(src, { pose: 'idle' }), w, h), raster(buildFullAvatarBackSvgMarkup(src, { pose: 'idle' }), w, h), bo ? raster(bo, w, h) : null]).then(([f, b, k]) => makeAvatar3DLook(f, b, full, { plain, backOnly: k }));
+  // v218: kostümde arka saç gövdeye boyanmaz, ayrı saç kartı olur (for3d)
+  const hc = plain ? '' : buildAvatarHairCardMarkup(full);
+  const o = { pose: 'idle', for3d: true };
+  return Promise.all([raster(buildFullAvatarSvgMarkup(src, o), w, h), raster(buildFullAvatarBackSvgMarkup(src, o), w, h), bo ? raster(bo, w, h) : null, hc ? raster(hc, w, h) : null]).then(([f, b, k, hk]) =>
+    makeAvatar3DLook(f, b, full, { plain, backOnly: k, hairCard: hk })
+  );
 }
 export function getAvatarLook3D(avatar, quality = 'hi') {
   const full = { ...DEFAULT_AVATAR, ...(avatar || {}) };
@@ -95,8 +100,9 @@ const STOOL_H = 0.45;
 export class AvatarViewer {
   constructor(canvas, { yaw = -0.35, frame = 'full', drag = true } = {}) {
     this.canvas = canvas;
-    this.r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'low-power' });
-    this.r.setPixelRatio(Math.min(2, window.devicePixelRatio || 1));
+    // v218: telefonda kenar yumuşatma kapalı + en çok 1,5 kat çözünürlük (çizim tamponu ~%60 küçük)
+    this.r = new THREE.WebGLRenderer({ canvas, antialias: !IS_MOBILE, alpha: true, powerPreference: 'low-power' });
+    this.r.setPixelRatio(Math.min(IS_MOBILE ? 1.5 : 2, window.devicePixelRatio || 1));
     this.r.outputColorSpace = THREE.SRGBColorSpace;
     this.r.setClearColor(0x000000, 0);
     this.scene = new THREE.Scene();
@@ -260,7 +266,8 @@ let TH = null;
 function thumbRig() {
   if (TH) return TH;
   const canvas = document.createElement('canvas');
-  const r = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, preserveDrawingBuffer: true, powerPreference: 'low-power' });
+  // v218: telefonda kenar yumuşatma yok; resim çizimden hemen sonra okunduğu için preserveDrawingBuffer gerekmez
+  const r = new THREE.WebGLRenderer({ canvas, antialias: !IS_MOBILE, alpha: true, powerPreference: 'low-power' });
   r.outputColorSpace = THREE.SRGBColorSpace;
   r.setClearColor(0x000000, 0);
   const scene = new THREE.Scene();
@@ -271,8 +278,21 @@ function thumbRig() {
 const THUMBS = new Map();
 const queue = [];
 let pumping = false;
+// v218: kuyruk boşalınca küçük resim çizicisi (ayrı WebGL bağlamı) 5 sn sonra kapatılır — kostüm ekranında
+// aynı anda şehir + önizleme + küçük resim olmak üzere 3 bağlam açık kalıyordu (ucuz telefonda çökme)
+let thIdle = 0;
+function thumbRigLater() {
+  clearTimeout(thIdle);
+  thIdle = setTimeout(() => {
+    if (pumping || queue.length || !TH) return;
+    TH.r.dispose();
+    TH.r.forceContextLoss?.();
+    TH = null;
+  }, 5000);
+}
 async function pump() {
   if (pumping) return;
+  clearTimeout(thIdle);
   pumping = true;
   while (queue.length) {
     const job = queue.shift();
@@ -284,6 +304,7 @@ async function pump() {
     await new Promise((r) => requestAnimationFrame(() => r())); // kare başına bir resim: kaydırma takılmasın
   }
   pumping = false;
+  thumbRigLater();
 }
 async function drawThumb({ avatar, w, h, yaw, frame }) {
   // v217: küçük resim görünümü önbelleğe girmez; resim çıkınca dokuları hemen bırakılır
@@ -291,7 +312,7 @@ async function drawThumb({ avatar, w, h, yaw, frame }) {
   const look = await buildLook3D(avatar, 'lo');
   if (!look) throw new Error('look');
   const { r, scene, cam } = thumbRig();
-  const pr = Math.min(2, window.devicePixelRatio || 1);
+  const pr = Math.min(IS_MOBILE ? 1.5 : 2, window.devicePixelRatio || 1);
   r.setPixelRatio(pr);
   r.setSize(w, h, false);
   cam.aspect = w / h;

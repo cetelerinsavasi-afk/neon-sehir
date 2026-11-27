@@ -71,7 +71,7 @@ function Stage({ avatar }) {
       raf = requestAnimationFrame(frame);
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
-      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      const dpr = 1; // v218: arka plan (yıldız + renk geçişi) — tam çözünürlük gereksiz, telefonda bellek
       const W = cv.clientWidth;
       const H = cv.clientHeight;
       if (!W || !H) return;

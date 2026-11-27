@@ -18,10 +18,11 @@
 //     (200 satılmışken boştan ~22). Satış her zaman serbest. Hisse sınırın üstündeyse (başkaları sattıysa)
 //     alım yapılamaz, satış yapılır. Günlük sınır yok.
 //   • Al-satta vergi yok. Hisse satış parası borca gitmez.
-//   • Günlük gelir hak kazanmış hisselere bölünür. GECE TEMETTÜ AVI ENGELİ: iki dağıtım arasında
-//     alınan hisse bir sonraki dağıtımı ATLAR (o günü tam elde tutmamış). O payı diğer (hak
-//     kazanmış) hissedarlar paylaşır; mekânda hak kazanmış hisse yoksa gelir belediyeye gider.
-//     Satışta önce o dönem alınan birimler düşülür.
+//   • Günlük gelir gece, o anda eldeki hisselere bölünür. v218: İLK GÜN TUZAĞI KALKTI — eskiden iki
+//     dağıtım arasında alınan hisse bir sonraki dağıtımı atlıyordu; artık faizdeki gibi alındığı
+//     gün de pay alır (gün içinde ne zaman alındığı fark etmez). b / bt alanları sadece v218 öncesi
+//     alımlar için okunur (eski dönem bir gece sonra kapanır); yeni alım bunlara yazmaz.
+//     Mekânda hiç hisse yoksa gelir belediyeye gider.
 //   • Gelir sınırsız birikir; küsurat kaybolmaz (Q ölçeğinde saklanır). Toplarken borç payı (v202: vergi yok).
 //   • v189: 20 gün OYUNA GİRMEYEN (users/{uid}/private/meta.lastSeenAtMs) oyuncunun hisseleri gece
 //     satılır, biriken geliri vergi + borç payı düşülüp yatırılır, SMS gider (24 saat önceki uyarı
@@ -522,12 +523,12 @@ export function createBorsa({ db, FieldValue, HttpsError, goldTag, stateWrite, t
         paid = q.total;
         u.gold = FieldValue.increment(-q.total);
         u.goldTag = goldTag('borsa', { borsaKom: -q.kom });
-        const nb = periodOpen(hold, dd) ? hold.b + x : x; // bu dönem alınanlar bir sonraki dağıtımı atlar
-        hold = { ...rebase(hold, co.u, hold.u + x, co.u + x), c: hold.c + q.base, b: nb, bd: dd, ba: co.A };
+        // v218: İLK GÜN TUZAĞI KALKTI — alınan hisse hemen hak kazanır (faiz gibi): gece dağıtımında
+        // o günün gelirinden payını alır. b / bt'ye eklenmez; v218 öncesi alımların (b, bt) dönemi
+        // eski kuralla kapanır (bir gece sonra kendiliğinden sıfırlanır).
+        hold = { ...rebase(hold, co.u, hold.u + x, co.u + x), c: hold.c + q.base };
         next.u = co.u + x;
         next.h = co.h + (was.u === 0 ? 1 : 0);
-        next.bt = (co.btd === dd ? co.bt : 0) + x;
-        next.btd = dd;
       } else {
         if (hold.u <= 0) fail('failed-precondition', 'Bu mekânda hissen yok.');
         x = Math.min(want ?? hold.u, hold.u, co.u);

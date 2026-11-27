@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="tr"><head><meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>Neon Şehir — v218 avatar testi</title>
+<style>
+html,body{margin:0;height:100%;background:#0b0e18;color:#d6e6ff;font:14px system-ui,sans-serif;overflow:hidden}
+body{display:flex;flex-direction:column}
+#ui{padding:8px;display:flex;flex-direction:column;gap:6px;background:#0f1322;border-bottom:1px solid #222a44}
+.row{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;align-items:center}
+.lbl{flex:none;font-size:12px;opacity:.7;width:62px}
+button,select{flex:none;background:#1a2036;color:#cfe;border:1px solid #2c3658;border-radius:8px;padding:7px 10px;font:inherit;cursor:pointer}
+select{max-width:260px}
+button.on{background:#0f6b80;border-color:#22d3ee;color:#fff}
+#grid{position:relative;flex:1;min-height:0}
+#grid canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:pan-y;cursor:grab}
+#labs{position:absolute;inset:0;display:grid;pointer-events:none}
+#labs div{padding:8px 10px;font-weight:700;font-size:13px;color:#8ef}
+</style></head>
+<body><script type="module" src="./avatar-test.js"></script></body></html>

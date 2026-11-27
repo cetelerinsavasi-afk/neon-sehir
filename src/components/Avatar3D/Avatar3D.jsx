@@ -75,10 +75,16 @@ export function Avatar3DThumb({ avatar, fallback, className = '', style, w = 200
       const f = fbRef.current;
       return typeof f === 'function' ? f() : f;
     };
+    // v218: kart ekrandan iyice uzaklaşınca resmi boşaltılır (çözülmüş resim belleği bırakılır); geri
+    // gelince önbellekteki resim anında konur. 100 kartın hepsi gezilince ~70 MB çözülmüş resim birikiyordu.
     const io = new IntersectionObserver(
       (es) => {
-        if (!es.some((e) => e.isIntersecting)) return;
-        io.disconnect();
+        const e = es[es.length - 1];
+        if (!e) return;
+        if (!e.isIntersecting) {
+          setSrc(null);
+          return;
+        }
         if (!webglOk()) {
           setSrc(fb() || null);
           return;
@@ -87,7 +93,7 @@ export function Avatar3DThumb({ avatar, fallback, className = '', style, w = 200
           .then((u) => live && setSrc(u))
           .catch(() => live && setSrc(fb() || null));
       },
-      { rootMargin: '150px' }
+      { rootMargin: '400px 0px' }
     );
     io.observe(el);
     return () => {

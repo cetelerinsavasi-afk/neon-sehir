@@ -859,8 +859,12 @@ export function buildAvatarSvgInner(rawState, opts = {}) {
   if (pose === 'handsup') upperBody += handsUpShape(s);
   else if (pose !== 'aim' && !(look && look.f)) upperBody += heldItemShape(s);
   upperBody += neckAccShape(s);
-  upperBody += layer('hb');
-  upperBody += hairBackShape(s);
+  // v218: 3D kostümde arka saç (uzun saç, kostümün hb katmanı) gövdeye BOYANMAZ — ayrı saç kartı olur
+  // (buildAvatarHairCardMarkup). Yoksa omuza / göğse / sırta boya gibi basılıyor, kafa ölçüsünü şişiriyordu.
+  if (!(look && opts.for3d)) {
+    upperBody += layer('hb');
+    upperBody += hairBackShape(s);
+  }
   upperBody += neckShape(s);
   upperBody += headShape(s);
   upperBody += earsShape(s);
@@ -900,8 +904,10 @@ export function buildAvatarSvgInner(rawState, opts = {}) {
   }
   let svg = '';
   svg += `<ellipse cx="160" cy="${GROUND_Y}" rx="74" ry="12" fill="#000" opacity="0.35"/>`;
-  if (look && look.b) svg += `<g transform="translate(0,${bob})">${layer('b')}</g>`;
-  if (L.back) svg += `<g transform="translate(0,${bob})">${tinting ? BACK : L.back}</g>`;
+  // v218: 3D'de arka katman (pelerin, kanat, parıltı) gövdeye boyanmaz — sırt kartında durur
+  // (yoksa kolların / bacakların dokusuna arkadaki parıltı / pelerin rengi karışıyordu)
+  if (look && look.b && !opts.for3d) svg += `<g transform="translate(0,${bob})">${layer('b')}</g>`;
+  if (L.back && !opts.for3d) svg += `<g transform="translate(0,${bob})">${tinting ? BACK : L.back}</g>`;
   svg += legsShape(s, pose, look ? look.leg || null : null);
   svg += shoesShape(s, pose);
   svg += `<g transform="translate(0,${bob})">${upperBody}</g>`;
@@ -934,6 +940,28 @@ export function effectiveAvatar(rawState) {
 export function buildFullAvatarSvgMarkup(rawState, opts = {}) {
   const inner = buildAvatarSvgInner(rawState, opts);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 ${AVATAR_FULL_VIEWBOX_H}">${inner}</svg>`;
+}
+
+// v218 — 3D kostüm SAÇ KARTI: kostümün arka saçı (hb katmanı + uzun saç / örgü / at kuyruğu) tek başına,
+// önden görünüş. 3D'de sırtın ve kafanın arkasında ayrı bir kart olur. Saç yoksa '' döner.
+export function buildAvatarHairCardMarkup(rawState) {
+  const look = rawState && rawState.look ? getLook(rawState.look) : null;
+  if (!look) return '';
+  const s = { ...DEFAULT_AVATAR, ...rawState, ...look.base };
+  const hc = lookHairColor(rawState.look);
+  if (hc) s.hairColor = hc;
+  const tint = rawState.lookTint && typeof rawState.lookTint === 'object' ? rawState.lookTint : null;
+  let origSkin = null;
+  if (tint && typeof tint.s === 'string' && OV_HEX.test(tint.s) && lookSkinnable(rawState.look)) {
+    origSkin = s.skin;
+    s.skin = tint.s;
+  }
+  const lctx = { B: poseBox(s), s };
+  const hb = look.hb ? (typeof look.hb === 'function' ? look.hb(lctx) : look.hb) : '';
+  let sv = hb + hairBackShape(s);
+  if (!sv.trim()) return '';
+  if (tint) sv = tintLook(sv, rawState.look, tint, s, origSkin);
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 ${AVATAR_FULL_VIEWBOX_H}">${sv}</svg>`;
 }
 
 // v215 — 3D avatar: sadece sırttaki katman (pelerin / kanat / sırt aksesuarı); yoksa '' döner
@@ -1224,6 +1252,8 @@ export function buildAvatarBackSvgInner(rawState, opts = {}) {
   }
   const lctx = look ? { B: poseBox(s), s } : null;
   const layer = (k) => (look && look[k] ? (typeof look[k] === 'function' ? look[k](lctx) : look[k]) : '');
+  // v218: 3D kostümde arka saç sadece kafanın arkasına boyanır (çene altı saç kartından gelir)
+  const hairClip3d = (m) => (m && look && opts.for3d ? `<clipPath id="hc3"><rect x="0" y="0" width="320" height="238"/></clipPath><g clip-path="url(#hc3)">${m}</g>` : m);
   // aksesuarlar yuva yuva: aura arkada kalır, sırt (pelerin/kanat) arkadan bakınca ÖNDE, şapka siluet
   const acc = s.acc && typeof s.acc === 'object' ? s.acc : {};
   const one = (slot) => (acc[slot] ? accLayers({ [slot]: acc[slot] }, { animAura: Boolean(opts.animAura), animFire: Boolean(opts.animFire) }) : { back: '', front: '' });
@@ -1248,14 +1278,12 @@ export function buildAvatarBackSvgInner(rawState, opts = {}) {
   upper += headShape(s);
   if (lookHat) {
     // başlığın altından görünen saç (uzun saç, at kuyruğu) + kostümün arka saçı, en üstte başlık
-    if (s.hairStyle && s.hairStyle !== 'kel') upper += hairBackView(s);
-    upper += layer('hb');
+    upper += hairClip3d((s.hairStyle && s.hairStyle !== 'kel' ? hairBackView(s) : '') + layer('hb'));
     upper += `<g>${silhouette(hLayer, headCol)}</g>`;
     upper += `<path d="M110,150 Q112,100 150,86" stroke="#fff" stroke-width="6" fill="none" opacity="0.14" stroke-linecap="round"/>`;
   } else {
     // kostümün arka saç katmanı (hb) arkadan bakınca başın önünde
-    upper += hairBackView(s);
-    upper += layer('hb');
+    upper += hairClip3d(hairBackView(s) + layer('hb'));
     // yüz maskesi vb. (başın üstüne çıkmayan) → arkadan sadece bağı görünür
     if (hLayer) upper += `<path d="M102,170 Q160,184 218,170" stroke="${mainColorOf(hLayer, '#111')}" stroke-width="5" fill="none"/>`;
   }
@@ -1270,12 +1298,12 @@ export function buildAvatarBackSvgInner(rawState, opts = {}) {
   const headAcc = aHead.front ? silhouette(aHead.front, mainColorOf(aHead.front, s.hatColor || '#222')) : '';
   if (headAcc) upper += tinting ? ACC_H : headAcc;
   // sırt aksesuarı (pelerin / kanat): arkadan bakınca gövdenin üstünde
-  if (aBack.back) upper += tinting ? ACC_B : aBack.back;
+  if (aBack.back && !opts.for3d) upper += tinting ? ACC_B : aBack.back; // v218: 3D'de sırt kartında
 
   let svg = '';
   svg += `<ellipse cx="160" cy="${GROUND_Y}" rx="74" ry="12" fill="#000" opacity="0.35"/>`;
-  if (look && look.b) svg += `<g transform="translate(0,${bob})">${layer('b')}</g>`;
-  if (aAura.back) svg += `<g transform="translate(0,${bob})">${tinting ? ACC_A : aAura.back}</g>`;
+  if (look && look.b && !opts.for3d) svg += `<g transform="translate(0,${bob})">${layer('b')}</g>`;
+  if (aAura.back && !opts.for3d) svg += `<g transform="translate(0,${bob})">${tinting ? ACC_A : aAura.back}</g>`;
   svg += legsShape(s, pose, look ? look.leg || null : null);
   svg += shoesShape(s, pose);
   svg += `<g transform="translate(0,${bob})">${upper}</g>`;

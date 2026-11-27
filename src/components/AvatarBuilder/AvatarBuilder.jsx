@@ -32,7 +32,8 @@ const OPTION_LABELS = {
   faceShape: {
     title: 'Kafa Tipi',
     values: {
-      oval: 'Oval', round: 'Yuvarlak', square: 'Köşeli', heart: 'Kalp', long: 'Uzun', diamond: 'Elmas',
+      // v218: 3D kafanın şekli de buna göre (avatar3d.js › FACE_3D)
+      oval: 'Oval', round: 'Yuvarlak', square: 'Köşeli Çene', heart: 'Sivri Çene', long: 'Uzun', diamond: 'Elmacık',
     },
   },
   eyebrowShape: {

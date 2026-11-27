@@ -7,7 +7,7 @@
 // =============================================================================
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { buildFullAvatarSvgMarkup, buildFullAvatarBackSvgMarkup, buildAvatarBackLayerMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes'; // v164: ayrı arka çizim
+import { buildFullAvatarSvgMarkup, buildFullAvatarBackSvgMarkup, buildAvatarBackLayerMarkup, buildAvatarHairCardMarkup, DEFAULT_AVATAR } from '../../lib/avatarShapes'; // v164: ayrı arka çizim
 import { heldCanvas } from '../HouseScreen/heldArt';
 import { PetFollower, FireAuraFx, EMOTES } from '../HouseScreen/figureFx.js'; // v191: ev motoru (~1 MB) şehirle yüklenmesin
 import { getSharedRenderer } from '../HouseScreen/sharedRenderer.js';
@@ -225,21 +225,23 @@ function requestLook3(e) {
     e.look3Tries = (e.look3Tries || 0) + 1;
     if (e.look3Tries < 4) setTimeout(() => (e.look3Q = false), 3000);
   };
-  const make = (f, b, plain, bo) =>
+  // own: f / b sadece 3D için çizildi (2D figür dokusu değil) → kopyalanınca bırakılır
+  const make = (f, b, plain, bo, hc = null, own = plain) =>
     queueTex(() => {
       if (e.disposed) return;
       try {
-        e.look3 = makeAvatar3DLook(f, b, e.full, { plain, backOnly: bo });
+        e.look3 = makeAvatar3DLook(f, b, e.full, { plain, backOnly: bo, hairCard: hc });
       } catch (err) {
         console.warn('3d avatar:', err);
       }
       if (!e.look3) fail(); // v215: kurulamadıysa bir süre sonra yeniden denenir (kalıcı 2D kalmasın)
       // v208: saçsız / şapkasız resimler sadece 3D dokuya kopyalanır; ekran kartına hiç yüklenmez
-      if (plain) {
+      if (own) {
         f.dispose();
         b.dispose();
       }
       bo?.dispose();
+      hc?.dispose();
     });
   // v215: pelerin / kanat katmanı (sadece varsa çizilir)
   const plainAv = avatar3DUsesPlain(e.full) ? avatar3DPlain(e.full) : e.full;
@@ -253,16 +255,26 @@ function requestLook3(e) {
     if (!boSvg) return cb(null);
     rasterTex(() => boSvg, W3, H3, 1, cb, () => e.disposed, () => cb(null)); // pelerin çizilemezse onsuz
   };
+  // v218: kostümün arka saçı (varsa) ayrı saç kartı olur
+  let hcSvg = '';
   if (!avatar3DUsesPlain(e.full)) {
-    // kostüm: kafa çizimi kostümden gelir → mevcut önden / arkadan resim kullanılır
-    ensureBackTex(e, 'backIdle');
-    if (!e.tex.backIdle) {
-      // arka resim kuyrukta; sonraki karede tekrar denenir. v215: 4 sn'de gelmezse önden resimle (2D'de kalmasın)
-      e.look3Wait ||= performance.now();
-      if (performance.now() - e.look3Wait < 4000 && !e.lazy) return;
+    try {
+      hcSvg = buildAvatarHairCardMarkup(e.full);
+    } catch {
+      hcSvg = '';
     }
+  }
+  // v218: kostüm her zaman 3D'ye özel çizilir (arka katman / saç gövdeye boyanmasın); resimler kopyalanınca bırakılır
+  if (!avatar3DUsesPlain(e.full)) {
     e.look3Q = true;
-    withBack((bo) => make(e.tex.idle, e.tex.backIdle || e.tex.idle, false, bo));
+    const got = { bo: boSvg ? undefined : null };
+    if (!hcSvg) got.hc = null;
+    const all = () => got.f && got.b && got.hc !== undefined && got.bo !== undefined && make(got.f, got.b, false, got.bo, got.hc, true);
+    const o3 = { pose: 'idle', for3d: true };
+    withBack((t) => ((got.bo = t), all()));
+    rasterTex(() => buildFullAvatarSvgMarkup(e.full, o3).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, ''), W3, H3, 1, (t) => ((got.f = t), all()), () => e.disposed, fail);
+    rasterTex(() => buildFullAvatarBackSvgMarkup(e.full, o3).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, ''), W3, H3, 1, (t) => ((got.b = t), all()), () => e.disposed, fail);
+    if (hcSvg) rasterTex(() => hcSvg, Math.round(W3 / 2), Math.round(H3 / 2), 1, (t) => ((got.hc = t), all()), () => e.disposed, fail);
     return;
   }
   // v208: saç + şapka 3D modellenir → gövdeye saçsız / şapkasız çizim giydirilir (kuyrukta, 2 resim)
@@ -270,8 +282,8 @@ function requestLook3(e) {
   const got = { bo: boSvg ? undefined : null };
   const both = () => got.f && got.b && got.bo !== undefined && make(got.f, got.b, true, got.bo);
   withBack((t) => ((got.bo = t), both()));
-  rasterTex(() => buildFullAvatarSvgMarkup(plainAv, { pose: 'idle' }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, ''), W3, H3, 1, (t) => ((got.f = t), both()), () => e.disposed, fail);
-  rasterTex(() => buildFullAvatarBackSvgMarkup(plainAv, { pose: 'idle' }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, ''), W3, H3, 1, (t) => ((got.b = t), both()), () => e.disposed, fail);
+  rasterTex(() => buildFullAvatarSvgMarkup(plainAv, { pose: 'idle', for3d: true }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, ''), W3, H3, 1, (t) => ((got.f = t), both()), () => e.disposed, fail);
+  rasterTex(() => buildFullAvatarBackSvgMarkup(plainAv, { pose: 'idle', for3d: true }).replace(/<ellipse cx="160" cy="562"[^>]*\/>/, ''), W3, H3, 1, (t) => ((got.b = t), both()), () => e.disposed, fail);
 }
 const wrapAng = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 let blobTex = null;
