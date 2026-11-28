@@ -15,6 +15,12 @@
 - **Kaykay süren oyuncu artık başkalarında da kaykayın üstünde görünür** (konum kaydında `k: 1` + yükseklik; RTDB kuralı eklendi).
 - Binince çıkan "nasıl sürülür" yazısı ve helikopterdeki üst bilgi yazısı kaldırıldı.
 
+- **Kaykay sürmek kolaylaştı**: duvara çarpınca sadece çok hızlıyken (11,5 m/s üstü) düşülür; 70°'ye kadar yamuk iniş düzeltilir;
+  yarıdan fazla dönen flip tamamlanmış sayılır; yüksekten düşme sınırı daha geniş.
+- **🛹 Kaykaydan in** düğmesi sol üstte.
+- **Joystick**: kaykayda ve helikopterde yön tuşları yerine sol altta joystick (ileri / geri / dönüş, itiş gücü joystick'e göre).
+  Sağdaki ZIPLA / FLIP ve YÜKSEL / ALÇAL düğmeleri aynı. Bilgisayarda klavye aynı.
+
 ## 3. Basket
 - Top elimdeyken / sahada top yakınımdayken basket düğmeleri kaykaydan önce gelir.
 - **🏀 Elinden al**: topu süren oyuncunun yanındayken (%45 şans, 1,2 sn bekleme).
