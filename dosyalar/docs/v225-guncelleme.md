@@ -17,12 +17,24 @@ aynı karta tekrar dokunmak ya da sol üstteki **🚪 İn** çıkarır (havadayk
 - Yerden 10 m'nin altında binalar / engeller geçilmez (çatısı bilinen binalarda çatı yüksekliği).
 
 ## 2. Uçan Kaykay
-- Yerden 45 cm yukarıda süzülür (hafif sallanır), altında mavi ışık halkası. **Suyun üstünden de geçer.**
+- Yerden 1,1 m yukarıda süzülür (hafif sallanır), dönerken içe yatar (kaykay da avatar da), altında mavi ışık halkası. **Suyun üstünden de geçer.**
 - Kaykay altyapısı: joystick ile ileri / geri / dön, sağda **🛸 ZIPLA** ve **⚡ TURBO** düğmeleri (kaykaydaki ZIPLA / FLIP yerinde).
   Hız 13 m/s, TURBO ile 20 m/s.
-- **ZIPLA**: yüksek sıçrayış. Düşmek yok — hızlı çarpınca sadece sarsılır, geri seker.
+- **ZIPLA**: yüksek ve uzun sıçrayış (~3,5 m, ~1,9 sn havada); basılı tutulursa inerken süzülür. Düşmek yok — hızlı çarpınca sadece sarsılır, geri seker.
 
-## 3. Çok oyunculu
+## 3. Çatılar (herkes için: yürüme, düşme, helikopter, jetpack)
+- Çatı yüksekliği artık görünmez engel kutusunun üstü + 0,5 m tahmini değil: binanın görünen parçalarına yukarıdan
+  ışın atılıp gerçek yüzey bulunuyor → ayaklar çatıya batmıyor / havada durmuyor (25 cm ızgarada önbellek).
+- Büyük binaların çatıları da sayılıyor (eskiden 2200 m² üstü sayılmıyordu → bazı çatılarda durulmuyordu).
+- Jetpack'le çatı listesinde olmayan bir yapının üstüne de konulur (engel kutusunun üstü); orada jetpack çıkarılamaz.
+- Jetpack avatarın üst gövdesine takılı: eğilince / uçarken sırttan ayrılmaz, sırtın ortasının biraz altında.
+
+## 4. Yukarı bakış (kamera)
+- Yürürken ekranı aşağı doğru sürükledikçe kamera eskisi gibi en alçak açıya iner; oradan devam edince kamera yerinde
+  kalır, sadece bakış yukarı kalkar (en fazla ~75°) → gökyüzü, helikopter, jetpack'liler görünür. Normal açı aralığı aynı.
+- Araca binince / tribünde / mekân içinde yukarı bakış uygulanmaz (araba kamerası eski aralıkta kalır).
+
+## 5. Çok oyunculu
 - Konum kaydında `k: 2` (jetpack) / `k: 3` (uçan kaykay) + `y` gider → diğer oyuncular jetpack'i / uçan kaykayı ve
   havadaki yüksekliği görür. **RTDB kuralı değişti**: `city/p/.../k` artık 0–3 (eskiden 0–1) →
   `npx firebase deploy --only database` gerekli (eski sürümdeki oyuncular k: 2/3'ü görmez, sorun çıkmaz).

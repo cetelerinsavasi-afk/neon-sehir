@@ -103,7 +103,8 @@ export function installExtras(ctx) {
       const hw = (g.width * s.x) / 2,
         hd = (g.depth * s.z) / 2,
         hh = (g.height * s.y) / 2;
-      if (hw < 1.2 || hd < 1.2 || hh < 0.9 || hw * hd * 4 > 2200) return;
+      // v225: büyük binalar da (eskiden 2200 m² üstü sayılmıyordu → bazı çatılarda durulmuyordu)
+      if (hw < 1.2 || hd < 1.2 || hh < 0.9 || hw * hd * 4 > 40000) return;
       const y0 = p.y - hh,
         top = p.y + hh + 0.5;
       let gy = 0;
@@ -111,7 +112,7 @@ export function installExtras(ctx) {
         gy = groundY(p.x, p.z);
       } catch {}
       if (y0 > gy + 1.5) return;
-      L.push({ cx: p.x, cz: p.z, c: Math.cos(eu.y), s: Math.sin(eu.y), hw, hd, y0, top, R: hw + hd });
+      L.push({ cx: p.x, cz: p.z, c: Math.cos(eu.y), s: Math.sin(eu.y), hw, hd, y0, top, bt: p.y + hh, R: hw + hd, g: o.parent || null });
     });
     RO = L;
     return RO;
@@ -123,13 +124,58 @@ export function installExtras(ctx) {
       lz = dx * r.s + dz * r.c;
     return Math.abs(lx) <= r.hw - m && Math.abs(lz) <= r.hd - m;
   };
-  const roofAt = (x, z, ym, m) => {
-    let b = null;
-    for (const r of roofs()) {
-      if (r.top > ym || Math.abs(x - r.cx) > r.R || Math.abs(z - r.cz) > r.R || !inR(r, x, z, m)) continue;
-      if (!b || r.top > b.top) b = r;
+  // v225: çatının gerçek yüzeyi — görünmez engel kutusunun üstü + 0,5 m tahmini yerine binanın görünen
+  // parçalarına yukarıdan ışın atılır (ayaklar çatıya batmasın / havada durmasın). 25 cm'lik ızgarada önbellek.
+  const RRC = new T.Raycaster(),
+    RDN = new V(0, -1, 0),
+    RO0 = new V();
+  const roofMeshes = (r) => {
+    if (r.ms) return r.ms;
+    const L = [];
+    r.g?.traverse((o) => {
+      if (!o.isMesh) return;
+      const ud = o.userData || {};
+      if (ud.blocker || ud.pickOnly || ud.doorVoid || ud.ctl || ud.dyn || ud.avatar3d) return;
+      const m = o.material,
+        see = (q) => q && q.visible !== !1 && !(q.transparent && q.opacity < 0.25);
+      if (Array.isArray(m) ? !m.some(see) : !see(m)) return;
+      L.push(o);
+    });
+    return (r.ms = L);
+  };
+  const roofY = (r, x, z) => {
+    const key = Math.round(x * 4) * 100003 + Math.round(z * 4);
+    r.hc || (r.hc = new Map());
+    const c = r.hc.get(key);
+    if (c !== undefined) return c;
+    let y = r.top;
+    const ms = roofMeshes(r);
+    if (ms.length) {
+      RRC.set(RO0.set(x, r.bt + 6, z), RDN);
+      RRC.far = 9.5; // kutu üstünün 3,5 m altına kadar (çatı katı / korkuluk içi)
+      try {
+        for (const h of RRC.intersectObjects(ms, !1)) {
+          if (h.point.y > r.bt + 4.5) continue; // anten, direk, tabela…
+          y = h.point.y;
+          break;
+        }
+      } catch {}
     }
-    return b;
+    if (r.hc.size > 600) r.hc.clear();
+    r.hc.set(key, y);
+    return y;
+  };
+  const roofAt = (x, z, ym, m) => {
+    let b = null,
+      by = -1e9;
+    for (const r of roofs()) {
+      if (r.y0 > ym || Math.abs(x - r.cx) > r.R || Math.abs(z - r.cz) > r.R || !inR(r, x, z, m)) continue;
+      const y = roofY(r, x, z);
+      if (y > ym || y <= by) continue;
+      b = r;
+      by = y;
+    }
+    return b ? { ...b, top: by } : null;
   };
   const roofHit = (x, z, m) => {
     let b = null;
@@ -2580,17 +2626,56 @@ export function installExtras(ctx) {
     return g;
   };
   // sırttaki yeri (avatarın göğüs hizasının arkası)
-  const jetPlace = (g, x, y, z, yaw, lean, thrust, t) => {
-    const s = Math.sin(yaw),
-      c = Math.cos(yaw);
-    g.position.set(x - s * 0.17, y + 1.13, z - c * 0.17);
-    g.rotation.set(lean * 0.6, yaw, 0);
+  const jetFlames = (g, thrust, t) =>
     g.userData.flames.forEach((f, i) => {
       f.visible = thrust > 0.02;
       if (!f.visible) return;
       const fl = 0.85 + Math.sin(t * 47 + i * 2.1) * 0.1 + Math.sin(t * 23 + i) * 0.08;
       f.scale.set(fl, (0.35 + thrust * 1.1) * fl, fl);
     });
+  // v225: jetpack avatarın üst gövdesine takılır — eğilince / sallanınca sırttan ayrılmaz.
+  // Yer: üst gövde parçasının sınır kutusunun arkası, boyunun %42'si (sırtın ortasının biraz altı).
+  const JV = new V(),
+    JQ = new T.Quaternion(),
+    JS = new V();
+  const jetAttach = (g, m3) => {
+    const up = m3 && m3.root && m3.root.visible ? m3.upper : null;
+    if (!up) {
+      if (g.parent !== scene) scene.add(g);
+      return !1;
+    }
+    if (g.parent !== up || g.userData.m3 !== m3) {
+      const body = up.children.find((o) => o.isMesh && o.userData.avatar3d);
+      let y = 0.5,
+        zb = -0.2;
+      if (body?.geometry) {
+        const gb = body.geometry;
+        gb.boundingBox || gb.computeBoundingBox();
+        const b = gb.boundingBox;
+        y = b.min.y + (b.max.y - b.min.y) * 0.42;
+        zb = b.min.z;
+      }
+      up.add(g);
+      g.userData.m3 = m3;
+      up.updateWorldMatrix(!0, !1);
+      up.matrixWorld.decompose(JV, JQ, JS);
+      const k = 1 / (Math.abs(JS.x) || 1); // jetpack dünyadaki boyunu korusun
+      g.scale.setScalar(k);
+      g.position.set(0, y, zb - 0.05 * k); // plaka sırta değsin (plakanın önü yerelde +0,05)
+      g.rotation.set(0, 0, 0);
+    }
+    return !0;
+  };
+  // avatar 3D değilse (uzak / düz çizim): eski yöntem, sahnede ayakların üstüne
+  const jetPlace = (g, m3, x, y, z, yaw, lean, thrust, t) => {
+    jetFlames(g, thrust, t);
+    if (jetAttach(g, m3)) return;
+    // yerel (0, 1, -0,17): önce eğilme (x), sonra yön (y) — avatarın kökü gibi ayaklardan döner
+    const yl = Math.cos(lean) + 0.17 * Math.sin(lean),
+      zl = Math.sin(lean) - 0.17 * Math.cos(lean);
+    g.scale.setScalar(1);
+    g.position.set(x + Math.sin(yaw) * zl, y + yl, z + Math.cos(yaw) * zl);
+    g.rotation.set(lean, yaw, 0);
   };
   const mkHover = () => {
     const g = new T.Group();
@@ -2633,22 +2718,36 @@ export function installExtras(ctx) {
     gl.rotation.set(-Math.PI / 2, 0, -yaw);
     gl.material.opacity = CL(0.38 - h * 0.08, 0, 0.38) * (0.85 + Math.sin(t * 6) * 0.15);
   };
+  const HOV_H = 1.1; // v225: uçan kaykay yerden bu kadar yukarıda süzülür
   const jetM = mkJet();
   scene.add(jetM);
   const hovM = mkHover();
   scene.add(hovM);
   scene.add(hovM.userData.glow);
   // zemin: park rampaları / sahne / spor salonu 2. kat / çatılar / su yüzeyi
-  const gxFloor = (x, z, y) => {
+  // tol: yerdeyken çatıdaki küçük basamaklar (0,6 m) da zemin sayılır
+  const gxFloor = (x, z, y, tol = 0.05) => {
     let f = gH(x, z),
       roof = null,
       water = !1;
-    const zr = zG(x, z, y + 0.05);
-    if (zr != null && zr <= y + 0.05 && zr > f) f = zr;
-    const r = roofAt(x, z, y + 0.05, 0.05);
+    const zr = zG(x, z, y + tol);
+    if (zr != null && zr <= y + tol && zr > f) f = zr;
+    const r = roofAt(x, z, y + tol, 0.05);
     if (r && r.top > f) {
       f = r.top;
       roof = r;
+    }
+    // çatı listesinde olmayan bina / yapı: engel kutusunun üstü (jetpack'le üstüne konulur)
+    if (!roof && blockedAt(x, z)) {
+      try {
+        RRC.set(RO0.set(x, y + tol + 0.01, z), RDN);
+        RRC.far = 60;
+        const h = RRC.intersectObjects(blockers, !1)[0];
+        if (h && h.point.y > f + 0.3) {
+          f = h.point.y;
+          roof = { top: f, pseudo: !0 };
+        }
+      } catch {}
     }
     try {
       const wl = W.waterLevel(x, z, f, W.modeAt(x, z));
@@ -2662,6 +2761,10 @@ export function installExtras(ctx) {
   };
   const gxOff = (why) => {
     if (!GX.on) return !1;
+    if (GX.kind === `jet` && GX.roof?.pseudo && why !== ` `) {
+      toast(`⚠️ Burada çıkarılamaz — çatıya ya da yere in`);
+      return !1;
+    }
     const was = GX.kind;
     GX.on = !1;
     GX.air = !1;
@@ -2673,9 +2776,9 @@ export function installExtras(ctx) {
     try {
       me.m3?.root && (me.m3.root.rotation.x = 0);
     } catch {}
-    const F = gxFloor(self.x, self.z, me.y);
+    const F = gxFloor(self.x, self.z, me.y, 0.6);
     me.y = F.f;
-    RF.roof = F.roof; // çatıdaysak çatıda yürümeye devam
+    RF.roof = F.roof && !F.roof.pseudo ? F.roof : null; // çatıdaysak çatıda yürümeye devam
     if (!F.roof && !canStand(self.x, self.z)) {
       const p = freeNear?.(self.x, self.z);
       if (p) {
@@ -2721,7 +2824,7 @@ export function installExtras(ctx) {
     ring.visible = !1;
     const fl = gxFloor(self.x, self.z, me.y);
     GX.roof = fl.roof;
-    GX.y = kind === `hover` ? fl.f + 0.45 : fl.f;
+    GX.y = kind === `hover` ? fl.f + HOV_H : fl.f;
     jetM.visible = kind === `jet`;
     hovM.visible = kind === `hover`;
     toast(kind === `jet` ? `🎒 Jetpack takıldı — ⤒ YÜKSEL düğmesiyle kalk` : `🛸 Uçan kaykay hazır — iyi sürüşler`);
@@ -2779,7 +2882,13 @@ export function installExtras(ctx) {
     const nx = self.x + GX.vx * dt,
       nz = self.z + GX.vz * dt;
     let ok;
-    if (!GX.air) ok = GX.roof ? !0 : canStand(nx, nz);
+    if (!GX.air) {
+      if (GX.roof?.pseudo) ok = !0;
+      else if (GX.roof) {
+        const h = roofHit(nx, nz, 0.22);
+        ok = !(h && h.top > me.y + 0.9 && h.y0 < me.y + 1.5);
+      } else ok = canStand(nx, nz);
+    }
     else {
       const h = roofHit(nx, nz, 0.3);
       ok = !(h && h.top > me.y + 0.05 && h.y0 < me.y + 1.7);
@@ -2804,7 +2913,7 @@ export function installExtras(ctx) {
       GX.vz *= -0.15;
     }
     // zemin / iniş / tavan
-    const F = gxFloor(self.x, self.z, me.y);
+    const F = gxFloor(self.x, self.z, me.y, GX.air ? 0.05 : 0.6);
     if (GX.air) {
       let ny = me.y + GX.vy * dt;
       const top = Math.min(F.f + 150, 380);
@@ -2891,24 +3000,26 @@ export function installExtras(ctx) {
       }
       GX.sp *= -0.25;
     }
-    const F = gxFloor(self.x, self.z, GX.y - 0.45),
-      want = F.f + 0.45 + Math.sin(GX.t * 3) * 0.04;
+    const F = gxFloor(self.x, self.z, GX.y - HOV_H),
+      want = F.f + HOV_H + Math.sin(GX.t * 2.4) * 0.07;
     if (!GX.air) {
-      if (want < GX.y - 0.7) {
+      if (want < GX.y - 0.9) {
         GX.air = !0;
         GX.vy = 0;
-      } else GX.y += (want - GX.y) * Math.min(1, dt * 10);
+      } else GX.y += (want - GX.y) * Math.min(1, dt * 6);
       if (jump && !GX.lastJ) {
         GX.air = !0;
-        GX.vy = 7.5;
+        GX.vy = 8.5;
         thud(0.1);
       }
     }
     if (GX.air) {
-      GX.vy -= 16 * dt;
+      // havada daha uzun kalır; ZIPLA basılı tutulursa inerken süzülür
+      GX.vy -= (jump && GX.vy < 0 ? 4 : 9) * dt;
+      GX.vy = Math.max(GX.vy, jump ? -3.5 : -30);
       GX.y += GX.vy * dt;
       if (GX.y <= want && GX.vy < 0) {
-        if (GX.vy < -9) {
+        if (GX.vy < -11) {
           SHK = Math.max(SHK, 0.35);
           dust(self.x, F.f, self.z, 0.9);
           thud(0.4);
@@ -2920,7 +3031,7 @@ export function installExtras(ctx) {
       }
     }
     GX.lastJ = jump;
-    GX.roll += (-turn * CL(Math.abs(GX.sp) / 10, 0, 1) * 0.22 - GX.roll) * Math.min(1, dt * 6);
+    GX.roll += (-turn * (0.18 + CL(Math.abs(GX.sp) / 10, 0, 1) * 0.32) - GX.roll) * Math.min(1, dt * 5); // dönerken içe yatar
     GX.floor = F.f;
     me.x = self.x;
     me.z = self.z;
@@ -2935,8 +3046,8 @@ export function installExtras(ctx) {
   // görsel (motor avatarı çizdikten sonra): model yerleşimi + duruş
   const gxPost = () => {
     const t = NOW() / 1e3;
-    if (GX.on && GX.kind === `jet`) jetPlace(jetM, me.x, me.y, me.z, GX.yaw, GX.lean, GX.air ? GX.thr : 0, t);
-    if (GX.on && GX.kind === `hover`) hvPlace(hovM, me.x, GX.y, me.z, GX.yaw, GX.roll, GX.floor ?? GX.y - 0.45, t);
+    if (GX.on && GX.kind === `jet`) jetPlace(jetM, me.m3, me.x, me.y, me.z, GX.yaw, GX.lean, GX.air ? GX.thr : 0, t);
+    if (GX.on && GX.kind === `hover`) hvPlace(hovM, me.x, GX.y, me.z, GX.yaw, GX.roll, GX.floor ?? GX.y - HOV_H, t);
     if (!GX.on) return;
     const M3 = me.m3 && me.m3.root.visible ? me.m3 : null;
     if (!M3) return;
@@ -2957,7 +3068,7 @@ export function installExtras(ctx) {
         });
       }
     } else {
-      r.rotation.set(0, GX.yaw - Math.PI / 2, GX.roll * 0.8);
+      r.rotation.set(GX.roll * 0.9, GX.yaw - Math.PI / 2, 0); // yan duruş: dönüş yönüne yatar
       M3.legs.forEach((l, i) => {
         l.hip.rotation.x = -0.3;
         l.knee.rotation.x = 0.6;
@@ -2986,7 +3097,7 @@ export function installExtras(ctx) {
     }
     if (!e || e.k !== kk) {
       if (e) {
-        scene.remove(e.o);
+        e.o.removeFromParent();
         e.o.userData.glow && scene.remove(e.o.userData.glow);
       }
       const o = kk === 2 ? mkJet() : mkHover();
@@ -3009,7 +3120,7 @@ export function installExtras(ctx) {
     if (kk === 2) {
       const airK = fig.y - gy > 0.35;
       if (airK) fig.moving = !1;
-      jetPlace(e.o, fig.x, fig.y, fig.z, yaw, 0, airK ? 0.7 : 0, t);
+      jetPlace(e.o, fig.m3, fig.x, fig.y, fig.z, yaw, 0, airK ? 0.7 : 0, t);
     } else {
       fig.moving = !1;
       hvPlace(e.o, fig.x, fig.y - 0.05, fig.z, yaw, 0, gy, t);
@@ -3019,7 +3130,7 @@ export function installExtras(ctx) {
   const remoteGadgetGone = (id) => {
     const e = RGX.get(id);
     if (e) {
-      scene.remove(e.o);
+      e.o.removeFromParent();
       e.o.userData.glow && scene.remove(e.o.userData.glow);
     }
     RGX.delete(id);
@@ -3191,7 +3302,7 @@ export function installExtras(ctx) {
     try {
       RSK.forEach((b) => scene.remove(b));
       [...RGX.keys()].forEach(remoteGadgetGone); // v225
-      [jetM, hovM, hovM.userData.glow].forEach((o) => scene.remove(o));
+      [jetM, hovM, hovM.userData.glow].forEach((o) => o.removeFromParent());
       scene.remove(parked);
       RSK.clear();
       if (HN.mine) heliRelease();

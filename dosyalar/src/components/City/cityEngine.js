@@ -2437,6 +2437,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       }
     }
   }
+  const LOOK_UP_MAX = 0.9; // v225: normal açının ötesinde en fazla bu kadar yukarı bakılır (≈ 75°)
+  let upSm = 0;
   const self = { x: sp0f.x, z: sp0f.z, camYaw: sp0.yaw, camPitch: sp0.pitch ?? 0.32, camDist: 6.2, target: null, path: null, run: true, ride: null };
   let lastEmote = { e: null, et: 0 };
   const me = new Fig(scene, layer, { id: 'self', name, avatar, isSelf: true });
@@ -4656,7 +4658,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
         self.camYaw -= dx * 0.006;
         camGlide = null;
         // v149: tribünde aşağıya (sahaya) da bakılabilsin
-        self.camPitch = clamp(self.camPitch + dy * 0.004, heightAt(self.x, self.z) == null ? -0.2 : -0.55, 1.2);
+        // v225: yukarı da bakılabilsin (helikopter, jetpack, uçan kaykay…): -0,2'nin altı = kamera yerinde kalır, bakış yukarı döner
+        self.camPitch = clamp(self.camPitch + dy * 0.004, heightAt(self.x, self.z) == null ? -0.2 - LOOK_UP_MAX : -0.55, 1.2);
       }
     }
   }
@@ -5434,7 +5437,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       const ck = c.v.camK;
       const tall = c.v.camH || 0;
       let dist = ((5.4 + spd * 0.055) * zoom + c.v.camBack + tall * 0.9) * (camera.aspect < 1 ? 1.18 : 1);
-      const hgt = (1.7 + self.camPitch * 2.2 + spd * 0.012) * zoom * Math.sqrt(ck) + tall * 1.1;
+      const hgt = (1.7 + clamp(self.camPitch, -0.2, 1.2) * 2.2 + spd * 0.012) * zoom * Math.sqrt(ck) + tall * 1.1; // v225: yukarı bakış araca taşınmasın
       head.set(c.x, c.y + 1.2, c.z);
       const dir = new V(Math.sin(cy), 0, Math.cos(cy));
       camRay.set(head, dir);
@@ -5501,6 +5504,10 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     faceAway = false;
     const yaw = self.camYaw;
     const pitch = clamp(self.camPitch, -0.2, 1.2);
+    // v225: yukarı bakış — normal açı (-0,2 … 1,2) aynen kalır; daha aşağı sürüklenince kamera konumu değişmez,
+    // sadece bakılan nokta yukarı kalkar (gökyüzü / uçanlar görünür). Tribünde ve mekân içinde yok.
+    const upK = !curVenue && standsK < 0.5 ? clamp(-0.2 - self.camPitch, 0, LOOK_UP_MAX) : 0;
+    upSm += (upK - upSm) * (first ? 1 : 1 - Math.exp(-dt * 14));
     const aspect = camera.aspect || 1;
     // v157: mekânın içinde oyundaki 3D mekân kamerası gibi yakın (tavanın altında, odanın dışına taşmaz)
     venueCamK += ((curVenue ? 1 : 0) - venueCamK) * Math.min(1, dt * 3);
@@ -5546,6 +5553,13 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       } else if (W.modeAt(self.x, self.z) === 'city') want.y = Math.max(want.y, 0.5, me.y + 0.3);
       else want.y = Math.max(want.y, groundY(want.x, want.z, walkHint, me.y) + 0.8, me.y + 0.3);
       look = new V(fx, eyeY - 0.15, fz);
+      if (upSm > 1e-3) {
+        // kameranın başa yatay uzaklığı kadar ileriye, açının tanjantı kadar yukarı; biraz da yaklaşır (avatar ekranı kapatmasın)
+        const a = Math.min(1.3, upSm * 1.45);
+        const hd = Math.hypot(want.x - fx, want.z - fz) || 1;
+        look.y += Math.tan(a) * hd;
+        want.y = Math.max(want.y - upSm * 0.6, me.y + 0.3, W.modeAt(self.x, self.z) === 'city' ? 0.5 : -1e9);
+      }
     }
     if (standsK > 0.001) {
       const baseY = me.sitting ? (me.seatY ?? me.y + 0.5) + 0.85 : eyeY;
