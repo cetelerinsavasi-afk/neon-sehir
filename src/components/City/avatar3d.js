@@ -60,7 +60,7 @@ export const AVATAR_STYLES = {
   // v216 — Dengeli + çene: görünüm aynı (saç, yüz, gövde, gölge), sadece kafa–boyun bağlantısı düzeltildi.
   //   jaw: çene öne-aşağı çıkar, çene hattı (kulak altı) geniş kalır · nape: kafatasının arka-altı düzleşir
   //   hz: kafa boynun biraz önünde · nk: boyun (kısalık, geriye kayma, öne eğim, kalınlık)
-  cene: { name: 'Dengeli + çene', s: 0.84, rx: 0.95, ry: 1.03, rz: 0.92, taper: 0.26, flat: 0.88, box: false, legs: 1.06, neck: -0.06, jaw: 1, nape: 1, hz: 0.01, nk: { z: -0.02, tilt: 0.04, r: 1.12 } }, // v220: dik duruş (kafa öne, boyun eğik → kambur görünüyordu)
+  cene: { name: 'Dengeli + çene', s: 0.84, rx: 0.95, ry: 1.03, rz: 0.92, taper: 0.26, flat: 0.88, box: false, legs: 1.06, neck: -0.06, jaw: 1, nape: 1, hz: 0.01, nk: { z: -0.02, tilt: 0.04, r: 0.82 } }, // v220: dik duruş (kafa öne, boyun eğik → kambur görünüyordu) · v225: boyun inceldi (1,12 → 0,82)
   cene2: { name: 'Çene + kısa boyun', s: 0.86, rx: 0.95, ry: 1.03, rz: 0.92, taper: 0.26, flat: 0.88, box: false, legs: 1.06, neck: -0.13, jaw: 1.25, nape: 1, hz: 0.06, nk: { z: -0.08, tilt: 0.22, r: 1.2 } },
 };
 let STYLE_ID = 'cene'; // v218: oyunun avatar tipi (Dengeli + çene). Geri almak için 'dengeli'
