@@ -363,7 +363,7 @@ export function createCityNet({ uid, name, avatar, onPlayer, onPlayerGone, onCar
     if (!a || !b) return true;
     if (Math.hypot(a.x - b.x, a.z - b.z) > 0.2) return true;
     if (Math.abs((a.y ?? 0) - (b.y ?? 0)) > 0.3) return true; // v196: evde kat değişti
-    for (const k of ['l', 'm', 'p', 'sy', 'e', 'et', 'h', 'ro', 'rk', 'r', 'hm', 'fj', 'hl', 'fd', 'lz']) if (a[k] !== b[k]) return true; // v196: eve girdi / çıktı hemen gitsin · v216.3: fırlama · v219: helikopter, masadaki yemek
+    for (const k of ['l', 'm', 'p', 'sy', 'e', 'et', 'h', 'ro', 'rk', 'r', 'hm', 'fj', 'hl', 'fd', 'lz', 'k']) if (a[k] !== b[k]) return true; // v196: eve girdi / çıktı hemen gitsin · v216.3: fırlama · v219: helikopter, masadaki yemek
     return false;
   };
   // v160 — ŞEHİR ÖRTÜLÜYKEN GÖRÜNMEZ: karargah / ev / işletme ekranı şehrin üstünde açıkken

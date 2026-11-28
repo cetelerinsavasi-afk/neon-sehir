@@ -152,7 +152,8 @@ function GIe(e, t, n, r, i, a, o = {}) {
     e.solids.push(...s.solids),
     e.seats.push(...s.seats),
     e.lights.push(...s.lights),
-    e.ticks.push(...s.ticks));
+    e.ticks.push(...s.ticks),
+    e.zones.push(...s.zones.map((z) => (z.kind === `vendor` ? { ...z, menuOnly: !0 } : z)))); // v221: festival tezgâhı — sadece menü
   let c = Math.cos(i),
     l = Math.sin(i);
   s.npcs.forEach((e) => a.npc.push({ x: n + e.x * c + e.z * l, z: r - e.x * l + e.z * c, name: e.name, av: e.av, lines: e.lines }));

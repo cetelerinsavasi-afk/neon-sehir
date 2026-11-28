@@ -322,11 +322,90 @@ function texUse(prev, next) {
   if (next && !next.lazy) next.refs = (next.refs || 0) + 1;
   return next;
 }
+// v221 — UZAKTAKİ AVATAR 3D HALİNE BENZESİN: uzaktaki kâğıt figür eskiden ayrı bir çizimdi (SVG), 3D modelden
+// çok farklı görünüyordu. Artık 3D görünümü hazır olan avatarın uzak pozları (ayakta, yürüme ×2, arkası)
+// 3D modelin kendisinden bir kez çizilir (kuyrukta, karede en çok bir avatar) ve kâğıt figürde kullanılır.
+// Oturma / araç / özel pozlar eski çizimle kalır. Bellek: avatar başına 4 küçük doku.
+const IMP_Q = [];
+let IMP = null;
+const IMP_POSES = { idle: { walk: false, yaw: 0 }, walk1: { walk: true, walkT: Math.PI / 2 / 7, yaw: 0 }, walk2: { walk: true, walkT: (Math.PI * 1.5) / 7, yaw: 0 }, backIdle: { walk: false, yaw: Math.PI } };
+function queueImpostor(e) {
+  if (!e || e.imp || e.impQ || !e.look3 || e.disposed) return;
+  e.impQ = true;
+  IMP_Q.push(e);
+}
+function pumpImpostor(renderer) {
+  const e = IMP_Q.shift();
+  if (!e || e.disposed || e.imp || !e.look3 || !renderer) return;
+  const OW = IS_MOBILE ? 104 : 160;
+  const OH = Math.round((OW * 580) / 320);
+  const K = 2; // 2 kat büyük çizilip küçültülür (kenar yumuşar)
+  if (!IMP) {
+    const sc = new THREE.Scene();
+    sc.add(new THREE.HemisphereLight('#ffffff', '#7a7468', 1.7));
+    const dl = new THREE.DirectionalLight('#fff4e6', 1.5);
+    dl.position.set(1.2, 3, 4);
+    sc.add(dl);
+    const cam = new THREE.OrthographicCamera(-AV_PLANE_W / 2, AV_PLANE_W / 2, AV_PLANE_H - AV_FEET, -AV_FEET, 0.1, 20);
+    cam.position.set(0, 0, 6);
+    cam.lookAt(0, 0, 0);
+    const rt = new THREE.WebGLRenderTarget(OW * K, OH * K);
+    rt.texture.colorSpace = THREE.SRGBColorSpace;
+    IMP = { sc, cam, rt, buf: new Uint8Array(OW * K * OH * K * 4), big: document.createElement('canvas') };
+    IMP.big.width = OW * K;
+    IMP.big.height = OH * K;
+  }
+  let m = null;
+  const out = {};
+  const prevRT = renderer.getRenderTarget();
+  const prevClear = renderer.getClearColor(new THREE.Color());
+  const prevA = renderer.getClearAlpha();
+  try {
+    m = new Avatar3D(e.look3);
+    m.hideFire = true;
+    IMP.sc.add(m.root);
+    const W2 = OW * K;
+    const H2 = OH * K;
+    const g2 = IMP.big.getContext('2d');
+    for (const [pose, o] of Object.entries(IMP_POSES)) {
+      m.pose({ dt: 0, t: 0, walkT: o.walkT || 0, walk: o.walk, sit: false, drive: false, swim: false, tread: false, tilt: 0, emote: null, hold: false });
+      m.root.rotation.set(0, o.yaw, 0);
+      m.root.position.set(0, 0, 0);
+      renderer.setRenderTarget(IMP.rt);
+      renderer.setClearColor(0x000000, 0);
+      renderer.clear(true, true, true);
+      renderer.render(IMP.sc, IMP.cam);
+      renderer.readRenderTargetPixels(IMP.rt, 0, 0, W2, H2, IMP.buf);
+      const img = g2.createImageData(W2, H2);
+      // satırlar alttan üste gelir → çevir
+      for (let y = 0; y < H2; y++) img.data.set(IMP.buf.subarray((H2 - 1 - y) * W2 * 4, (H2 - y) * W2 * 4), y * W2 * 4);
+      g2.putImageData(img, 0, 0);
+      const c = document.createElement('canvas');
+      c.width = OW;
+      c.height = OH;
+      const cg = c.getContext('2d');
+      cg.imageSmoothingQuality = 'high';
+      cg.drawImage(IMP.big, 0, 0, OW, OH);
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      out[pose] = t;
+    }
+    e.imp = out;
+  } catch (err) {
+    console.warn('uzak avatar:', err);
+    e.imp = {}; // bir daha denenmez — eski çizim kalır
+  } finally {
+    renderer.setRenderTarget(prevRT);
+    renderer.setClearColor(prevClear, prevA);
+    m?.dispose();
+  }
+}
 export function sweepAvatarTextures(now = performance.now(), idleMs = 60_000) {
   for (const [k, e] of avCache) {
     if (e.refs > 0 || !e.ready || now - (e.last || 0) < idleMs) continue;
     e.disposed = true; // v164: geç gelen (tembel) arka doku bırakılmış girdiye eklenmesin
     Object.values(e.tex).forEach((t) => t?.dispose?.());
+    Object.values(e.imp || {}).forEach((t) => t?.dispose?.()); // v221
     e.look3?.dispose();
     avCache.delete(k);
   }
@@ -596,7 +675,9 @@ class Fig {
     if (this.tex.ready) {
       const T = this.tex.tex;
       if (BACK_BASE[pose] && !T[pose]) ensureBackTex(this.tex, pose);
-      const t = T[pose] || T[BACK_BASE[pose]] || T.idle;
+      // v221: uzaktaki figür 3D modelden çizilmiş pozu kullanır (varsa)
+      const IP = this.tex.imp;
+      const t = (IP && IP[pose]) || T[pose] || T[BACK_BASE[pose]] || T.idle;
       if (this.mat.map !== t) {
         this.mat.map = t;
         this.mat.needsUpdate = true;
@@ -614,6 +695,12 @@ class Fig {
     // (malzemesi gizlenir): ateş aurası gibi ona bağlı efektler çalışmaya devam eder.
     const d3 = this.scene.userData.fig3d || 0; // v211: her motorun kendi ayarı (fotoğraf motoru canlı oyunu etkilemez)
     const use3d = d3 > 0 && hd < d3 && !(this.forcePose && this.tex.tex?.[this.forcePose]); // v209: araçta da 3D
+    // v221: 3D görünüm hazırsa uzak pozlar 3D modelden çizilsin; uzaktaki (hiç yaklaşılmamış) figürün 3D görünümü de
+    // orta mesafede hazırlanır (2,5 × 3D mesafesi)
+    if (d3 > 0 && this.tex.ready && !this.tex.imp) {
+      if (this.tex.look3) queueImpostor(this.tex);
+      else if (!use3d && hd < d3 * 2.5) requestLook3(this.tex);
+    }
     let look3 = null;
     if (use3d) {
       look3 = (this.tex.ready && this.tex.look3) || null;
@@ -777,6 +864,10 @@ function slimGeometries(root) {
   });
 }
 
+// v221: mekân odasının ölçüleri mekâna göre (belediye daha büyük) — v.room yoksa varsayılan 18 × 14 × 3,4
+const rW = (v) => v?.room?.hw ?? VROOM.W / 2;
+const rD = (v) => v?.room?.hd ?? VROOM.D / 2;
+const rH = (v) => v?.room?.h ?? VROOM.H;
 export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 'Sen', spawn = 'ev', onInteract, onTick, onReady, onEvent, onPlayerTap, snapshot = false, world = null, guest = false, cityAction = null, skateState = null, sharedNet = null } = {}) {
   let extras = null; // v219: cityExtras.js (helikopter, toplar, kaykay…)
   // snapshot: ekran dışı, döngüsüz motor — sadece paylaşılan şehir fotoğraflarını çizer (CityPhoto)
@@ -1188,10 +1279,35 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   const menuStations = (v) => Object.fromEntries(Object.entries(NEW_VENUES[v.type]?.stations || {}).filter(([, acts]) => acts.some((a) => a.act === 'cafe' || a.act === 'bar')).map(([iid]) => [iid, [{ act: 'menu', label: v.type === 'bar' ? '🍸 Sipariş ver' : v.type === 'restoran' ? '🍽️ Sipariş ver' : '☕ Sipariş ver' }]]));
   const gymStations = (v) => Object.fromEntries((v.venue.items || []).filter((q) => GYM_EQ[q.k]).map((q) => [q.i, [{ act: `train_${q.k}`, label: `⭐ Görev: ${GYM_EQ[q.k]}` }]]));
   const venueNpcDefs = [];
+  // v221 — mekân NPC'lerinin baktığı yön. Eskiden yön verilmiyordu: ilk karede kameraya dönüp öyle
+  // kalıyorlardı (çoğu duvara / yanlış yöne bakıyordu). Sıra: verilen yön (oda yereli) → istasyon
+  // eşyası (vezne, bar, tezgâh…) → yakındaki tezgâh / masa → kapıya doğru.
+  const COUNTER_RE = /counter|checkout|vezne|bar$|bufe|gise|masa|desk|table|tezgah|arabasi|workbench|konveyor/i;
+  function venueNpcYaw(v, n) {
+    let a = Number.isFinite(n.yaw) ? n.yaw : null;
+    if (a == null) {
+      const items = v.venue.items || [];
+      let tg = n.station ? items.find((q) => q.i === n.station && Math.hypot(q.x - n.x, q.z - n.z) < 2.6) : null;
+      if (!tg) {
+        let bd = 1.6;
+        for (const q of items) {
+          if (!COUNTER_RE.test(q.k)) continue;
+          const d = Math.hypot(q.x - n.x, q.z - n.z);
+          if (d < bd && d > 0.05) {
+            bd = d;
+            tg = q;
+          }
+        }
+      }
+      if (tg) a = Math.atan2(tg.x - n.x, tg.z - n.z);
+      else a = Math.atan2((v.doorX ?? 0) - n.x, (v.room?.hd ?? 7) + 1 - n.z);
+    }
+    return a + (v.ry || 0);
+  }
   W.venues.forEach((v) => {
     const gk = VENUE_GAME_KEY[v.type];
     const list = [...(v.venue.npcs || [])];
-    (v.venue.bots || []).forEach((b) => list.push({ id: b.i, name: b.cfg.n, x: b.x, z: b.z, lines: b.cfg.l, av: { gender: b.cfg.g, skin: b.cfg.s, hairColor: b.cfg.h, clothing: 'vest', clothColor: '#f4f1e8', neckAcc: 'bow', pantsColor: '#1a1a1a' } }));
+    (v.venue.bots || []).forEach((b) => list.push({ id: b.i, stand: true, name: b.cfg.n, x: b.x, z: b.z, lines: b.cfg.l, av: { gender: b.cfg.g, skin: b.cfg.s, hairColor: b.cfg.h, clothing: 'vest', clothColor: '#f4f1e8', neckAcc: 'bow', pantsColor: '#1a1a1a' } }));
     // v197: oyundaki imam (imamState) — imam yoksa NPC gizli; varsa adı + avatarıyla görünür (venueNpcSet)
     // v202: dilenci köşesindeki 3 minder — bugünün dilencileri (oyuncular) oturur; boş yer gizli (venueNpcSet)
     if (v.type === 'camii') for (let i = 0; i < 3; i++) list.push({ id: `npc_dil${i}`, off: true, sit: 0.14, name: 'Dilenci', x: -7.8 + i, z: 5.6, lines: [] });
@@ -1199,7 +1315,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     list.forEach((n) => {
       const p = fromRoom(v, n.x, n.z);
       const route = Array.isArray(n.route) ? n.route.map(([rx, rz]) => fromRoom(v, rx, rz)) : null; // v196 bot garson
-      venueNpcDefs.push({ id: n.id, off: Boolean(n.off), ...(n.sit ? { sit: n.sit } : {}), name: n.name, av: n.av, x: p.x, z: p.z, y: 0.16 + (v.y0 || 0), lines: n.lines || [], left: Boolean(n.left), venue: v, route, quiet: Boolean(gk && STATION_GAME_KEYS.includes(gk)) });
+      const yaw = route ? null : venueNpcYaw(v, n); // v221: mekân NPC'si tezgâhına / içeriye dönük
+      venueNpcDefs.push({ id: n.id, off: Boolean(n.off), ...(n.stand ? { stand: true } : {}), ...(n.sit ? { sit: n.sit } : {}), ...(yaw != null ? { yaw } : {}), name: n.name, av: n.av, x: p.x, z: p.z, y: 0.16 + (v.y0 || 0), lines: n.lines || [], left: Boolean(n.left), venue: v, route, quiet: Boolean(gk && STATION_GAME_KEYS.includes(gk)) });
     });
     // istasyonlar: oyunun mekânlarında (camii, banka, karakol) oyunun panelleri; markette alışveriş + ATM
     const stations = gk && STATION_GAME_KEYS.includes(gk) ? GAME_VENUES[gk]?.stations || {} : v.type === 'benzinlik' ? NEW_VENUES.market.stations : v.type === 'netkafe' ? NEW_VENUES.netkafe.stations : v.type === 'spor' ? gymStations(v) : CITY_MENU_KEY[v.type] ? menuStations(v) : {}; // v196: internet kafe — bilgisayar / konsol / yayın seti · v198: spor aletleri
@@ -1247,12 +1364,12 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       }
       // v159: kapalı dükkânın kapısı — önünde mekân düğmeleri (liste + soygun) çıkar
       if (v.closedShop) {
-        const o = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 + 2.2);
+        const o = fromRoom(v, v.doorX ?? 0, rD(v) + 2.2);
         zones.push({ kind: 'shopDoor', id: `shop_${v.type}_${Math.round(v.wx)}`, venue: v.type, title: v.venue?.name ? `${v.venue.icon || '🏪'} ${v.venue.name}` : '🏪 Dükkân', x: o.x, z: o.z, r: 3.2 });
       }
       // karargah kapısı: dışarıdan "İçeri gir", içeriden "Şehre çık"
       if (v.isolated) {
-        const o = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 + 1.7);
+        const o = fromRoom(v, v.doorX ?? 0, rD(v) + 1.7);
         // v159.1: şehirdeki karargah içi kaldırıldı — sadece kapıda "İçeri gir" (gerçek karargah ekranı açılır)
         zones.push({ kind: 'hqIn', id: `hqin_${v.type}`, slot: v.hqSlot, title: '🏴 Karargah', x: o.x, z: o.z, r: 2.2 });
       }
@@ -1275,7 +1392,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
   venueExtraZones();
   // v196 — cafe / bar bahçesi (kapının önündeki masalı alan): sipariş burada da verilir
   W.venues.filter((v) => v.type === 'cafe' || v.type === 'bar').forEach((v) => {
-    const p = fromRoom(v, 0, VROOM.D / 2 + 6.2);
+    const p = fromRoom(v, 0, rD(v) + 6.2);
     zones.push({ kind: 'terrace', id: `teras_${v.type}`, venue: v.type, title: v.type === 'bar' ? '🍸 Bar bahçesi' : '☕ Cafe bahçesi', x: p.x, z: p.z, r: 9 });
   });
   // v196 — Müstakil evler bloğunun ön kaldırımı: "🏘️ Evler" (başkalarının evlerini gez)
@@ -1384,6 +1501,12 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     k.npcs.forEach((n) => {
       const p = k.group.localToWorld(new V(n.x, 0, n.z));
       npcDefs.push({ ...n, x: p.x, z: p.z, y: p.y, outer: true });
+    });
+    // v221: şehir dışındaki seyyar tezgâhları (festival alanı) — menü düğmesi çıksın
+    (k.zones || []).forEach((z, i) => {
+      if (z.kind !== 'vendor' || !z.o) return;
+      const p = z.o.getWorldPosition(new V());
+      zones.push({ ...z, o: undefined, id: `ov_${k.group.name}_${i}_${Math.round(p.x)}_${Math.round(p.z)}`, x: p.x, z: p.z, out: yawOf(z.o.matrixWorld) });
     });
   });
   W.extraLights.forEach((L) => lights.push(L));
@@ -1964,8 +2087,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     let room = null;
     const vs = W.inVenueRoom?.(sx, sz, -0.4);
     if (vs && W.inVenueRoom(tx, tz, -0.4) === vs) {
-      const hw = VROOM.W / 2 + 0.4;
-      const hd = VROOM.D / 2 + 0.4;
+      const hw = rW(vs) + 0.4;
+      const hd = rD(vs) + 0.4;
       room = (i, j) => {
         const p = toRoom(vs, GX0 + i + 0.5, GZ0 + j + 0.5);
         return Math.abs(p.x) < hw && Math.abs(p.z) < hd;
@@ -2207,10 +2330,10 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     // v159: kapalı dükkân → kapının önünde (dışarıda, düğmelerin içinde), yüz kapıya dönük
     // v159.1: karargah da (şehirdeki içi kaldırıldı) — kapının önünde
     if (v.closedShop || v.isolated) {
-      const o = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 + (v.isolated ? 1.7 : 2.4));
+      const o = fromRoom(v, v.doorX ?? 0, rD(v) + (v.isolated ? 1.7 : 2.4));
       return { x: o.x, z: o.z, yaw: v.ry, pitch: 0.36 };
     }
-    const p = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 - 3.2);
+    const p = fromRoom(v, v.doorX ?? 0, rD(v) - 3.2);
     return { x: p.x, z: p.z, yaw: v.ry, pitch: 0.36, venue: true };
   }
   function spawnPoint(key) {
@@ -2250,7 +2373,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       if (v) {
         // v159.3: kapıdan biraz daha uzakta, yola yakın (kapıdaki "Evler" listesi açılış anında açılmasın)
         for (const dz of [7.2, 6.4, 5.6, 3.5]) {
-          const p = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 + dz);
+          const p = fromRoom(v, v.doorX ?? 0, rD(v) + dz);
           if (!blockedAt(p.x, p.z)) return { x: p.x, z: p.z, yaw: v.ry + Math.PI, pitch: 0.36 };
         }
       }
@@ -2580,6 +2703,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     r.st = st;
   }
   function removePlayer(uid) {
+    extras?.remoteSkateGone?.(uid); // v221
     const r = remotes.get(uid);
     if (!r) return;
     dineSet(uid, null, null);
@@ -2874,6 +2998,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
         if (curVenue?.ml) show = Boolean(r.st.hm) && r.st.hm === (evHome?.id || '_');
         else if (r.st.hm) show = false;
       }
+      extras?.remoteSkate?.(f, carObj || flying || st.p !== 'w' ? null : st, show); // v221: kaykaydaki oyuncu
       f.group.visible = show;
       if (show) {
         f.sink = waters.length ? sinkAt(f.x, f.z, f.y) : 0;
@@ -4213,12 +4338,12 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     if (isoV) {
       const p = toRoom(isoV, x, z);
       const m = 0.55;
-      return fromRoom(isoV, clamp(p.x, -VROOM.W / 2 + m, VROOM.W / 2 - m), clamp(p.z, -VROOM.D / 2 + m, VROOM.D / 2 - m));
+      return fromRoom(isoV, clamp(p.x, -rW(isoV) + m, rW(isoV) - m), clamp(p.z, -rD(isoV) + m, rD(isoV) - m));
     }
     for (const v of W.venues) {
       if (!v.isolated && !v.closedShop) continue; // v159: kapalı dükkâna dokununca da kapısının önüne
       const p = toRoom(v, x, z);
-      if (Math.abs(p.x) < VROOM.W / 2 + 0.8 && Math.abs(p.z) < VROOM.D / 2 + 0.8) return fromRoom(v, v.doorX ?? 0, VROOM.D / 2 + (v.closedShop ? 2.2 : 1.7));
+      if (Math.abs(p.x) < rW(v) + 0.8 && Math.abs(p.z) < rD(v) + 0.8) return fromRoom(v, v.doorX ?? 0, rD(v) + (v.closedShop ? 2.2 : 1.7));
     }
     return { x, z };
   }
@@ -4292,8 +4417,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     const v = curVenue;
     if (!v || isoV) return true;
     const lp = toRoom(v, x, z);
-    const hw = v.ml ? 9.2 : VROOM.W / 2 + 0.3;
-    const hd = v.ml ? 7.2 : VROOM.D / 2 + 0.3;
+    const hw = v.ml ? 9.2 : rW(v) + 0.3;
+    const hd = v.ml ? 7.2 : rD(v) + 0.3;
     if (Math.abs(lp.x) <= hw && Math.abs(lp.z) <= hd) return true; // içeride
     const dz = zones.find((q) => q.kind === 'door' && q.id === `vdoor_${v.type}`);
     if (!dz) return true;
@@ -4782,8 +4907,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     const v = curVenue;
     if (!v) return;
     const cp = toRoom(v, camera.position.x, camera.position.z);
-    const hw = VROOM.W / 2;
-    const hd = VROOM.D / 2;
+    const hw = rW(v);
+    const hd = rD(v);
     const m = 0.05;
     // [ön, sağ, arka, sol]: kamera duvarın arkasına geçince o duvar kesilir, yerinde alçak kök kalır
     const hide = [cp.z > hd + m, cp.x > hw + m, cp.z < -hd - m, cp.x < -hw - m];
@@ -4807,7 +4932,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
         if (v.isolated || v.noInt) continue; // v158.1: karargahın ön cephesi hiç kesilmez · v159.1: içi kaldırılan binalar da
         if ((camera.position.x - v.wx) ** 2 + (camera.position.z - v.wz) ** 2 > 40 * 40) continue;
         const cp = toRoom(v, camera.position.x, camera.position.z);
-        if (Math.abs(cp.x) < VROOM.W / 2 + 1.5 && cp.z > VROOM.D / 2 - 0.2 && cp.z < VROOM.D / 2 + 5) {
+        if (Math.abs(cp.x) < rW(v) + 1.5 && cp.z > rD(v) - 0.2 && cp.z < rD(v) + 5) {
           hit = v;
           break;
         }
@@ -5078,15 +5203,53 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     const sy = Math.sin(st.yaw);
     const cy = Math.cos(st.yaw);
     let f = null;
+    let f0 = null;
+    // v221: kalkılan yer kapalı bir cep olmasın (masa + dolap + duvar arası: avatar sıkışıyordu) —
+    // 0,5 m adımla çevresine yayılınca en az ~6 m² boş alan olmalı
+    const roomy = (x0, z0) => {
+      const seen = new Set();
+      const q = [[0, 0]];
+      seen.add('0,0');
+      let n = 0;
+      while (q.length && n < 26) {
+        const [a, b] = q.shift();
+        n += 1;
+        for (const [da, db] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+          const k = `${a + da},${b + db}`;
+          if (seen.has(k) || Math.abs(a + da) > 8 || Math.abs(b + db) > 8) continue;
+          seen.add(k);
+          if (!blockedAt(x0 + (a + da) * 0.5, z0 + (b + db) * 0.5, PLAYER_R)) q.push([a + da, b + db]);
+        }
+      }
+      return n >= 26;
+    };
     const offs = st.front ? [[0.8, 0], [1.1, 0], [1.4, 0], [1.1, 0.6], [1.1, -0.6], [1.7, 0], [2.1, 0]] : [[0.75, 0], [1.1, 0], [-0.75, 0], [-1.1, 0], [0, 0.85], [0, -0.85], [1.2, 0.8], [1.2, -0.8]]; // v219: önden oturulan bank → önüne kalkılır
     for (const [fw, sd] of offs) {
       const x = st.x + sy * fw + cy * sd;
       const z = st.z + cy * fw - sy * sd;
       if (!blockedAt(x, z, PLAYER_R * 1.6)) {
-        f = { x, z };
-        break;
+        f0 ||= { x, z };
+        if (roomy(x, z)) {
+          f = { x, z };
+          break;
+        }
       }
     }
+    if (!f) {
+      // daha geniş halka: koltuğun çevresinde 1,5–2,5 m
+      for (let rr = 1.5; rr <= 2.6 && !f; rr += 0.5) {
+        for (let k = 0; k < 12; k++) {
+          const a = st.yaw + (k / 12) * Math.PI * 2;
+          const x = st.x + Math.sin(a) * rr;
+          const z = st.z + Math.cos(a) * rr;
+          if (!blockedAt(x, z, PLAYER_R * 1.3) && roomy(x, z)) {
+            f = { x, z };
+            break;
+          }
+        }
+      }
+    }
+    if (!f) f = f0;
     if (!f) f = freeNear(st.x + sy * 0.75, st.z + cy * 0.75);
     if (f) {
       self.x = f.x;
@@ -5370,11 +5533,11 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       } else if (curVenue) {
         const v = curVenue;
         const lp = toRoom(v, want.x, want.z);
-        const wp = fromRoom(v, clamp(lp.x, -VROOM.W / 2 - 3.5, VROOM.W / 2 + 3.5), clamp(lp.z, -VROOM.D / 2 - 3.5, VROOM.D / 2 + 3.5));
+        const wp = fromRoom(v, clamp(lp.x, -rW(v) - 3.5, rW(v) + 3.5), clamp(lp.z, -rD(v) - 3.5, rD(v) + 3.5));
         want.x = wp.x;
         want.z = wp.z;
         const up = me.y > 3 ? 1 : 0; // v219: spor salonunun 2. katı (4,4 m)
-        want.y = clamp(want.y, 0.4 + (v.y0 || 0) + (up ? me.y - 0.1 : 0), 0.16 + VROOM.H - 0.2 + (v.y0 || 0) + (up ? 4.3 : 0));
+        want.y = clamp(want.y, 0.4 + (v.y0 || 0) + (up ? me.y - 0.1 : 0), 0.16 + rH(v) - 0.2 + (v.y0 || 0) + (up ? 4.3 : 0));
       } else if (W.modeAt(self.x, self.z) === 'city') want.y = Math.max(want.y, 0.5, me.y + 0.3);
       else want.y = Math.max(want.y, groundY(want.x, want.z, walkHint, me.y) + 0.8, me.y + 0.3);
       look = new V(fx, eyeY - 0.15, fz);
@@ -5594,11 +5757,32 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
           n.setHolding(null);
           n.say(dv.line || 'Afiyet olsun! 🙂');
           dv.done?.();
+          if (dv.home) n.goHome = { ...dv.home, t: 0 }; // v221: sabit duran NPC (belediye çaycısı) yerine döner
         } else {
           const st = Math.max(0, Math.min(d - (dv.to ? 0.8 : 1.0), dt * 1.9));
           n.x += (dx / d) * st;
           n.z += (dz / d) * st;
           n.facingLeft = dx < 0;
+          n.moving = true;
+        }
+        n.update(dt, camera, now);
+        return;
+      }
+      // v221: servisten dönen NPC yerine yürür, varınca eski yönüne döner
+      if (n.goHome) {
+        const gh = n.goHome;
+        gh.t += dt;
+        const dx = gh.x - n.x;
+        const dz = gh.z - n.z;
+        const d = Math.hypot(dx, dz);
+        if (d < 0.08 || gh.t > 30) {
+          n.x = gh.x;
+          n.z = gh.z;
+          n.goHome = null;
+        } else {
+          const st = Math.min(d, dt * 1.7);
+          n.x += (dx / d) * st;
+          n.z += (dz / d) * st;
           n.moving = true;
         }
         n.update(dt, camera, now);
@@ -5838,6 +6022,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     }
   }
 
+  let impFrame = 0;
   function render() {
     const w = container.clientWidth;
     const h = container.clientHeight;
@@ -5847,6 +6032,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       camera.updateProjectionMatrix();
     }
     placeSky();
+    // v221: uzak avatar pozları (3D modelden) — 6 karede bir, en çok bir avatar
+    if (!snapshot && IMP_Q.length && ++impFrame % 6 === 0) pumpImpostor(renderer);
     renderer.render(scene, camera);
     // etiketler
     const figs = [me, ...npcs];
@@ -6251,6 +6438,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     const now = performance.now();
     const o = { uid, x: r2(f.x), z: r2(f.z), y: r2(f.y), l: f.facingLeft ? 1 : 0, m: f.moving ? 1 : 0, wp: Math.floor(f.walkT / 0.16) % 2 ? 1 : 0 };
     if (f.sitting && !f.inCar) o.sy = r2(f.seatY ?? 0.5);
+    if (f.sitting && !f.inCar && f.lie) o.lz = 1; // v221: yatakta uzanan fotoğrafta da uzanmış
     // v215: 3D avatarın baktığı yön (fotoğrafta herkes kameraya dönmesin)
     if (Number.isFinite(f.yaw)) o.yw = Math.round(wrapAng(f.yaw) * 1000) / 1000;
     // v151: tribündeki yön (sahaya dönük) — fotoğrafta da ense görünsün (oyundaki gibi)
@@ -6624,6 +6812,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
         const p = f.shot;
         f.inCar = false;
         f.sitting = false;
+        f.lie = false;
         const car = p.c ? tmpCars.get(p.c) : null;
         if (car) {
           const sp = seatWorld(car, p.k || 0);
@@ -6646,6 +6835,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
             f.sitting = true;
             f.seatY = p.sy;
             f.moving = false;
+            f.lie = p.lz === 1; // v221
           }
           f.seatYaw = f.sitting && p.sw != null ? p.sw : null;
           f.standYaw = !f.sitting && p.sw != null ? p.sw : null;
@@ -6670,7 +6860,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       npcs.forEach((n) => {
         // v157: sadece fotoğraf karesinin yakınındakiler (uzaktaki NPC dokusu boşuna çizilmesin)
         const vp = n.venue ? toRoom(n.venue, cam.px, cam.pz) : null;
-        const near = !n.off && (n.x - cam.px) ** 2 + (n.z - cam.pz) ** 2 < 60 * 60 && (!vp || (Math.abs(vp.x) < VROOM.W / 2 + 4 && Math.abs(vp.z) < VROOM.D / 2 + 4));
+        const near = !n.off && (n.x - cam.px) ** 2 + (n.z - cam.pz) ** 2 < 60 * 60 && (!vp || (Math.abs(vp.x) < rW(n.venue) + 4 && Math.abs(vp.z) < rD(n.venue) + 4));
         if (!near) {
           if (n.group.visible) hide(n.group);
           return;
@@ -6869,6 +7059,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       return true;
     },
     heist,
+    skateSummon: () => Boolean(extras?.skateSummon?.()), // v221: kaykayı yanına getir (Arabalarım › Motor)
     photoState,
     renderAtt,
     // v157.4: Sixtagram — telefonda sadece yakındaki fotoğraflar kendiliğinden çizilir
@@ -6940,15 +7131,17 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       return true;
     },
     // v198: garson siparişi getirir (ürün garsonun elinde gelir, varınca done çağrılır)
-    npcDeliver(id, product, done) {
+    npcDeliver(id, product, done, opts = {}) {
       const n = npcs.find((q) => q.id === id);
       if (!n || n.off) {
         done?.();
         return false;
       }
       n.setHolding(product);
-      n.say('Siparişiniz geliyor! 🍽️');
-      n.deliver = { product, t: 0, done };
+      n.say(opts.say || 'Siparişiniz geliyor! 🍽️');
+      // v221: rotası olmayan (sabit duran) NPC servisten sonra yerine döner
+      n.deliver = { product, t: 0, done, ...(opts.line ? { line: opts.line } : {}), ...(!n.route?.length ? { home: n.goHome ? { x: n.goHome.x, z: n.goHome.z } : { x: n.x, z: n.z } } : {}) };
+      n.goHome = null;
       return true;
     },
     npcSay(id, text) {
@@ -7384,7 +7577,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     exitHq(slot) {
       const v = W.venues.find((q) => q.type === `hq${slot}`);
       if (!v) return false;
-      const p = fromRoom(v, v.doorX ?? 0, VROOM.D / 2 + 3.6);
+      const p = fromRoom(v, v.doorX ?? 0, rD(v) + 3.6);
       if (self.seat) standUp();
       self.x = p.x;
       self.z = p.z;

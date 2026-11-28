@@ -610,6 +610,19 @@ const CoupScreen = lazy(() => import('../Politics/Coup').then((m) => ({ default:
 // Seçimler (Pazar 00:00 – Salı 00:00). Anasayfadaki buton oy verince kaybolur, bu durur.
 const POL_BTN = { signup: '✍️ İmza', election: '🗳️ Seçimler', counting: '🗳️ Seçimler', results: '🗳️ Seçimler' };
 let teaT = 0;
+// v221: sipariş elime geçince (motorun eldeki ürünü değişince) bildirim — 0,5 sn'de bir, en fazla 30 sn
+function teaWatch(eng, done) {
+  const t0 = Date.now();
+  const u0 = eng?.cityEng?.()?.myHolding?.()?.until || 0;
+  const iv = setInterval(() => {
+    const h = eng?.cityEng?.()?.myHolding?.();
+    const got = h && h.until > u0 + 1000;
+    if (got || Date.now() - t0 > 30_000) {
+      clearInterval(iv);
+      if (got) done();
+    }
+  }, 500);
+}
 export function BelediyePart({ panel, setPanel, walk, flash, engineRef }) {
   const { user } = useAuth();
   const { phase, state } = usePoliticsState();
@@ -619,19 +632,33 @@ export function BelediyePart({ panel, setPanel, walk, flash, engineRef }) {
   if (!user) return null;
   // v160.4: seçim ile darbe aynı anda olmaz → tek düğme (darbe varsa Darbe, yoksa seçim dönemi)
   const pol = coupOn ? { key: 'darbe', label: '⚡ Darbe' } : POL_BTN[phase] ? { key: 'secim', label: POL_BTN[phase] } : null;
-  // çaycı çayı getirir → elinde 2 dk (sadece şehirdeki eldeki ürün; sunucuya yazma yok)
-  const orderTea = () => {
+  // v221: Çaycı Hasan siparişi kendi getirir (tepside yürüyüp yanına gelir) → elinde 2 dk.
+  // Çay ya da Türk kahvesi, bedava; sunucuya yazma yok (sadece şehirdeki eldeki ürün).
+  const TEA = { cay: { say: 'Çayın demleniyor, getiriyorum! 🍵', line: 'Buyur, çayın taze! 🍵', label: 'Çay' }, espresso: { say: 'Kahven pişiyor, hemen getiriyorum! ☕', line: 'Buyur, kahven köpüklü! ☕', label: 'Türk kahvesi' } };
+  const orderTea = (kind = 'cay') => {
     if (teaBusy) return;
+    const T = TEA[kind] || TEA.cay;
     setTeaBusy(true);
+    setPanel(null);
+    const eng = engineRef?.current;
+    const hand = () => {
+      setTeaBusy(false);
+      flash?.(`${kind === 'cay' ? '🍵' : '☕'} Çaycı Hasan ${T.label.toLowerCase()} getirdi · elinde (2 dk)`);
+    };
+    if (eng?.deliver) {
+      flash?.(`🛎️ Çaycı Hasan ${T.label.toLowerCase()} hazırlıyor, getiriyor…`);
+      // eldeki ürün süresini şehir ekranı (holdFor) yönetir
+      setTimeout(() => eng.deliver('bl_bot_cay', kind, { say: T.say, line: T.line }), 1500);
+      setTimeout(() => setTeaBusy(false), 30_000);
+      teaWatch(eng, hand);
+      return;
+    }
     setTimeout(() => {
-      const eng = engineRef?.current;
-      eng?.setHolding?.('cay');
-      eng?.say?.('bl_bot_cay', 'Buyur, çayın taze!');
+      eng?.setHolding?.(kind);
+      eng?.say?.('bl_bot_cay', T.line);
       clearTimeout(teaT);
       teaT = setTimeout(() => engineRef?.current?.setHolding?.(null), 120_000);
-      setTeaBusy(false);
-      setPanel(null);
-      flash?.('🍵 Çaycı Hasan çayını getirdi · elinde (2 dk)');
+      hand();
     }, 700);
   };
   return (
@@ -656,9 +683,14 @@ export function BelediyePart({ panel, setPanel, walk, flash, engineRef }) {
       {panel === 'garson' && (
         <Sheet title="🛎️ Çaycı Hasan" onClose={() => setPanel(null)}>
           <div className="v3-vendor-acts">
-            <button className="v3-vendor-act buy" disabled={teaBusy} onClick={orderTea}>
+            <button className="v3-vendor-act buy" disabled={teaBusy} onClick={() => orderTea('cay')}>
               <span className="v3-vendor-ico">🍵</span>
               <b>{teaBusy ? 'Getiriliyor…' : 'Çay'}</b>
+              <em>Bedava</em>
+            </button>
+            <button className="v3-vendor-act buy" disabled={teaBusy} onClick={() => orderTea('espresso')}>
+              <span className="v3-vendor-ico">☕</span>
+              <b>{teaBusy ? 'Getiriliyor…' : 'Türk kahvesi'}</b>
               <em>Bedava</em>
             </button>
           </div>

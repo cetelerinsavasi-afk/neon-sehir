@@ -49,25 +49,45 @@ export const NEW_VENUES = {
     wall: 'tugla',
     floor: 'parke_mese',
     items: [
+      // v221: iç tasarım — tezgâh arkasında raf + saat, pencere önünde masalar, köşede kanepeli okuma köşesi,
+      // tavanda vantilatörler; kapıdan tezgâha orta yol boş (garsonun yolu da)
       it('cf_cnt', 'cafecounter', -2.2, -5.9),
-      it('cf_cake', 'cakecase', 1.4, -5.9),
-      it('cf_kc', 'kcoffee', 3.6, -6.6),
+      it('cf_cake', 'cakecase', 0.4, -5.9),
+      it('cf_cake2', 'cakecase', 1.5, -5.9),
+      it('cf_kc', 'kcoffee', 3.4, -6.6),
       it('cf_menu', 'menuboard', -2.2, -7),
-      it('cf_t1', 'cafetable', -6.2, -2.6),
-      it('cf_t2', 'cafetable', -6.2, 0.9),
-      it('cf_t3', 'cafetable', -6.2, 4.4),
-      it('cf_t4', 'cafetable', 4.9, -2.4),
-      it('cf_t5', 'cafetable', 4.9, 1.1),
-      it('cf_t6', 'cafetable', 4.9, 4.5),
-      it('cf_t7', 'cafetable', -2.4, 0.6),
+      it('cf_clk', 'clock', 0.9, -7),
+      it('cf_ws', 'wallshelf', 5.6, -7),
+      it('cf_bst1', 'stool', -3.3, -4.85),
+      it('cf_bst2', 'stool', -1.1, -4.85),
+      // okuma köşesi (sol arka)
+      it('cf_rug', 'rugkilim', -7.0, -3.4),
+      it('cf_sofa', 'sofa2', -8.35, -3.4, 2),
+      it('cf_tc', 'tcoffee', -7.0, -3.4, 2),
+      it('cf_ac2', 'armchair', -7.0, -5.6),
+      it('cf_bs2', 'bookshelf', -6.2, -6.75),
+      // masalar
+      it('cf_t1', 'cafetable', -6.4, 0.4),
+      it('cf_t2', 'cafetable', -6.4, 3.9),
+      it('cf_t4', 'cafetable', 5.4, -2.6),
+      it('cf_t5', 'cafetable', 5.6, 0.9),
+      it('cf_t6', 'cafetable', 5.6, 4.4),
+      it('cf_t7', 'cafetable', 1.4, -1.8),
+      // sağ arka: kitaplık + koltuk
       it('cf_bs', 'bookshelf', 8.4, -5.0, 6),
-      it('cf_ac', 'armchair', 7.6, -2.6, 6),
-      it('cf_w1', 'win_kafe', -9, -1, 2),
+      it('cf_ac', 'armchair', 7.5, -3.4, 6),
+      it('cf_sd', 'tside', 7.6, -4.4),
+      // duvarlar
+      it('cf_w1', 'win_kafe', -9, -0.6, 2),
       it('cf_w2', 'win_kafe', 9, 2.6, 6),
-      it('cf_pt', 'painting2', -9, 4.2, 2),
+      it('cf_pt', 'painting2', -9, 5.6, 2),
+      it('cf_pt2', 'painting3', 9, -1.2, 6),
+      it('cf_fan1', 'fanc', -4, 0.8),
+      it('cf_fan2', 'fanc', 3.6, 0.8),
       it('cf_lmp', 'lamp', -8.3, -6.3),
       it('cf_pl1', 'plantb', 8.3, 6.3),
       it('cf_pl2', 'plants', -8.3, 6.3),
+      it('cf_pl3', 'palm', 8.3, -6.3),
     ],
     stations: { cf_cnt: [{ act: 'cafe', label: '☕ Sipariş ver' }] },
     npcs: [{ id: 'npc_bot_cafe', name: 'Garson Elif', x: 0, z: 2, av: { gender: 'kadin', build: 'zayif', skin: '#e8c2a0', hairStyle: 'bun', hairColor: '#3b2416', clothing: 'vest', clothColor: '#1c1c1f', neckAcc: 'bow', pantsColor: '#1c1c1f', mouthShape: 'smile', eyelash: 'natural' }, route: [[-5, -2], [4, 1.5], [0, 6.2], [-4.5, 9.6], [4.5, 9.6], [0, 6.2]], lines: ['Siparişin hemen geliyor.', 'Masalar dışarıda da var.', 'Ne alırdınız?', 'Afiyet olsun!'] }, { id: 'npc_barista', name: 'Barista Can', x: -2.2, z: -6.6, av: P.barista, station: 'cf_cnt', lines: ['Türk kahvesi mi filtre mi?', 'Pasta da taze geldi.', 'Afiyet olsun!'] }],
@@ -79,29 +99,41 @@ export const NEW_VENUES = {
     wall: 'boya_antrasit',
     floor: 'parke_ceviz',
     items: [
+      // v221: iç tasarım — uzun bar (2 tezgâh, 5 tabure), arkasında raflar, solda kanepeli köşe,
+      // sağda bilardo + langırt, masalar garsonun yolunu kesmiyor
       it('br_bar', 'bar', -1.0, -5.8),
-      it('br_s1', 'stool', -2.4, -4.9),
-      it('br_s2', 'stool', -1.0, -4.9),
-      it('br_s3', 'stool', 0.4, -4.9),
-      it('br_df1', 'drinkfridge', 3.2, -6.62),
-      it('br_df2', 'drinkfridge', 4.1, -6.62),
+      it('br_bar2', 'bar', 1.75, -5.8),
+      ...[-2.0, -0.8, 0.4, 1.6, 2.8].map((x, n) => it(`br_s${n + 1}`, 'stool', x, -4.85)),
+      it('br_ws1', 'wallshelf', -1.0, -7),
+      it('br_ws2', 'wallshelf', 1.75, -7),
+      it('br_df1', 'drinkfridge', 4.6, -6.62),
+      it('br_df2', 'drinkfridge', 5.5, -6.62),
       it('br_n', 'neon4', -5.4, -7),
-      it('br_n2', 'neon2', 6.6, -7),
+      it('br_n2', 'neon2', 7.4, -7),
       it('br_jb', 'jukebox', -8.4, -4.4, 2),
-      it('br_pool', 'pool', 5.0, 0.6),
-      it('br_bt1', 'bartable', -5.6, -1.2),
-      it('br_bt2', 'bartable', -5.6, 2.4),
-      it('br_bt3', 'bartable', -2.6, 1.2),
-      ...[[-6.3, -1.2], [-4.9, -1.2], [-6.3, 2.4], [-4.9, 2.4], [-3.3, 1.2], [-1.9, 1.2]].map(([x, z], n) => it(`br_ts${n}`, 'stool', x, z)),
+      // kanepeli köşe (sol)
+      it('br_rug', 'rugshag', -7.2, 1.2),
+      it('br_sofa', 'sofa3', -8.35, 1.2, 2),
+      it('br_tc', 'tcoffee', -7.0, 1.2, 2),
+      it('br_gr', 'goldrecords', -9, 4.8, 2),
+      // masalar
+      it('br_bt1', 'bartable', -5.0, -2.6),
+      it('br_bt2', 'bartable', -4.4, 0.8),
+      it('br_bt3', 'bartable', -4.4, 4.4),
+      ...[[-5.7, -2.6], [-4.3, -2.6], [-5.1, 0.8], [-3.7, 0.8], [-5.1, 4.4], [-3.7, 4.4]].map(([x, z], n) => it(`br_ts${n}`, 'stool', x, z)),
+      // oyun köşesi (sağ)
+      it('br_pool', 'pool', 5.0, 0.4),
+      it('br_fz', 'foosball', 5.8, 4.6),
       it('br_dart', 'dart', 9, -3.6, 6),
-      it('br_sp1', 'speaker', -8.4, 5.8),
-      it('br_sp2', 'speaker', 8.4, 5.8),
+      it('br_tv', 'tvwall', 9, 3.0, 6),
+      it('br_sp1', 'speaker', -8.4, 6.2),
+      it('br_sp2', 'speaker', 8.4, 6.2),
       it('br_db', 'discoball', 0, 1.6),
-      it('br_tv', 'tvwall', 9, 3.4, 6),
       it('br_pl', 'plantb', -8.3, -6.3),
+      it('br_pl2', 'palm', 8.3, -6.2),
     ],
     stations: { br_bar: [{ act: 'bar', label: '🍸 Bar' }], br_pool: [{ act: 'pool', label: '🎱 Bilardo' }] },
-    npcs: [{ id: 'npc_bot_bar', name: 'Garson Murat', x: 0, z: 2, av: { gender: 'erkek', build: 'standart', skin: '#d9a77c', hairStyle: 'slick', hairColor: '#1f140d', clothing: 'vest', clothColor: '#1a1a1a', neckAcc: 'bow', pantsColor: '#141414', mouthShape: 'smile', facialHair: 'short' }, route: [[-5, -2], [4, 1.5], [0, 6.2], [-4.5, 9.6], [4.5, 9.6], [0, 6.2]], lines: ['Siparişin hemen geliyor.', 'Masalar dışarıda da var.', 'Ne alırdınız?', 'Afiyet olsun!'] }, { id: 'npc_barmen2', name: 'Barmen Selim', x: -1.0, z: -6.6, av: AV.barmen, station: 'br_bar', lines: ['Ne içersin?', 'Bu akşam müzik bizden.', 'Bilardo masası boş, buyur.'] }],
+    npcs: [{ id: 'npc_bot_bar', name: 'Garson Murat', x: 0, z: 2, av: { gender: 'erkek', build: 'standart', skin: '#d9a77c', hairStyle: 'slick', hairColor: '#1f140d', clothing: 'vest', clothColor: '#1a1a1a', neckAcc: 'bow', pantsColor: '#141414', mouthShape: 'smile', facialHair: 'short' }, route: [[-3.6, -3.4], [3.2, -2.6], [2.6, 2.6], [0, 6.2], [-4.5, 9.6], [4.5, 9.6], [0, 6.2]], lines: ['Siparişin hemen geliyor.', 'Masalar dışarıda da var.', 'Ne alırdınız?', 'Afiyet olsun!'] }, { id: 'npc_barmen2', name: 'Barmen Selim', x: -1.0, z: -6.6, av: AV.barmen, station: 'br_bar', lines: ['Ne içersin?', 'Bu akşam müzik bizden.', 'Bilardo masası boş, buyur.'] }],
   },
   // --- v219: LA MAREA RESTORAN (lüks; fiyatlar barın 2–3 katı — functions/restoran.js) --------------------
   restoran: {
@@ -258,7 +290,7 @@ export const NEW_VENUES = {
       it('nk_rug', 'rugshag', 5.3, -0.3),
       it('nps1', 'console', 3.6, -2.2), it('nss1', 'sofa2', 3.6, 0.9, 4), it('nps2', 'console', 7, -2.2), it('nss2', 'sofa2', 7, 0.9, 4),
       it('nk_ar1', 'armchair', 1.6, -0.4, 2), it('nk_ar2', 'armchair', 9, -0.4, 6),
-      it('nk_ck', 'checkout', 7.2, 4.4, 4),
+      it('nk_ck', 'checkout', 7.2, 4.4, 0), // v221: tezgâh kapıya dönük (eskiden ters: kasiyer kapıya sırtını dönüyordu)
       it('nk_df', 'drinkfridge', 8.75, 3.3, 6),
       it('nk_mb', 'menuboard', 9, 5.4, 6),
       it('nk_bt1', 'bartable', 5.6, 4.7, 0), it('nk_bs1', 'stool', 5.1, 5.3, 0), it('nk_bs2', 'stool', 6.1, 5.3, 0),
@@ -278,7 +310,7 @@ export const NEW_VENUES = {
       nsch: [{ act: 'stream:nsch', label: '🔴 Yayın aç' }],
       nsch2: [{ act: 'stream:nsch2', label: '🔴 Yayın aç' }],
     },
-    npcs: [{ id: 'npc_netci', name: 'Kasada Emre', x: 7.2, z: 5.35, yaw: Math.PI, av: P.netci, lines: ['Hoş geldin, boş bilgisayar var.', 'Turnuva cumartesi!', 'Kulaklık rafta.'] }],
+    npcs: [{ id: 'npc_netci', name: 'Kasada Emre', x: 7.2, z: 3.5, yaw: 0, av: P.netci, lines: ['Hoş geldin, boş bilgisayar var.', 'Turnuva cumartesi!', 'Kulaklık rafta.'] }],
   },
   // --- SPOR SALONU -----------------------------------------------------------------------
   spor: {
@@ -583,3 +615,61 @@ export function gameVenue(key, moveKey = key) {
   const mv = MOVE[moveKey] || {};
   return { ...v, items: v.items.filter((d) => d.k !== 'doordeco').map((d) => (mv[d.i] ? { ...d, x: mv[d.i][0], z: mv[d.i][1] } : d)) };
 }
+
+// v221 — BELEDİYE SALONU (şehirdeki bina): oda 26 × 19 m (x: −13…13, z: −9,5…9,5), tavan 4,6 m.
+// Kapı ön duvarın ortasında (x = 0) — kapıdan makama kadar orta koridor boş. Zabıta kaldırıldı;
+// girişte danışma (sekreter) + bekleme koltukları, çay ocağında Çaycı Hasan (siparişi kendi getirir).
+const BV = VENUES.belediye;
+export const BELEDIYE_HALL = {
+  ...BV,
+  items: [
+    // makam (arka orta)
+    it('bl_amb', 'belediyeamblem', 0, -9.5),
+    it('bl_by1', 'bayrak', -3.2, -8.8),
+    it('bl_by2', 'bayrak', 3.4, -8.8),
+    it('bl_bm', 'baskanmasa', 0, -7.2),
+    it('bl_rug', 'rugkilim', 0, -4.2),
+    it('bl_ch1', 'chester', -2.8, -4.1, 2),
+    it('bl_ch2', 'chester', 2.8, -4.1, 6),
+    it('bl_tc', 'tcoffee', 0, -4.1),
+    it('bl_av1', 'chandelier', 0, -4.4),
+    it('bl_av2', 'chandelier', -8, 1.6),
+    it('bl_av3', 'chandelier', 8, 1.2),
+    it('bl_av4', 'chandelier', 0, 4.2),
+    // meclis toplantı köşesi (sol)
+    it('bl_tm', 'toplantimasa', -8, 1.6),
+    it('bl_kr', 'kursu', -8, -4.6),
+    it('bl_mp', 'meclispano', -13, 1.6, 2),
+    it('bl_bk1', 'bookshelf', -12, -8.9),
+    it('bl_bk2', 'bookshelf', -10.6, -8.9),
+    it('bl_fc', 'filecab', -9.1, -8.9),
+    it('bl_clk', 'clock', -6.4, -9.5),
+    // şehir maketi (sağ)
+    it('bl_mk', 'sehirmaketi', 8, -2.2),
+    it('bl_map', 'cityframe', 8, -9.5),
+    it('bl_wn1', 'win_bogaz', 13, -5.2, 6),
+    it('bl_wn2', 'win_bogaz', 13, 0.8, 6),
+    it('bl_wn3', 'win_bogaz', -13, -5.2, 2),
+    it('bl_pt1', 'painting2', -13, 6.4, 2), // v221: yeni — eski başkanların portresi
+    // giriş: özel kalem + danışma + bekleme (v221: yeni)
+    it('bl_od', 'officedesk', -4.6, 6.4),
+    it('bl_fc2', 'filecab', -6.4, 8.9, 4),
+    it('bl_dn', 'glasscounter', 5.4, 5.6),
+    it('bl_ws1', 'waitseats', 11.6, 6.4, 6),
+    it('bl_ws2', 'waitseats', 11.6, 3.4, 6),
+    it('bl_wc', 'watercooler', 12.3, 8.7, 6),
+    it('bl_lmp1', 'lamp', 12.3, -8.8),
+    it('bl_lmp2', 'lamp', -12.3, 8.7),
+    // çay ocağı
+    it('bl_cay', 'caysemaver', -9.6, 8.7, 4),
+    it('bl_pl1', 'plantb', 2.6, 8.8),
+    it('bl_pl2', 'plantb', 12.3, -6.6),
+    it('bl_pl3', 'plantb', -2.6, 8.8),
+    it('bl_pl4', 'plantb', -12.3, -2.4),
+    it('bl_pl5', 'plantb', 12.3, 1.8),
+  ],
+  npcs: [
+    { id: 'npc_bl_sekreter', name: 'Danışma · Sekreter Ayşe', x: 5.4, z: 4.7, yaw: 0, av: AV.sekreter, lines: ['Hoş geldiniz, Neon Şehir Belediyesi.', 'Başkanlık makamı ileride.', 'Çaycımız Hasan Abi, bir çay söyleyin.', 'İyi günler.'] },
+  ],
+  bots: (BV.bots || []).map((b) => (b.i === 'bl_bot_cay' ? { ...b, x: -8.6, z: 7.6 } : b)),
+};

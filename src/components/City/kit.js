@@ -767,9 +767,10 @@ export class Kit {
   sign(key, text, h, x, y, z, ry = 0, opts = {}) {
     const tex = textCanvasTex(key, text, opts);
     const w = h * tex.userData.aspect;
-    const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false, depthWrite: false, side: THREE.DoubleSide });
+    // v221: opaque → zeminli pano saydam sıralamaya girmez (alfa kesimli, derinlik yazar)
+    const mat = opts.opaque ? new THREE.MeshBasicMaterial({ map: tex, alphaTest: 0.5, toneMapped: false, side: THREE.DoubleSide }) : new THREE.MeshBasicMaterial({ map: tex, transparent: true, toneMapped: false, depthWrite: false, side: THREE.DoubleSide });
     const o = this.mesh(new THREE.PlaneGeometry(w, h), mat, x, y, z, ry, { cast: false, receive: false });
-    o.renderOrder = 3;
+    o.renderOrder = opts.opaque ? 0 : 3;
     if (opts.light !== false && opts.glow) {
       const dx = Math.sin(ry) * 1.2;
       const dz = Math.cos(ry) * 1.2;

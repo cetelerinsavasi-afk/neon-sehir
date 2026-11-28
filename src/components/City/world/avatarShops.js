@@ -84,7 +84,7 @@ export function shopFront(e, c) {
   // v220: tabela bozuk görünüyordu (cepheye 2 cm, kuşağın dışına taşan saydam yazı → titreme / kesik).
   // Artık kuşağın önünde, koyu zeminli, kuşağa sığan bir pano; yazı dükkân enini aşmaz.
   {
-    const sg = e.sign(`shop2_${K}`, `${D.ic} ${D.t}`, 0.44, x, H - 0.25, zf + 0.09, 0, { color: '#ffffff', bg: '#14161b', border: D.c, font: '900 110px Arial, sans-serif', light: false });
+    const sg = e.sign(`shop2_${K}`, `${D.ic} ${D.t}`, 0.44, x, H - 0.25, zf + 0.14, 0, { color: '#ffffff', bg: '#14161b', border: D.c, font: '900 110px Arial, sans-serif', light: false, opaque: true }); // v221: opak pano (saydam sıralamada camların arkasında kalıp kesik görünüyordu)
     const sw = sg.userData.signW || 1;
     if (sw > w - 0.6) sg.scale.set((w - 0.6) / sw, (w - 0.6) / sw, 1);
     e.box(Math.min(w - 0.3, sw * sg.scale.x + 0.2), 0.04, 0.05, glowMat(D.c, 2.2), x, H - 0.03, zf + 0.06, { cast: false });

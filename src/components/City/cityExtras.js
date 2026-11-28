@@ -1261,7 +1261,7 @@ export function installExtras(ctx) {
   };
   const show = (n, v) => n.classList.toggle(`nx-hide`, !v);
   const ui = () => {
-    show(hud, HX.on);
+    show(hud, !1); // v221: helikopterdeki üst bilgi yazısı kaldırıldı
     show(xBtn, HX.on || PAX.on);
     show(pl, HX.on);
     show(pr, HX.on);
@@ -1271,7 +1271,7 @@ export function installExtras(ctx) {
   };
   let hudT = 0;
   const hudTick = (dt) => {
-    if (!HX.on) return;
+    if (!HX.on || !hud.isConnected || hud.classList.contains(`nx-hide`)) return; // v221: yazı gösterilmiyor
     hudT -= dt;
     if (hudT > 0) return;
     hudT = 0.12;
@@ -1740,12 +1740,14 @@ export function installExtras(ctx) {
     const lag = CL((NET.now() - (Number(v.t) || NET.now())) / 1000, 0, 1.5);
     if (k === `b`) {
       BB.remoteHold = v.h && v.h !== ctx.uid ? v.h : null;
+      if (BB.remoteHold && BB.held) toast(`🏀 Top elinden alındı!`); // v221
       if (BB.remoteHold) BB.held = !1;
       if (v.fl) {
         const f = String(v.fl).split(`,`).map(Number);
         if (f.length >= 11 && f.every(Number.isFinite)) {
           BB.held = !1;
           BB.remoteHold = null;
+          BB.flyBy = v.by || null; // v221: şutu atan (Zıpla / blok için)
           BB.fly = { t: lag, T: f[0], x0: f[1], y0: f[2], z0: f[3], x1: f[4], z1: f[5], y1: f[6], apex: f[7], make: f[8] === 1, pts: f[9], ra: f[10] };
           return;
         }
@@ -1908,8 +1910,49 @@ export function installExtras(ctx) {
     };
     me.playEmote && me.playEmote(`zipla`);
     BB.cd = 0.6;
+    BB.flyBy = ctx.uid;
     const F = BB.fly;
     ballSend(`b`, { h: ``, fl: [F.T, F.x0, F.y0, F.z0, F.x1, F.z1, F.y1, F.apex, F.make ? 1 : 0, F.pts, F.ra].map((v) => Math.round(v * 1000) / 1000).join(`,`) });
+  };
+  // v221: basket maçı — topu tutanın elinden al, şut çekene zıpla (blok). Sadece topun RTDB kaydı
+  // (city/ball/b) yazılır; Firestore'a hiçbir şey gitmez. Başarı bu cihazda zarla belirlenir.
+  const BB_STEAL_R = 1.45;
+  const bbHolderFig = () => (BB.remoteHold ? ctx.figOf(BB.remoteHold) : null);
+  const bbSteal = () => {
+    const f = bbHolderFig();
+    if (!f || BB.cd > 0) return;
+    if (Math.hypot(f.x - self.x, f.z - self.z) > BB_STEAL_R + 0.3) return;
+    BB.cd = 1.2;
+    if (Math.random() < 0.45) {
+      BB.remoteHold = null;
+      BB.fly = null;
+      BB.held = !0;
+      BB.vx = BB.vz = BB.vy = 0;
+      ballSend(`b`, { h: ctx.uid });
+      toast(`🏀 Topu kaptın!`);
+      thud(0.12);
+    } else toast(`🏀 Kaçırdın!`);
+  };
+  const bbJump = () => {
+    if (BB.cd > 0) return;
+    BB.cd = 0.9;
+    me.playEmote && me.playEmote(`zipla`);
+    const F = BB.fly;
+    if (!F || BB.flyBy === ctx.uid) return;
+    // top henüz yükselirken ve elimin yetişeceği yerdeyse blok
+    const d = Math.hypot(BB.x - self.x, BB.z - self.z);
+    const reach = me.y + 3.1;
+    if (F.t < F.T * 0.55 && d < 1.6 && BB.y < reach) {
+      const a = Math.atan2(BB.z - self.z, BB.x - self.x);
+      BB.fly = null;
+      BB.flyBy = null;
+      BB.vx = Math.cos(a) * 3.2;
+      BB.vz = Math.sin(a) * 3.2;
+      BB.vy = 2.6;
+      ballSend(`b`, { h: `` });
+      toast(`🖐️ BLOK!`);
+      thud(0.25);
+    }
   };
   /* ---------- skateboard ---------- */
   const SK = {
@@ -1961,6 +2004,36 @@ export function installExtras(ctx) {
     scene.add(g);
     return g;
   })();
+  // v221: KAYKAY MOTOR GİBİ — "her yerde bin" düğmesi yok. Arabalarım › Motor sekmesinden getirilir (yanına
+  // konur), yanına gidince "🛹 Kaykaya bin". İnince / düşünce kaykay olduğu yerde durur, bizi bekler.
+  const parked = board.clone();
+  parked.visible = !1;
+  scene.add(parked);
+  const PK = { on: !1, x: 0, z: 0, y: 0, yaw: 0 };
+  const skPark = (x, z, yaw) => {
+    let p = { x, z };
+    if (!canStand(x, z)) p = freeNear ? freeNear(x, z) || p : p;
+    PK.on = !0;
+    PK.x = p.x;
+    PK.z = p.z;
+    PK.y = gH(p.x, p.z);
+    PK.yaw = yaw || 0;
+    parked.position.set(PK.x, PK.y + 0.01, PK.z);
+    parked.rotation.set(0, PK.yaw, 0);
+    parked.visible = !0;
+  };
+  const skUnpark = () => {
+    PK.on = !1;
+    parked.visible = !1;
+  };
+  const skSummon = () => {
+    if (!skHas()) return !1;
+    if (SK.on) return !0;
+    const a = self.camYaw + Math.PI;
+    skPark(self.x + Math.sin(a) * 1.1, self.z + Math.cos(a) * 1.1, a);
+    toast(`🛹 Kaykayın yanında — binmek için yanına git`);
+    return !0;
+  };
   const skLegs = () => {
     try {
       me.m3 &&
@@ -1976,9 +2049,11 @@ export function installExtras(ctx) {
     board.visible = !1;
     RF.vx = Math.sin(SK.yaw) * SK.sp * 0.6;
     RF.vz = Math.cos(SK.yaw) * SK.sp * 0.6;
+    const fy = SK.air ? SK.ayaw : SK.yaw;
+    skPark(self.x + Math.sin(fy) * 1.4, self.z + Math.cos(fy) * 1.4, fy); // v221: kaykay düştüğün yerin biraz ilerisinde bekler
     SK.sp = 0;
     startFall(1.5, !0);
-    toast(why || `🛹 Düştün! Kaykay elinden kaçtı`);
+    toast(why || `🛹 Düştün! Kaykay ileride bekliyor`);
   };
   // v219: kaykay sahibi mi / kiralık süresi var mı (CityScreen kullanıcı belgesinden verir)
   const skHas = () => Boolean(ctx.skate?.()?.owned) || (ctx.skate?.()?.until || 0) > NET.now();
@@ -2006,10 +2081,18 @@ export function installExtras(ctx) {
     SK.air = !1;
     SK.y = gH(self.x, self.z);
     SK.yaw = Math.atan2(PVX || Math.sin(self.camYaw + Math.PI), PVZ || Math.cos(self.camYaw + Math.PI));
+    if (PK.on) {
+      // v221: bekleyen kaykayın üstüne çık, onun yönünde
+      self.x = PK.x;
+      self.z = PK.z;
+      SK.yaw = PK.yaw;
+      SK.y = gH(self.x, self.z);
+    }
+    skUnpark();
     self.target = null;
     self.path = null;
     board.visible = !0;
-    toast(matchMedia(`(pointer: coarse)`).matches ? `🛹 ▲ it · ◀▶ dön · ZIPLA · havada FLIP` : `🛹 W/▲ it · A/D dön · Space/ZIPLA · havada E/FLIP`);
+    // v221: binince çıkan nasıl sürülür yazısı kaldırıldı
   };
   const skDismount = () => {
     if (!SK.on || SK.air) return;
@@ -2017,6 +2100,8 @@ export function installExtras(ctx) {
     skLegs();
     board.visible = !1;
     me.y = gH(self.x, self.z);
+    const a = SK.yaw + Math.PI / 2;
+    skPark(self.x + Math.sin(a) * 0.55, self.z + Math.cos(a) * 0.55, SK.yaw); // v221: kaykay yanımda kalır
   };
   const skStep = (dt) => {
     const k = keys,
@@ -2217,11 +2302,28 @@ export function installExtras(ctx) {
       if (SK.on) {
         lbl = SK.air ? `` : `🛹 Kaykaydan in`;
         fn = SK.air ? null : skDismount;
-      } else if (skHas() && !ctx.venue() && !self.ride && !self.seat) {
-        // v219: kendi kaykayı (ya da kiralık süresi dolmamış) → her yerde binilir
+      } else if (BB.held) {
+        // v221: top elimdeyken / sahada top yakınımdayken basket düğmeleri kaykaydan önce gelir
+        lbl = `🏀 Şut at`;
+        fn = bbShoot;
+      } else if (bbHolderFig() && Math.hypot(bbHolderFig().x - self.x, bbHolderFig().z - self.z) < BB_STEAL_R && !ctx.guest) {
+        lbl = `🏀 Elinden al`;
+        fn = bbSteal;
+      } else if (BB.fly && BB.flyBy && BB.flyBy !== ctx.uid && BB.fly.t < BB.fly.T * 0.55 && Math.hypot(self.x - BB.x, self.z - BB.z) < 3 && !ctx.guest) {
+        lbl = `🖐️ Zıpla`;
+        fn = bbJump;
+      } else if (!BB.fly && !BB.remoteHold && Math.hypot(self.x - BB.x, self.z - BB.z) < 1.8 && BB.cd <= 0) {
+        lbl = `🏀 Topu al`;
+        fn = () => {
+          BB.held = !0;
+          BB.vx = BB.vz = BB.vy = 0;
+          ballSend(`b`, { h: ctx.uid });
+        };
+      } else if (PK.on && skHas() && !ctx.venue() && !self.ride && !self.seat && Math.hypot(self.x - PK.x, self.z - PK.z) < 1.7) {
+        // v221: sadece bekleyen kaykayın yanında binilir (motor gibi)
         lbl = `🛹 Kaykaya bin`;
         fn = skMount;
-      } else if (dk < 3.6 && !ctx.guest) {
+      } else if (dk < 3.6 && !ctx.guest && !(PK.on && skHas())) {
         // kaykay büfesi: kirala (dakikası 100) — satın almak için yanındaki düğme (CityScreen)
         lbl = `🛹 Kaykay kirala · ${SKATE.rentPerMin} altın/dk`;
         fn = async () => {
@@ -2237,18 +2339,9 @@ export function installExtras(ctx) {
           }
           SK.busy = !1;
         };
-      } else if (BB.held) {
-        lbl = `🏀 Şut at`;
-        fn = bbShoot;
-      } else if (!BB.fly && !BB.remoteHold && Math.hypot(self.x - BB.x, self.z - BB.z) < 1.8 && BB.cd <= 0) {
-        lbl = `🏀 Topu al`;
-        fn = () => {
-          BB.held = !0;
-          BB.vx = BB.vz = BB.vy = 0;
-          ballSend(`b`, { h: ctx.uid });
-        };
       }
     }
+    if (PK.on && !SK.on && !skHas()) skUnpark(); // v221: kiralık süre bitti / ömrü doldu → kaykay kalkar
     aAct = fn;
     if (aBtn.textContent !== lbl) aBtn.textContent = lbl;
     show(aBtn, !!fn);
@@ -2260,7 +2353,7 @@ export function installExtras(ctx) {
     const t = ev.target;
     if (t && (t.tagName === `INPUT` || t.tagName === `TEXTAREA` || t.isContentEditable)) return;
     if (ev.repeat) return;
-    if (ev.code === `KeyG` && aAct && /🏀/.test(aBtn.textContent)) aAct();
+    if (ev.code === `KeyG` && aAct && /🏀|🖐️/.test(aBtn.textContent)) aAct();
     if (SK.on && ev.code === `Space`) ev.preventDefault();
   };
   window.addEventListener(`keydown`, onKeyG);
@@ -2278,6 +2371,7 @@ export function installExtras(ctx) {
   });
   // v219: kendi konum kaydıma eklenecek alanlar (motor her tick'te çağırır)
   const presence = () => {
+    if (SK.on) return { k: 1, y: Math.round((SK.y + 0.1) * 100) / 100 }; // v221: kaykayda (başkaları da kaykayı görsün)
     if (HX.on) return { p: `h`, rk: 1, hl: hlStr() };
     if (PAX.on) return { p: `h`, rk: PAX.seat + 1, ro: HN.node?.by || `` };
     if (HN.mine && (H.rpm > 0.02 || !H.gnd || H.wreck)) return { hl: hlStr() }; // atladım, helikopter kendi iniyor
@@ -2297,8 +2391,38 @@ export function installExtras(ctx) {
     fig.moving = !1;
     return !0;
   };
+  // v221: başka oyuncu kaykayda → altında kaykay, kayarak gider (yürüme adımı yok)
+  const RSK = new Map();
+  const remoteSkate = (fig, rec, show) => {
+    const id = fig.id || fig;
+    let b = RSK.get(id);
+    if (!(show && rec?.k === 1)) {
+      if (b) b.visible = !1;
+      return !1;
+    }
+    if (!b) {
+      b = board.clone();
+      scene.add(b);
+      RSK.set(id, b);
+    }
+    if (Number.isFinite(rec.y)) fig.y = rec.y;
+    fig.moving = !1;
+    fig.sitting = !1;
+    b.visible = !0;
+    b.position.set(fig.x, (fig.y || 0) - 0.09, fig.z);
+    b.rotation.set(0, Number.isFinite(fig.yaw) ? fig.yaw : 0, 0);
+    return !0;
+  };
+  const remoteSkateGone = (id) => {
+    const b = RSK.get(id);
+    if (b) scene.remove(b);
+    RSK.delete(id);
+  };
   const dispose = () => {
     try {
+      RSK.forEach((b) => scene.remove(b));
+      scene.remove(parked);
+      RSK.clear();
       if (HN.mine) heliRelease();
       if (PAX.on) paxExit();
       HN.unsub && HN.unsub();
@@ -2318,6 +2442,9 @@ export function installExtras(ctx) {
   return {
     presence,
     remoteFig,
+    remoteSkate,
+    remoteSkateGone,
+    skateSummon: skSummon, // v221: Arabalarım › Motor › Kaykay
     dispose,
     heliBusy: () => HX.on || PAX.on,
     skate: () => ({ on: SK.on }),

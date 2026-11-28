@@ -534,7 +534,9 @@ export function createJobRunner({ engine, call, onUi, onToast, onPaid }) {
     routeFrom = { x: p.x, z: p.z };
     let to = { x: tgt.x, z: tgt.z };
     if (tgt.follow) to = E()?.jobSuspectPos() || to;
-    const pts = farR ? worldRoute({ x: p.x, z: p.z }, to) : roadRoute({ x: p.x, z: p.z }, to);
+    // v221: şehir dışı hedeflerde de gerçek en kısa yol (navRoute). worldRoute şehir dışındaki her hedefi
+    // Kervankent'e gidiş sanıyordu: madene giden tır rotası Kervankent'e çıkıp oradan düz çizgiyle geri iniyordu.
+    const pts = farR ? trimRoute(navRoute({ x: p.x, z: p.z }, to), 900) : roadRoute({ x: p.x, z: p.z }, to);
     // v153: şerit aracın tam altından başlar, hedefin kendisinde biter
     if (pts.length && Math.hypot(pts[0].x - p.x, pts[0].z - p.z) > 0.5) pts.unshift({ x: p.x, z: p.z });
     E()?.jobRoute(pts, tgt.color || '#19e8ff');

@@ -291,9 +291,7 @@ export const VENUES = {
       it('bl_dr', 'doordeco', 5, 7, 4),
     ],
     stations: {},
-    npcs: [
-      { id: 'npc_zabita', name: 'Zabıta Rıza', x: 6.7, z: 5.6, av: AV.zabita, lines: ['Makamda sessiz olalım lütfen.', 'Maket camına dokunmayın!', 'Belediye hizmetinizde.', 'İyi günler.'] },
-    ],
+    npcs: [], // v221: Zabıta Rıza kaldırıldı
     // v132 — çaycı tezgâhının yanında geleneksel çaycı garson bot (sol üstte 🛎️ Garson)
     bots: [
       {

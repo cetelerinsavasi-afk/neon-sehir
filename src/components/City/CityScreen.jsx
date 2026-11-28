@@ -28,7 +28,7 @@ import { FUEL_PRICE, GAS_MARKET_MENU } from '../../../functions/gasStation.js';
 import { GAS_STATION, FAR_DEPOT, LIMAN_BAY, OTOGARS, DEPOTS } from '../../../functions/cityJobsData.js';
 import { FLEET, countsAsOwned } from '../../../functions/fleet.js'; // v177 ticari araçlar
 import { vehicleLifeCap, VEHICLE_WEAPON_MAX_REPAIRS } from '../../../functions/itemRules.js'; // v195
-import { ANIMALS, animalPrice, BIKE_RENT, SKATE } from '../../../functions/stable.js'; // v177 at / deve / bisiklet · v219 kaykay
+import { ANIMALS, animalPrice, BIKE_RENT, SKATE, skateUntilOf } from '../../../functions/stable.js'; // v177 at / deve / bisiklet · v219 kaykay
 import { BIKE_SHOP } from './cityLayout.js';
 import { stableAt } from './world/roadsideGeo.js';
 import { createJobRunner, navRoute } from './cityJobs.js';
@@ -43,7 +43,7 @@ import { RESTORAN_MENU } from '../../../functions/v196Shared.js'; // v219: La Ma
 import { inPistArea } from './world/pistPlan.js'; // v219: şehir dışındaki pist
 import AvatarShopPanel from './AvatarShopPanel'; // v219: görünüm dükkânları
 import { VENUES } from '../../../functions/venueLayouts.js';
-import { VENDORS, VENDOR_COST } from '../../../functions/vendorData.js';
+import { VENDORS, VENDOR_COST, ROAD_VENDOR_ID, ROAD_ACT_ITEM } from '../../../functions/vendorData.js'; // v221: yol kenarı satıcıları
 import HeldIcon from '../HouseScreen/HeldIcon';
 import HeistPanel, { HEIST_LABELS } from '../HeistPanel/HeistPanel';
 import { heistCarOf, heistOutcomeOf, heistSceneOf, rememberHeistCar } from '../HeistPanel/heistVideo';
@@ -142,7 +142,7 @@ const VENUE_UI = {
 // v157.4: Mekanlar › Ziyaret anahtarı → şehirdeki mekân (lot türü)
 const VISIT_LOT = { banka: 'banka', karakol: 'karakol', mosque: 'camii', casino: 'casino', dealership: 'galeri', weaponShop: 'silah', tuningGarage: 'modifiye', belediye: 'belediye', park: 'park' };
 const VENUE_TITLE = { restoran: '🍽️ La Marea', bar: '🍸 Bar', cafe: '☕ Cafe', netkafe: '🖥️ İnternet Kafe', spor: '🏋️ Spor Salonu', galeri: '🚗 Araba Galerisi', motogaleri: '🏍️ Motor Galerisi', tamirci: '🔧 Oto Tamirci', silah: '🔫 Silah Mağazası', modifiye: '🔧 Modifiye Garajı', casino: '🎰 Casino', liman: '⚓ Liman & Depo', fabrika: '🏭 Fabrika', ev: '🏠 Ev', banka: '🏦 Banka', camii: '🕌 Camii', karakol: '🚓 Karakol', belediye: '🏛️ Belediye', hastane: '🏥 Hastane', benzinlik: '⛽ Benzinlik Market', otogar: '🚌 Otogar', otogar_kk: '🚌 Kervankent Otogarı', taksi_duragi: '🚕 Taksi Durağı', ofis: '🏢 Ofisler' };
-const VENDOR_BY_VENUE = Object.fromEntries(Object.entries(VENDORS).map(([id, v]) => [v.venue, { id, ...v }]));
+const VENDOR_BY_VENUE = Object.fromEntries(Object.entries(VENDORS).filter(([, v]) => v.venue).map(([id, v]) => [v.venue, { id, ...v }]));
 const BUFE_MENU = [
   { id: 'sosisli', price: 200 },
   { id: 'tost', price: 300 },
@@ -367,7 +367,7 @@ function Speedo({ kmh, gear, ratio }) {
 }
 
 // "Arabalarım" — sadece açılınca okunur (Firestore okuması yalnız burada)
-function GarageSheet({ onPick, onClose, onGallery, favId: favId0 = null, flash }) {
+function GarageSheet({ onPick, onClose, onGallery, favId: favId0 = null, flash, skate = null, onSkate }) {
   const { vehicles, loading } = useVehicles();
   // v197: favori araç (❤️, kartın sağ üstünde) — evinin garajında durur, garajdan binilir. Tek araç; tekrar dokununca kalkar.
   const [favLocal, setFavLocal] = useState(undefined);
@@ -398,7 +398,7 @@ function GarageSheet({ onPick, onClose, onGallery, favId: favId0 = null, flash }
     if (loading || autoTab.current || !all.length) return;
     autoTab.current = true;
     if (!usable.length) {
-      const k = ['araba', 'ticari', 'motor'].find((x) => all.some((v) => vehicleKindOfId(v.catalogId) === x));
+      const k = ['araba', 'ticari', 'motor'].find((x) => all.some((v) => vehicleKindOfId(v.catalogId) === x) || (x === 'motor' && skate));
       if (k) setTab(k);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -407,14 +407,24 @@ function GarageSheet({ onPick, onClose, onGallery, favId: favId0 = null, flash }
     <Sheet title="🚗 Arabalarım" onClose={onClose} closeLabel="Kapat">
       <VehicleKindTabs value={tab} onChange={setTab} />
       {loading && <div className="cs-garage-empty">…</div>}
-      {!loading && all.length > 0 && usable.length === 0 && <p className="vg-empty">Bu sekmede aracın yok.</p>}
-      {!loading && all.length === 0 && (
+      {!loading && all.length > 0 && usable.length === 0 && !(tab === 'motor' && skate) && <p className="vg-empty">Bu sekmede aracın yok.</p>}
+      {!loading && all.length === 0 && !skate && (
         <div className="cs-garage-empty">
           <span>🚗</span>
           <button className="v3-btn primary" onClick={onGallery}>Araba Galerisi</button>
         </div>
       )}
       <div className="cs-garage">
+        {/* v221: kaykay motorların arasında — getirince yanına konur, yanına gidip binilir */}
+        {tab === 'motor' && skate && (
+          <div className="cs-car-wrap">
+            <button className="cs-car" onClick={onSkate}>
+              <span style={{ fontSize: 44, lineHeight: '64px', display: 'block' }}>🛹</span>
+              <b>Kaykay</b>
+              <span>{skate.days ? `⏳ ${skate.days} gün` : '⏱️ Kiralık'}</span>
+            </button>
+          </div>
+        )}
         {usable.map((v) => {
           const c = vehicleCatalog.find((x) => x.id === v.catalogId);
           if (!c) return null;
@@ -459,7 +469,9 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   // v219: kaykay — sahip mi, kiralık süresi (sunucu saati yaklaşık; motor sharedNet saatini kullanır)
   const skateLocalRef = useRef(0);
   const skateRef = useRef({ owned: false, until: 0 });
-  skateRef.current = { owned: Boolean(player?.skate), until: Math.max(Number(player?.skateRentUntil) || 0, skateLocalRef.current) };
+  const skateOwnUntil = skateUntilOf(player); // v221: kaykayın 20 gün ömrü
+  const skateOwned = skateOwnUntil > Date.now();
+  skateRef.current = { owned: skateOwned, until: Math.max(Number(player?.skateRentUntil) || 0, skateLocalRef.current) };
   // v160.3 — başlangıç görevi 1: mini haritadan ışınlanınca tamamla (sadece görev o an 21 ise tek çağrı)
   const tpTaskRef = useRef(false);
   const onTeleported = () => {
@@ -869,7 +881,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         guest: isGuest,
         sharedNet: shared,
         cityAction: (p) => shopAction(p), // v219: kaykay kirası (shopAction › stable)
-        skateState: () => skateRef.current,
+        skateState: () => ({ ...skateRef.current, until: Math.max(skateRef.current.until, skateLocalRef.current) }), // v221: kiralayınca hemen binilsin
         avatar: st.avatar,
         name: st.myName,
         spawn: st.spawn,
@@ -1170,7 +1182,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       city: true, // v160.4 — mekân katmanı şehirde (HouseScreen değil)
       setHolding: (p) => engineRef.current?.setHolding?.(p), // v160.4 — belediye çaycısı
       // v198: cafe / bar siparişini bot garson getirir; varınca ürün elde (2 dk)
-      deliver: (npcId, product) => engineRef.current?.npcDeliver?.(npcId, product, () => holdFor(product)),
+      deliver: (npcId, product, opts) => engineRef.current?.npcDeliver?.(npcId, product, () => holdFor(product), opts), // v221: opts → konuşma (belediye çaycısı)
       cityEng: () => engineRef.current, // v196 — internet kafede yayın (kamera görüntüsü şehir motorundan)
     };
   }
@@ -1364,6 +1376,24 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       setBusy(null);
     }
   };
+  // v221 — yol kenarı / köy / Kervankent satıcılarından alışveriş: ürün ele gelir (karpuz → dilim karpuz).
+  // Gelirin yarısı masraf, yarısı Seyyar Satıcılar hissedarlarına (sunucu: buyFromVendor › yol_satici).
+  const roadBuy = async (actId) => {
+    const id = ROAD_ACT_ITEM[actId];
+    if (!id || busy) return;
+    if (guest) return setAskSignIn(true);
+    const price = VENDORS[ROAD_VENDOR_ID]?.menu?.[id] || 0;
+    setBusy(actId);
+    try {
+      await buyFromVendor(ROAD_VENDOR_ID, id);
+      holdFor(id);
+      flash(`${HOUSE_PRODUCTS[id]?.emoji || ''} ${HOUSE_PRODUCTS[id]?.label || 'Ürün'} elinde · −${fmt(price)}`);
+    } catch (e) {
+      flash(e?.message || 'Satın alma başarısız.');
+    } finally {
+      setBusy(null);
+    }
+  };
   // v200 — ISMARLA (eski sistemdeki gibi): elindeki ürünü yakındaki oyuncuya ver (süre sıfırlanmaz; eli dolu olana verilmez)
   const [giftBusy, setGiftBusy] = useState(null);
   const [giftIn, setGiftIn] = useState(null); // { from, itemId } — gelen ısmarlama (dokununca kapanır)
@@ -1496,7 +1526,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     try {
       await shopAction({ op: 'skateBuy', expect: SKATE.price });
       setPanel(null);
-      flash('🛹 Kaykay senin! Her yerde binebilirsin');
+      flash('🛹 Kaykay senin! 20 gün her yerde binebilirsin');
     } catch (e) {
       flash(e?.message || 'Satın alınamadı.');
     } finally {
@@ -1660,8 +1690,9 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
     if (zone.kind === 'vendor') {
       const v = vendorOf(zone);
       const vs = vendorState(v);
-      if (!vs.bagisDone) list.push({ label: '🤲 Bağış yap', cls: 'take', on: () => vendorBuy(zone) });
-      if (!vs.haracDone) list.push({ label: '💰 Haraç kes', cls: 'heist', on: () => setPanel({ kind: 'heist', zone }) });
+      // v221: festival alanındaki tezgâhlarda bağış / haraç yok, sadece menü
+      if (!zone.menuOnly && !vs.bagisDone) list.push({ label: '🤲 Bağış yap', cls: 'take', on: () => vendorBuy(zone) });
+      if (!zone.menuOnly && !vs.haracDone) list.push({ label: '💰 Haraç kes', cls: 'heist', on: () => setPanel({ kind: 'heist', zone }) });
       list.push({ label: '🧾 Menü', on: () => setPanel({ kind: 'menu', zone }) });
     }
     if (zone.kind === 'homePlay') list.push({ label: '🎮 Oyun oyna', cls: 'take', on: () => setHomeArcade(true) }); // v196: sadece kendi evinde
@@ -2222,7 +2253,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                   </button>
                 </div>
               )}
-              {atSkate && !player?.skate && (
+              {atSkate && !skateOwned && (
                 <div className="cs-venue-bar">
                   <button className="cs-venue-btn" onClick={() => (guest ? setAskSignIn(true) : setPanel({ kind: 'skate' }))}>
                     🛹 Kaykay al
@@ -2334,7 +2365,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           {spotList && spotList.length > 0 && !actions?.list?.length && (
             <div className="hs-actions">
               {spotList.map((a) => (
-                <button key={a.id} className="hs-act" onClick={() => flash(engineRef.current?.spotText?.(a.id) || a.label)}>
+                <button key={a.id} className="hs-act" disabled={busy === a.id} onClick={() => (ROAD_ACT_ITEM[a.id] ? roadBuy(a.id) : flash(engineRef.current?.spotText?.(a.id) || a.label))}>
                   {a.label}
                 </button>
               ))}
@@ -2445,9 +2476,9 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
       )}
       {panel?.kind === 'skate' && user && (
         <Sheet title="🛹 Kaykay" onClose={() => setPanel(null)} closeLabel="Kapat">
-          <p className="cs-sheet-note">Bir kez al, şehrin her yerinde bin. Kiralamak için büfenin önündeki düğme (dakikası {fmt(SKATE.rentPerMin)}).</p>
-          <button className="v3-btn primary cs-fleet-buy" disabled={gold < SKATE.price || busy === 'skate' || Boolean(player?.skate)} onClick={skateBuy}>
-            {player?.skate ? '🛹 Kaykayın var' : <>Satın al · {fmt(SKATE.price)} <span className="gold-coin-icon" style={{ width: 13, height: 13 }} /></>}
+          <p className="cs-sheet-note">Al, 20 gün boyunca şehrin her yerinde bin (bisiklet gibi 20 gün ömrü var). Kiralamak için büfenin önündeki düğme (dakikası {fmt(SKATE.rentPerMin)}).</p>
+          <button className="v3-btn primary cs-fleet-buy" disabled={gold < SKATE.price || busy === 'skate' || skateOwned} onClick={skateBuy}>
+            {skateOwned ? `🛹 Kaykayın var · ${Math.max(1, Math.ceil((skateOwnUntil - Date.now()) / 86_400_000))} gün kaldı` : <>Satın al · {fmt(SKATE.price)} <span className="gold-coin-icon" style={{ width: 13, height: 13 }} /></>}
           </button>
         </Sheet>
       )}
@@ -2496,6 +2527,11 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           flash={flash}
           onClose={() => setPanel(null)}
           onPick={(c, v) => callCar(c, v)}
+          skate={skateOwned ? { days: Math.max(1, Math.ceil((skateOwnUntil - Date.now()) / 86_400_000)) } : skateRef.current.until > Date.now() ? { days: 0 } : null}
+          onSkate={() => {
+            setPanel(null);
+            if (!engineRef.current?.skateSummon?.()) flash('🛹 Kaykayın yok');
+          }}
           onGallery={() => {
             setPanel(null);
             onEnterRegion?.('araba_galerisi');

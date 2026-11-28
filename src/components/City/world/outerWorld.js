@@ -838,6 +838,16 @@ export function finishCityWorld(W, scene) {
     v.town = true;
     venues.push(v);
   }
+  // v221: Kervankent'in içine girilen diğer mekânları (benzinlik marketi, camii)
+  (W.town?.venues || []).forEach((v) => {
+    const c = v.root.localToWorld(new V(v.room.cx, 0, v.room.cz));
+    v.wx = c.x;
+    v.wz = c.z;
+    v.ry = TOWN.ry + v.townFace;
+    v.y0 = TOWN.y;
+    v.town = true;
+    venues.push(v);
+  });
   // v157.4: yol üstü mekânlar (Neon Petrol marketleri) — cebin grubunda; dünya konumu matristen
   (W.rs.venues || []).forEach((v) => {
     const c = v.root.localToWorld(new V(v.room.cx, 0, v.room.cz));
@@ -1125,7 +1135,7 @@ export function finishCityWorld(W, scene) {
   function inVenueRoom(x, z, m = 0) {
     for (const v of venues) {
       const p = toRoom(v, x, z);
-      if (Math.abs(p.x) < VROOM.W / 2 - m && Math.abs(p.z) < VROOM.D / 2 - m) return v;
+      if (Math.abs(p.x) < (v.room?.hw ?? VROOM.W / 2) - m && Math.abs(p.z) < (v.room?.hd ?? VROOM.D / 2) - m) return v; // v221: mekâna göre oda
     }
     return null;
   }

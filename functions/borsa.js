@@ -92,7 +92,7 @@ export const LEGACY_SEYYAR_IDS = LEGACY_SEYYAR_COS.map((c) => c.id);
 export const SEYYAR_CO_ID = 'seyyar';
 export const BORSA_COS = [
   // gelir: 6 tezgâhın hissedar payı (yeni kayıt 'sv'; birleşme günü eski kodlarla yazılanlar da sayılır)
-  { id: SEYYAR_CO_ID, vendors: LEGACY_SEYYAR_COS.map((c) => c.vendor), sk: 'sv', sks: ['sv', ...LEGACY_SEYYAR_COS.map((c) => c.sk)], name: 'Seyyar Satıcılar' },
+  { id: SEYYAR_CO_ID, vendors: [...LEGACY_SEYYAR_COS.map((c) => c.vendor), 'yol_satici'], sk: 'sv', sks: ['sv', ...LEGACY_SEYYAR_COS.map((c) => c.sk)], name: 'Seyyar Satıcılar' },
   // v177 — şirketler: gelir = o gün satılan yeni ticari araç + şoför gelirlerinin %10'u (v201: %50 masraf + şirket vergisi düşülür)
   { id: 'hastane', sk: 'hn', name: 'Hastane', kind: 'sirket' },
   { id: 'nakliye', sk: 'nk', name: 'Nakliye', kind: 'sirket' },
@@ -117,11 +117,12 @@ export const borsaCoOfVendor = (vendorId) => BORSA_COS.find((c) => c.vendor === 
 export const isBorsaCo = (id) => typeof id === 'string' && Object.prototype.hasOwnProperty.call(BORSA_CO_BY_ID, id);
 // v200 — SEYYAR SATICI GELİRİ: oyunun mekânları gibi %50 masraf + belediyenin seyyar satıcı vergisi
 // (Ticaret, varsayılan %10), kalan kâr hissedarlara (hs_<kod>). Hisse gelir vergisi toplarken ayrıca kesilir.
+// v221: Seyyar Satıcı Vergisi KALKTI — yarısı masraf, yarısı vergisiz yatırımcılara (taxFrac yok sayılır).
+// eslint-disable-next-line no-unused-vars
 export function vendorIncomeSplit(amount, taxFrac) {
   const gross = Math.max(0, Math.round(Number(amount) || 0));
   const expense = Math.round(gross * 0.5);
-  const tax = Math.min(gross - expense, Math.round(gross * Math.max(0, Math.min(0.5, Number(taxFrac) || 0))));
-  return { gross, expense, tax, share: gross - expense - tax };
+  return { gross, expense, tax: 0, share: gross - expense };
 }
 export const VENDOR_TAX_RATE_ID = 'seyyar';
 // v201 — ŞİRKETLER (Hastane, Nakliye, Terminal, Taksi Durağı): gelir = yeni ticari araç satışının TAMAMI + şoför

@@ -11,24 +11,27 @@ import * as THREE from 'three';
 import { Kit, M, glowMat, canvasTex, GLASS, basicGlow, roundRect } from '../kit.js';
 import { tower } from '../buildings.js';
 import { buildVehicle } from '../vehicles.js';
-import { gameVenue, NEW_VENUES } from './layouts.js';
+import { gameVenue, NEW_VENUES, BELEDIYE_HALL } from './layouts.js';
 import './newItems.js';
 import * as J from '../jobBuildings.js';
 import { makeCoach } from './otogar.js';
 import { buildHouseFloors, HOUSE_EXT_H } from './houseFloors.js'; // v196
 import { bulbs } from './pazar.js'; // v219: restoran ampul zinciri
 import { surfaceTexture, wallDef, floorDef } from '../../HouseScreen/houseTextures.js';
+import { CATALOG_MAP } from '../../HouseScreen/houseCatalog.js'; // v221
 
 const PI = Math.PI;
 export const ROOM = { W: 18, D: 14, H: 3.4 };
+const ROOM0 = { ...ROOM }; // v221: varsayılan oda (belediye kendi ölçüsünü kurar, finish geri alır)
 const T = 0.3; // dış duvar kalınlığı
-const LOWH = 3.6;
+let LOWH = 3.6;
 export const DOOR = { x: 5, w: 1.9, h: 2.4 };
 // kapı eşyasının açıklığı [genişlik, yükseklik] — duvar boşluğu kapıyla birebir (üstünde/yanında boşluk kalmaz)
 const DOOR_SIZE = { garagedoor: [2.8, 2.55], door_cam: [1.1, 2.25], door_cift: [1.9, 2.3], door_doner: [2.3, 2.35], door_market: [1.9, 2.3], door_metal: [1.05, 2.2], door_salon: [1.4, 2.3], door_hastane: [1.9, 2.3], door_beyaz: [1.0, 2.15], door_ahsap: [1.1, 2.25] };
 let RX = 0; // oda merkezinin parsel içindeki x kayması (ev, liman)
 // dış kapı: oyundaki açılır kapı eşyaları (yaklaşınca açılır, arkası karanlık boşluk)
-const RZ = -5.2; // oda merkezi (parsel yerel z) → ön duvar z = 1.8
+let RZ = -5.2; // oda merkezi (parsel yerel z) → ön duvar z = 1.8 · v221: belediyede farklı (finish geri alır)
+const RZ0 = RZ;
 
 function archWindow(kit, x, y, z, w, h, ry, color = '#ffcf7a', inten = 1.6) {
   const s = new THREE.Shape();
@@ -202,7 +205,7 @@ function shell(parts, { ext, extH, venue, doorKey, vitrine = false, ceil = '#1a1
   venue.items.forEach((d) => {
     const isDoor = d.k.startsWith('door') || d.k === 'doordeco';
     if (isDoor) return; // gerçek kapı var — içte ayrı kapı yok
-    const o = inner.item(d.k, d.x, d.z, d.r || 0, d.c || 0, { solid: true, y: Y0, dyn: true });
+    const o = inner.item(d.k, d.x, d.z, d.r || 0, d.c || 0, { solid: true, y: Y0 + (CATALOG_MAP[d.k]?.ceil ? ROOM.H - 3.4 : 0), dyn: true }); // v221: tavan eşyası yüksek tavanda da tavanda
     if (!o) return;
     const k = Math.abs(d.z - D / 2) < 0.05 ? 0 : Math.abs(d.x - W / 2) < 0.05 ? 1 : Math.abs(d.z + D / 2) < 0.05 ? 2 : Math.abs(d.x + W / 2) < 0.05 ? 3 : -1;
     if (k >= 0) parts.lowInner[k].add(o);
@@ -369,8 +372,8 @@ export function buildBankaVenue(lot) {
   // v157.4: dış ATM'ler kullanılabilir (yaklaşınca 🏧 ATM düğmesi)
   P.base.zone({ x: -3.0, z: FZ + 1.1, r: 1.3, kind: 'atm', title: '🏧 ATM' });
   P.base.zone({ x: -6.0, z: FZ + 1.1, r: 1.3, kind: 'atm', title: '🏧 ATM' });
-  P.base.item('stanchion', 3.4, FZ + 2.2, 0, 0);
-  P.base.item('stanchion', 6.6, FZ + 2.2, 0, 0);
+  // v221: kırmızı ipli bariyerler kapıya giden koridor gibi (cepheye dik) — eskiden cepheye paralel, kapının önünü kesiyordu
+  for (const z of [FZ + 1.25, FZ + 2.45]) for (const sx of [-1, 1]) P.base.item('stanchion', DOOR.x + sx * 1.45, z, 2, 0);
   P.base.item('planter', -w / 2 + 1.2, d / 2 - 0.8, 0);
   P.base.item('planter', w / 2 - 1.2, d / 2 - 0.8, 0);
   P.base.item('streetlamp', -w / 2 + 0.8, FZ + 2.5, 0);
@@ -426,9 +429,14 @@ export function buildKarakolVenue(lot) {
 // =============================================================================
 export function buildBelediyeVenue(lot) {
   DOOR.x = 0; // kapı ortada, revakın tam karşısında
+  // v221: iç mekân dış cepheye göre küçüktü → oda 26 × 19 m, tavan 4,6 m (ferah salon)
+  Object.assign(ROOM, { W: 26, D: 19, H: 4.6 });
+  RZ = -4;
+  LOWH = ROOM.H + 0.2;
+  const FZ = RZ + ROOM.D / 2 + T; // bu binanın ön yüzü (modül sabiti varsayılan odaya göre)
   const P = newParts('belediye');
   const { w, d } = lot;
-  const venue = gameVenue('belediye');
+  const venue = BELEDIYE_HALL;
   P.base.floor('kaldirim', w, d, 0, 0);
   const stone = M('#ddd5c4', 0.75);
   const stone2 = M('#c9c0ad', 0.8);
@@ -443,15 +451,18 @@ export function buildBelediyeVenue(lot) {
   P.base.box(bw + 0.4, 0.5, 0.2, stone2, 0, 0, bz - bd / 2 - 0.1);
   for (const sx of [-1, 1]) P.base.box(0.2, 0.5, bd + 0.4, stone2, sx * (bw / 2 + 0.1), 0, bz);
   for (const [a, b] of [[-bw / 2 - 0.2, DOOR.x - 1], [DOOR.x + 1, bw / 2 + 0.2]]) P.base.box(b - a, 0.5, 0.2, stone2, (a + b) / 2, 0, bz + bd / 2 + 0.1);
+  const nWin = Math.floor((bw - 2.8) / 2.45) + 1;
+  const wx0 = -((nWin - 1) * 2.45) / 2;
   for (const f of [0, 1]) {
-    for (let i = 0; i < 8; i++) {
-      const x = -bw / 2 + 1.4 + i * 2.45;
+    for (let i = 0; i < nWin; i++) {
+      const x = wx0 + i * 2.45;
       if (f === 0 && Math.abs(x - DOOR.x) < 1.9) continue;
       if (Math.abs(x) < 2.4 && f === 1) continue;
-      archWindow(f ? P.high : P.low[0], x, 1.0 + f * 3.8, FZ + 0.02, 1.0, 2.2, 0, '#ffe3ae', 1.1);
+      archWindow(f ? P.high : P.low[0], x, 1.0 + f * (LOWH + 0.4), FZ + 0.02, 1.0, f ? 2.2 : 2.8, 0, '#ffe3ae', 1.1);
     }
   }
-  for (const side of [-1, 1]) for (let i = 0; i < 5; i++) archWindow(side > 0 ? P.low[1] : P.low[3], side * (bw / 2 + 0.02), 1.0, bz - bd / 2 + 1.8 + i * 2.8, 1.0, 2.2, side * PI / 2, '#ffe3ae', 1.1);
+  const nSide = Math.floor((bd - 2.4) / 2.8);
+  for (const side of [-1, 1]) for (let i = 0; i < nSide; i++) archWindow(side > 0 ? P.low[1] : P.low[3], side * (bw / 2 + 0.02), 1.0, bz - bd / 2 + 1.8 + i * 2.8, 1.0, 2.8, side * PI / 2, '#ffe3ae', 1.1);
   // revak: sütunlar + alınlık (ortada; kapı sağ revak aralığında)
   const pz = FZ + 2.2;
   P.base.box(12, 0.3, 4.4, stone2, 0, 0, pz - 0.2);
@@ -513,8 +524,10 @@ export function buildBelediyeVenue(lot) {
   P.base.item('streetlamp', -w / 2 + 1, d / 2 - 1.2, 0);
   P.base.item('streetlamp', w / 2 - 1, d / 2 - 1.2, 4);
   P.base.light(0, 6, pz + 3, '#ffe3ae', 8, 16);
-  // v219: geniş parselde iki yan kanat + arka kütle (revak önü merdiven)
-  if (w > 27) {
+  // v221: geniş salonun avizeleri / ışıkları (shell'in 3 ışığı 18 × 14 odaya göre)
+  for (const [lx, lz] of [[-8, -4], [8, -4], [-8, 5], [8, 5], [0, 2]]) P.int.light(lx, ROOM.H - 0.3, lz, '#fff1d6', 4.5, 12);
+  // v219: geniş parselde iki yan kanat + arka kütle (revak önü merdiven) — v221: salon büyüdü, kanat sadece yer kalırsa
+  if (w - bw > 4) {
     const ex = w / 2 - 0.6;
     const z0 = bz - bd / 2 - 1.2;
     const z1 = FZ;
@@ -642,7 +655,12 @@ function finish(P, type, venue, door) {
   [P.int, ...P.low].forEach((k) => k.group.traverse((o) => (o.userData.dyn = true)));
   const rx = RX;
   RX = 0;
-  return { ...P, type, venue, door: { x: door.x + rx, z: door.z }, doorX: DOOR.x, kits: [P.base, P.high, P.int, ...P.low], room: { cx: rx, cz: RZ, hw: ROOM.W / 2, hd: ROOM.D / 2 } };
+  const room = { cx: rx, cz: RZ, hw: ROOM.W / 2, hd: ROOM.D / 2, h: ROOM.H };
+  // v221: özel ölçülü oda (belediye) sonrakileri etkilemesin
+  Object.assign(ROOM, ROOM0);
+  RZ = RZ0;
+  LOWH = 3.6;
+  return { ...P, type, venue, door: { x: door.x + rx, z: door.z }, doorX: DOOR.x, kits: [P.base, P.high, P.int, ...P.low], room };
 }
 
 // =============================================================================

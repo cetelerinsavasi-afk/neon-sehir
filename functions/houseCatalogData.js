@@ -210,6 +210,14 @@ export const HOUSE_PRODUCTS = {
   // v154 — yeni seyyar satıcılar
   balikekmek: { label: 'Balık Ekmek', emoji: '🐟' },
   midye: { label: 'Midye Dolma', emoji: '🦪' },
+  // v221 — yol kenarı satıcıları (Karpuzcu, Mısırcı, bal / peynir tezgâhı, köy fırını, lokanta)
+  karpuz: { label: 'Dilim Karpuz', emoji: '🍉' },
+  kozmisir: { label: 'Közde Mısır', emoji: '🌽' },
+  bal: { label: 'Bal', emoji: '🍯' },
+  peynir: { label: 'Peynir', emoji: '🧀' },
+  gozleme: { label: 'Gözleme', emoji: '🫓' },
+  ekmek: { label: 'Köy Ekmeği', emoji: '🥖' },
+  corba: { label: 'Mercimek Çorbası', emoji: '🍲' },
   // v219 — La Marea (lüks restoran)
   sarap: { label: 'Kırmızı Şarap', emoji: '🍷' },
   sampanya: { label: 'Şampanya', emoji: '🥂' },

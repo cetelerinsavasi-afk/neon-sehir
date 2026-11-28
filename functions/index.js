@@ -5587,7 +5587,7 @@ export const claimPoliceSalary = onCall(async (request) => {
 //   • vendorId artık listeyle doğrulanır (eskiden her metin kabul ediliyordu).
 // ---------------------------------------------------------------------------
 const VENDOR_COST = VENDOR_DAILY_COST;
-const VENDOR_STAT_KEY = { seyyar_satici_1: 'kk', seyyar_satici_2: 'sm', seyyar_satici_3: 'dn', seyyar_satici_4: 'kf', seyyar_satici_5: 'md', seyyar_satici_6: 'dd' };
+const VENDOR_STAT_KEY = { seyyar_satici_1: 'kk', seyyar_satici_2: 'sm', seyyar_satici_3: 'dn', seyyar_satici_4: 'kf', seyyar_satici_5: 'md', seyyar_satici_6: 'dd', yol_satici: 'yl' }; // v221: yol kenarı
 
 export const buyFromVendor = onCall(async (request) => {
   const uid = requireAuth(request);
@@ -5598,12 +5598,16 @@ export const buyFromVendor = onCall(async (request) => {
   }
   const rawItem = request.data?.itemId;
   const isMenu = rawItem !== undefined && rawItem !== null && rawItem !== '';
+  // v221: yol kenarı satıcıları (ve festival tezgâhları istemcide) sadece menüden satar
+  if (vendor.road && !isMenu) {
+    throw new HttpsError('invalid-argument', 'Bu satıcıda sadece alışveriş yapılır.');
+  }
   const itemId = isMenu ? String(rawItem) : vendor.product;
   const price = isMenu ? (Object.prototype.hasOwnProperty.call(vendor.menu, itemId) ? Number(vendor.menu[itemId]) : 0) : VENDOR_COST;
   if (!(price > 0)) {
     throw new HttpsError('invalid-argument', 'Geçersiz ürün.');
   }
-  const houseId = VENUES[vendor.venue]?.houseId || null;
+  const houseId = (vendor.venue && VENUES[vendor.venue]?.houseId) || null;
   const dateKey = istanbulDateKey();
   const userRef = db.collection('users').doc(uid);
   const dailyRef = db.collection('dailyActions').doc(`${uid}_${dateKey}`);

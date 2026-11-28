@@ -77,7 +77,8 @@ export function tower(kit, { w, d, h, x = 0, z = 0, style = 'apt_warm', roof = '
     } else kit.box(w + 0.14, 0.7, d + 0.14, subM, x, 0, z, { cast: false });
     // kat silmeleri (gölge çizgisi veren çıkıntı) — konutlarda
     if (facadeKind(style) === 'apt' || facadeKind(style) === 'stone') {
-      for (let fy = y0 + 3.2; fy < h - 1.5; fy += 3.2) kit.box(w + 0.22, 0.1, d + 0.22, trim, x, fy - 0.12, z, { cast: false });
+      // v221: zemin kattaki oyuğun (dükkân) hizasında silme yok — dükkân tabelasının ortasından geçiyordu
+      for (let fy = y0 + 3.2; fy < h - 1.5; fy += 3.2) if (!hole || fy - 0.12 > hole.h) kit.box(w + 0.22, 0.1, d + 0.22, trim, x, fy - 0.12, z, { cast: false });
     }
   }
   const r = rng(hash(`roof${x},${z},${seed}`));

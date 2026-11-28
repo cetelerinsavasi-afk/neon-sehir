@@ -103,8 +103,7 @@ export const RATE_GROUPS = [
   // v202: Hisse Senedi Gelir Vergisi KALKTI (hisse geliri toplarken vergi yok)
   // v177 — taksi / otobüs / tır / ambulans gelirleri (motokurye hariç) — şoför öder
   { m: 'ticaret', id: 'sofor', title: 'Şoförlük Gelir Vergisi', unit: '%', items: [pct('sofor', 'Şoförlük')] },
-  // v200 — seyyar satıcı geliri (bağış, menü, ısmarlama, kurye siparişi): %50 masraf + bu vergi, kalan hissedarlara
-  { m: 'ticaret', id: 'seyyar', title: 'Seyyar Satıcı Vergisi', unit: '%', items: [pct('seyyar', 'Seyyar satıcı')] },
+  // v221: Seyyar Satıcı Vergisi KALKTI — seyyar geliri yarısı masraf, yarısı vergisiz hissedarlara (borsa.vendorIncomeSplit)
   // v202: Şirket Vergisi KALKTI — şirket geliri (araç satışı + şoför payı) %50 masraf, %50 vergisiz hissedarlara
   // v132: 2. el satış vergisi kaldırıldı (araç / silah / malzeme 2. el satışları vergisiz)
   // v196: Sıfır Satış Kâr Vergileri kalktı — galeri / silahçı satışı mekân vergisine (İşletme Vergileri) giriyor,

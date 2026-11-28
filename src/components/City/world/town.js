@@ -15,6 +15,8 @@ import { VENUE_BUILDERS } from './venues.js';
 const ST = 9; // cadde yarı genişliği
 const SIDE = 3;
 const FACE = { s: 0, e: Math.PI / 2, n: Math.PI, w: -Math.PI / 2 };
+// v221: Kervankent camiinin imamı (sadece konuşur; camide işlem yok)
+const KK_IMAM = { id: 'npc_kk_imam', name: 'İmam Hüseyin Efendi', x: 0, z: -5.75, yaw: 0, lines: ['Hoş geldin evlat.', 'Yolun açık olsun.', 'Kasabamızın camii küçük ama gönlü geniş.', 'Hayırlı yolculuklar.'], av: { clothing: 'robe', clothColor: '#f4f1e8', hat: 'kufi', hatColor: '#ffffff', facialHair: 'full', hairColor: '#8a8a8a', neckAcc: 'none', pantsColor: '#f4f1e8' } };
 
 export function buildTown() {
   const root = new THREE.Group();
@@ -107,8 +109,30 @@ export function buildTown() {
     }
   });
 
-  // BENZİNLİK + TIR PARKI
-  lot('benzinlik', -50, -ST, Z0, -ST, 's', (kit, L) => J.buildBenzinlik(kit, L));
+  // v221: İÇİNE GİRİLEN MEKÂN PARSELİ (otogar gibi) — benzinlik marketi ve camii
+  const townVenues = [];
+  function venueLot(name, x0, x1, z0, z1, face, make) {
+    const bw = x1 - x0;
+    const bd = z1 - z0;
+    const mx = (x0 + x1) / 2;
+    const mz = (z0 + z1) / 2;
+    ground.box(bw, 0.12, bd, curbM, mx, 0, mz, { cast: false });
+    ground.mesh(planeGeo(bw, bd, bw / kRep, bd / kRep, x0 / kRep, z0 / kRep), floorMat('kaldirim'), mx, 0.121, mz, 0, { cast: false, rx: -Math.PI / 2 });
+    const rot = face === 'e' || face === 'w';
+    const vl = { w: (rot ? bd : bw) - SIDE * 2, d: (rot ? bw : bd) - SIDE * 2 };
+    const v = make(vl);
+    v.rebuild = () => make(vl);
+    v.root.position.set(mx, 0, mz);
+    v.root.rotation.y = FACE[face];
+    v.townFace = FACE[face];
+    root.add(v.root);
+    kits.push(...v.kits);
+    lots[name] = { kit: v.base, mx, mz, face, L: vl, x0, x1, z0, z1, name };
+    townVenues.push(v);
+    return v;
+  }
+  // BENZİNLİK + TIR PARKI — v221: marketine girilir, alışveriş yapılır (yol üstü Neon Petrol marketi gibi)
+  venueLot('benzinlik', -50, -ST, Z0, -ST, 's', (vl) => VENUE_BUILDERS.benzinlik(vl));
   const park = lot('tirparki', -H, -50, Z0, -ST, 'e', (kit, L) => {
     kit.floor('otopark', L.w, L.d, 0, 0);
     kit.sign('tirparki', 'TIR PARKI', 0.9, 0, 5.4, -L.d / 2 + 0.6, 0, { color: '#ffffff', bg: '#1d4fa8', font: '900 100px Arial, sans-serif', light: false });
@@ -157,8 +181,13 @@ export function buildTown() {
     kit.item('palm', -10, 6, 0, 0);
     kit.item('palm', 10, 6, 0, 0);
   });
-  // KÖY CAMİİ
-  lot('camii', -52, -ST, ST, 50, 'n', (kit, L) => B.buildCamii(kit, L));
+  // KÖY CAMİİ — v221: içine girilir; ibadet / bağış yok, sadece imam efendi (sohbet)
+  venueLot('camii', -52, -ST, ST, 50, 'n', (vl) => {
+    const v = VENUE_BUILDERS.camii(vl);
+    v.type = 'kk_camii';
+    v.venue = { ...v.venue, name: 'Kervankent Camii', stations: {}, bots: [], npcs: [KK_IMAM] };
+    return v;
+  });
   // evler / dükkânlar (alçak)
   lot('ev1', ST, 52, 52, Z1, 'w', (kit, L) => B.buildFiller(kit, L, 4401, { tall: 0.34 }));
   lot('ev2', 52, H, 68, Z1, 'n', (kit, L) => B.buildFiller(kit, L, 4402, { tall: 0.3 }));
@@ -200,5 +229,5 @@ export function buildTown() {
     { ...P(-30.5, 20), glyph: 'mosque', icon: '🕌', name: 'Camii', color: '#2d8a7a' },
     { ...P(-30, 75.5), glyph: 'bus', icon: '🚌', name: 'Kervankent Otogarı', color: '#c8141e' },
   ];
-  return { root, kits, bay, lots: Object.values(lots), pois, H, Z0, Z1, ST, otogar };
+  return { root, kits, bay, lots: Object.values(lots), pois, H, Z0, Z1, ST, otogar, venues: townVenues };
 }

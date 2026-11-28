@@ -38,7 +38,7 @@ const ITEMS = [
   // oyundaki evin ahşap giriş kapısı (DOOR_BUILDERS.ahsap) eşya olarak: yaklaşınca açılır
   { k: 'door_ahsap', name: 'Ahşap Giriş Kapısı', cat: 'kapi', icon: '🚪', wall: true, nobox: true, build: (g, ctx) => DOOR_BUILDERS.ahsap(g, ctx) },
   {
-    k: 'hastaneyatak', name: 'Hastane Yatağı', cat: 'hastane', icon: '🛏️', box: [0.52, 1.05],
+    k: 'hastaneyatak', name: 'Hastane Yatağı', cat: 'hastane', icon: '🛏️', box: [0.52, 1.05], seats: [[0, 0.66, 0.05]], lie: true, // v221: hastane yatağına uzanılır
     build(g) {
       const steel = M('#d9dde2', 0.35, 0.6);
       const sheet = M('#bfe0f2', 0.8);

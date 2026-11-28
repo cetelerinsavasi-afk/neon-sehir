@@ -1172,7 +1172,27 @@ B.maden = (kit, p, ctx) => {
   kit.box(3.6, 1.1, 0.06, M('#9fc7d9', 0.08, 0.4), 14, Y + 1.4, gz - 2.03, { cast: false });
   kit.solid(14, gz, 2.5, 2);
   kit.box(0.3, 1.1, 0.3, M('#ffd23f', 0.5), 4.5, Y, p.z1 - 3);
-  kit.box(5, 0.12, 0.12, M('#d0302a', 0.5), 2.2, Y + 1.0, p.z1 - 3);
+  // v221: kırmızı bariyer kolu — yaklaşınca kalkar (direğin üstünde döner), uzaklaşınca iner
+  {
+    const piv = new THREE.Group();
+    piv.position.set(4.5, Y + 1.06, p.z1 - 3);
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(5, 0.12, 0.12), M('#d0302a', 0.5));
+    bar.position.x = -2.3;
+    bar.castShadow = true;
+    piv.add(bar);
+    for (let k = 0; k < 3; k++) {
+      const w = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.125, 0.125), M('#f4f4f2', 0.5));
+      w.position.x = -0.9 - k * 1.4;
+      piv.add(w);
+    }
+    kit.add(piv, true);
+    let up = 0;
+    kit.ticks.push({ obj: piv, ctl: { tick: (t, dt, d) => {
+      const want = d != null && d < 16 ? 1 : 0;
+      up += (want - up) * Math.min(1, (dt || 0.016) * 3);
+      piv.rotation.z = -up * 1.45; // kol yukarı kalkar
+    } } });
+  }
   // giriş kapısı: iki direk + üst kiriş; tabela kirişe asılı (askı çubuklarıyla)
   const gm2 = M('#2a2d33', 0.5, 0.6);
   for (const sx of [-8, 8]) {

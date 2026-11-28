@@ -1152,6 +1152,155 @@ function drawQueueTicket(g, num) {
   g.restore();
 }
 
+// v221 — yol kenarı satıcıları (karpuzcu, mısırcı, bal / peynir tezgâhı, çaycı, köy fırını, lokanta)
+ART.karpuz = (g) => {
+  // dilim karpuz: yeşil kabuk, beyaz şerit, kırmızı içi, çekirdekler
+  g.beginPath();
+  g.moveTo(14, 46);
+  g.quadraticCurveTo(64, 132, 114, 46);
+  g.closePath();
+  fillOut(g, '#2f8f3a');
+  g.beginPath();
+  g.moveTo(20, 47);
+  g.quadraticCurveTo(64, 120, 108, 47);
+  g.closePath();
+  g.fillStyle = '#eaf5d8';
+  g.fill();
+  g.beginPath();
+  g.moveTo(25, 47);
+  g.quadraticCurveTo(64, 110, 103, 47);
+  g.closePath();
+  g.fillStyle = '#e8343f';
+  g.fill();
+  g.fillStyle = '#1a1214';
+  [[44, 58], [58, 70], [72, 58], [64, 54], [84, 62], [52, 76], [76, 76]].forEach(([x, y]) => {
+    g.beginPath();
+    g.ellipse(x, y, 2.6, 4, 0.3, 0, Math.PI * 2);
+    g.fill();
+  });
+  shine(g, 36, 49, 40, 4);
+};
+ART.kozmisir = (g) => {
+  // közde mısır: sapı, sarı taneler, kömür izleri
+  g.save();
+  g.translate(64, 66);
+  g.rotate(-0.6);
+  rr(g, -4, 30, 8, 30, 3);
+  fillOut(g, '#c9a56a', 2.5);
+  rr(g, -17, -44, 34, 78, 17);
+  fillOut(g, '#f2c230');
+  g.fillStyle = '#d9a11c';
+  for (let y = -36; y < 30; y += 8) for (let x = -12; x <= 12; x += 8) {
+    g.beginPath();
+    g.arc(x, y, 2.6, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.fillStyle = 'rgba(40,24,10,0.55)';
+  [[-6, -20], [8, 4], [-4, 18], [6, -30]].forEach(([x, y]) => {
+    g.beginPath();
+    g.ellipse(x, y, 5, 3, 0.4, 0, Math.PI * 2);
+    g.fill();
+  });
+  g.restore();
+};
+ART.bal = (g) => {
+  // bal kavanozu: kapak, bez, altın bal
+  rr(g, 30, 40, 68, 74, 14);
+  fillOut(g, '#e0a020');
+  rr(g, 36, 56, 56, 50, 10);
+  g.fillStyle = '#f3b938';
+  g.fill();
+  rr(g, 34, 24, 60, 20, 6);
+  fillOut(g, '#c8141e');
+  g.fillStyle = '#f4efe2';
+  g.beginPath();
+  g.moveTo(30, 40);
+  g.lineTo(98, 40);
+  g.lineTo(92, 50);
+  g.lineTo(36, 50);
+  g.closePath();
+  g.fill();
+  shine(g, 40, 62, 8, 34);
+};
+ART.peynir = (g) => {
+  // üçgen dilim beyaz peynir / tulum
+  g.beginPath();
+  g.moveTo(16, 92);
+  g.lineTo(112, 92);
+  g.lineTo(98, 40);
+  g.closePath();
+  fillOut(g, '#f6f1dc');
+  g.beginPath();
+  g.moveTo(16, 92);
+  g.lineTo(112, 92);
+  g.lineTo(112, 104);
+  g.lineTo(16, 104);
+  g.closePath();
+  fillOut(g, '#e8dfbf');
+  g.fillStyle = '#d9cfa8';
+  [[70, 76], [92, 66], [52, 84]].forEach(([x, y]) => {
+    g.beginPath();
+    g.arc(x, y, 4, 0, Math.PI * 2);
+    g.fill();
+  });
+};
+ART.gozleme = (g) => {
+  // katlanmış gözleme: kızarmış hamur, içinde peynir / ıspanak
+  g.beginPath();
+  g.moveTo(12, 84);
+  g.quadraticCurveTo(64, 20, 116, 84);
+  g.closePath();
+  fillOut(g, '#e9c27a');
+  g.fillStyle = 'rgba(150,90,30,0.55)';
+  [[40, 66], [62, 52], [86, 64], [70, 74], [50, 78]].forEach(([x, y]) => {
+    g.beginPath();
+    g.ellipse(x, y, 6, 3.5, 0.3, 0, Math.PI * 2);
+    g.fill();
+  });
+  g.fillStyle = '#3f8a3a';
+  g.fillRect(24, 82, 80, 5);
+  g.fillStyle = '#f4f4f2';
+  g.fillRect(30, 80, 68, 3);
+};
+ART.ekmek = (g) => {
+  // köy ekmeği: yuvarlak somun, çentikler
+  g.beginPath();
+  g.ellipse(64, 70, 50, 34, 0, 0, Math.PI * 2);
+  fillOut(g, '#c98a3e');
+  g.beginPath();
+  g.ellipse(64, 64, 42, 24, 0, Math.PI, Math.PI * 2);
+  g.fillStyle = '#dca35a';
+  g.fill();
+  g.strokeStyle = '#8a5520';
+  g.lineWidth = 4;
+  [[-22, 0], [0, -4], [22, 0]].forEach(([dx, dy]) => {
+    g.beginPath();
+    g.moveTo(64 + dx - 8, 60 + dy);
+    g.lineTo(64 + dx + 8, 54 + dy);
+    g.stroke();
+  });
+};
+ART.corba = (g) => {
+  // kâse mercimek çorbası, limon
+  g.beginPath();
+  g.moveTo(16, 60);
+  g.quadraticCurveTo(64, 132, 112, 60);
+  g.closePath();
+  fillOut(g, '#f4f1e8');
+  g.beginPath();
+  g.ellipse(64, 60, 48, 12, 0, 0, Math.PI * 2);
+  fillOut(g, '#e07a1f', 2.5);
+  g.fillStyle = 'rgba(160,40,20,0.5)';
+  g.beginPath();
+  g.arc(58, 58, 4, 0, Math.PI * 2);
+  g.fill();
+  g.beginPath();
+  g.moveTo(96, 44);
+  g.arc(96, 52, 9, -Math.PI / 2, Math.PI / 2);
+  g.closePath();
+  fillOut(g, '#f6d32a', 2);
+};
+
 export function heldCanvas(product) {
   if (cache.has(product)) return cache.get(product);
   const c = document.createElement('canvas');

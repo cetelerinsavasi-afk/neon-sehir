@@ -273,7 +273,7 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
         m: q.m ? 1 : 0,
         wp: q.wp ? 1 : 0,
         ...yawOf(q),
-        ...(num(q.sy, -6, 300) !== null && !car.c ? { sy: r2(q.sy) } : {}),
+        ...(num(q.sy, -6, 300) !== null && !car.c ? { sy: r2(q.sy), ...(q.lz === 1 ? { lz: 1 } : {}) } : {}), // v221: lz = yatakta uzanıyor
         ...car,
         ...(em ? { e: em } : {}),
         ...(typeof q.h === 'string' && isProduct(q.h) ? { h: q.h } : {}),

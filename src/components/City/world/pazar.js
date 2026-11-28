@@ -245,20 +245,7 @@ export function buildPazar(E) {
     for (var z2 = s.z0 + 1.5, i2 = 0; z2 <= s.z1 - 1.4; z2 += 5.2, i2++) pts.push([i2 % 2 ? s.xl + 0.05 : s.xr - 0.05, z2]);
     for (var p = 0; p < pts.length - 1; p++) bulbs(k, pts[p], pts[p + 1], 5.6);
     for (var z3 = s.z0 + 5; z3 < s.z1 - 4; z3 += 10) k.light(cx, 3.6, z3, `#ffd9a0`, 5, 11);
-    if (wide) {
-      for (var z4 = s.z0 + 7; z4 < s.z1 - 5; z4 += 9) {
-        if (hit(cx, z4, 2.4)) continue;
-        k.item(`parkbench`, cx - 1.15, z4, 2, 0, { y: 0.12 });
-        k.item(`parkbench`, cx + 1.15, z4, 6, 0, { y: 0.12 });
-        k.item(`planter`, cx, z4 - 1.9, 2, 0, { y: 0.12 });
-        k.item(`planter`, cx, z4 + 1.9, 2, 0, { y: 0.12 });
-      }
-    } else {
-      for (var z5 = s.z0 + 8; z5 < s.z1 - 6; z5 += 12) {
-        if (hit(cx, z5, 1.0)) continue;
-        k.item(`planter`, cx, z5, 2, 0, { y: 0.12 });
-      }
-    }
+    // v221: ortadaki çimler (saksılar) ve banklar kaldırıldı — yürüme yolu boş
     var AV = [
       { clothing: `hoodie`, clothColor: `#ff2d8a`, pantsColor: `#1a1a1c` },
       { clothing: `jacket`, clothColor: `#2b3550`, pantsColor: `#3a3d42` },

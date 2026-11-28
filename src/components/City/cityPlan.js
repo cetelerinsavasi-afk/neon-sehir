@@ -245,13 +245,17 @@ export function buildCity() {
     sea.item('korkuluk', x, COAST_Z + 2.8, 0, 0, { solid: false });
   }
   // korkuluk çarpışması (marina kapılarında boşluk)
-  const runs = [[X0, qx0]];
-  let a = qx1;
-  [...MARINA.gates].sort((p, q) => p - q).forEach((g) => {
-    runs.push([a, g - 2.2]);
-    a = g + 2.2;
+  // v221 DÜZELTME: boşluklar (liman ağzı + marina kapıları) soldan sağa sıralanır. v219'da marina limanın
+  // batısına taşınınca son duvar parçası (son kapı → X1) liman ağzının önünden geçiyordu → tırla rıhtımdaki
+  // yükleme alanına girilemiyordu.
+  const gaps = [[qx0, qx1], ...MARINA.gates.map((g) => [g - 2.2, g + 2.2])].sort((p, q) => p[0] - q[0]);
+  const runs = [];
+  let a = X0;
+  gaps.forEach(([g0, g1]) => {
+    if (g0 > a) runs.push([a, g0]);
+    a = Math.max(a, g1);
   });
-  runs.push([a, X1]);
+  if (X1 > a) runs.push([a, X1]);
   runs.forEach(([p, q]) => sea.solid((p + q) / 2, COAST_Z + 2.9, (q - p) / 2, 0.2));
   for (let x = X0 + 10; x < X1; x += 16) {
     if (x > qx0 - 2 && x < qx1 + 2) continue;
