@@ -11,6 +11,7 @@
 // =============================================================================
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import CarImg from '../VehicleCard/CarImg'; // v150: araç görseli = 3D model
+import SkateImg from '../VehicleCard/SkateImg'; // v223: kaykay kart görseli
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useDailyActions } from '../../hooks/useDailyActions';
@@ -395,7 +396,7 @@ function GarageSheet({ onPick, onClose, onGallery, favId: favId0 = null, flash, 
   // açılışta: Araba sekmesi boşsa aracı olan ilk sekme
   const autoTab = useRef(false);
   useEffect(() => {
-    if (loading || autoTab.current || !all.length) return;
+    if (loading || autoTab.current || (!all.length && !skate)) return; // v223: sadece kaykay varsa Motor sekmesi açılır
     autoTab.current = true;
     if (!usable.length) {
       const k = ['araba', 'ticari', 'motor'].find((x) => all.some((v) => vehicleKindOfId(v.catalogId) === x) || (x === 'motor' && skate));
@@ -407,7 +408,7 @@ function GarageSheet({ onPick, onClose, onGallery, favId: favId0 = null, flash, 
     <Sheet title="🚗 Arabalarım" onClose={onClose} closeLabel="Kapat">
       <VehicleKindTabs value={tab} onChange={setTab} />
       {loading && <div className="cs-garage-empty">…</div>}
-      {!loading && all.length > 0 && usable.length === 0 && !(tab === 'motor' && skate) && <p className="vg-empty">Bu sekmede aracın yok.</p>}
+      {!loading && (all.length > 0 || skate) && usable.length === 0 && !(tab === 'motor' && skate) && <p className="vg-empty">Bu sekmede aracın yok.</p>}
       {!loading && all.length === 0 && !skate && (
         <div className="cs-garage-empty">
           <span>🚗</span>
@@ -419,9 +420,9 @@ function GarageSheet({ onPick, onClose, onGallery, favId: favId0 = null, flash, 
         {tab === 'motor' && skate && (
           <div className="cs-car-wrap">
             <button className="cs-car" onClick={onSkate}>
-              <span style={{ fontSize: 44, lineHeight: '64px', display: 'block' }}>🛹</span>
+              <SkateImg />
               <b>Kaykay</b>
-              <span>{skate.days ? `⏳ ${skate.days} gün` : '⏱️ Kiralık'}</span>
+              <span>{skate.days ? `⏳ ${skate.days} gün kaldı` : '⏱️ Kiralık'}</span>
             </button>
           </div>
         )}
@@ -700,6 +701,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
   const [stableNear, setStableNear] = useState(null); // v177: köy ahırı (at / deve)
   const [atBikeShop, setAtBikeShop] = useState(false); // v177: parktaki bisikletçi
   const [atSkate, setAtSkate] = useState(false); // v219: aktivite parkındaki kaykay büfesi
+  const [skating, setSkating] = useState(null); // v223: kaykaydayken sol üstte 🚪 İn ('on' | 'air')
   // v177 — kiralık bisiklet: { end (yerel ms) } · binikken süre dolunca 1 dk daha alınır, inikken bisiklet kaybolur
   const [rent, setRent] = useState(null);
   const rentRef = useRef(null);
@@ -912,6 +914,8 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           setAtBikeShop((v) => (v === bs ? v : bs));
           const sk = !s.driving && !s.riding && Math.hypot(s.x - SKATE_KIOSK.x, s.z - SKATE_KIOSK.z) < SKATE_KIOSK.r;
           setAtSkate((v) => (v === sk ? v : sk));
+          const skv = s.skate?.on ? (s.skate.air ? 'air' : 'on') : null; // v223
+          setSkating((v) => (v === skv ? v : skv));
           drawMiniRef.current?.();
           // v166: sadece sürüş durumu + araç adı (hız göstergesi LiveSpeedo'da ayrı güncellenir)
           setHud((h) => {
@@ -2216,6 +2220,12 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
                   <span className="cs-pill-gold">
                     <span className="gold-coin-icon" style={{ width: 13, height: 13 }} /> {fmt(gold)}
                   </span>
+                </button>
+              )}
+              {/* v223: kaykaydan in — altının hemen altında, arabalardaki 🚪 İn gibi */}
+              {skating && (
+                <button type="button" className="hs-act cs-skate-off" disabled={skating === 'air'} onClick={() => engineRef.current?.skateOff?.()}>
+                  🚪 İn
                 </button>
               )}
               {/* v194: misafir — aynı yerde giriş hapı */}

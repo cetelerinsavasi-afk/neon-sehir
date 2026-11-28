@@ -36,7 +36,7 @@ import { geo as rsGeo, fromPad } from './world/roadsideGeo.js';
 import { LOT_TYPES } from './cityPlan.js';
 import { VENUES as GAME_VENUES } from '../../../functions/venueLayouts.js';
 import { isPhotoNpc } from '../../../functions/storyNpcs.js'; // v168.1
-import { installExtras } from './cityExtras.js'; // v219: helikopter, toplar, kaykay, çatılar, spor salonu 2. kat
+import { installExtras, makeSkateBoard, poseSkater } from './cityExtras.js'; // v219: helikopter, toplar, kaykay, çatılar, spor salonu 2. kat
 import { pistOffAsphalt, PIST_SPOTS } from './world/pistPlan.js'; // v219: pistte asfalt dışı (çim) yavaşlatır · pist girişi
 
 const IS_ANDROID = typeof navigator !== 'undefined' && /Android/i.test(navigator.userAgent || '');
@@ -6023,7 +6023,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     if (tickT <= 0) {
       tickT = 0.1;
       const md = W.modeAt(self.x, self.z);
-      onTick?.({ venue: curVenue ? curVenue.type : areaAt(self.x, self.z) === 'modifiye' ? 'modifiye' : null, mode: md, place: md === 'city' ? null : W.zoneName(self.x, self.z, md, driving && myCar ? myCar.s : null), swim: Boolean(me.swim), spot: W.spotActs(self.x, self.z, !driving, driving && myCar ? Math.hypot(myCar.vx, myCar.vz) < 1 : false), area: areaAt(self.x, self.z), x: self.x, z: self.z, yaw: view === '2d' ? topCur.az : driving && myCar ? myCar.yaw + Math.PI + driveCamOff : self.camYaw, driving, riding: Boolean(self.ride), drive: driving ? driveStat : null, car: myCar ? { x: myCar.x, z: myCar.z } : null });
+      onTick?.({ venue: curVenue ? curVenue.type : areaAt(self.x, self.z) === 'modifiye' ? 'modifiye' : null, mode: md, place: md === 'city' ? null : W.zoneName(self.x, self.z, md, driving && myCar ? myCar.s : null), swim: Boolean(me.swim), spot: W.spotActs(self.x, self.z, !driving, driving && myCar ? Math.hypot(myCar.vx, myCar.vz) < 1 : false), area: areaAt(self.x, self.z), x: self.x, z: self.z, yaw: view === '2d' ? topCur.az : driving && myCar ? myCar.yaw + Math.PI + driveCamOff : self.camYaw, driving, riding: Boolean(self.ride), skate: extras?.skate?.() || null, drive: driving ? driveStat : null, car: myCar ? { x: myCar.x, z: myCar.z } : null });
     }
   }
 
@@ -6487,7 +6487,9 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     // v168: senaryo karakterleri (bu cihazda) fotoğrafa girmez — v168.1: Rıza Amca hariç (sunucu adını
     // ve görünüşünü kendi listesinden yazar, functions/storyNpcs.js)
     const shotOk = (id) => !isStoryId(id) || isPhotoNpc(id);
-    const people = [figShot(myUid, me, driving && myCar ? { c: myUid, k: 0 } : self.ride && shotOk(self.ride.owner) ? { c: self.ride.owner, k: self.ride.k || 1 } : {})];
+    // v223: kaykaydaysam kaykay + gerçek yön de kareye girer (eskiden kaykay görünmüyor, yön değişiyordu)
+    const mySk = !driving && !self.ride ? extras?.skShot?.() || null : null;
+    const people = [figShot(myUid, me, driving && myCar ? { c: myUid, k: 0 } : self.ride && shotOk(self.ride.owner) ? { c: self.ride.owner, k: self.ride.k || 1 } : mySk || {})];
     [...remotes.values()]
       .filter((r) => shotOk(r.uid) && (r.d ?? 999) < VIS_DIST)
       .sort((a, b) => a.d - b.d)
@@ -6495,7 +6497,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       .forEach((r) => {
         const st = r.st || {};
         if (!r.fig.group.visible && st.p !== 'd' && st.p !== 'r') return;
-        people.push(figShot(r.uid, r.fig, st.p === 'd' ? { c: r.uid, k: 0 } : st.p === 'r' ? { c: st.ro, k: st.rk || 1 } : {}));
+        const rsk = st.k === 1 && st.p !== 'd' && st.p !== 'r' && Number.isFinite(r.fig.yaw) ? { sk: 1, sb: r3(wrapAng(r.fig.yaw)) } : {}; // v223: kaykaydaki oyuncu
+        people.push(figShot(r.uid, r.fig, st.p === 'd' ? { c: r.uid, k: 0 } : st.p === 'r' ? { c: st.ro, k: st.rk || 1 } : rsk));
       });
     const cars = [];
     // v193: tır dorsesinin açısı (th) — fotoğrafta dorse düz çiziliyordu (tır tek parça kamyon gibi görünüyordu)
@@ -6723,6 +6726,12 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     stadium?.liveObjects?.().forEach(hide);
     hide(ring);
     hide(callRing);
+    try {
+      (extras?.shotHide?.() || []).forEach(hide); // v223: canlı kaykaylar (karedekiler aşağıda çekim anından)
+    } catch {
+      /* yoksay */
+    }
+    const shotBoards = [];
     const hsI = headSpot.intensity;
     headSpot.intensity = 0;
     const save = { pos: camera.position.clone(), quat: camera.quaternion.clone(), fov: camera.fov, aspect: camera.aspect, bb: camera.userData.billboardYaw, bbe: camera.userData.billboardEl, pr: renderer.getPixelRatio(), size: renderer.getSize(new THREE.Vector2()), moon: moonL.position.clone(), moonT: moonL.target.position.clone() };
@@ -6860,6 +6869,19 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
         f.sinkCur = f.sitting || f.inCar ? 0 : f.sink;
         if (i === 0 && icCar) f.group.visible = false; // iç kamerada çekenin kendisi görünmez (canlıdaki gibi)
         f.update(0, camera, now);
+        // v223: kaykaydaki kişi — altında kaykay (çekim anındaki yönüyle), çömelik duruş
+        if (!car && !f.sitting && (p.sk === 1 || p.sk === 2)) {
+          try {
+            const b = makeSkateBoard();
+            b.position.set(f.x, f.y - 0.09, f.z);
+            b.rotation.set(0, Number.isFinite(p.sb) ? p.sb : Number.isFinite(p.yw) ? p.yw : 0, 0);
+            scene.add(b);
+            shotBoards.push(b);
+            if (p.sk === 2 && f.m3?.root?.visible) poseSkater(f.m3);
+          } catch {
+            /* kaykay çizilemezse sadece kişi */
+          }
+        }
         labels.push({ f, says: p.says || [], self: i === 0 });
       });
       npcs.forEach((n) => {
@@ -6903,6 +6925,15 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       }
       return c2.toDataURL('image/jpeg', 0.86);
     } finally {
+      shotBoards.forEach((b) => {
+        scene.remove(b);
+        b.traverse((o) => {
+          if (o.isMesh) {
+            o.geometry.dispose();
+            o.material.dispose();
+          }
+        });
+      });
       tmpFigs.forEach((f) => (f.group.visible = false));
       fbFigs.forEach((f) => (f.group.visible = false));
       if (fbBall) fbBall.visible = false;
@@ -7022,6 +7053,19 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
         remoteRec: (id) => remotes.get(id)?.st || null,
         figOf: (id) => remotes.get(id)?.fig || null,
         skate: () => (skateState ? skateState() : null),
+        // v223: helikopter maç varken sahaya inemez
+        noLand: (x, z) => (stadium && areaAt(x, z) === 'stadyum' && stadium.state?.()?.phase === 'live' ? 'stad' : null),
+        stadCenter: () => (stadLot ? { x: stadLot.mx, z: stadLot.mz } : null),
+        footIn: (x0, x1, z0, z1) => {
+          let n = 0;
+          remotes.forEach((r, id) => {
+            if (isStoryId(id)) return;
+            const f = r.fig,
+              p = r.st?.p;
+            if (f && f.group.visible && (!p || p === 'w') && f.x > x0 && f.x < x1 && f.z > z0 && f.z < z1) n++;
+          });
+          return n;
+        },
         setSkateRent: (until, srvNow) => onEvent?.({ type: 'skateRent', until, now: srvNow }),
       });
     } catch (err) {
@@ -7065,6 +7109,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     },
     heist,
     skateSummon: () => Boolean(extras?.skateSummon?.()), // v221: kaykayı yanına getir (Arabalarım › Motor)
+    skateOff: () => Boolean(extras?.skateOff?.()), // v223: sol üstteki 🚪 İn
     photoState,
     renderAtt,
     // v157.4: Sixtagram — telefonda sadece yakındaki fotoğraflar kendiliğinden çizilir

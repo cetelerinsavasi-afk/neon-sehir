@@ -8,7 +8,8 @@ import { setDisplayName } from '../../services/gameActions';
 import { weaponCatalog } from '../../data/weaponCatalog';
 import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { VehicleKindTabs, kindOfCar } from '../VehicleGalleryScreen/VehicleGalleryScreen'; // v169: galerideki 3 sekme
-import VehicleCard, { LifeBar, UpgradeCells } from '../VehicleCard/VehicleCard';
+import VehicleCard, { LifeBar, UpgradeCells, SkateCard } from '../VehicleCard/VehicleCard';
+import { skateUntilOf } from '../../../functions/stable.js'; // v223: kaykay (20 gün ömür)
 import SignInPrompt from '../SignInPrompt/SignInPrompt';
 import AvatarSvg from '../AvatarSvg/AvatarSvg';
 import AvatarBuilder from '../AvatarBuilder/AvatarBuilder';
@@ -270,6 +271,9 @@ export default function HomeScreen() {
   // v77: vitrindeki (dükkândaki) ürünler kilitli — soluk ve 🔒 ile gösterilir
   const myVehicles = vehicles.filter((v) => !v.listed || v.shopHouseId);
   const myWeapons = weapons.filter((w) => !w.listed || w.shopHouseId);
+  // v223: kaykay da araçlarda (Motor sekmesi) — ömrü bitmediyse
+  const skateUntil = skateUntilOf(player);
+  const hasSkate = skateUntil > Date.now();
 
   return (
     <div className="home-screen">
@@ -308,19 +312,25 @@ export default function HomeScreen() {
 
       {/* v169: Araçlar ve Silahlar açılır / kapanır; araçlar galerideki gibi Araba · Ticari · Motor */}
       <div className={`home-section home-fold${vehOpen ? ' open' : ''}`}>
-        <FoldHead icon="🚗" title="Araçların" count={myVehicles.length} open={vehOpen} onToggle={toggleVeh} />
+        <FoldHead icon="🚗" title="Araçların" count={myVehicles.length + (hasSkate ? 1 : 0)} open={vehOpen} onToggle={toggleVeh} />
         {vehOpen && (
           <>
             <div className="home-veh-tabs">
               <VehicleKindTabs value={vehTab} onChange={setVehTab} />
             </div>
-            {myVehicles.length === 0 ? (
+            {myVehicles.length === 0 && !hasSkate ? (
               <p className="home-hint">Henüz bir aracın yok.</p>
             ) : (
               (() => {
                 const list = myVehicles.filter((v) => vehicleKind(v) === vehTab);
-                if (!list.length) return <p className="home-hint">Bu sekmede aracın yok.</p>;
-                return list.map((v) => <VehicleCard key={v.id} vehicle={v} locked={Boolean(v.shopHouseId)} />); // v197: favori kalbi Arabalarım'da
+                const sk = vehTab === 'motor' && hasSkate;
+                if (!list.length && !sk) return <p className="home-hint">Bu sekmede aracın yok.</p>;
+                return (
+                  <>
+                    {list.map((v) => <VehicleCard key={v.id} vehicle={v} locked={Boolean(v.shopHouseId)} />)}
+                    {sk && <SkateCard until={skateUntil} />}
+                  </>
+                ); // v197: favori kalbi Arabalarım'da
               })()
             )}
           </>

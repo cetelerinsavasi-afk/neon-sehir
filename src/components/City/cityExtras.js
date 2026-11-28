@@ -11,11 +11,61 @@
 // cam, post, after, busy, noVenue, reset, presence, remoteFig, dispose.
 // =============================================================================
 import * as THREE from 'three';
-import { ballTex } from './world/aktivite.js';
+import { ballTex, HOOP_X } from './world/aktivite.js';
 import { pistClinic_ } from './world/pist.js';
 import { PIST_SPOTS } from './world/pistPlan.js';
 
 export const SKATE = { price: 5000, rentPerMin: 100, slotMs: 60_000 }; // functions/stable.js › SKATE ile aynı
+
+// v223: kaykay modeli (oyunda ve fotoğraf karesinde aynı)
+export function makeSkateBoard() {
+  const g = new THREE.Group(),
+    dm = new THREE.MeshStandardMaterial({ color: `#1b1d22`, roughness: 0.6 }),
+    gm = new THREE.MeshStandardMaterial({ color: `#7a2ad0`, roughness: 0.5 }),
+    wm = new THREE.MeshStandardMaterial({ color: `#f4f4f2`, roughness: 0.4 }),
+    tm = new THREE.MeshStandardMaterial({ color: `#c0c4cc`, metalness: 0.8, roughness: 0.3 });
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.03, 0.86), dm);
+  deck.position.y = 0.1;
+  g.add(deck);
+  const art = new THREE.Mesh(new THREE.BoxGeometry(0.245, 0.032, 0.6), gm);
+  art.position.y = 0.095;
+  g.add(art);
+  for (const z of [-0.3, 0.3]) {
+    const tr = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.03, 0.05), tm);
+    tr.position.set(0, 0.07, z);
+    g.add(tr);
+    for (const x of [-0.11, 0.11]) {
+      const w = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.04, 12), wm);
+      w.rotation.z = Math.PI / 2;
+      w.position.set(x, 0.035, z);
+      g.add(w);
+    }
+  }
+  g.traverse((o) => {
+    o.castShadow = !0;
+  });
+  return g;
+}
+
+// v223: kaykay duruşu (çömelik, kollar açık) — fotoğraf karesi için (oyunda skPost aynısını yapar)
+export function poseSkater(M3) {
+  if (!M3) return;
+  try {
+    M3.legs.forEach((l, i) => {
+      l.hip.rotation.x = -0.35;
+      l.knee.rotation.x = 0.7;
+      l.hip.rotation.z = (i ? 1 : -1) * 0.28;
+    });
+    M3.arms.forEach((a) => {
+      a.sh.rotation.z = a.sx * 1.05;
+      a.sh.rotation.x = 0;
+      a.el.rotation.x = -0.2;
+    });
+    M3.root.position.y -= 0.12;
+  } catch {
+    /* yoksay */
+  }
+}
 
 export function installExtras(ctx) {
   const { container, scene, camera, self, me, W, keys, sound, camRay, ring, blockers, camPos, groundY, standY, blockedAt, canStand, freeNear } = ctx;
@@ -479,6 +529,32 @@ export function installExtras(ctx) {
     sc: 1,
   };
   const TC = {};
+  // v223: helikopterin inemeyeceği yerler — stadyum (canlı maç) ve park sahaları (sahada yürüyen oyuncu varken)
+  const COURTS = [
+    { x0: -110, x1: -91, z0: 72.8, z1: 87.2 }, // halı saha
+    { x0: -88.8, x1: -71.2, z0: 72.2, z1: 87.8 }, // basket
+  ];
+  const NLC = new Map();
+  const courtBusy = (c, i) => {
+    const t = NOW(),
+      m = NLC.get(i);
+    if (m && t - m.t < 600) return m.v;
+    const inC = (x, z) => x > c.x0 && x < c.x1 && z > c.z0 && z < c.z1;
+    const v = (!HX.on && !PAX.on && inC(self.x, self.z) && Math.abs(me.y - PKY) < 2) || (ctx.footIn?.(c.x0, c.x1, c.z0, c.z1) || 0) > 0;
+    NLC.set(i, { t, v });
+    return v;
+  };
+  const noLandAt = (x, z) => {
+    if (ctx.noLand?.(x, z) === `stad`) {
+      const c = ctx.stadCenter?.() || { x, z };
+      return { top: groundY(x, z) + 26, cx: c.x, cz: c.z, stad: !0 };
+    }
+    for (let i = 0; i < COURTS.length; i++) {
+      const c = COURTS[i];
+      if (x > c.x0 - 3 && x < c.x1 + 3 && z > c.z0 - 3 && z < c.z1 + 3 && courtBusy(c, i)) return { top: PKY + 9, cx: (c.x0 + c.x1) / 2, cz: (c.z0 + c.z1) / 2 };
+    }
+    return null;
+  };
   // ---------- v219: çok oyunculu helikopter (kilit + park yeri + yolcular) ----------
   const NET = ctx.net;
   const HN = { node: null, mine: !1, saveT: 0, unsub: null, resetT: 0 };
@@ -737,8 +813,8 @@ export function installExtras(ctx) {
       str = 0;
     if (pil) {
       const k = keys;
-      fwd = (k.KeyW || k.ArrowUp || TC.f ? 1 : 0) - (k.KeyS || k.ArrowDown || TC.b ? 1 : 0);
-      turn = (k.KeyA || k.ArrowLeft || TC.l ? 1 : 0) - (k.KeyD || k.ArrowRight || TC.r ? 1 : 0);
+      fwd = CL((k.KeyW || k.ArrowUp ? 1 : 0) - (k.KeyS || k.ArrowDown ? 1 : 0) + (TC.jy || 0), -1, 1); // v223: joystick
+      turn = CL((k.KeyA || k.ArrowLeft ? 1 : 0) - (k.KeyD || k.ArrowRight ? 1 : 0) - (TC.jx || 0), -1, 1);
       lift = (k.Space || k.KeyR || TC.u ? 1 : 0) - (k.ShiftLeft || k.ShiftRight || k.KeyC || k.KeyV || TC.d ? 1 : 0);
       str = (k.KeyE ? 1 : 0) - (k.KeyQ ? 1 : 0);
     } else if (H.auto) lift = -1;
@@ -797,6 +873,35 @@ export function installExtras(ctx) {
         H.vz *= -0.25;
         SHK = Math.max(SHK, 0.3);
         thud(0.4);
+      }
+      // v223: maç varken (stadyumda canlı maç / park sahalarında oyuncu varken) helikopter sahaya inemez
+      {
+        const nl = noLandAt(nx, nz);
+        if (nl && ny < nl.top) {
+          const cur = noLandAt(H.x, H.z);
+          if (!cur || H.y >= nl.top - 0.05) {
+            // dışarıdan alçaktan giremez / tavandan aşağı inemez
+            if (!cur && H.y < nl.top) {
+              nx = H.x;
+              nz = H.z;
+              H.vx *= 0.3;
+              H.vz *= 0.3;
+            } else ny = Math.max(ny, nl.top);
+          } else {
+            ny = Math.max(ny, H.y + 2 * dt); // içerideyken (maç başladı) yükselir
+          }
+          if (H.vy < 0) H.vy = 0;
+          if (!HX.on) {
+            // pilotsuz (kendi iniyor) → sahanın dışına kayar
+            const a = Math.atan2(nz - nl.cz, nx - nl.cx);
+            H.vx += (Math.cos(a) * 6 - H.vx) * Math.min(1, dt * 2);
+            H.vz += (Math.sin(a) * 6 - H.vz) * Math.min(1, dt * 2);
+          }
+          if (HX.on && NOW() - (HX.nlT || 0) > 4000) {
+            HX.nlT = NOW();
+            toast(nl.stad ? `🚁 Stadyumda maç var — sahaya inilmez` : `🚁 Sahada oyun var — inilmez`);
+          }
+        }
       }
       const f = floorAt(nx, nz, Math.max(ny, H.y));
       if (ny <= f.y) {
@@ -1158,6 +1263,9 @@ export function installExtras(ctx) {
 .nx-hud b{color:#ffe9a8}.nx-hud small{display:block;opacity:.75;font-weight:500;margin-top:3px}
 .nx-pad{position:absolute;z-index:80;bottom:112px;display:grid;gap:6px;pointer-events:none}.nx-pad .nx-b{position:static;width:54px;height:54px;padding:0;font-size:20px;display:flex;align-items:center;justify-content:center;border-radius:14px}
 .nx-pl{left:84px;grid-template-columns:repeat(3,54px)}.nx-pr{right:84px;grid-template-columns:72px}.nx-pr .nx-b{width:72px;font-size:12px;flex-direction:column;line-height:1.1}
+.nx-joy{position:absolute;z-index:80;left:22px;bottom:104px;width:136px;height:136px;border-radius:50%;pointer-events:auto;touch-action:none;user-select:none;-webkit-user-select:none;background:radial-gradient(circle,rgba(8,10,18,.38) 0,rgba(8,10,18,.72) 70%);border:2px solid rgba(255,210,63,.55);box-shadow:0 4px 18px rgba(0,0,0,.45)}
+.nx-joy i{position:absolute;left:50%;top:50%;width:60px;height:60px;margin:-30px 0 0 -30px;border-radius:50%;pointer-events:none;background:radial-gradient(circle at 35% 30%,#fff3c4,#ffd23f 55%,#c99a12);box-shadow:0 3px 10px rgba(0,0,0,.5)}
+.nx-joy.on i{transition:none}.nx-joy:not(.on) i{transition:transform .12s ease-out}
 .nx-exit{right:14px;top:200px}.nx-toast{position:absolute;z-index:85;top:150px;left:50%;translate:-50% 0;pointer-events:none;font:800 18px system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.7);background:rgba(200,20,30,.0);opacity:0;transition:opacity .35s}.nx-toast.on{opacity:1}`;
   document.head.appendChild(css);
   const el = (t, c, x) => {
@@ -1219,37 +1327,66 @@ export function installExtras(ctx) {
     par.appendChild(b);
     return b;
   };
-  const pl = el(`div`, `nx-pad nx-pl nx-hide`),
-    pr = el(`div`, `nx-pad nx-pr nx-hide`);
-  const sp = () => {
-    const s = el(`span`);
-    pl.appendChild(s);
-  };
-  sp();
-  mk(pl, `f`, `▲`);
-  sp();
-  mk(pl, `l`, `◀`);
-  mk(pl, `b`, `▼`);
-  mk(pl, `r`, `▶`);
+  const pr = el(`div`, `nx-pad nx-pr nx-hide`);
   mk(pr, `u`, `⤒<br>YÜKSEL`);
   mk(pr, `d`, `⤓<br>ALÇAL`);
-  CT.appendChild(pl);
   CT.appendChild(pr);
-  const skL = el(`div`, `nx-pad nx-pl nx-sk nx-hide`),
-    skR = el(`div`, `nx-pad nx-pr nx-sk nx-hide`);
-  {
-    const s2 = () => skL.appendChild(el(`span`));
-    s2();
-    mk(skL, `f`, `▲`);
-    s2();
-    mk(skL, `l`, `◀`);
-    mk(skL, `b`, `▼`);
-    mk(skL, `r`, `▶`);
-    mk(skR, `u`, `🛹<br>ZIPLA`);
-    mk(skR, `d`, `🌀<br>FLIP`);
-  }
-  CT.appendChild(skL);
+  const skR = el(`div`, `nx-pad nx-pr nx-sk nx-hide`);
+  mk(skR, `u`, `🛹<br>ZIPLA`);
+  mk(skR, `d`, `🌀<br>FLIP`);
   CT.appendChild(skR);
+  // v223: kaykay + helikopter — yön tuşları yerine sol altta JOYSTICK (TC.jx: sağ +, TC.jy: ileri +, −1…1)
+  const joy = el(`div`, `nx-joy nx-hide`);
+  const knob = el(`i`);
+  joy.appendChild(knob);
+  CT.appendChild(joy);
+  const JR = 50;
+  let jid = null;
+  const jset = (x, y) => {
+    TC.jx = x;
+    TC.jy = y;
+    knob.style.transform = `translate(${(x * JR).toFixed(1)}px,${(-y * JR).toFixed(1)}px)`;
+  };
+  const jmove = (ev) => {
+    const r = joy.getBoundingClientRect();
+    let dx = ev.clientX - (r.left + r.width / 2),
+      dy = ev.clientY - (r.top + r.height / 2);
+    const L = Math.hypot(dx, dy);
+    if (L > JR) {
+      dx *= JR / L;
+      dy *= JR / L;
+    }
+    let x = dx / JR,
+      y = -dy / JR;
+    if (Math.hypot(x, y) < 0.14) x = y = 0;
+    jset(x, y);
+  };
+  joy.addEventListener(`pointerdown`, (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    jid = ev.pointerId;
+    joy.classList.add(`on`);
+    try {
+      joy.setPointerCapture(ev.pointerId);
+    } catch {}
+    jmove(ev);
+  });
+  joy.addEventListener(`pointermove`, (ev) => {
+    if (ev.pointerId !== jid) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    jmove(ev);
+  });
+  const jend = (ev) => {
+    if (ev && ev.pointerId !== jid) return;
+    jid = null;
+    joy.classList.remove(`on`);
+    jset(0, 0);
+  };
+  [`pointerup`, `pointercancel`, `lostpointercapture`].forEach((n) => joy.addEventListener(n, jend));
+  joy.addEventListener(`click`, (ev) => ev.stopPropagation());
+  joy.addEventListener(`contextmenu`, (ev) => ev.preventDefault());
+  jset(0, 0);
   const toastEl = el(`div`, `nx-toast`);
   CT.appendChild(toastEl);
   let tT = 0;
@@ -1260,10 +1397,14 @@ export function installExtras(ctx) {
     tT = setTimeout(() => toastEl.classList.remove(`on`), 2600);
   };
   const show = (n, v) => n.classList.toggle(`nx-hide`, !v);
+  const joyShow = (v) => {
+    if (!v && (jid != null || TC.jx || TC.jy)) jend();
+    show(joy, v);
+  };
   const ui = () => {
     show(hud, !1); // v221: helikopterdeki üst bilgi yazısı kaldırıldı
     show(xBtn, HX.on || PAX.on);
-    show(pl, HX.on);
+    joyShow(HX.on || SK.on);
     show(pr, HX.on);
     const other = HN.node?.by && HN.node.by !== ctx.uid;
     bBtn.textContent = other ? (H.gnd ? `🚁 Yolcu ol` : `🚁 Helikopter havada`) : `🚁 Helikoptere bin`;
@@ -1545,6 +1686,30 @@ export function installExtras(ctx) {
     const pv = me.pivot;
     if (!pv) return;
     skPost();
+    // v223: basket sıçrayışı (şut / smaç / blok) — tek zıplama, kollar havada
+    if (JP.t >= 0) {
+      JP.t += dt;
+      if (JP.t >= JP.T || SK.on || HX.on || RF.fall || ctx.driving()) JP.t = -1;
+      else {
+        const lift = hopLift(),
+          k = JP.t / JP.T;
+        const M3h = me.m3 && me.m3.root.visible ? me.m3 : null;
+        if (M3h) {
+          M3h.root.position.y += lift;
+          const up = JP.dunk ? -2.9 : k < 0.55 ? -2.5 : -2.5 + (k - 0.55) * 3;
+          M3h.arms.forEach((q) => {
+            q.sh.rotation.x = up;
+            q.sh.rotation.z = q.sx * 0.15;
+            q.el.rotation.x = JP.dunk && k > 0.45 ? -0.1 : -0.35;
+          });
+          M3h.legs.forEach((q) => {
+            q.hip.rotation.x = -0.25 * Math.sin(Math.PI * k);
+            q.knee.rotation.x = 0.5 * Math.sin(Math.PI * k);
+          });
+        }
+        pv.position.y += lift;
+      }
+    }
     const M3 = me.m3 && me.m3.root.visible ? me.m3 : null;
     if (M3) {
       const r = M3.root;
@@ -1869,50 +2034,97 @@ export function installExtras(ctx) {
           BB.vx = 0;
           BB.vz = 0;
           BB.vy = -2;
-          toast(F.pts === 3 ? `🏀 ÜÇLÜK! +3` : `🏀 Basket! +2`);
+          toast(F.pts === 4 ? `🏀 SMAÇ! +2` : F.pts === 3 ? `🏀 ÜÇLÜK! +3` : `🏀 Basket! +2`);
+          if (F.pts === 4) BB.vy = -4.5; // smaç: top çemberden hızla aşağı
           thud(0.2);
         } else {
           const a = F.ra ?? Math.random() * Math.PI * 2; // v219: dönüş yönü şutu atanla aynı
           BB.vx = Math.cos(a) * 2.5;
           BB.vz = Math.sin(a) * 2.5;
           BB.vy = 2.4;
-          toast(`🏀 Çemberden döndü!`);
+          if (F.pts === 0) {
+            // v223: ıska — top ileri gitmeye devam eder
+            BB.vx = Math.cos(a) * 3.2;
+            BB.vz = Math.sin(a) * 3.2;
+            BB.vy = 0.5;
+            toast(`🏀 Iska!`);
+          } else toast(`🏀 Çemberden döndü!`);
         }
       }
     } else ballPhys(BB, BBB, dt);
   };
-  const bbShoot = () => {
-    if (!BB.held) return;
-    const hoops = [
-        [-86.9, 80],
-        [-73.1, 80],
-      ],
-      hp = hoops.sort((a, b) => Math.hypot(a[0] - self.x, a[1] - self.z) - Math.hypot(b[0] - self.x, b[1] - self.z))[0],
-      d = Math.hypot(hp[0] - self.x, hp[1] - self.z),
-      pr = CL(1.02 - d * 0.075, 0.15, 0.93),
-      make = Math.random() < pr,
-      off = make ? 0 : 0.45 + Math.random() * 0.3,
-      oa = Math.random() * Math.PI * 2;
+  // v223: ŞUT BAKTIĞIN YÖNE — pota tam karşındaysa girer (mesafeye göre küçük şans payı), biraz kaçıksa çemberden
+  // döner, pota hiç karşında değilse top baktığın yöne gider (ıska). Potanın dibinde (1,7 m) SMAÇ.
+  // Zıplama artık tek sıçrayış (eskiden 3,2 sn süren "zıpla" emote'u 3-4 kez zıplatıyordu).
+  const HOOPS = [
+    [-80 - HOOP_X, 80],
+    [-80 + HOOP_X, 80],
+  ];
+  const JP = { t: -1, T: 0.6, H: 0.4, dunk: !1 };
+  const hop = (H, T, dunk = !1) => {
+    JP.t = 0;
+    JP.T = T;
+    JP.H = H;
+    JP.dunk = dunk;
+  };
+  const hopLift = () => (JP.t >= 0 ? 4 * JP.H * (JP.t / JP.T) * (1 - JP.t / JP.T) : 0);
+  const bbFly = (F) => {
     BB.held = !1;
-    BB.fly = {
-      t: 0,
-      T: 0.55 + d * 0.07,
-      x0: BB.x,
-      y0: BB.y,
-      z0: BB.z,
-      x1: hp[0] + Math.cos(oa) * off,
-      z1: hp[1] + Math.sin(oa) * off,
-      y1: PKY + 3.05 + (make ? 0.02 : 0.12),
-      apex: 1.4 + d * 0.12,
-      make,
-      pts: d > 6.6 ? 3 : 2,
-      ra: Math.random() * Math.PI * 2,
-    };
-    me.playEmote && me.playEmote(`zipla`);
+    BB.fly = F;
     BB.cd = 0.6;
     BB.flyBy = ctx.uid;
-    const F = BB.fly;
     ballSend(`b`, { h: ``, fl: [F.T, F.x0, F.y0, F.z0, F.x1, F.z1, F.y1, F.apex, F.make ? 1 : 0, F.pts, F.ra].map((v) => Math.round(v * 1000) / 1000).join(`,`) });
+  };
+  const bbShoot = () => {
+    if (!BB.held || JP.t >= 0) return;
+    const ay = self.camYaw + Math.PI, // kameranın baktığı yön
+      fx = Math.sin(ay),
+      fz = Math.cos(ay);
+    try {
+      me.faceYaw?.(ay); // avatar da şut yönüne döner
+    } catch {}
+    let best = null;
+    for (const h of HOOPS) {
+      const dx = h[0] - self.x,
+        dz = h[1] - self.z,
+        d = Math.hypot(dx, dz),
+        err = Math.abs(WR(Math.atan2(dx, dz) - ay));
+      if (!best || err < best.err) best = { h, d, err };
+    }
+    const hp = best.h,
+      d = best.d,
+      err = best.err,
+      rimY = PKY + 3.05;
+    // SMAÇ: potanın dibinde ve yüzün potaya dönükse
+    if (d < 1.7 && err < 1.1) {
+      hop(1.0, 0.72, !0);
+      bbFly({ t: 0, T: 0.42, x0: BB.x, y0: BB.y, z0: BB.z, x1: hp[0], z1: hp[1], y1: rimY + 0.02, apex: 0.5, make: !0, pts: 4, ra: 0 });
+      thud(0.3);
+      return;
+    }
+    hop(0.38, 0.55);
+    const tolIn = 0.05 + 0.32 / Math.max(1, d), // tam isabet açısı (yakında daha geniş)
+      pr = CL(1.04 - d * 0.05, 0.3, 0.96);
+    let F;
+    if (err <= tolIn * 2.2) {
+      const make = err <= tolIn && Math.random() < pr,
+        off = make ? 0 : 0.42 + Math.random() * 0.22,
+        oa = Math.random() * Math.PI * 2;
+      F = { x1: hp[0] + Math.cos(oa) * off, z1: hp[1] + Math.sin(oa) * off, y1: rimY + (make ? 0.02 : 0.12), make, pts: d > 6.6 ? 3 : 2, L: d, ra: Math.random() * Math.PI * 2 };
+    } else {
+      // ıska: top baktığım yöne gider, sahada kalır
+      const L = CL(d, 3, 8);
+      F = {
+        x1: CL(self.x + fx * L, BBB.x0 + 0.4, BBB.x1 - 0.4),
+        z1: CL(self.z + fz * L, BBB.z0 + 0.4, BBB.z1 - 0.4),
+        y1: PKY + 1.1,
+        make: !1,
+        pts: 0,
+        L,
+        ra: Math.atan2(fz, fx),
+      };
+    }
+    bbFly({ t: 0, T: 0.55 + F.L * 0.07, x0: BB.x, y0: BB.y + 0.25, z0: BB.z, x1: F.x1, z1: F.z1, y1: F.y1, apex: 1.4 + F.L * 0.12, make: F.make, pts: F.pts, ra: F.ra });
   };
   // v221: basket maçı — topu tutanın elinden al, şut çekene zıpla (blok). Sadece topun RTDB kaydı
   // (city/ball/b) yazılır; Firestore'a hiçbir şey gitmez. Başarı bu cihazda zarla belirlenir.
@@ -1936,7 +2148,7 @@ export function installExtras(ctx) {
   const bbJump = () => {
     if (BB.cd > 0) return;
     BB.cd = 0.9;
-    me.playEmote && me.playEmote(`zipla`);
+    if (JP.t < 0) hop(0.55, 0.6); // v223: tek sıçrayış
     const F = BB.fly;
     if (!F || BB.flyBy === ctx.uid) return;
     // top henüz yükselirken ve elimin yetişeceği yerdeyse blok
@@ -1975,31 +2187,7 @@ export function installExtras(ctx) {
     camT: 0,
   };
   const board = (() => {
-    const g = new T.Group(),
-      dm = new T.MeshStandardMaterial({ color: `#1b1d22`, roughness: 0.6 }),
-      gm = new T.MeshStandardMaterial({ color: `#7a2ad0`, roughness: 0.5 }),
-      wm = new T.MeshStandardMaterial({ color: `#f4f4f2`, roughness: 0.4 }),
-      tm = new T.MeshStandardMaterial({ color: `#c0c4cc`, metalness: 0.8, roughness: 0.3 });
-    const deck = new T.Mesh(new T.BoxGeometry(0.24, 0.03, 0.86), dm);
-    deck.position.y = 0.1;
-    g.add(deck);
-    const art = new T.Mesh(new T.BoxGeometry(0.245, 0.032, 0.6), gm);
-    art.position.y = 0.095;
-    g.add(art);
-    for (const z of [-0.3, 0.3]) {
-      const tr = new T.Mesh(new T.BoxGeometry(0.2, 0.03, 0.05), tm);
-      tr.position.set(0, 0.07, z);
-      g.add(tr);
-      for (const x of [-0.11, 0.11]) {
-        const w = new T.Mesh(new T.CylinderGeometry(0.035, 0.035, 0.04, 12), wm);
-        w.rotation.z = Math.PI / 2;
-        w.position.set(x, 0.035, z);
-        g.add(w);
-      }
-    }
-    g.traverse((o) => {
-      o.castShadow = !0;
-    });
+    const g = makeSkateBoard();
     g.visible = !1;
     scene.add(g);
     return g;
@@ -2042,15 +2230,31 @@ export function installExtras(ctx) {
         });
     } catch {}
   };
+  // v223: takla / dönüş sonrası kalan açılar sıfırlanır (yeniden binince kaykay yan / ters duruyordu)
+  const skClean = () => {
+    SK.air = !1;
+    SK.qp = !1;
+    SK.flip = 0;
+    SK.spin = 0;
+    SK.vy = 0;
+    SK.pvy = 0;
+    SK.pushing = !1;
+    SK.lastJ = !0;
+    SK.lastE = !0;
+  };
   const skBail = (why) => {
     SK.on = !1;
     skLegs();
-    SK.air = !1;
+    // v223: kaykay havadaysa göründüğü yönde (dönüş dahil) yere konur
+    const fy = WR(SK.air ? SK.ayaw + SK.spin : SK.yaw),
+      my = SK.air ? SK.ayaw : SK.yaw;
     board.visible = !1;
-    RF.vx = Math.sin(SK.yaw) * SK.sp * 0.6;
-    RF.vz = Math.cos(SK.yaw) * SK.sp * 0.6;
-    const fy = SK.air ? SK.ayaw : SK.yaw;
-    skPark(self.x + Math.sin(fy) * 1.4, self.z + Math.cos(fy) * 1.4, fy); // v221: kaykay düştüğün yerin biraz ilerisinde bekler
+    RF.vx = Math.sin(my) * SK.sp * 0.6;
+    RF.vz = Math.cos(my) * SK.sp * 0.6;
+    const dir = SK.sp < 0 ? -1 : 1;
+    skPark(self.x + Math.sin(my) * 1.4 * dir, self.z + Math.cos(my) * 1.4 * dir, fy); // v221: kaykay düştüğün yerin biraz ilerisinde bekler
+    skClean();
+    SK.yaw = fy;
     SK.sp = 0;
     startFall(1.5, !0);
     toast(why || `🛹 Düştün! Kaykay ileride bekliyor`);
@@ -2078,16 +2282,18 @@ export function installExtras(ctx) {
     if (!skHas() || SK.on || HX.on || ctx.driving() || self.ride || self.seat || RF.fall || RF.down) return;
     SK.on = !0;
     SK.sp = 0;
-    SK.air = !1;
+    skClean();
     SK.y = gH(self.x, self.z);
     SK.yaw = Math.atan2(PVX || Math.sin(self.camYaw + Math.PI), PVZ || Math.cos(self.camYaw + Math.PI));
     if (PK.on) {
       // v221: bekleyen kaykayın üstüne çık, onun yönünde
       self.x = PK.x;
       self.z = PK.z;
-      SK.yaw = PK.yaw;
+      SK.yaw = WR(PK.yaw);
       SK.y = gH(self.x, self.z);
     }
+    SK.ayaw = SK.yaw;
+    board.rotation.set(0, SK.yaw, 0);
     skUnpark();
     self.target = null;
     self.path = null;
@@ -2098,6 +2304,7 @@ export function installExtras(ctx) {
     if (!SK.on || SK.air) return;
     SK.on = !1;
     skLegs();
+    skClean();
     board.visible = !1;
     me.y = gH(self.x, self.z);
     const a = SK.yaw + Math.PI / 2;
@@ -2105,34 +2312,42 @@ export function installExtras(ctx) {
   };
   const skStep = (dt) => {
     const k = keys,
-      fwd = k.KeyW || k.ArrowUp || TC.f ? 1 : 0,
-      brk = k.KeyS || k.ArrowDown || TC.b ? 1 : 0,
-      turn = (k.KeyA || k.ArrowLeft || TC.l ? 1 : 0) - (k.KeyD || k.ArrowRight || TC.r ? 1 : 0),
+      jy = TC.jy || 0,
+      // v223: joystick (itiş gücü joystick'e göre) + klavye
+      fwd = Math.max(k.KeyW || k.ArrowUp ? 1 : 0, CL(jy, 0, 1)),
+      brk = Math.max(k.KeyS || k.ArrowDown ? 1 : 0, CL(-jy, 0, 1)),
+      turn = CL((k.KeyA || k.ArrowLeft ? 1 : 0) - (k.KeyD || k.ArrowRight ? 1 : 0) - (TC.jx || 0), -1, 1),
       jump = !!(k.Space || TC.u),
       flipK = !!(k.KeyE || TC.d);
     SK.pushing = !1;
     if (!SK.air) {
-      SK.yaw += turn * 2.4 * dt * (0.55 + Math.min(1, SK.sp / 7) * 0.45);
-      if (fwd) {
-        SK.sp += (SK.sp < 4 ? 7 : SK.sp < 9 ? 4 : 1.6) * dt;
-        SK.pushing = SK.sp < 10.5;
-        SK.pt += dt;
+      SK.yaw += turn * 2.4 * dt * (0.55 + Math.min(1, Math.abs(SK.sp) / 7) * 0.45);
+      if (fwd > 0.05) {
+        if (SK.sp < 0) SK.sp = Math.min(0, SK.sp + 9 * fwd * dt);
+        else {
+          SK.sp += (SK.sp < 4 ? 7 : SK.sp < 9 ? 4 : 1.6) * fwd * dt;
+          SK.pushing = SK.sp < 10.5;
+          SK.pt += dt;
+        }
       }
-      SK.sp -= (brk ? 9 : 0.55) * dt;
+      if (brk > 0.05) {
+        // v223: ileri giderken fren; durunca yavaşça GERİ gider (en çok ~2,6 m/s)
+        if (SK.sp > 0.05) SK.sp = Math.max(0, SK.sp - 9 * brk * dt);
+        else if (SK.sp > -2.6 * brk) {
+          SK.sp = Math.max(-2.6 * brk, SK.sp - 2.4 * brk * dt);
+          SK.pushing = !0;
+          SK.pt += dt * 0.7;
+        }
+      }
+      // sürtünme (iki yönde de sıfıra doğru)
+      if (!(fwd > 0.05) && !(brk > 0.05)) SK.sp = SK.sp > 0 ? Math.max(0, SK.sp - 0.55 * dt) : Math.min(0, SK.sp + 0.55 * dt);
       const dx = Math.sin(SK.yaw),
         dz = Math.cos(SK.yaw),
         h0 = gH(self.x, self.z),
         hf = gH(self.x + dx * 0.35, self.z + dz * 0.35),
         sl = (hf - h0) / 0.35;
       SK.sp -= 9.8 * CL(sl, -2, 2) * dt * 0.9;
-      SK.sp = Math.min(SK.sp, 13);
-      if (SK.sp < 0) {
-        if (sl > 0.15) {
-          SK.yaw += Math.PI;
-          SK.sp = -SK.sp * 0.9;
-          toast(`🛹 Fakie`);
-        } else SK.sp = 0;
-      }
+      SK.sp = CL(SK.sp, -6, 13); // v223: geri (fakie) gidiş — yokuşta biraz daha hızlı olabilir
       const nx = self.x + dx * SK.sp * dt,
         nz = self.z + dz * SK.sp * dt,
         edge = pkH(self.x, self.z) != null && h0 > PKY + 0.3 && pkH(nx, nz) == null;
@@ -2142,7 +2357,8 @@ export function installExtras(ctx) {
       } else if (edge) {
         SK.sp = 0;
       } else {
-        if (SK.sp > 7.5) {
+        if (Math.abs(SK.sp) > 10.5) {
+          // v223: sadece çok hızlıyken düşülür (eskiden 7,5 m/s)
           skBail(`🛹 Duvara çarptın!`);
           return;
         }
@@ -2204,10 +2420,12 @@ export function installExtras(ctx) {
         const spin = SK.spin,
           r = Math.round(spin / Math.PI) * Math.PI,
           dev = Math.abs(spin - r),
-          badFlip = SK.flip > 0 && SK.flip < Math.PI * 1.7;
-        if (dev > 0.65 || badFlip || SK.vy < -13) {
+          // v223: düşme riski azaldı — 60°'ye kadar yamuk iniş düzeltilir, yarıdan fazla dönen flip sayılır,
+          // yüksekten düşme sınırı daha geniş (eskiden 37° / %85 / 13 m/s)
+          badFlip = SK.flip > 0 && SK.flip < Math.PI * 1.1;
+        if (dev > 1.05 || badFlip || SK.vy < -16) {
           SK.y = h;
-          skBail(SK.vy < -13 ? `🛹 Çok yüksekten indin!` : `🛹 Yamuk indin, düştün!`);
+          skBail(SK.vy < -16 ? `🛹 Çok yüksekten indin!` : `🛹 Yamuk indin, düştün!`);
           return;
         }
         const deg = Math.round((Math.abs(r) * 180) / Math.PI),
@@ -2300,8 +2518,7 @@ export function installExtras(ctx) {
     if (!HX.on && !RF.fall && !RF.down && !ctx.driving()) {
       const dk = Math.hypot(self.x - KIOSK[0], self.z - KIOSK[1]);
       if (SK.on) {
-        lbl = SK.air ? `` : `🛹 Kaykaydan in`;
-        fn = SK.air ? null : skDismount;
+        // v223: 🚪 İn düğmesi sol üstte, altın miktarının altında (CityScreen, arabalardaki gibi)
       } else if (BB.held) {
         // v221: top elimdeyken / sahada top yakınımdayken basket düğmeleri kaykaydan önce gelir
         lbl = `🏀 Şut at`;
@@ -2346,7 +2563,7 @@ export function installExtras(ctx) {
     if (aBtn.textContent !== lbl) aBtn.textContent = lbl;
     show(aBtn, !!fn);
     aBtn.classList.toggle(`nx-skx`, !!SK.on);
-    show(skL, !!SK.on);
+    joyShow(HX.on || SK.on);
     show(skR, !!SK.on);
   };
   const onKeyG = (ev) => {
@@ -2447,7 +2664,17 @@ export function installExtras(ctx) {
     skateSummon: skSummon, // v221: Arabalarım › Motor › Kaykay
     dispose,
     heliBusy: () => HX.on || PAX.on,
-    skate: () => ({ on: SK.on }),
+    skate: () => ({ on: SK.on, air: SK.air }),
+    skateOff: () => (SK.on && !SK.air ? (skDismount(), !0) : !1), // v223: sol üstteki 🚪 İn
+    // v223: fotoğraf — kaykaydaysam kaykayın yönü (sb), avatarın gövde yönü (yw) ve duruş (sk: 2 çömelik, 1 itiyor)
+    skShot: () => {
+      if (!SK.on) return null;
+      const sb = WR(SK.air ? SK.ayaw + SK.spin : SK.yaw),
+        push = SK.pushing && !SK.air;
+      return { sk: push ? 1 : 2, sb: Math.round(sb * 1000) / 1000, yw: Math.round(WR(push ? sb : sb - Math.PI / 2) * 1000) / 1000 };
+    },
+    // v223: fotoğraf karesinde canlı kaykaylar gizlenir (karedeki kaykaylar çekim anından çizilir)
+    shotHide: () => [board, parked, ...RSK.values()],
     g: NX_g,
     w: NX_w,
     ys: NX_ys,

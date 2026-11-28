@@ -80,6 +80,9 @@ export function ballTex(kind) {
   t.colorSpace = soe.SRGBColorSpace;
   return t;
 }
+// v223: basket çemberinin saha ortasına uzaklığı (cityExtras şut hedefi de bunu kullanır)
+export const HOOP_X = 6.7;
+
 export function buildAktivite(k, v) {
   const Y = 0.13,
     gr = J(`#3f8a3a`, 0.9),
@@ -157,7 +160,7 @@ export function buildAktivite(k, v) {
       for (let q = a; q <= b + 0.01; q += Math.max(0.5, (b - a) / Math.ceil((b - a) / 2.5))) k.box(0.08, h, 0.08, fp, x0 + dx * q, Y, z0 + dz * q);
     });
   };
-  fen(-30, -7.2, -11, -7.2, 3.5);
+  fen(-30, -7.2, -11, -7.2, 3.5, [8.5, 10.5]); // v223: halı sahaya iki taraftan giriş
   fen(-30, 7.2, -11, 7.2, 3.5, [8.5, 10.5]);
   fen(-30, -7.2, -30, 7.2, 3.5);
   fen(-11, -7.2, -11, 7.2, 3.5);
@@ -191,11 +194,14 @@ export function buildAktivite(k, v) {
     k.box(0.8, 0.1, 0.1, fp, px - sx * 0.4, Y + 3.3, 0);
     k.box(0.06, 1.05, 1.8, J(`#f4f4f2`, 0.3), sx * 7.15, Y + 2.9, 0);
     k.box(0.07, 0.45, 0.6, J(`#c8141e`, 0.4), sx * 7.13, Y + 3.05, 0);
-    const rim = k.mesh(new soe.TorusGeometry(0.32, 0.025, 8, 24), J(`#ff5a1a`, 0.4, 0.5), sx * 6.9, Y + 3.05, 0, 0, { rx: Math.PI / 2 });
+    // v223: çember panyonun içine giriyordu (arka kenarı panyonun arkasına taşıyor, pano çemberin önünde görünüyordu) →
+    // çember panyodan 10 cm önde, arada taşıyıcı
+    const rim = k.mesh(new soe.TorusGeometry(0.32, 0.025, 8, 24), J(`#ff5a1a`, 0.4, 0.5), sx * HOOP_X, Y + 3.05, 0, 0, { rx: Math.PI / 2 });
+    k.box(0.16, 0.04, 0.12, J(`#ff5a1a`, 0.4, 0.5), sx * (HOOP_X + 0.37), Y + 3.03, 0);
     const nt = k.mesh(
       new soe.CylinderGeometry(0.32, 0.22, 0.5, 16, 1, !0),
       new soe.MeshBasicMaterial({ color: `#ffffff`, transparent: !0, opacity: 0.55, side: 2, wireframe: !0 }),
-      sx * 6.9,
+      sx * HOOP_X,
       Y + 2.8,
       0,
       0,
@@ -203,7 +209,7 @@ export function buildAktivite(k, v) {
     );
   }
   fen(-8.8, -7.8, 8.8, -7.8, 3, [7.8, 9.8]);
-  fen(-8.8, 7.8, 8.8, 7.8, 3);
+  fen(-8.8, 7.8, 8.8, 7.8, 3, [7.8, 9.8]); // v223: basket sahasına iki taraftan giriş
   fen(-8.8, -7.8, -8.8, 7.8, 3);
   fen(8.8, -7.8, 8.8, 7.8, 3);
   k.sign(`pk_basket`, `🏀 BASKETBOL`, 0.45, 0, Y + 3.4, -7.85, Math.PI, { color: `#ffffff`, bg: `#d9772b`, font: `900 100px Arial, sans-serif`, light: !1 });

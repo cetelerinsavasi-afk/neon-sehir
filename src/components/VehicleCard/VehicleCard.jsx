@@ -3,6 +3,7 @@ import { vehicleCatalog } from '../../data/vehicleCatalog';
 import { renameVehicle } from '../../services/gameActions';
 import { CarStatBars, vehicleRaceLevel } from '../RaceTrackScreen/CarStats';
 import CarImg from './CarImg';
+import SkateImg from './SkateImg';
 import './VehicleCard.css';
 import {
   VEHICLE_WEAPON_INITIAL_LIFE_DAYS,
@@ -132,6 +133,7 @@ export function UpgradeCells({ slots, kind = 'vehicle', catalogId = null }) {
 
 export default function VehicleCard({ vehicle, locked = false, fav = false, onFav = null }) {
   const displayName = vehicleDisplayName(vehicle);
+  const raceCar = vehicle?.catalogId == null || canUpgradeVehicle(vehicle.catalogId); // v223: sadece araba
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState(displayName);
   const [nameBusy, setNameBusy] = useState(false);
@@ -199,14 +201,47 @@ export default function VehicleCard({ vehicle, locked = false, fav = false, onFa
           </span>
         )}
         {nameError && <p className="vcard-name-error">{nameError}</p>}
-        <span className="vcard-stats">
-          Seviye {vehicleRaceLevel(vehicle)}/3
-          {vehicle.mortgaged && !vehicle.seizedByBank && ' · İpotekli'}
-          {vehicle.seizedByBank && ' · Bankaya el konuldu'}
-        </span>
-        <CarStatBars catalogId={vehicle.catalogId} level={vehicleRaceLevel(vehicle)} compact />
+        {/* v223: motor ve ticari araçta seviye / hız-ivme-nitro yazmaz (geliştirilemezler, yarışmazlar) */}
+        {raceCar ? (
+          <span className="vcard-stats">
+            Seviye {vehicleRaceLevel(vehicle)}/3
+            {vehicle.mortgaged && !vehicle.seizedByBank && ' · İpotekli'}
+            {vehicle.seizedByBank && ' · Bankaya el konuldu'}
+          </span>
+        ) : (
+          (vehicle.mortgaged || vehicle.seizedByBank) && <span className="vcard-stats">{vehicle.seizedByBank ? 'Bankaya el konuldu' : 'İpotekli'}</span>
+        )}
+        {raceCar && <CarStatBars catalogId={vehicle.catalogId} level={vehicleRaceLevel(vehicle)} compact />}
         <LifeBar item={vehicle} />
         <UpgradeCells slots={[vehicleRaceLevel(vehicle) >= 2, vehicleRaceLevel(vehicle) >= 3]} kind="vehicle" catalogId={vehicle.catalogId} />
+      </div>
+    </div>
+  );
+}
+
+// v223 — Profil › Araçların › Motor: kaykay de araçlar gibi görünür (resim + ömür; seviye / tamir yok)
+export function SkateCard({ until }) {
+  const cap = 20;
+  const left = Math.max(0, Math.min(cap, Math.ceil((Number(until) - Date.now()) / 86_400_000)));
+  return (
+    <div className="vcard-card">
+      <SkateImg className="vcard-photo vcard-photo-skate" />
+      <div className="vcard-body">
+        <span className="vcard-name">Kaykay</span>
+        <div className="vcard-life-row">
+          <div className="vcard-life-label">
+            <span>
+              Ömür: {left} / {cap} gün
+            </span>
+          </div>
+          <div className="vcard-life-bar">
+            <div className="vcard-life-bar-fill" style={{ width: `${Math.round((left / cap) * 100)}%` }} />
+          </div>
+        </div>
+        <span className="vcard-upinfo">
+          Geliştirme: <b>yok</b>
+          <small>Şehirde: Arabalarım › Motor › Kaykay</small>
+        </span>
       </div>
     </div>
   );

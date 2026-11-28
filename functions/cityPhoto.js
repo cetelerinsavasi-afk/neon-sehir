@@ -274,6 +274,8 @@ export function createCityPhoto({ db, rtdb, HttpsError, assertCanSpeak, isProduc
         wp: q.wp ? 1 : 0,
         ...yawOf(q),
         ...(num(q.sy, -6, 300) !== null && !car.c ? { sy: r2(q.sy), ...(q.lz === 1 ? { lz: 1 } : {}) } : {}), // v221: lz = yatakta uzanıyor
+        // v223: kaykayda (sk: 1 itiyor / 2 çömelik) + kaykayın yönü (sb) — sadece görüntü
+        ...((q.sk === 1 || q.sk === 2) && !car.c && num(q.sy, -6, 300) === null ? { sk: q.sk, ...(num(q.sb, -4, 4) !== null ? { sb: r3(q.sb) } : {}) } : {}),
         ...car,
         ...(em ? { e: em } : {}),
         ...(typeof q.h === 'string' && isProduct(q.h) ? { h: q.h } : {}),

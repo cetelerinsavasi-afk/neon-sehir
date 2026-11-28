@@ -1,0 +1,687 @@
+/* v147 — Gezilebilir şehir ek stilleri (oyunun hs-/v3- stillerinin üstüne) */
+.cs-root .hs-labels { z-index: 2; }
+.cs-npc .hs-name { border-color: rgba(255, 210, 63, 0.45); color: #ffe9a8; }
+/* haritadaki siyah kutulu yer adları */
+.cs-maplabel {
+  position: absolute; left: 0; top: 0;
+  padding: 3px 8px 2px; border-radius: 3px;
+  background: rgba(8, 9, 12, 0.88); border: 1px solid rgba(255,255,255,0.18);
+  color: #fff; font: 900 12px/1.1 'Arial Black', Arial, sans-serif; letter-spacing: 0.04em;
+  white-space: nowrap; pointer-events: none; text-transform: uppercase;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.5);
+}
+.cs-maplabel.vendor { font-size: 10px; background: rgba(8,9,12,0.75); }
+.cs-loading p { color: #9fb3d9; font-weight: 700; }
+.cs-gold b { color: #ffd76a !important; }
+.cs-gold { display: inline-flex; align-items: center; gap: 5px; }
+.cs-mini {
+  position: absolute; right: 10px; top: calc(66px + var(--hs-safe-t, 0px));
+  width: 108px; height: 108px; border-radius: 50%;
+  border: 2px solid rgba(212, 175, 55, 0.7); box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  z-index: 9; cursor: pointer; background: #1b1e29;
+}
+.cs-bigmap {
+  position: absolute; inset: 0; z-index: 40; background: rgba(4, 6, 12, 0.92);
+  display: flex; flex-direction: column; padding: calc(10px + var(--hs-safe-t, 0px)) 10px 10px;
+}
+.cs-bigmap-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.cs-bigmap-head b { font-size: 16px; color: #ffe9a8; }
+.cs-bigmap-head span { flex: 1; font-size: 12px; color: #8a93a8; }
+.cs-bigmap canvas { flex: 1; width: 100%; min-height: 0; border-radius: 14px; border: 1px solid rgba(255,255,255,0.1); }
+.cs-harac { display: flex; flex-direction: column; gap: 10px; }
+.cs-risk { display: flex; justify-content: space-between; align-items: baseline; font-weight: 700; color: #cfd6e6; }
+.cs-risk b { font-size: 22px; color: #3df58a; font-family: ui-monospace, monospace; }
+.cs-risk b.mid { color: #ffcf5a; } .cs-risk b.hi { color: #ff5a6e; }
+.cs-risk-bar { height: 8px; border-radius: 99px; background: rgba(255,255,255,0.08); overflow: hidden; }
+.cs-risk-bar i { display: block; height: 100%; background: linear-gradient(90deg, #39ff88, #ffcf5a, #ff3a5a); }
+.cs-wide { width: 100%; text-align: center; font-size: 15px; padding: 12px; }
+.hs-act.heist { border-color: #ff4fa3; color: #ffc2e0; background: rgba(60, 8, 34, 0.9); box-shadow: 0 0 18px rgba(255, 79, 163, 0.22); }
+.cs-house { position: fixed; inset: 0; z-index: 85; }
+/* --- v2: gerçek harita mini harita --- */
+.cs-mini { width: 124px; height: 124px; background: #0b0e18; }
+
+/* --- garaj --- */
+.cs-garage { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-height: 58vh; overflow-y: auto; }
+.cs-car { display: flex; flex-direction: column; align-items: stretch; gap: 4px; padding: 6px 6px 9px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04); color: #e8edf6; text-align: left; }
+.cs-car img { width: 100%; aspect-ratio: 16/10; object-fit: cover; border-radius: 10px; background: #c4b29e; }
+.cs-car b { font-size: 13px; padding: 0 3px; }
+.cs-car span { font-size: 11px; color: #8a93a8; padding: 0 3px; }
+.cs-car:active { transform: scale(0.97); border-color: #19e8ff; }
+.cs-carbtn { border-color: #19e8ff !important; color: #bff7ff !important; }
+/* --- sürüş --- */
+.cs-drive { position: absolute; inset: 0; pointer-events: none; z-index: 12; }
+.cs-drive button { pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.cs-drive-top { position: absolute; left: 10px; top: calc(66px + var(--hs-safe-t, 0px)); display: flex; gap: 8px; align-items: center; }
+.cs-round {
+  width: 74px; height: 74px; border-radius: 50%;
+  border: 2px solid rgba(25, 232, 255, 0.6); background: rgba(8, 14, 26, 0.72);
+  color: #dff9ff; font-size: 28px; font-weight: 900;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.45), inset 0 0 18px rgba(25,232,255,0.12);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+}
+.cs-round.sm { width: 48px; height: 48px; font-size: 20px; border-color: rgba(212,175,55,0.7); }
+.cs-round.on, .cs-pedal.on { transform: scale(0.94); filter: brightness(1.5); }
+.cs-steer { position: absolute; left: 14px; bottom: calc(24px + var(--hs-safe-b, 0px)); display: flex; gap: 14px; }
+.cs-pedals { position: absolute; right: 14px; bottom: calc(24px + var(--hs-safe-b, 0px)); display: grid; grid-template-columns: auto auto; grid-template-rows: auto auto; gap: 10px 12px; align-items: end; }
+.cs-pedals .cs-round.sm:first-child { grid-column: 1; grid-row: 1; justify-self: center; }
+.cs-pedals .hb { grid-column: 2; grid-row: 1; justify-self: center; }
+.cs-pedal {
+  width: 72px; border-radius: 18px; font: 900 13px/1 system-ui, sans-serif; letter-spacing: 0.08em;
+  display: flex; align-items: flex-end; justify-content: center; padding-bottom: 12px;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.5);
+}
+.cs-pedal.gas { height: 118px; grid-column: 2; grid-row: 2; border: 2px solid #39ff88; color: #d6ffe6; background: linear-gradient(180deg, rgba(20,80,45,0.85), rgba(6,30,16,0.9)); box-shadow: 0 0 22px rgba(57,255,136,0.25); }
+.cs-pedal.brake { height: 86px; grid-column: 1; grid-row: 2; border: 2px solid #ff3a5a; color: #ffd0d8; background: linear-gradient(180deg, rgba(90,14,26,0.85), rgba(36,6,12,0.9)); box-shadow: 0 0 22px rgba(255,58,90,0.22); }
+.cs-speedo { position: absolute; left: 50%; bottom: calc(22px + var(--hs-safe-b, 0px)); transform: translateX(-50%); width: 132px; height: 132px; display: flex; flex-direction: column; align-items: center; justify-content: center; border-radius: 50%; background: radial-gradient(circle, rgba(8,10,20,0.82) 58%, rgba(8,10,20,0.35) 72%, transparent 73%); }
+.cs-speedo svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.cs-speedo b { font: 900 34px/1 ui-monospace, 'SF Mono', monospace; color: #fff; text-shadow: 0 0 12px rgba(25,232,255,0.6); margin-top: 6px; }
+.cs-speedo span { font-size: 10px; color: #8a93a8; font-weight: 800; letter-spacing: 0.1em; }
+.cs-speedo i { font-style: normal; margin-top: 4px; padding: 1px 8px; border-radius: 6px; background: rgba(255,210,63,0.15); color: #ffd23f; font-weight: 900; font-size: 13px; }
+@media (max-width: 380px) { .cs-round { width: 64px; height: 64px; } }
+
+@media (max-width: 560px) {
+  .cs-speedo { bottom: calc(150px + var(--hs-safe-b, 0px)); transform: translateX(-50%) scale(0.82); }
+}
+
+.hs-side.cs-drive-side { top: calc(196px + var(--hs-safe-t, 0px)); bottom: auto; right: 12px; gap: 9px; }
+.hs-side.cs-drive-side .hs-side-btn { width: 46px; height: 46px; font-size: 19px; }
+.cs-root:not(.driving) .hs-side { bottom: calc(150px + var(--hs-safe-b)); }
+
+.cs-garage-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 0; font-size: 34px; }
+.cs-root .hs-msg { cursor: pointer; }
+
+/* v147.3: ömrü bitmiş araba */
+.cs-car.dead { opacity: 0.45; filter: grayscale(0.8); cursor: not-allowed; }
+
+/* --- v149 stadyum: Futbol düğmesi + maç seçici --- */
+.cs-futbol-btn { white-space: nowrap; border-color: rgba(57, 255, 136, 0.55) !important; color: #c9ffe0 !important; }
+/* üst çubuğun ortasında (başlığın yerinde): ‹ A vs B › */
+.cs-match-pick {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 3px; padding: 2px;
+  border-radius: 12px; background: rgba(255, 63, 160, 0.1); border: 1px solid rgba(255, 63, 160, 0.45);
+}
+.cs-match-pick > button {
+  flex: none; width: 28px; height: 38px; border: 0; border-radius: 10px; background: rgba(255, 255, 255, 0.08);
+  color: #fff; font-size: 24px; line-height: 1; cursor: pointer;
+}
+.cs-match-pick > button:disabled { opacity: 0.3; }
+.cs-match-pick > button:active:not(:disabled) { transform: scale(0.92); }
+.cs-match-mid { flex: 1; min-width: 0; text-align: center; display: flex; flex-direction: column; gap: 1px; }
+.cs-match-mid b { font-size: 13px; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cs-match-mid b em { font-style: normal; color: #ffd23f; margin: 0 3px; font-weight: 800; }
+.cs-match-mid b i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin: 0 4px; vertical-align: 1px; border: 1px solid rgba(255, 255, 255, 0.6); }
+.cs-match-mid small { font-size: 11px; color: #39ff88; font-weight: 700; }
+.cs-futbol-layer { position: absolute; inset: 0; z-index: 60; }
+
+/* v151 — şehir sohbeti açıkken mesaj şikâyet düğmesi */
+.cs-msg-report {
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  font-size: 11px;
+  opacity: 0.6;
+  cursor: pointer;
+}
+.cs-msg-report:hover {
+  opacity: 1;
+}
+
+/* v151 — meslek paneli */
+.cs-job {
+  position: absolute;
+  /* v152: "İn" düğmesinin altında (üstüne binmesin) */
+  top: calc(122px + var(--hs-safe-t, 0px));
+  left: 10px;
+  z-index: 30;
+  width: min(calc(100vw - 150px), 400px);
+  pointer-events: auto;
+}
+.cs-job-start {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 210, 63, 0.6);
+  background: linear-gradient(135deg, rgba(255, 210, 63, 0.95), rgba(255, 140, 40, 0.95));
+  color: #1a1206;
+  font-weight: 900;
+  font-size: 16px;
+  box-shadow: 0 8px 24px rgba(255, 170, 40, 0.35);
+  cursor: pointer;
+}
+.cs-job-start small {
+  font-size: 11.5px;
+  font-weight: 700;
+  opacity: 0.8;
+}
+.cs-job-start:disabled {
+  background: rgba(20, 24, 34, 0.86);
+  color: #9aa3b5;
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: none;
+}
+.cs-job-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  background: rgba(8, 11, 20, 0.86);
+  border: 1px solid rgba(25, 232, 255, 0.35);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  color: #fff;
+  backdrop-filter: blur(6px);
+}
+.cs-job-panel b {
+  font-size: 14.5px;
+}
+.cs-job-panel small {
+  font-size: 12px;
+  color: #cfd8ea;
+  line-height: 1.35;
+}
+.cs-job-bar {
+  height: 6px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+.cs-job-bar i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #19e8ff, #3ad07a);
+  transition: width 0.12s linear;
+}
+.cs-job-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11.5px;
+  color: #9aa3b5;
+}
+.cs-job-foot button {
+  border: 1px solid rgba(255, 80, 80, 0.5);
+  background: rgba(255, 60, 60, 0.14);
+  color: #ffb3b3;
+  border-radius: 10px;
+  padding: 4px 9px;
+  font-weight: 800;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.cs-job-paid {
+  position: absolute;
+  top: 38%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 14px 22px;
+  border-radius: 20px;
+  background: rgba(8, 11, 20, 0.9);
+  border: 1px solid rgba(255, 210, 63, 0.55);
+  box-shadow: 0 0 40px rgba(255, 210, 63, 0.3);
+  color: #fff;
+  pointer-events: none;
+  animation: cs-paid-in 0.35s ease-out;
+}
+.cs-job-paid span {
+  font-size: 13px;
+  font-weight: 800;
+  color: #cfd8ea;
+}
+.cs-job-paid b {
+  font-size: 30px;
+  font-weight: 900;
+  color: #ffd23f;
+}
+.cs-job-paid b i {
+  font-size: 14px;
+  font-style: normal;
+}
+.cs-job-paid small {
+  font-size: 11.5px;
+  color: #9aa3b5;
+}
+@keyframes cs-paid-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -40%) scale(0.9);
+  }
+}
+.cs-jobtag {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: rgba(8, 11, 20, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.cs-job-panel > b {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cs-job-arrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  border-radius: 50%;
+  background: #19e8ff;
+  color: #061018;
+  font-size: 12px;
+  transition: transform 0.12s linear;
+}
+.cs-job-dist {
+  margin-left: auto;
+  font-style: normal;
+  font-size: 12px;
+  color: #19e8ff;
+}
+
+/* v153 — haraç animasyonu (sadece kendi ekranımızda) */
+.cs-harac-fx { position: absolute; left: 0; top: 0; z-index: 3; font-size: 26px; font-weight: 900; white-space: nowrap; pointer-events: none; will-change: transform, opacity; }
+.cs-harac-fx.gold { color: #ffd84a; text-shadow: 0 0 12px #ffc828d9, 0 2px 0 #7a4d00; }
+.cs-harac-fx.police { color: #ff3b5c; text-shadow: 0 0 14px #ff2850f2, 0 2px 0 #4a0010; animation: cs-harac-blink 0.32s step-end infinite; }
+@keyframes cs-harac-blink { 50% { color: #6aa8ff; text-shadow: 0 0 14px #3c78fff2, 0 2px 0 #001a4a; } }
+.cs-harac-siren { position: absolute; inset: 0; z-index: 2; pointer-events: none; background: radial-gradient(at 0 0, #ff1e4680, #0000 60%), radial-gradient(at 100% 100%, #ff1e4640, #0000 55%); }
+.cs-harac-siren.blue { background: radial-gradient(at 100% 0, #286eff80, #0000 60%), radial-gradient(at 0 100%, #286eff40, #0000 55%); }
+.cs-heist-sheet.hide { opacity: 0; pointer-events: none; }
+
+/* v154 — şehir açıkken yarış ekranı ve yarış balonu şehrin üstünde (şehir arkada durur) */
+body.ns-city-open .race-fullscreen { z-index: 96; }
+body.ns-city-open .race-bubble { z-index: 96; }
+/* v158.2: zamana karşı yarış (şampiyona / antrenman / bahis) da şehrin üstünde — eskiden şehrin (z 80)
+   altında kalıyordu: ses geliyor, yarış görünmüyor, hak gidiyordu */
+body.ns-city-open .ta-root { z-index: 96; }
+/* v156 — benzinlik: benzin al (sürerken) + market paneli */
+.cs-fuel { margin-left: auto; position: relative; overflow: hidden; background: linear-gradient(180deg, #1c7a46, #12592f) !important; border-color: #3ad07a !important; color: #eafff1 !important; font-weight: 800; }
+.cs-fuel.on i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgba(58, 208, 122, 0.45); animation: csFuel 1.6s linear forwards; }
+@keyframes csFuel { to { width: 100%; } }
+.cs-market { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin: 6px 0 4px; }
+.cs-market-item { display: flex; align-items: center; gap: 8px; padding: 10px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.12); background: rgba(255, 255, 255, 0.05); color: #e8edf6; text-align: left; }
+.cs-market-item span { font-size: 22px; }
+.cs-market-item b { flex: 1; font-size: 13px; }
+.cs-market-item em { font-style: normal; font-size: 11px; font-weight: 800; color: #ffd84a; white-space: nowrap; }
+.cs-market-item:disabled { opacity: 0.45; }
+.cs-market-note { margin: 4px 2px 8px; font-size: 11px; color: #8fa0b8; }
+
+/* =========================================================================
+   v157 — gezilebilir şehir: iki yan sütun, mekân düğmeleri, işletme listesi,
+   yatay mod, yükleme çubuğu, sürerken sohbet
+   ========================================================================= */
+.cs-load-bar { width: 180px; height: 6px; border-radius: 99px; background: rgba(255,255,255,0.1); overflow: hidden; margin-top: 4px; }
+.cs-load-bar i { display: block; height: 100%; background: linear-gradient(90deg, #19e8ff, #ffd23f); transition: width 0.25s ease; }
+/* sol sütun (araba · koş · hareketler · yatay mod) — sağ sütunla aynı hizada */
+.cs-left {
+  position: absolute; left: 12px; bottom: calc(150px + var(--hs-safe-b, 0px));
+  display: flex; flex-direction: column; gap: 9px; z-index: 11;
+}
+.cs-left .hs-side-btn { display: grid; place-items: center; color: #f3e3b0; }
+.cs-left .cs-emotes { position: absolute; left: 60px; bottom: 0; right: auto; }
+.cs-root:not(.driving) .hs-side.cs-right { bottom: calc(150px + var(--hs-safe-b, 0px)); }
+/* etkileşim düğmeleri ortada (yan sütunların arasında) */
+.cs-root .hs-actions { left: 50%; transform: translateX(-50%); align-items: center; max-width: calc(100% - 150px); bottom: calc(154px + var(--hs-safe-b, 0px)); }
+.cs-root .hs-actions .hs-act { white-space: nowrap; }
+/* mekân düğmeleri: üst çubuğun hemen altında, ortada */
+.cs-venue-bar {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  top: calc(66px + var(--hs-safe-t, 0px)); z-index: 20;
+  display: flex; gap: 8px; max-width: calc(100% - 270px); flex-wrap: wrap; justify-content: center;
+}
+@media (max-width: 560px) {
+  .cs-venue-bar { top: calc(198px + var(--hs-safe-t, 0px)); max-width: calc(100% - 24px); }
+}
+.cs-venue-btn {
+  padding: 9px 14px; border-radius: 14px; border: 1px solid rgba(25, 232, 255, 0.6);
+  background: rgba(6, 18, 30, 0.88); color: #dff9ff; font-weight: 800; font-size: 14px; white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.45); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+}
+.cs-venue-btn i { font-style: normal; font-size: 10px; opacity: 0.7; margin-left: 4px; }
+.cs-venue-btn.on { background: rgba(25, 232, 255, 0.22); }
+.cs-venue-btn.heist { border-color: #ff4fa3; color: #ffc2e0; background: rgba(60, 8, 34, 0.9); }
+.cs-venue-btn:active { transform: scale(0.96); }
+/* açılıp kapanan işletme listesi */
+.cs-biz-panel {
+  position: absolute; left: 50%; transform: translateX(-50%); z-index: 21;
+  top: calc(116px + var(--hs-safe-t, 0px)); width: min(calc(100% - 24px), 420px);
+  max-height: min(52vh, 460px); overflow-y: auto; padding: 8px;
+  border-radius: 16px; background: rgba(10, 12, 22, 0.94); border: 1px solid rgba(25, 232, 255, 0.35);
+  box-shadow: 0 14px 36px rgba(0,0,0,0.55); animation: hs-pop 0.15s ease-out;
+}
+@media (max-width: 560px) { .cs-biz-panel { top: calc(246px + var(--hs-safe-t, 0px)); max-height: 44vh; } }
+.cs-biz-list { display: flex; flex-direction: column; gap: 6px; }
+.cs-biz-list .hh-row { margin: 0; }
+.cs-biz-empty { margin: 8px; color: #8a93a8; font-weight: 700; text-align: center; }
+/* oyunun mekân katmanı (camii, banka…): menüleri şehrin üst göstergelerinin altında */
+.cs-venue-layer .v3-menu { top: calc(150px + var(--hs-safe-t, 0px)); }
+.cs-venue-layer .v3-menu.right { top: calc(200px + var(--hs-safe-t, 0px)); }
+@media (max-width: 560px) { .cs-venue-layer .v3-menu { top: calc(178px + var(--hs-safe-t, 0px)); } .cs-venue-layer .v3-menu.right { top: calc(232px + var(--hs-safe-t, 0px)); } }
+.cs-venue-layer.away .v3-menu { display: none; }
+/* sürerken sohbet: üstte, küçük */
+.hs-chat.cs-drive-chat { left: 50%; right: auto; transform: translateX(-50%); width: min(calc(100% - 180px), 420px); bottom: auto; top: calc(124px + var(--hs-safe-t, 0px)); z-index: 30; }
+@media (max-width: 560px) { .hs-chat.cs-drive-chat { width: calc(100% - 24px); top: calc(176px + var(--hs-safe-t, 0px)); } }
+/* yatay mod: yön kilitlenemezse ekran yazılımla 90° döner (telefon yan tutulur) */
+.cs-root.cs-rotated {
+  position: fixed; top: 0; left: 100vw; width: 100vh; height: 100vw;
+  transform: rotate(90deg); transform-origin: top left;
+}
+.cs-root.cs-land .cs-left, .cs-root.cs-land:not(.driving) .hs-side.cs-right { bottom: calc(88px + var(--hs-safe-b, 0px)); gap: 7px; }
+.cs-root.cs-land .hs-side-btn { width: 44px; height: 44px; }
+.cs-root.cs-land .hs-actions { bottom: calc(92px + var(--hs-safe-b, 0px)); }
+.cs-root.cs-land .hs-chat:not(.cs-drive-chat) { left: 70px; right: 70px; }
+/* v157 — yeni harita */
+.cs-mini { background: #e8ecdf; border: 3px solid #fff; }
+.cs-bigmap2 { position: absolute; inset: 0; z-index: 45; background: rgba(5, 6, 14, 0.55); display: grid; place-items: center; }
+.cs-bigmap2-wrap { position: relative; width: min(96vw, 1100px); height: min(86vh, 820px); border-radius: 18px; overflow: hidden; border: 3px solid #fff; box-shadow: 0 20px 60px rgba(0,0,0,0.5); }
+.cs-bigmap2 canvas { width: 100%; height: 100%; display: block; touch-action: none; background: #e8ecdf; cursor: grab; }
+.cs-bm-tabs { position: absolute; top: 10px; left: 10px; display: flex; gap: 4px; background: rgba(255,255,255,0.94); padding: 4px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+.cs-bm-tabs button, .cs-bm-close, .cs-bm-zoom button { border: 0; cursor: pointer; font-weight: 800; font-size: 13px; border-radius: 9px; padding: 8px 11px; background: transparent; color: #3a3530; }
+.cs-bm-tabs button.on { background: #2f7cf6; color: #fff; }
+/* v160.2: açık renkli haritada kaybolmasın — koyu zemin, beyaz ✕ */
+.cs-bm-close { position: absolute; top: 10px; right: 10px; z-index: 3; width: 42px; height: 42px; padding: 0; font-size: 19px; font-weight: 900; color: #fff !important; background: #1b1f2e !important; border: 2px solid #fff !important; border-radius: 50%; box-shadow: 0 3px 12px rgba(0,0,0,0.45); }
+.cs-bm-zoom { position: absolute; right: 10px; bottom: 14px; display: flex; flex-direction: column; gap: 4px; background: rgba(255,255,255,0.94); padding: 4px; border-radius: 12px; }
+.cs-bm-zoom button { font-size: 20px; width: 40px; height: 40px; padding: 0; }
+/* v163 — büyük haritada yakındaki oyuncular (lejant) */
+.cs-bm-others { position: absolute; left: 10px; bottom: 14px; display: flex; align-items: center; gap: 5px; background: rgba(255,255,255,0.94); padding: 7px 10px; border-radius: 12px; font-size: 12px; font-weight: 800; color: #3a3530; box-shadow: 0 2px 8px rgba(0,0,0,0.15); pointer-events: none; }
+.cs-bm-others i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,0.15); }
+.cs-bm-others i.p { background: #ff2e88; }
+.cs-bm-others i.c { background: #ff8a00; margin-left: 6px; }
+@media (max-width: 420px) { .cs-bm-tabs button { padding: 7px 8px; font-size: 12px; } }
+/* v157 — tır / otobüs: yakın / uzak mesafe seçimi */
+.cs-job-range { display: flex; gap: 8px; }
+.cs-job-range .cs-job-start { flex: 1; min-width: 0; }
+.cs-job-start small { font-size: 11px; font-weight: 800; opacity: 0.75; }
+.cs-job-start.far { background: linear-gradient(135deg, rgba(25, 232, 255, 0.95), rgba(47, 124, 246, 0.95)); border-color: rgba(25, 232, 255, 0.7); color: #031726; }
+
+/* v157.4 — konum iğnesi: üstte ok + mesafe (dokununca kalkar), büyük haritada seçim balonu */
+.cs-pin-chip {
+  position: absolute; left: 50%; transform: translateX(-50%);
+  top: calc(110px + var(--hs-safe-t, 0px)); z-index: 12;
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 12px 6px 7px; border-radius: 999px; border: 0; cursor: pointer;
+  background: rgba(14, 17, 28, 0.86); color: #fff; font-weight: 800; font-size: 13px;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.35);
+}
+.cs-pin-chip i { font-style: normal; opacity: 0.6; font-size: 11px; }
+.cs-bm-spot {
+  position: absolute; transform: translate(-50%, calc(-100% - 10px)); z-index: 3;
+  display: flex; flex-direction: column; gap: 4px; padding: 5px;
+  background: rgba(255,255,255,0.96); border-radius: 12px; box-shadow: 0 6px 18px rgba(0,0,0,0.25);
+}
+.cs-bm-spot button { border: 0; border-radius: 9px; padding: 8px 12px; background: #f1ede6; color: #2c2823; font-weight: 800; font-size: 13px; cursor: pointer; white-space: nowrap; }
+
+/* v157.4 — alt çubuk: sohbet kapalıyken Sohbet · Çeteler · Soygun · Profil */
+.cs-dock {
+  position: absolute; left: 8px; right: 8px; bottom: calc(8px + var(--hs-safe-b, 0px)); z-index: 12;
+  display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px;
+  padding: 5px; border-radius: 16px;
+  background: var(--hs-glass, rgba(14,17,28,0.8)); border: 1px solid var(--hs-line, rgba(255,255,255,0.12));
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+}
+.cs-dock-btn {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 6px 2px 5px; border: 0; border-radius: 12px; cursor: pointer;
+  background: rgba(255,255,255,0.06); color: #f1e9d2; font: 800 11px/1.1 system-ui, sans-serif;
+}
+.cs-dock-btn span { font-size: 19px; line-height: 1.1; }
+.cs-dock-btn.new::after, .cs-dock-dot {
+  content: ''; position: absolute; top: 5px; right: calc(50% - 18px); width: 8px; height: 8px; border-radius: 50%;
+  background: #ff3b5c; box-shadow: 0 0 0 2px rgba(14,17,28,0.9);
+}
+.cs-root.cs-land .cs-dock { left: 70px; right: 70px; }
+.cs-chat-hide {
+  flex: none; width: 36px; border: 0; border-radius: 10px; cursor: pointer;
+  background: rgba(255,255,255,0.08); color: #f1e9d2; font-weight: 900;
+}
+.cs-heist-on .cs-panel-layer { visibility: hidden; pointer-events: none; }
+
+/* v157.4 — sağ / sol yuvarlak butonlar daha şeffaf (sahne arkadan görünsün) */
+.cs-root .hs-side-btn { background: rgba(20, 20, 20, 0.42); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.cs-root .hs-side-btn.on { background: rgba(212, 175, 55, 0.3); }
+/* v157.8 — mekân düğmeleri sol üstte, şüphe · altının hemen altında; liste onların altında açılır */
+.v3-menu.cs-lmenu { max-width: calc(100% - 150px); z-index: 20; }
+.cs-lmenu .cs-venue-bar {
+  position: static; transform: none; max-width: none; justify-content: flex-start; gap: 6px; margin-top: 2px;
+}
+/* v160.3: mekân düğmeleri (ör. Fabrikalar + Soygun yap) alt alta */
+.cs-lmenu .cs-venue-bar { flex-direction: column; align-items: flex-start; flex-wrap: nowrap; }
+.cs-lmenu .cs-venue-btn { padding: 8px 12px; font-size: 13px; }
+.cs-lmenu .cs-biz-panel {
+  position: static; transform: none; width: min(calc(100vw - 24px), 400px);
+  max-height: min(48vh, 440px);
+}
+.cs-biz-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px 8px; }
+.cs-biz-head b { color: #dff9ff; font-size: 14px; }
+.cs-biz-head .hh-buy { margin: 0; flex: none; }
+/* oyunun mekânlarındaki (banka…) menü, sol üstteki mekân düğmelerinin altına iner */
+.cs-root.cs-vbtn .cs-venue-layer .v3-menu { top: calc(196px + var(--hs-safe-t, 0px)); }
+.cs-root.cs-vbtn .cs-venue-layer .v3-menu.right { top: calc(246px + var(--hs-safe-t, 0px)); }
+@media (max-width: 560px) {
+  .cs-lmenu .cs-biz-panel { max-height: 42vh; }
+  .cs-root.cs-vbtn .cs-venue-layer .v3-menu { top: calc(224px + var(--hs-safe-t, 0px)); }
+  .cs-root.cs-vbtn .cs-venue-layer .v3-menu.right { top: calc(278px + var(--hs-safe-t, 0px)); }
+}
+/* v157.9: yatay ekranda sağ sütun alt çubuğun yanına (kenarda) iner — üstte haritaya değmesin */
+.cs-root.cs-land:not(.driving) .hs-side.cs-right, .cs-root.cs-land .cs-left { bottom: calc(12px + var(--hs-safe-b, 0px)); }
+
+/* v158 — mekânın sol düğmeleri (İbadet Et, vezne…) şüphe · altın · mekân menüsünün hemen altında, boşluksuz */
+.cs-root .cs-venue-layer .v3-menu:not(.right) { top: calc(var(--cs-lmenu-b, 196px) + 6px) !important; }
+
+/* v158 — 📱 düğmesinde okunmamış sayısı */
+.cs-root .hs-side-btn .cs-phone-badge { position: absolute; top: -4px; right: -4px; line-height: 1; pointer-events: none; }
+
+/* v159 — sohbet hep açık: sohbet solda, Çeteler · Soygun · Profil sağ altta dikey sütun */
+.cs-root:not(.driving) .hs-chat.cs-chat-always { right: 76px; }
+.cs-dock.cs-dock-side {
+  left: auto; right: 8px; width: 62px;
+  grid-template-columns: 1fr; gap: 4px; padding: 4px;
+}
+.cs-dock.cs-dock-side .cs-dock-btn { padding: 5px 2px 4px; font-size: 10px; }
+.cs-dock.cs-dock-side .cs-dock-btn span { font-size: 17px; }
+.cs-root.cs-land .cs-dock.cs-dock-side { left: auto; right: 70px; }
+.cs-root.cs-land:not(.driving) .hs-chat.cs-chat-always { right: 140px; }
+
+/* v159.1 — şehirde Çeteler / Profil: Soygun paneli gibi alttan açılan pencere */
+.cs-sheet-back {
+  position: absolute; inset: 0; z-index: 85;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.cs-sheet-box {
+  position: relative; width: 100%; max-width: 520px;
+  height: 85vh; max-height: calc(100% - 40px);
+  border-radius: 16px 16px 0 0; overflow: hidden;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.45);
+}
+.cs-sheet-box > .gx-full,
+.cs-sheet-box > .profile-fullscreen { position: absolute; inset: 0; z-index: auto; }
+.cs-sheet-box .gx-full-top { padding-top: 10px; }
+.cs-sheet-box .profile-fullscreen-header { padding-top: 12px; }
+
+/* v161.2 — iş paneli küçük: tek satır başlık + kısa hedef, sayaç / hasar / kalan yok */
+.cs-job {
+  width: min(calc(100vw - 150px), 290px);
+}
+.cs-job-panel {
+  gap: 2px;
+  padding: 6px 8px 7px 8px;
+  border-radius: 13px;
+}
+.cs-job-panel > b {
+  gap: 6px;
+  font-size: 13px;
+  min-width: 0;
+}
+.cs-job-title {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cs-job-panel .cs-job-dist {
+  margin-left: 0;
+  flex: none;
+}
+.cs-job-panel small {
+  font-size: 11.5px;
+  padding-left: 28px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cs-job-arrow {
+  width: 20px;
+  height: 20px;
+  font-size: 11px;
+}
+.cs-job-stop {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  margin: -2px -2px -2px 0;
+  padding: 0;
+  border: 1px solid rgba(255, 80, 80, 0.45);
+  border-radius: 50%;
+  background: rgba(255, 60, 60, 0.14);
+  color: #ffb3b3;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  cursor: pointer;
+}
+.cs-job-bar {
+  height: 4px;
+  margin-left: 28px;
+}
+.cs-job-start {
+  padding: 8px 12px;
+  font-size: 14.5px;
+  border-radius: 14px;
+}
+
+/* v167 — açılış sırası: sonradan gelen düğmeler (altın / şüphe, görevler, telefon…) yumuşakça belirir */
+@keyframes csBootIn { from { opacity: 0; } to { opacity: 1; } }
+.cs-root .cs-right > *, .cs-root .cs-lmenu > .v3-badge { animation: csBootIn 0.45s ease-out; }
+
+/* v177 — ticari araç satış noktası (durak / otogar / hastane / yükleme alanı) */
+.cs-fleet { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 4px 2px 8px; }
+.cs-fleet-img { width: 100%; max-width: 260px; aspect-ratio: 16 / 9; object-fit: contain; }
+.cs-fleet-name { font-size: 16px; }
+.cs-fleet-life { width: 100%; max-width: 260px; height: 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.1); overflow: hidden; }
+.cs-fleet-life i { display: block; height: 100%; background: linear-gradient(90deg, #3ddc84, #19e8ff); border-radius: 4px; }
+.cs-fleet-life i.low { background: linear-gradient(90deg, #ff5470, #ffb13d); }
+.cs-fleet-stats { display: flex; gap: 18px; font-size: 14px; opacity: 0.9; }
+.cs-fleet-stats b { font-size: 16px; }
+.cs-fleet-buy { width: 100%; max-width: 260px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+/* v177 — binek rengi */
+.cs-swatches { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; max-width: 280px; }
+.cs-swatch { width: 34px; height: 34px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.25); box-shadow: inset 0 0 0 2px rgba(0, 0, 0, 0.25); }
+.cs-swatch.on { border-color: #fff; transform: scale(1.12); box-shadow: 0 0 0 3px rgba(25, 232, 255, 0.55); }
+/* v177 — kiralık bisiklet süresi */
+.cs-rent { margin-bottom: 4px; background: linear-gradient(180deg, #2fb35a, #1f7a3d) !important; border-color: #3ad07a !important; }
+.cs-rent-chip { position: absolute; top: calc(env(safe-area-inset-top, 0px) + 64px); left: 50%; transform: translateX(-50%); z-index: 30; padding: 6px 14px; border-radius: 999px; background: rgba(15, 40, 24, 0.85); border: 1px solid #3ad07a; color: #d8ffe4; font-weight: 800; font-variant-numeric: tabular-nums; pointer-events: none; }
+/* v178 — görev oku (Rıza Amca: fabrika) */
+.cs-venue-btn.cs-guided { position: relative; box-shadow: 0 0 0 2px #ffd23f, 0 0 18px rgba(255, 210, 63, 0.65); animation: cs-guide-glow 1.2s ease-in-out infinite; }
+.cs-guide-arrow { position: absolute; left: calc(100% + 8px); top: 50%; width: 0; height: 0; border-top: 11px solid transparent; border-bottom: 11px solid transparent; border-right: 16px solid #ffd23f; filter: drop-shadow(0 0 6px rgba(255, 210, 63, 0.8)); transform: translateY(-50%); animation: cs-guide-poke 0.8s ease-in-out infinite; pointer-events: none; }
+.cs-guide-arrow::after { content: ''; position: absolute; left: 14px; top: -4px; width: 16px; height: 8px; border-radius: 3px; background: #ffd23f; }
+@keyframes cs-guide-poke { 0%, 100% { transform: translate(0, -50%); } 50% { transform: translate(8px, -50%); } }
+@keyframes cs-guide-glow { 0%, 100% { box-shadow: 0 0 0 2px #ffd23f, 0 0 10px rgba(255, 210, 63, 0.4); } 50% { box-shadow: 0 0 0 2px #ffd23f, 0 0 22px rgba(255, 210, 63, 0.85); } }
+/* v193 — çarpma: ekran kenarlarında kısa kızarma (eski 💥 yazısı yerine); --a = sertlik 0..1 */
+.cs-hitfx { position: absolute; inset: 0; z-index: 44; pointer-events: none; box-shadow: inset 0 0 calc(40px + 90px * var(--a, 0.5)) rgba(255, 40, 40, calc(0.25 + 0.45 * var(--a, 0.5))); animation: cs-hitfx 0.55s ease-out forwards; }
+@keyframes cs-hitfx { from { opacity: 1; } to { opacity: 0; } }
+
+/* ===== v194 — sade ana ekran ===== */
+/* şüphe + altın tek hap (dokununca Zümrüt Mağazası) */
+.cs-stat-pill {
+  display: inline-flex; align-items: center; gap: 8px; align-self: flex-start;
+  padding: 6px 12px; border-radius: 999px; cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.16); background: rgba(8, 11, 20, 0.78);
+  color: #3df58a; font-weight: 900; font-size: 13px; line-height: 1;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  pointer-events: auto;
+}
+.cs-stat-pill.mid .cs-pill-sus { color: #ffcf5a; }
+.cs-stat-pill.hi .cs-pill-sus { color: #ff5a6e; }
+.cs-pill-sep { width: 1px; height: 14px; background: rgba(255, 255, 255, 0.22); }
+.cs-pill-gold { display: inline-flex; align-items: center; gap: 5px; color: #ffd76a; }
+.cs-stat-pill.guest { color: #ffd1e5; border-color: rgba(255, 46, 136, 0.7); background: rgba(60, 8, 34, 0.82); }
+.cs-root .cs-lmenu > .cs-stat-pill { animation: csBootIn 0.45s ease-out; }
+/* üst çubuk: "👥 N kişi yakında ›" tıklanır */
+.cs-nearby-link {
+  border: 0; background: none; padding: 0; margin: 0; font: inherit; color: inherit; cursor: pointer;
+  text-decoration: underline dotted rgba(255, 255, 255, 0.55); text-underline-offset: 3px; pointer-events: auto;
+}
+/* 3D / 2D: mini haritanın alt kenarının ortasında küçük çip */
+.cs-mini-view {
+  position: absolute; z-index: 10; right: 72px; transform: translateX(50%);
+  top: calc(66px + var(--hs-safe-t, 0px) + 124px - 12px);
+  min-width: 38px; height: 22px; padding: 0 9px; border-radius: 999px;
+  border: 1.5px solid #fff; background: #1b1f2e; color: #9ff3ff;
+  font-size: 11px; font-weight: 900; letter-spacing: 0.4px; cursor: pointer;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
+}
+/* araba düğmesi: çizim ikon */
+.cs-carbtn .cs-car-ico { width: 26px; height: 26px; display: block; margin: auto; }
+.cs-root.cs-land .cs-carbtn .cs-car-ico { width: 22px; height: 22px; }
+
+/* v196 — mekân düğmeleri (Sipariş, Satılık arabalar, Tamir…) solda, şüphe · altın hapının hemen altında, alt alta */
+.cs-root .cs-venue-layer .hb-topbtns {
+  top: calc(var(--cs-lmenu-b, 110px) + 6px) !important;
+  left: calc(8px + var(--hs-safe-l, 0px));
+  right: auto;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  max-width: 46vw;
+}
+.cs-root .cs-venue-layer .hb-topbtn { text-align: left; }
+/* v196 — mekânın sağ menüsü de solda (harita sağ üstte) */
+.cs-root .cs-venue-layer .v3-menu.right { left: calc(8px + var(--hs-safe-l, 0px)) !important; right: auto !important; top: calc(var(--cs-lmenu-b, 196px) + 6px) !important; align-items: flex-start; }
+/* v196 — evin içinde üst başlık panelinin en sağında ⚙️ Ayarlar */
+.cs-root .hs-title { position: relative; }
+.cs-root .hs-title .cs-home-set { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); padding: 6px 10px; border-radius: 10px; border: 1px solid rgba(255, 210, 63, 0.7); background: rgba(20, 16, 4, 0.85); color: #ffd23f; font: 800 12px/1 inherit; }
+/* v196: evde kat düğmeleri (telefonda merdiven zor) — sağ kenar ortası */
+.cs-root .cs-home-floors { position: absolute; right: calc(env(safe-area-inset-right, 0px) + 10px); top: 42%; display: flex; flex-direction: column; gap: 8px; z-index: 6; }
+.cs-root .cs-home-floors button { min-width: 92px; padding: 10px 12px; border-radius: 14px; border: 1px solid rgba(255, 210, 63, 0.6); background: rgba(14, 16, 22, 0.86); color: #fff; font: 800 13px/1 inherit; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35); }
+.cs-root .cs-home-floors button:active { transform: scale(0.96); }
+/* v196: evde tasarım modunda sadece tasarım arayüzü (joystick, düğmeler, başlık gizli) */
+.cs-root.cs-designing > *:not(.hs-stage):not(.hm-design):not(.wk-sheet-bg):not(.hs-toast):not(.hs-overlay) { display: none !important; }
+
+/* v197: Arabalarım — favori (garaj) kalbi kartın sağ üstünde */
+.cs-car-wrap { position: relative; display: flex; }
+.cs-car-wrap > .cs-car { flex: 1 1 auto; min-width: 0; }
+.cs-car-fav { position: absolute; top: 10px; right: 10px; width: 32px; height: 32px; border-radius: 50%; border: 1px solid rgba(255,255,255,0.25); background: rgba(10,12,18,0.72); font-size: 16px; line-height: 1; display: grid; place-items: center; padding: 0; z-index: 2; }
+.cs-car-fav.on { border-color: #ff4d6d; box-shadow: 0 0 10px rgba(255,77,109,0.45); }
+.cs-car-fav:disabled { opacity: 0.6; }
+
+/* v199: yayındayken başın üstünde CANLI rozeti */
+.hs-live { margin: 0 auto 2px; width: max-content; padding: 1px 7px; border-radius: 9px; background: #e0223f; color: #fff; font-size: 10px; font-weight: 900; letter-spacing: 0.3px; box-shadow: 0 0 8px #e0223f99; }
+
+/* v200: evden çıkar düğmesi + gelen ısmarlama yazısı (küçük, dokununca kapanır) */
+.nearby-gift.nearby-kick { border-color: #ff5470; background: rgba(255, 84, 112, 0.14); color: #ffc2cc; }
+.cs-root .gift-toast { position: fixed; top: calc(env(safe-area-inset-top, 0px) + 92px); z-index: 60; padding: 6px 12px; font-size: 12px; cursor: pointer; }
+.cs-sheet-note { margin: 0 0 10px; font-size: 13px; opacity: 0.8; line-height: 1.35; } /* v219 */
+/* v223: kaykaydan in — sol üstte, altın hapının hemen altında (arabalardaki 🚪 İn gibi) */
+.cs-lmenu .cs-skate-off { align-self: flex-start; margin-top: 6px; pointer-events: auto; }
+.cs-lmenu .cs-skate-off:disabled { opacity: 0.55; }
