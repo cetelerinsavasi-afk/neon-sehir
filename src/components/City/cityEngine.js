@@ -868,7 +868,7 @@ function slimGeometries(root) {
 const rW = (v) => v?.room?.hw ?? VROOM.W / 2;
 const rD = (v) => v?.room?.hd ?? VROOM.D / 2;
 const rH = (v) => v?.room?.h ?? VROOM.H;
-export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 'Sen', spawn = 'ev', onInteract, onTick, onReady, onEvent, onPlayerTap, snapshot = false, world = null, guest = false, cityAction = null, skateState = null, sharedNet = null } = {}) {
+export function createCityEngine(container, { uid: myUid = 'me', avatar, name = 'Sen', spawn = 'ev', onInteract, onTick, onReady, onEvent, onPlayerTap, snapshot = false, world = null, guest = false, cityAction = null, skateState = null, sharedNet = null, admin = false } = {}) {
   let extras = null; // v219: cityExtras.js (helikopter, toplar, kaykay…)
   // snapshot: ekran dışı, döngüsüz motor — sadece paylaşılan şehir fotoğraflarını çizer (CityPhoto)
   // v147.1: telefonda logaritmik derinlik KAPALI (GPU'nun erken derinlik testini bozuyor → çok yavaş)
@@ -7053,6 +7053,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
         remoteRec: (id) => remotes.get(id)?.st || null,
         figOf: (id) => remotes.get(id)?.fig || null,
         skate: () => (skateState ? skateState() : null),
+        admin: () => Boolean(admin), // v225: admin araçları (jetpack / uçan kaykay)
         // v223: helikopter maç varken sahaya inemez
         noLand: (x, z) => (stadium && areaAt(x, z) === 'stadyum' && stadium.state?.()?.phase === 'live' ? 'stad' : null),
         stadCenter: () => (stadLot ? { x: stadLot.mx, z: stadLot.mz } : null),
@@ -7110,6 +7111,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     heist,
     skateSummon: () => Boolean(extras?.skateSummon?.()), // v221: kaykayı yanına getir (Arabalarım › Motor)
     skateOff: () => Boolean(extras?.skateOff?.()), // v223: sol üstteki 🚪 İn
+    gadget: (kind) => Boolean(extras?.gadget?.(kind)), // v225: admin — 'jet' | 'hover'
+    gadgetState: () => extras?.gadgetState?.() || null,
     photoState,
     renderAtt,
     // v157.4: Sixtagram — telefonda sadece yakındaki fotoğraflar kendiliğinden çizilir

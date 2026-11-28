@@ -253,6 +253,7 @@ export function installExtras(ctx) {
   const RF = { roof: null, fall: null, down: null, px: self.x, pz: self.z, vx: 0, vz: 0 };
   let SHK = 0;
   const HX = { on: !1, orb: 0, lcy: 0, ot: 0, cp: null, near: !1 };
+  const GX = { on: !1, kind: null, air: !1, vx: 0, vz: 0, vy: 0, sp: 0, y: 0, yaw: 0, roll: 0, lean: 0, thr: 0, fuel: 1 }; // v225: admin jetpack / uçan kaykay
   const NX_g = (x, z, y) => {
     const pk = pkG(x, z, y);
     if (pk != null) return pk;
@@ -1404,8 +1405,8 @@ export function installExtras(ctx) {
   const ui = () => {
     show(hud, !1); // v221: helikopterdeki üst bilgi yazısı kaldırıldı
     show(xBtn, HX.on || PAX.on);
-    joyShow(HX.on || SK.on);
-    show(pr, HX.on);
+    joyShow(HX.on || SK.on || GX.on);
+    show(pr, HX.on || (GX.on && GX.kind === `jet`)); // v225: jetpack de YÜKSEL / ALÇAL
     const other = HN.node?.by && HN.node.by !== ctx.uid;
     bBtn.textContent = other ? (H.gnd ? `🚁 Yolcu ol` : `🚁 Helikopter havada`) : `🚁 Helikoptere bin`;
     show(bBtn, !HX.on && !PAX.on && HX.near && (!other || H.gnd));
@@ -1425,7 +1426,7 @@ export function installExtras(ctx) {
   };
   /* ---------- board / exit / crash ---------- */
   HX.board = async () => {
-    if (HX.on || HX.busy || PAX.on || H.wreck || ctx.driving() || self.ride || self.seat || RF.fall || RF.down) return;
+    if (HX.on || HX.busy || PAX.on || H.wreck || GX.on || ctx.driving() || self.ride || self.seat || RF.fall || RF.down) return;
     if (ctx.guest) {
       toast(`🚁 Helikopter için giriş yapmalısın`);
       return;
@@ -1621,6 +1622,7 @@ export function installExtras(ctx) {
       fxTick(dt);
       aTick();
       hudTick(dt);
+      gxHud(dt); // v225
       try {
         ballsTick(dt);
         try {
@@ -1646,6 +1648,7 @@ export function installExtras(ctx) {
       const nr2 =
         !HX.on &&
         !PAX.on &&
+        !GX.on &&
         !H.wreck &&
         H.sc >= 1 &&
         !ctx.driving() &&
@@ -1668,6 +1671,7 @@ export function installExtras(ctx) {
       return !0;
     }
     if (paxTick()) return !0;
+    if (GX.on) return gxStep(dt); // v225: jetpack / uçan kaykay
     if (SK.on) {
       const r = skStep(dt);
       return r ?? !0;
@@ -1686,10 +1690,11 @@ export function installExtras(ctx) {
     const pv = me.pivot;
     if (!pv) return;
     skPost();
+    gxPost(); // v225
     // v223: basket sıçrayışı (şut / smaç / blok) — tek zıplama, kollar havada
     if (JP.t >= 0) {
       JP.t += dt;
-      if (JP.t >= JP.T || SK.on || HX.on || RF.fall || ctx.driving()) JP.t = -1;
+      if (JP.t >= JP.T || SK.on || GX.on || HX.on || RF.fall || ctx.driving()) JP.t = -1;
       else {
         const lift = hopLift(),
           k = JP.t / JP.T;
@@ -1753,11 +1758,22 @@ export function installExtras(ctx) {
       SHK *= Math.exp(-dt * 4.5);
     }
   };
-  const NX_busy = () => SK.on || HX.on || !!RF.fall || !!RF.down;
-  const NX_noVenue = () => HX.on || !!RF.roof || !!RF.fall;
+  const NX_busy = () => SK.on || GX.on || HX.on || !!RF.fall || !!RF.down;
+  const NX_noVenue = () => HX.on || GX.on || !!RF.roof || !!RF.fall;
   const NX_reset = () => {
     SK.on = !1;
     board.visible = !1;
+    if (GX.on) {
+      // v225
+      GX.on = !1;
+      GX.kind = null;
+      jetM.visible = !1;
+      hovM.visible = !1;
+      hovM.userData.glow.visible = !1;
+      try {
+        me.m3?.root && (me.m3.root.rotation.x = 0);
+      } catch {}
+    }
     BB.held = !1;
     if (HX.on) {
       HX.on = !1;
@@ -2279,7 +2295,7 @@ export function installExtras(ctx) {
     }
   };
   const skMount = () => {
-    if (!skHas() || SK.on || HX.on || ctx.driving() || self.ride || self.seat || RF.fall || RF.down) return;
+    if (!skHas() || SK.on || HX.on || GX.on || ctx.driving() || self.ride || self.seat || RF.fall || RF.down) return;
     SK.on = !0;
     SK.sp = 0;
     skClean();
@@ -2505,6 +2521,533 @@ export function installExtras(ctx) {
       if (SK.air) r.position.y += 0.1;
     }
   };
+  /* ---------- v225: ADMİN ARAÇLARI — JETPACK + UÇAN KAYKAY ---------- */
+  // Şimdilik sadece adminde: Arabalarım › Motor sekmesinde görünür (CityScreen, isAdminUid). Mağazaya
+  // eklenince sahiplik kontrolü sunucuda yapılacak; burada sadece ctx.admin() bakılıyor.
+  //   jetpack : sırtta, YÜKSEL ile kalkış, ALÇAL ile iniş, joystick ile ileri / geri / dön (helikopter gibi).
+  //             Yakıt %100 → havada ~35 sn tam itiş (süzülürken yarısı), yerde ~6 sn'de dolar. Bitince düşülür.
+  //   uçan kaykay: yerden 45 cm yukarıda süzülür, suyun üstünden geçer. Joystick (kaykay gibi), ZIPLA, TURBO.
+  //   Telefon öncelikli: ekranda sadece joystick + düğmeler (ekranda hiçbir yerde klavye tuşu adı yazmaz);
+  //   bilgisayarda aynı işler klavyeyle de yapılır.
+  // Konum kaydında k: 2 (jetpack) / 3 (uçan kaykay) + y — başkaları da görür.
+  const GM = (c, r = 0.4, m = 0.5) => new T.MeshStandardMaterial({ color: c, roughness: r, metalness: m });
+  const GLOW = (c, o = 0.85) => new T.MeshBasicMaterial({ color: c, transparent: !0, opacity: o, blending: T.AdditiveBlending, depthWrite: !1 });
+  const mkJet = () => {
+    const g = new T.Group();
+    const body = GM(`#262a33`, 0.5, 0.5),
+      tank = GM(`#cfd4dc`, 0.22, 0.9),
+      noz = GM(`#3a3d44`, 0.35, 0.85);
+    const plate = new T.Mesh(new T.BoxGeometry(0.34, 0.42, 0.1), body);
+    g.add(plate);
+    for (const x of [-0.11, 0.11]) {
+      const t = new T.Mesh(new T.CylinderGeometry(0.075, 0.075, 0.44, 16), tank);
+      t.position.set(x, 0.02, -0.1);
+      g.add(t);
+      const cap = new T.Mesh(new T.SphereGeometry(0.075, 16, 8, 0, Math.PI * 2, 0, Math.PI / 2), tank);
+      cap.position.set(x, 0.24, -0.1);
+      g.add(cap);
+      const n = new T.Mesh(new T.CylinderGeometry(0.05, 0.07, 0.09, 14), noz);
+      n.position.set(x, -0.245, -0.1);
+      g.add(n);
+    }
+    const strip = new T.Mesh(new T.BoxGeometry(0.35, 0.03, 0.105), new T.MeshBasicMaterial({ color: `#19e8ff` }));
+    strip.position.y = 0.12;
+    g.add(strip);
+    const fo = GLOW(`#ff8a1e`, 0.8),
+      fi = GLOW(`#fff1a8`, 0.95);
+    const flames = [];
+    for (const x of [-0.11, 0.11]) {
+      const f = new T.Group();
+      f.position.set(x, -0.29, -0.1);
+      const o = new T.Mesh(new T.ConeGeometry(0.065, 0.55, 12, 1, !0), fo);
+      o.rotation.x = Math.PI;
+      o.position.y = -0.275;
+      f.add(o);
+      const i = new T.Mesh(new T.ConeGeometry(0.032, 0.3, 10, 1, !0), fi);
+      i.rotation.x = Math.PI;
+      i.position.y = -0.15;
+      f.add(i);
+      f.visible = !1;
+      g.add(f);
+      flames.push(f);
+    }
+    g.traverse((o) => {
+      if (o.isMesh && o.material !== fo && o.material !== fi) o.castShadow = !0;
+    });
+    g.rotation.order = `YXZ`;
+    g.userData.flames = flames;
+    g.visible = !1;
+    return g;
+  };
+  // sırttaki yeri (avatarın göğüs hizasının arkası)
+  const jetPlace = (g, x, y, z, yaw, lean, thrust, t) => {
+    const s = Math.sin(yaw),
+      c = Math.cos(yaw);
+    g.position.set(x - s * 0.17, y + 1.13, z - c * 0.17);
+    g.rotation.set(lean * 0.6, yaw, 0);
+    g.userData.flames.forEach((f, i) => {
+      f.visible = thrust > 0.02;
+      if (!f.visible) return;
+      const fl = 0.85 + Math.sin(t * 47 + i * 2.1) * 0.1 + Math.sin(t * 23 + i) * 0.08;
+      f.scale.set(fl, (0.35 + thrust * 1.1) * fl, fl);
+    });
+  };
+  const mkHover = () => {
+    const g = new T.Group();
+    const deck = new T.Mesh(new T.CylinderGeometry(0.5, 0.5, 0.06, 36), GM(`#121419`, 0.3, 0.7));
+    deck.scale.set(0.46, 1, 1.08);
+    g.add(deck);
+    const grip = new T.Mesh(new T.CylinderGeometry(0.47, 0.47, 0.012, 36), GM(`#5b1fb8`, 0.7, 0.1));
+    grip.scale.set(0.46, 1, 1.08);
+    grip.position.y = 0.036;
+    g.add(grip);
+    const rim = new T.Mesh(new T.TorusGeometry(0.5, 0.018, 8, 56), new T.MeshBasicMaterial({ color: `#19e8ff` }));
+    rim.rotation.x = Math.PI / 2;
+    rim.scale.set(0.46, 1.08, 1);
+    g.add(rim);
+    const pm = GLOW(`#19e8ff`, 0.9);
+    for (const z of [-0.33, 0.33]) {
+      const pad = new T.Mesh(new T.CircleGeometry(0.13, 20), pm);
+      pad.rotation.x = Math.PI / 2;
+      pad.position.set(0, -0.032, z);
+      g.add(pad);
+    }
+    deck.castShadow = !0;
+    // yerdeki ışık halkası (zemine konur)
+    const gl = new T.Mesh(new T.CircleGeometry(0.75, 28), GLOW(`#19e8ff`, 0.32));
+    gl.rotation.x = -Math.PI / 2;
+    gl.scale.set(0.7, 1.25, 1);
+    g.userData.glow = gl;
+    g.visible = !1;
+    gl.visible = !1;
+    return g;
+  };
+  const hvPlace = (g, x, y, z, yaw, roll, floor, t) => {
+    g.position.set(x, y, z);
+    g.rotation.set(0, yaw, 0);
+    g.rotateZ(roll);
+    const gl = g.userData.glow,
+      h = Math.max(0, y - floor);
+    gl.visible = g.visible && h < 4;
+    gl.position.set(x, floor + 0.03, z);
+    gl.rotation.set(-Math.PI / 2, 0, -yaw);
+    gl.material.opacity = CL(0.38 - h * 0.08, 0, 0.38) * (0.85 + Math.sin(t * 6) * 0.15);
+  };
+  const jetM = mkJet();
+  scene.add(jetM);
+  const hovM = mkHover();
+  scene.add(hovM);
+  scene.add(hovM.userData.glow);
+  // zemin: park rampaları / sahne / spor salonu 2. kat / çatılar / su yüzeyi
+  const gxFloor = (x, z, y) => {
+    let f = gH(x, z),
+      roof = null,
+      water = !1;
+    const zr = zG(x, z, y + 0.05);
+    if (zr != null && zr <= y + 0.05 && zr > f) f = zr;
+    const r = roofAt(x, z, y + 0.05, 0.05);
+    if (r && r.top > f) {
+      f = r.top;
+      roof = r;
+    }
+    try {
+      const wl = W.waterLevel(x, z, f, W.modeAt(x, z));
+      if (wl != null && wl > f + 0.05) {
+        f = wl;
+        water = !0;
+        roof = null;
+      }
+    } catch {}
+    return { f, roof, water };
+  };
+  const gxOff = (why) => {
+    if (!GX.on) return !1;
+    const was = GX.kind;
+    GX.on = !1;
+    GX.air = !1;
+    GX.kind = null;
+    jetM.visible = !1;
+    hovM.visible = !1;
+    hovM.userData.glow.visible = !1;
+    skLegs();
+    try {
+      me.m3?.root && (me.m3.root.rotation.x = 0);
+    } catch {}
+    const F = gxFloor(self.x, self.z, me.y);
+    me.y = F.f;
+    RF.roof = F.roof; // çatıdaysak çatıda yürümeye devam
+    if (!F.roof && !canStand(self.x, self.z)) {
+      const p = freeNear?.(self.x, self.z);
+      if (p) {
+        self.x = p.x;
+        self.z = p.z;
+      }
+    }
+    me.x = self.x;
+    me.z = self.z;
+    ctx.setEye(1.55 + me.y);
+    ctx.snap();
+    toast(why || (was === `jet` ? `🎒 Jetpack çıkarıldı` : `🛸 Uçan kaykaydan indin`));
+    ui();
+    return !0;
+  };
+  const gxOn = (kind) => {
+    if (!ctx.admin?.()) {
+      toast(`🔒 Bu araç şimdilik sadece adminde`);
+      return !1;
+    }
+    if (GX.on && GX.kind === kind) return gxOff(), !0; // tekrar seçince çıkar
+    if (GX.on) gxOff(` `);
+    if (SK.on) skDismount();
+    if (HX.on || PAX.on || ctx.driving() || self.ride || self.seat || RF.fall || RF.down || ctx.venue()) {
+      toast(`⚠️ Şu an olmaz — önce in / dışarı çık`);
+      return !1;
+    }
+    GX.on = !0;
+    GX.kind = kind;
+    GX.air = !1;
+    GX.vx = GX.vz = GX.vy = 0;
+    GX.sp = 0;
+    GX.roll = 0;
+    GX.lean = 0;
+    GX.thr = 0;
+    GX.fuel = 1;
+    GX.empty = !1;
+    GX.lastJ = !0;
+    GX.yaw = WR(self.camYaw + Math.PI);
+    RF.roof = null;
+    self.target = null;
+    self.path = null;
+    ring.visible = !1;
+    const fl = gxFloor(self.x, self.z, me.y);
+    GX.roof = fl.roof;
+    GX.y = kind === `hover` ? fl.f + 0.45 : fl.f;
+    jetM.visible = kind === `jet`;
+    hovM.visible = kind === `hover`;
+    toast(kind === `jet` ? `🎒 Jetpack takıldı — ⤒ YÜKSEL düğmesiyle kalk` : `🛸 Uçan kaykay hazır — iyi sürüşler`);
+    ui();
+    return !0;
+  };
+  const camFollow = (dt, yaw, moving) => {
+    if (Math.abs(WR(self.camYaw - (GX.lcy ?? self.camYaw))) > 1e-4) GX.ot = NOW();
+    if (moving && NOW() - (GX.ot || 0) > 1800) self.camYaw += WR(yaw + Math.PI - self.camYaw) * Math.min(1, dt * 2.2);
+    GX.lcy = self.camYaw;
+  };
+  const jetStep = (dt) => {
+    dt = Math.min(dt, 0.05);
+    // helikopterdeki gibi: joystick yukarı / aşağı = ileri / geri, sağ / sol = dön (kamera arkadan takip eder).
+    // Sağdaki YÜKSEL / ALÇAL düğmeleri (helikopterinkiler). Bilgisayarda aynı işler klavyeyle de yapılır.
+    const k = keys,
+      fwd = CL((k.KeyW || k.ArrowUp ? 1 : 0) - (k.KeyS || k.ArrowDown ? 1 : 0) + (TC.jy || 0), -1, 1),
+      turn = CL((k.KeyA || k.ArrowLeft ? 1 : 0) - (k.KeyD || k.ArrowRight ? 1 : 0) - (TC.jx || 0), -1, 1),
+      up = !!(k.Space || k.KeyR || TC.u),
+      dn = !!(k.ShiftLeft || k.ShiftRight || k.KeyC || k.KeyV || TC.d);
+    GX.yaw = WR(GX.yaw + turn * (GX.air ? 1.9 : 2.6) * dt);
+    const spd = GX.air ? 12 : 4.2,
+      acc = GX.air ? 2.6 : 10,
+      bk = fwd < 0 ? 0.45 : 1; // geri daha yavaş
+    GX.vx += (Math.sin(GX.yaw) * fwd * bk * spd - GX.vx) * Math.min(1, dt * acc);
+    GX.vz += (Math.cos(GX.yaw) * fwd * bk * spd - GX.vz) * Math.min(1, dt * acc);
+    // dikey
+    if (!GX.air && up && GX.fuel > 0.04) {
+      GX.air = !0;
+      GX.vy = 3.5;
+      GX.roof = null;
+      dust(self.x, me.y, self.z, 0.6);
+    }
+    let thr = 0;
+    if (GX.air) {
+      if (GX.fuel > 0) {
+        const tv = up ? 8.5 : dn ? -9 : -1.1;
+        GX.vy += (tv - GX.vy) * Math.min(1, dt * 2.6);
+        GX.fuel = Math.max(0, GX.fuel - dt * (up ? 1 / 35 : 1 / 70));
+        thr = up ? 1 : dn ? 0.18 : 0.5;
+      } else {
+        GX.vy = Math.max(GX.vy - 19 * dt, -40);
+        if (!GX.empty) {
+          GX.empty = !0;
+          toast(`🎒 Yakıt bitti!`);
+        }
+      }
+    } else {
+      GX.vy = 0;
+      GX.fuel = Math.min(1, GX.fuel + dt / 6);
+      GX.empty = !1;
+    }
+    GX.thr += (thr - GX.thr) * Math.min(1, dt * 10);
+    // yatay hareket + çarpışma
+    const nx = self.x + GX.vx * dt,
+      nz = self.z + GX.vz * dt;
+    let ok;
+    if (!GX.air) ok = GX.roof ? !0 : canStand(nx, nz);
+    else {
+      const h = roofHit(nx, nz, 0.3);
+      ok = !(h && h.top > me.y + 0.05 && h.y0 < me.y + 1.7);
+      // boyu bilinmeyen engeller (büyük binalar, ağaçlar…) yerden 10 m'ye kadar engel sayılır
+      if (ok) {
+        let gy = 0;
+        try {
+          gy = groundY(nx, nz);
+        } catch {}
+        if (me.y - gy < 10 && blockedAt(nx, nz) && !roofAt(nx, nz, me.y + 0.05, 0)) ok = !1;
+      }
+    }
+    if (ok) {
+      self.x = nx;
+      self.z = nz;
+    } else {
+      if (GX.air && Math.hypot(GX.vx, GX.vz) > 7) {
+        thud(0.3);
+        SHK = Math.max(SHK, 0.25);
+      }
+      GX.vx *= -0.15;
+      GX.vz *= -0.15;
+    }
+    // zemin / iniş / tavan
+    const F = gxFloor(self.x, self.z, me.y);
+    if (GX.air) {
+      let ny = me.y + GX.vy * dt;
+      const top = Math.min(F.f + 150, 380);
+      if (ny > top) {
+        ny = top;
+        GX.vy = Math.min(GX.vy, 0);
+      }
+      if (ny <= F.f && GX.vy <= 0) {
+        const hard = GX.vy < -14;
+        me.y = F.f;
+        GX.air = !1;
+        GX.roof = F.roof;
+        if (F.water) splash(self.x, me.y + 0.6, self.z);
+        else if (hard) {
+          SHK = Math.max(SHK, 0.7);
+          me.shakeUntil = NOW() + 350;
+          dust(self.x, me.y, self.z, 1.6);
+          thud(0.9);
+          toast(`💥 Sert indin!`);
+        } else dust(self.x, me.y, self.z, 0.5);
+        GX.vy = 0;
+        // yürünmeyen yere indiysek (bina içi vb.) en yakın boş yer
+        if (!F.roof && !F.water && !canStand(self.x, self.z)) {
+          const p = freeNear?.(self.x, self.z);
+          if (p) {
+            self.x = p.x;
+            self.z = p.z;
+            me.y = gxFloor(p.x, p.z, me.y).f;
+          }
+        }
+      } else me.y = ny;
+    } else {
+      // yerde yürürken: çatıdan / sahneden kenara çıkınca süzülerek düşülür
+      if (F.f < me.y - 0.6) {
+        GX.air = !0;
+        GX.vy = 0;
+        GX.roof = null;
+      } else {
+        me.y += (F.f - me.y) * Math.min(1, dt * 12);
+        GX.roof = F.roof;
+      }
+    }
+    // yön, eğilme
+    const sp = Math.hypot(GX.vx, GX.vz);
+    const fsp = GX.vx * Math.sin(GX.yaw) + GX.vz * Math.cos(GX.yaw); // ileri hız (geri giderken arkaya eğilir)
+    GX.lean += ((GX.air ? CL(fsp / 12, -0.5, 1) * 0.45 : 0) - GX.lean) * Math.min(1, dt * 5);
+    if (GX.air && GX.thr > 0.6 && Math.random() < dt * 14) smoke(self.x - Math.sin(GX.yaw) * 0.3, me.y + 0.5, self.z - Math.cos(GX.yaw) * 0.3, `#8a8580`);
+    me.x = self.x;
+    me.z = self.z;
+    me.moving = !GX.air && sp > 0.4;
+    me.sitting = !1;
+    camFollow(dt, GX.yaw, sp > 1 || Math.abs(turn) > 0.1);
+    ctx.setEye(1.55 + me.y);
+    return !0;
+  };
+  const hovStep = (dt) => {
+    dt = Math.min(dt, 0.05);
+    GX.t = (GX.t || 0) + dt;
+    const k = keys,
+      jy = TC.jy || 0,
+      fwd = Math.max(k.KeyW || k.ArrowUp ? 1 : 0, CL(jy, 0, 1)),
+      brk = Math.max(k.KeyS || k.ArrowDown ? 1 : 0, CL(-jy, 0, 1)),
+      turn = CL((k.KeyA || k.ArrowLeft ? 1 : 0) - (k.KeyD || k.ArrowRight ? 1 : 0) - (TC.jx || 0), -1, 1),
+      jump = !!(k.Space || TC.u),
+      boost = !!(k.ShiftLeft || k.ShiftRight || TC.d),
+      vmax = boost ? 20 : 13;
+    GX.yaw += turn * 2.6 * dt * (0.6 + Math.min(1, Math.abs(GX.sp) / 8) * 0.4);
+    if (fwd > 0.05) GX.sp = GX.sp < 0 ? GX.sp + 12 * fwd * dt : Math.min(Math.max(vmax, GX.sp), GX.sp + (boost ? 14 : 8) * fwd * dt);
+    if (brk > 0.05) GX.sp = GX.sp > 0.05 ? Math.max(0, GX.sp - 12 * brk * dt) : Math.max(-4 * brk, GX.sp - 5 * brk * dt);
+    if (!(fwd > 0.05) && !(brk > 0.05)) GX.sp *= Math.exp(-dt * 0.4);
+    if (GX.sp > vmax) GX.sp = Math.max(vmax, GX.sp - 6 * dt);
+    const dx = Math.sin(GX.yaw),
+      dz = Math.cos(GX.yaw),
+      nx = self.x + dx * GX.sp * dt,
+      nz = self.z + dz * GX.sp * dt;
+    if (canStand(nx, nz)) {
+      self.x = nx;
+      self.z = nz;
+    } else {
+      if (Math.abs(GX.sp) > 6) {
+        thud(0.35);
+        SHK = Math.max(SHK, 0.25);
+        toast(`🛸 Çarptın!`);
+      }
+      GX.sp *= -0.25;
+    }
+    const F = gxFloor(self.x, self.z, GX.y - 0.45),
+      want = F.f + 0.45 + Math.sin(GX.t * 3) * 0.04;
+    if (!GX.air) {
+      if (want < GX.y - 0.7) {
+        GX.air = !0;
+        GX.vy = 0;
+      } else GX.y += (want - GX.y) * Math.min(1, dt * 10);
+      if (jump && !GX.lastJ) {
+        GX.air = !0;
+        GX.vy = 7.5;
+        thud(0.1);
+      }
+    }
+    if (GX.air) {
+      GX.vy -= 16 * dt;
+      GX.y += GX.vy * dt;
+      if (GX.y <= want && GX.vy < 0) {
+        if (GX.vy < -9) {
+          SHK = Math.max(SHK, 0.35);
+          dust(self.x, F.f, self.z, 0.9);
+          thud(0.4);
+        }
+        if (F.water) splash(self.x, F.f + 0.3, self.z);
+        GX.y = want;
+        GX.air = !1;
+        GX.vy = 0;
+      }
+    }
+    GX.lastJ = jump;
+    GX.roll += (-turn * CL(Math.abs(GX.sp) / 10, 0, 1) * 0.22 - GX.roll) * Math.min(1, dt * 6);
+    GX.floor = F.f;
+    me.x = self.x;
+    me.z = self.z;
+    me.y = GX.y + 0.05;
+    me.moving = !1;
+    me.sitting = !1;
+    camFollow(dt, GX.yaw, !GX.air && Math.abs(GX.sp) > 1);
+    ctx.setEye(1.55 + me.y);
+    return !0;
+  };
+  const gxStep = (dt) => (GX.kind === `jet` ? jetStep(dt) : hovStep(dt));
+  // görsel (motor avatarı çizdikten sonra): model yerleşimi + duruş
+  const gxPost = () => {
+    const t = NOW() / 1e3;
+    if (GX.on && GX.kind === `jet`) jetPlace(jetM, me.x, me.y, me.z, GX.yaw, GX.lean, GX.air ? GX.thr : 0, t);
+    if (GX.on && GX.kind === `hover`) hvPlace(hovM, me.x, GX.y, me.z, GX.yaw, GX.roll, GX.floor ?? GX.y - 0.45, t);
+    if (!GX.on) return;
+    const M3 = me.m3 && me.m3.root.visible ? me.m3 : null;
+    if (!M3) return;
+    const r = M3.root;
+    r.rotation.order = `YXZ`;
+    if (GX.kind === `jet`) {
+      r.rotation.set(GX.lean, GX.yaw, 0);
+      if (GX.air) {
+        M3.legs.forEach((l, i) => {
+          l.hip.rotation.x = 0.12 + Math.sin(t * 2.2 + i * 1.7) * 0.08;
+          l.knee.rotation.x = 0.3 + Math.sin(t * 2.2 + i) * 0.06;
+          l.hip.rotation.z = 0;
+        });
+        M3.arms.forEach((a) => {
+          a.sh.rotation.z = a.sx * 0.38;
+          a.sh.rotation.x = -0.15;
+          a.el.rotation.x = -0.25;
+        });
+      }
+    } else {
+      r.rotation.set(0, GX.yaw - Math.PI / 2, GX.roll * 0.8);
+      M3.legs.forEach((l, i) => {
+        l.hip.rotation.x = -0.3;
+        l.knee.rotation.x = 0.6;
+        l.hip.rotation.z = (i ? 1 : -1) * 0.28;
+      });
+      M3.arms.forEach((a) => {
+        a.sh.rotation.z = a.sx * 1.05 + Math.sin(t * 2 + a.sx) * 0.08;
+        a.sh.rotation.x = 0;
+        a.el.rotation.x = -0.2;
+      });
+      r.position.y -= 0.1;
+    }
+  };
+  // başka oyuncu jetpack / uçan kaykayla (k: 2 / 3)
+  const RGX = new Map();
+  const remoteGadget = (id, fig, rec, show) => {
+    let e = RGX.get(id);
+    const kk = show ? rec?.k : 0;
+    if (kk !== 2 && kk !== 3) {
+      if (e) {
+        e.o.visible = !1;
+        if (e.o.userData.glow) e.o.userData.glow.visible = !1;
+        e.sy = null;
+      }
+      return !1;
+    }
+    if (!e || e.k !== kk) {
+      if (e) {
+        scene.remove(e.o);
+        e.o.userData.glow && scene.remove(e.o.userData.glow);
+      }
+      const o = kk === 2 ? mkJet() : mkHover();
+      scene.add(o);
+      o.userData.glow && scene.add(o.userData.glow);
+      e = { k: kk, o, sy: null, py: null, vy: 0 };
+      RGX.set(id, e);
+    }
+    const ty = Number.isFinite(rec.y) ? rec.y : fig.y || 0;
+    e.sy = e.sy == null ? ty : e.sy + (ty - e.sy) * 0.18;
+    fig.y = e.sy;
+    fig.sitting = !1;
+    const yaw = Number.isFinite(fig.yaw) ? fig.yaw : 0,
+      t = NOW() / 1e3;
+    e.o.visible = !0;
+    let gy = 0;
+    try {
+      gy = groundY(fig.x, fig.z);
+    } catch {}
+    if (kk === 2) {
+      const airK = fig.y - gy > 0.35;
+      if (airK) fig.moving = !1;
+      jetPlace(e.o, fig.x, fig.y, fig.z, yaw, 0, airK ? 0.7 : 0, t);
+    } else {
+      fig.moving = !1;
+      hvPlace(e.o, fig.x, fig.y - 0.05, fig.z, yaw, 0, gy, t);
+    }
+    return !0;
+  };
+  const remoteGadgetGone = (id) => {
+    const e = RGX.get(id);
+    if (e) {
+      scene.remove(e.o);
+      e.o.userData.glow && scene.remove(e.o.userData.glow);
+    }
+    RGX.delete(id);
+  };
+  // sağdaki düğmeler: jetpack → YÜKSEL / ALÇAL (helikopterinkiler, pr) · uçan kaykay → ZIPLA / TURBO
+  const hvR = el(`div`, `nx-pad nx-pr nx-hv nx-hide`);
+  mk(hvR, `u`, `🛸<br>ZIPLA`);
+  mk(hvR, `d`, `⚡<br>TURBO`);
+  CT.appendChild(hvR);
+  const gHud = el(`div`, `nx-hud nx-ghud nx-hide`);
+  gHud.style.top = `118px`;
+  CT.appendChild(gHud);
+  let gHudT = 0;
+  const gxHud = (dt) => {
+    const on = GX.on && GX.kind === `jet`;
+    show(gHud, on);
+    if (!on) return;
+    gHudT -= dt;
+    if (gHudT > 0) return;
+    gHudT = 0.15;
+    let gy = 0;
+    try {
+      gy = groundY(self.x, self.z);
+    } catch {}
+    const f = Math.round(GX.fuel * 100),
+      col = f > 40 ? `#7dff9c` : f > 15 ? `#ffd23f` : `#ff5a5a`;
+    gHud.innerHTML = `🎒 Yakıt <b style="color:${col}">%${f}</b> · İrtifa <b>${Math.max(0, me.y - gy).toFixed(0)} m</b>`;
+  };
   /* ---------- action button (balls/skate) ---------- */
   const aBtn = el(`button`, `nx-b nx-board nx-act nx-hide`, ``);
   aBtn.style.bottom = `200px`;
@@ -2517,7 +3060,7 @@ export function installExtras(ctx) {
       fn = null;
     if (!HX.on && !RF.fall && !RF.down && !ctx.driving()) {
       const dk = Math.hypot(self.x - KIOSK[0], self.z - KIOSK[1]);
-      if (SK.on) {
+      if (SK.on || GX.on) {
         // v223: 🚪 İn düğmesi sol üstte, altın miktarının altında (CityScreen, arabalardaki gibi)
       } else if (BB.held) {
         // v221: top elimdeyken / sahada top yakınımdayken basket düğmeleri kaykaydan önce gelir
@@ -2563,15 +3106,17 @@ export function installExtras(ctx) {
     if (aBtn.textContent !== lbl) aBtn.textContent = lbl;
     show(aBtn, !!fn);
     aBtn.classList.toggle(`nx-skx`, !!SK.on);
-    joyShow(HX.on || SK.on);
+    joyShow(HX.on || SK.on || GX.on);
     show(skR, !!SK.on);
+    show(pr, HX.on || (GX.on && GX.kind === `jet`)); // v225
+    show(hvR, GX.on && GX.kind === `hover`);
   };
   const onKeyG = (ev) => {
     const t = ev.target;
     if (t && (t.tagName === `INPUT` || t.tagName === `TEXTAREA` || t.isContentEditable)) return;
     if (ev.repeat) return;
     if (ev.code === `KeyG` && aAct && /🏀|🖐️/.test(aBtn.textContent)) aAct();
-    if (SK.on && ev.code === `Space`) ev.preventDefault();
+    if ((SK.on || GX.on) && ev.code === `Space`) ev.preventDefault();
   };
   window.addEventListener(`keydown`, onKeyG);
   KEYH.push([`keydown`, onKeyG]);
@@ -2588,6 +3133,7 @@ export function installExtras(ctx) {
   });
   // v219: kendi konum kaydıma eklenecek alanlar (motor her tick'te çağırır)
   const presence = () => {
+    if (GX.on) return { k: GX.kind === `jet` ? 2 : 3, y: Math.round(me.y * 100) / 100 }; // v225: jetpack (2) / uçan kaykay (3)
     if (SK.on) return { k: 1, y: Math.round((SK.y + 0.1) * 100) / 100 }; // v221: kaykayda (başkaları da kaykayı görsün)
     if (HX.on) return { p: `h`, rk: 1, hl: hlStr() };
     if (PAX.on) return { p: `h`, rk: PAX.seat + 1, ro: HN.node?.by || `` };
@@ -2613,6 +3159,11 @@ export function installExtras(ctx) {
   const remoteSkate = (fig, rec, show) => {
     const id = fig.id || fig;
     let b = RSK.get(id);
+    if (remoteGadget(id, fig, rec, show)) {
+      // v225: jetpack / uçan kaykay
+      if (b) b.visible = !1;
+      return !0;
+    }
     if (!(show && rec?.k === 1)) {
       if (b) b.visible = !1;
       return !1;
@@ -2631,6 +3182,7 @@ export function installExtras(ctx) {
     return !0;
   };
   const remoteSkateGone = (id) => {
+    remoteGadgetGone(id); // v225
     const b = RSK.get(id);
     if (b) scene.remove(b);
     RSK.delete(id);
@@ -2638,6 +3190,8 @@ export function installExtras(ctx) {
   const dispose = () => {
     try {
       RSK.forEach((b) => scene.remove(b));
+      [...RGX.keys()].forEach(remoteGadgetGone); // v225
+      [jetM, hovM, hovM.userData.glow].forEach((o) => scene.remove(o));
       scene.remove(parked);
       RSK.clear();
       if (HN.mine) heliRelease();
@@ -2664,8 +3218,10 @@ export function installExtras(ctx) {
     skateSummon: skSummon, // v221: Arabalarım › Motor › Kaykay
     dispose,
     heliBusy: () => HX.on || PAX.on,
-    skate: () => ({ on: SK.on, air: SK.air }),
-    skateOff: () => (SK.on && !SK.air ? (skDismount(), !0) : !1), // v223: sol üstteki 🚪 İn
+    skate: () => ({ on: SK.on || GX.on, air: SK.on ? SK.air : GX.air }), // v225: jetpack / uçan kaykayda da 🚪 İn
+    skateOff: () => (GX.on ? !GX.air && gxOff() : SK.on && !SK.air ? (skDismount(), !0) : !1), // v223: sol üstteki 🚪 İn
+    gadget: (kind) => gxOn(kind), // v225: admin — 'jet' | 'hover' (Arabalarım › Motor)
+    gadgetState: () => (GX.on ? { kind: GX.kind, air: GX.air, fuel: GX.fuel } : null),
     // v223: fotoğraf — kaykaydaysam kaykayın yönü (sb), avatarın gövde yönü (yw) ve duruş (sk: 2 çömelik, 1 itiyor)
     skShot: () => {
       if (!SK.on) return null;
@@ -2674,7 +3230,7 @@ export function installExtras(ctx) {
       return { sk: push ? 1 : 2, sb: Math.round(sb * 1000) / 1000, yw: Math.round(WR(push ? sb : sb - Math.PI / 2) * 1000) / 1000 };
     },
     // v223: fotoğraf karesinde canlı kaykaylar gizlenir (karedeki kaykaylar çekim anından çizilir)
-    shotHide: () => [board, parked, ...RSK.values()],
+    shotHide: () => [board, parked, ...RSK.values(), jetM, hovM, hovM.userData.glow, ...[...RGX.values()].flatMap((e) => [e.o, e.o.userData.glow].filter(Boolean))],
     g: NX_g,
     w: NX_w,
     ys: NX_ys,

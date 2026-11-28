@@ -12,6 +12,8 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import CarImg from '../VehicleCard/CarImg'; // v150: araç görseli = 3D model
 import SkateImg from '../VehicleCard/SkateImg'; // v223: kaykay kart görseli
+import GadgetImg from '../VehicleCard/GadgetImg'; // v225: jetpack / uçan kaykay kart görseli
+import { isAdminUid } from '../../config/admin'; // v225: admin araçları
 import { useAuth } from '../../contexts/AuthContext';
 import { usePlayer } from '../../hooks/usePlayer';
 import { useDailyActions } from '../../hooks/useDailyActions';
@@ -368,7 +370,7 @@ function Speedo({ kmh, gear, ratio }) {
 }
 
 // "Arabalarım" — sadece açılınca okunur (Firestore okuması yalnız burada)
-function GarageSheet({ onPick, onClose, onGallery, favId: favId0 = null, flash, skate = null, onSkate }) {
+function GarageSheet({ onPick, onClose, onGallery, favId: favId0 = null, flash, skate = null, onSkate, admin = false, onGadget }) {
   const { vehicles, loading } = useVehicles();
   // v197: favori araç (❤️, kartın sağ üstünde) — evinin garajında durur, garajdan binilir. Tek araç; tekrar dokununca kalkar.
   const [favLocal, setFavLocal] = useState(undefined);
@@ -396,10 +398,10 @@ function GarageSheet({ onPick, onClose, onGallery, favId: favId0 = null, flash, 
   // açılışta: Araba sekmesi boşsa aracı olan ilk sekme
   const autoTab = useRef(false);
   useEffect(() => {
-    if (loading || autoTab.current || (!all.length && !skate)) return; // v223: sadece kaykay varsa Motor sekmesi açılır
+    if (loading || autoTab.current || (!all.length && !skate && !admin)) return; // v223: sadece kaykay varsa Motor sekmesi açılır
     autoTab.current = true;
     if (!usable.length) {
-      const k = ['araba', 'ticari', 'motor'].find((x) => all.some((v) => vehicleKindOfId(v.catalogId) === x) || (x === 'motor' && skate));
+      const k = ['araba', 'ticari', 'motor'].find((x) => all.some((v) => vehicleKindOfId(v.catalogId) === x) || (x === 'motor' && (skate || admin)));
       if (k) setTab(k);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -408,8 +410,8 @@ function GarageSheet({ onPick, onClose, onGallery, favId: favId0 = null, flash, 
     <Sheet title="🚗 Arabalarım" onClose={onClose} closeLabel="Kapat">
       <VehicleKindTabs value={tab} onChange={setTab} />
       {loading && <div className="cs-garage-empty">…</div>}
-      {!loading && (all.length > 0 || skate) && usable.length === 0 && !(tab === 'motor' && skate) && <p className="vg-empty">Bu sekmede aracın yok.</p>}
-      {!loading && all.length === 0 && !skate && (
+      {!loading && (all.length > 0 || skate || admin) && usable.length === 0 && !(tab === 'motor' && (skate || admin)) && <p className="vg-empty">Bu sekmede aracın yok.</p>}
+      {!loading && all.length === 0 && !skate && !admin && (
         <div className="cs-garage-empty">
           <span>🚗</span>
           <button className="v3-btn primary" onClick={onGallery}>Araba Galerisi</button>
@@ -417,6 +419,25 @@ function GarageSheet({ onPick, onClose, onGallery, favId: favId0 = null, flash, 
       )}
       <div className="cs-garage">
         {/* v221: kaykay motorların arasında — getirince yanına konur, yanına gidip binilir */}
+        {/* v225: admin araçları — sadece adminde görünür (ileride mağazaya eklenecek) */}
+        {tab === 'motor' && admin && (
+          <>
+            <div className="cs-car-wrap">
+              <button className="cs-car" onClick={() => onGadget?.('jet')}>
+                <GadgetImg kind="jet" />
+                <b>Jetpack</b>
+                <span>🔒 Admin</span>
+              </button>
+            </div>
+            <div className="cs-car-wrap">
+              <button className="cs-car" onClick={() => onGadget?.('hover')}>
+                <GadgetImg kind="hover" />
+                <b>Uçan Kaykay</b>
+                <span>🔒 Admin</span>
+              </button>
+            </div>
+          </>
+        )}
         {tab === 'motor' && skate && (
           <div className="cs-car-wrap">
             <button className="cs-car" onClick={onSkate}>
@@ -881,6 +902,7 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
         world,
         uid,
         guest: isGuest,
+        admin: isAdminUid(uid), // v225: admin araçları (jetpack / uçan kaykay)
         sharedNet: shared,
         cityAction: (p) => shopAction(p), // v219: kaykay kirası (shopAction › stable)
         skateState: () => ({ ...skateRef.current, until: Math.max(skateRef.current.until, skateLocalRef.current) }), // v221: kiralayınca hemen binilsin
@@ -2541,6 +2563,11 @@ export default function CityScreen({ spawn = 'ev', onClose, onEnterRegion, onEnt
           onSkate={() => {
             setPanel(null);
             if (!engineRef.current?.skateSummon?.()) flash('🛹 Kaykayın yok');
+          }}
+          admin={isAdminUid(user?.uid)}
+          onGadget={(kind) => {
+            setPanel(null);
+            engineRef.current?.gadget?.(kind);
           }}
           onGallery={() => {
             setPanel(null);
