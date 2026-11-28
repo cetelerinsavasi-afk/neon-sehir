@@ -1258,7 +1258,8 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
     k.ticks.forEach((t) => ticks.push(t));
     k.npcs.forEach((n) => {
       const p = k.group.localToWorld(new V(n.x, 0, n.z));
-      npcDefs.push({ ...n, x: p.x, z: p.z });
+      // v222: seyyar satıcı tezgâhına (yerel +z, müşteri tarafı) dönük — yön verilmiyordu, ilk karede kameraya dönüp kalıyordu
+      npcDefs.push({ ...n, x: p.x, z: p.z, ...(n.vendor && Number.isFinite(n.yaw) ? { yaw: n.yaw + yawOf(k.group.matrixWorld) } : {}) });
     });
   });
 
@@ -1316,7 +1317,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       const p = fromRoom(v, n.x, n.z);
       const route = Array.isArray(n.route) ? n.route.map(([rx, rz]) => fromRoom(v, rx, rz)) : null; // v196 bot garson
       const yaw = route ? null : venueNpcYaw(v, n); // v221: mekân NPC'si tezgâhına / içeriye dönük
-      venueNpcDefs.push({ id: n.id, off: Boolean(n.off), ...(n.stand ? { stand: true } : {}), ...(n.sit ? { sit: n.sit } : {}), ...(yaw != null ? { yaw } : {}), name: n.name, av: n.av, x: p.x, z: p.z, y: 0.16 + (v.y0 || 0), lines: n.lines || [], left: Boolean(n.left), venue: v, route, quiet: Boolean(gk && STATION_GAME_KEYS.includes(gk)) });
+      venueNpcDefs.push({ id: n.id, off: Boolean(n.off), ...(n.stand ? { stand: true } : {}), ...(n.sit ? { sit: n.sit } : {}), ...(n.chair ? { chair: true } : {}), ...(yaw != null ? { yaw } : {}), name: n.name, av: n.av, x: p.x, z: p.z, y: 0.16 + (v.y0 || 0), lines: n.lines || [], left: Boolean(n.left), venue: v, route, quiet: Boolean(gk && STATION_GAME_KEYS.includes(gk)) });
     });
     // istasyonlar: oyunun mekânlarında (camii, banka, karakol) oyunun panelleri; markette alışveriş + ATM
     const stations = gk && STATION_GAME_KEYS.includes(gk) ? GAME_VENUES[gk]?.stations || {} : v.type === 'benzinlik' ? NEW_VENUES.market.stations : v.type === 'netkafe' ? NEW_VENUES.netkafe.stations : v.type === 'spor' ? gymStations(v) : CITY_MENU_KEY[v.type] ? menuStations(v) : {}; // v196: internet kafe — bilgisayar / konsol / yayın seti · v198: spor aletleri
@@ -2484,7 +2485,7 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
       f.seatY = f.y + n.sit;
     }
     if (n.route) f.route = n.route; // v196: devriye (bot garson)
-    f.noSit = Boolean(n.stand) || /Garson|Kapı Görevlisi|Güvenlik|Polis|Komiser/.test(n.name || ''); // v219: ayakta çalışan (berber, garson…)
+    f.noSit = !n.chair && (Boolean(n.stand) || /Garson|Kapı Görevlisi|Güvenlik|Polis|Komiser/.test(n.name || '')); // v219: ayakta çalışan (berber, garson…) · v222: chair = makam koltuğunda oturur (komiser)
     // v219: sabit durmayan dış dünya NPC'leri (köylüler, yol kenarı) evinin çevresinde biraz dolaşır
     if (!n.sit && !n.route && !n.vendor && !n.venue && (n.outer || outerNpcIds.has(n.id)) && !n.still && !FIXED_NPC.test(n.name || '')) f.wander = { hx: n.x, hz: n.z, r: 2.6, w: 1 + Math.random() * 4, tx: null, tz: null };
     return f;
@@ -5536,8 +5537,12 @@ const HOME_STUDIO_KEYS = { mixer: '🎛️ Mikser konsolu', easel: '🎨 Tuval' 
         const wp = fromRoom(v, clamp(lp.x, -rW(v) - 3.5, rW(v) + 3.5), clamp(lp.z, -rD(v) - 3.5, rD(v) + 3.5));
         want.x = wp.x;
         want.z = wp.z;
-        const up = me.y > 3 ? 1 : 0; // v219: spor salonunun 2. katı (4,4 m)
-        want.y = clamp(want.y, 0.4 + (v.y0 || 0) + (up ? me.y - 0.1 : 0), 0.16 + rH(v) - 0.2 + (v.y0 || 0) + (up ? 4.3 : 0));
+        // v219: spor salonunun 2. katı (4,4 m) · v222: kat yüksekliği mekânın zeminine göre (Kervankent 10 m
+        // yüksekte: eskiden "2. kattasın" sanılıp kamera tavanın üstüne fırlıyordu — camii, benzinlik, otogar)
+        const y0 = v.y0 || 0;
+        const rel = me.y - y0;
+        const up = rel > 3 ? 1 : 0;
+        want.y = clamp(want.y, 0.4 + y0 + (up ? rel - 0.1 : 0), 0.16 + rH(v) - 0.2 + y0 + (up ? 4.3 : 0));
       } else if (W.modeAt(self.x, self.z) === 'city') want.y = Math.max(want.y, 0.5, me.y + 0.3);
       else want.y = Math.max(want.y, groundY(want.x, want.z, walkHint, me.y) + 0.8, me.y + 0.3);
       look = new V(fx, eyeY - 0.15, fz);

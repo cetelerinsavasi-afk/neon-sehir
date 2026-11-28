@@ -1228,7 +1228,7 @@ export function finishCityWorld(W, scene) {
   W.rs.npcs.forEach((n) => {
     const w = n.world ? { x: n.x, z: n.z } : fromPad(n.pad, n.x, n.z);
     const y = n.world ? n.y + 0.02 : n.pad.yAt(n.x, n.z) + 0.02;
-    W.npcDefs.push({ id: `npc_dis_${ni++}`, name: n.name, av: n.av, x: w.x, z: w.z, y, lines: n.lines || [], left: Boolean(n.left) });
+    W.npcDefs.push({ id: `npc_dis_${ni++}`, name: n.name, av: n.av, x: w.x, z: w.z, y, lines: n.lines || [], left: Boolean(n.left), ...(Number.isFinite(n.yaw) ? { yaw: n.yaw + (n.world ? 0 : n.pad.ry || 0) } : {}), ...(n.still ? { still: true } : {}) }); // v222: yön + sabit duruş (festival satıcıları)
   });
   [
     { name: 'Koşucu Elif', x: 60, z: -224, av: { gender: 'kadin', clothing: 'tshirt', clothColor: '#ff3fa0', pantsColor: '#1a1a1a' }, lines: ['Halka parkur tam 1 km!', 'Sabah koşusu gibisi yok.'] },

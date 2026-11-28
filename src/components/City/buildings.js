@@ -1212,6 +1212,6 @@ export function buildVendor(kit, key, venue, { compact = false, along = false, n
   kit.pool(0, 1, st.glow, 8, 0.17, 0.55);
   kit.light(0, 2.4, 0.8, st.glow, 6, 9);
   const npc = venue.npcs?.[0];
-  if (npc) kit.npcs.push({ id: npc.id, name: npc.name, av: npc.av, x: 0.5, z: -0.7, lines: npc.lines, vendor: key });
+  if (npc) kit.npcs.push({ id: npc.id, name: npc.name, av: npc.av, x: 0.5, z: -0.7, yaw: 0, lines: npc.lines, vendor: key }); // v222: tezgâha / müşteriye dönük
   kit.zone({ x: 0, z: 1.2, r: 2.6, kind: 'vendor', vendor: key, title: venue.name, icon: venue.icon });
 }

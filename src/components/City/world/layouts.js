@@ -29,7 +29,7 @@ export const NEW_VENUES = {
       it('mk_ic2', 'icecream', 2.2, -6.4),
       ...[-3.8, -1.3, 1.2].flatMap((z, n) => [it(`mk_sl${n}`, 'shelf', -7.0, z), it(`mk_sr${n}`, 'shelf', -5.0, z, 4), it(`mk_ql${n}`, 'shelf', 5.0, z), it(`mk_qr${n}`, 'shelf', 7.0, z, 4)]),
       it('mk_fr', 'fruitstand', 0, -3.0),
-      it('mk_ck', 'checkout', -3.6, 4.6),
+      it('mk_ck', 'checkout', -3.6, 4.6, 4), // v222: tezgâh ters çevrildi (kasiyer tezgâhın kasa tarafında)
       it('mk_ck2', 'beltcheckout', 3.8, 4.6),
       it('mk_ct1', 'cart', 6.6, 5.6),
       it('mk_ct2', 'cart', 7.3, 5.8),
@@ -284,23 +284,25 @@ export const NEW_VENUES = {
       // v220: cam cepheye (ön) asılı kalan dart / grafiti / menü panosu yan duvarlara alındı; duvardan taşanlar içeri çekildi
       // v219: cam cepheli yeni düzen — bilgisayarlar arka duvara yaslandı, kasa kapının yanına, oyun salonu köşesi
       ...[-7.6, -5.6, -3.6, -1.6].flatMap((x, n) => [it(`npc${n + 1}`, 'pcstation', x, -6.6), it(`nkc${n + 1}`, 'gamer', x, -5.65, 4), it(`npc${n + 5}`, 'pcstation', x, -3), it(`nkc${n + 5}`, 'gamer', x, -2.05, 4)]),
-      it('nspc', 'pc', 3.6, -6.9), it('nsch', 'gamer', 3.6, -5.95, 4), it('nsrl', 'ringlight', 2.7, -6.5),
-      it('nspc2', 'pc', 7, -6.9), it('nsch2', 'gamer', 7, -5.95, 4), it('nsrl2', 'ringlight', 8.1, -6.5),
+      // v222: yayın setleri arka duvardan dışarı taşıyordu (z −6,9 → −6,6)
+      it('nspc', 'pc', 3.6, -6.6), it('nsch', 'gamer', 3.6, -5.65, 4), it('nsrl', 'ringlight', 2.7, -6.5),
+      it('nspc2', 'pc', 7, -6.6), it('nsch2', 'gamer', 7, -5.65, 4), it('nsrl2', 'ringlight', 8.1, -6.5),
       it('nk_neon', 'neon3', 5.3, -7, 0),
       it('nk_rug', 'rugshag', 5.3, -0.3),
       it('nps1', 'console', 3.6, -2.2), it('nss1', 'sofa2', 3.6, 0.9, 4), it('nps2', 'console', 7, -2.2), it('nss2', 'sofa2', 7, 0.9, 4),
-      it('nk_ar1', 'armchair', 1.6, -0.4, 2), it('nk_ar2', 'armchair', 9, -0.4, 6),
+      it('nk_ar1', 'armchair', 1.6, -0.4, 2), it('nk_ar2', 'armchair', 8.45, -0.4, 6), // v222: sağ duvardan taşıyordu
       it('nk_ck', 'checkout', 7.2, 4.4, 0), // v221: tezgâh kapıya dönük (eskiden ters: kasiyer kapıya sırtını dönüyordu)
-      it('nk_df', 'drinkfridge', 8.75, 3.3, 6),
+      it('nk_df', 'drinkfridge', 8.6, 3.3, 6), // v222: duvardan taşıyordu
       it('nk_mb', 'menuboard', 9, 5.4, 6),
       it('nk_bt1', 'bartable', 5.6, 4.7, 0), it('nk_bs1', 'stool', 5.1, 5.3, 0), it('nk_bs2', 'stool', 6.1, 5.3, 0),
-      it('nk_am1', 'arcade', -8.75, 0.9, 2), it('nk_am2', 'arcade', -8.75, 2.35, 2), it('nk_am3', 'arcade', -8.75, 3.8, 2), it('nk_am4', 'arcade', -8.75, 5.25, 2),
+      // v222: atari makineleri sol duvardan taşıyordu (x −8,75 → −8,55)
+      it('nk_am1', 'arcade', -8.55, 0.9, 2), it('nk_am2', 'arcade', -8.55, 2.35, 2), it('nk_am3', 'arcade', -8.55, 3.8, 2), it('nk_am4', 'arcade', -8.55, 5.25, 2),
       it('nk_am5', 'arcade', -3.2, 1.2, 6), it('nk_am6', 'arcade', -3.2, 2.6, 6),
       it('nk_dart', 'dart', -9, 6.4, 2),
       it('nk_jb', 'jukebox', -1.4, 6.5, 4),
       it('nk_gr', 'graffiti', -9, -1.5, 2),
       it('nk_neon2', 'neon4', -9, -4.2, 2),
-      it('nk_sp', 'speaker', -8.4, 6.4),
+      it('nk_sp', 'speaker', -8.4, 6.4, 3), // v222: köşeden içeriye dönük (eskiden cama / dışarıya bakıyordu)
       it('nk_pl', 'plantb', 8.5, 6.5),
     ],
     stations: {
@@ -310,7 +312,8 @@ export const NEW_VENUES = {
       nsch: [{ act: 'stream:nsch', label: '🔴 Yayın aç' }],
       nsch2: [{ act: 'stream:nsch2', label: '🔴 Yayın aç' }],
     },
-    npcs: [{ id: 'npc_netci', name: 'Kasada Emre', x: 7.2, z: 3.5, yaw: 0, av: P.netci, lines: ['Hoş geldin, boş bilgisayar var.', 'Turnuva cumartesi!', 'Kulaklık rafta.'] }],
+    // v222: kasiyer tezgâhın öbür (kasa) tarafında, salona dönük — tezgâhın duruşu aynı
+    npcs: [{ id: 'npc_netci', name: 'Kasada Emre', x: 7.2, z: 5.3, yaw: Math.PI, av: P.netci, lines: ['Hoş geldin, boş bilgisayar var.', 'Turnuva cumartesi!', 'Kulaklık rafta.'] }],
   },
   // --- SPOR SALONU -----------------------------------------------------------------------
   spor: {
@@ -606,14 +609,28 @@ export const NEW_VENUES = {
 // oyundaki mekânlar (camii, banka, gazino, karakol, belediye, galeri, silahçı) — kapı
 // gerçek olduğu için içteki dekor kapı (doordeco) kaldırılır; kapısı ortaya alınanlarda
 // kapının önündeki eşyalar kaydırılır.
+// v222: [x, z, r?] — üçüncü değer verilirse eşyanın yönü de değişir (r: 45° adım)
 const MOVE = {
   camii: { cm_ak1: [2.6, 6.6], cm_ak2: [-2.6, 6.6], cm_clk: [5.5, 7] },
   belediye: {},
+  // v222: makam masaları ters duruyordu (koltuk ziyaretçi tarafındaydı) — koltuk duvar tarafına alındı
+  karakol: { kr_od: [5.8, -5.6, 4] },
+  araba_galerisi: { gl_od: [7.2, -1.2, 2] },
+};
+// v222: mekân NPC'leri — yer / yön / oturma düzeltmeleri (oyunun mekân dosyası sunucuyla ortak, ona dokunulmaz)
+const NPC_FIX = {
+  karakol: { npc_komiser: { x: 5.8, z: -6.5, chair: true } }, // makam koltuğunda oturur
+  silah_magazasi: { npc_silahci: { yaw: 0 } }, // iki vitrinin arasında kapıya / müşteriye dönük (eskiden yan duruyordu)
 };
 export function gameVenue(key, moveKey = key) {
   const v = VENUES[key];
   const mv = MOVE[moveKey] || {};
-  return { ...v, items: v.items.filter((d) => d.k !== 'doordeco').map((d) => (mv[d.i] ? { ...d, x: mv[d.i][0], z: mv[d.i][1] } : d)) };
+  const nf = NPC_FIX[moveKey] || {};
+  return {
+    ...v,
+    items: v.items.filter((d) => d.k !== 'doordeco').map((d) => (mv[d.i] ? { ...d, x: mv[d.i][0], z: mv[d.i][1], ...(mv[d.i].length > 2 ? { r: mv[d.i][2] } : {}) } : d)),
+    ...(v.npcs ? { npcs: v.npcs.map((n) => (nf[n.id] ? { ...n, ...nf[n.id] } : n)) } : {}),
+  };
 }
 
 // v221 — BELEDİYE SALONU (şehirdeki bina): oda 26 × 19 m (x: −13…13, z: −9,5…9,5), tavan 4,6 m.

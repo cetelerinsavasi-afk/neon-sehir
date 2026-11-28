@@ -156,7 +156,7 @@ function GIe(e, t, n, r, i, a, o = {}) {
     e.zones.push(...s.zones.map((z) => (z.kind === `vendor` ? { ...z, menuOnly: !0 } : z)))); // v221: festival tezgâhı — sadece menü
   let c = Math.cos(i),
     l = Math.sin(i);
-  s.npcs.forEach((e) => a.npc.push({ x: n + e.x * c + e.z * l, z: r - e.x * l + e.z * c, name: e.name, av: e.av, lines: e.lines }));
+  s.npcs.forEach((e) => a.npc.push({ x: n + e.x * c + e.z * l, z: r - e.x * l + e.z * c, name: e.name, av: e.av, lines: e.lines, ...(Number.isFinite(e.yaw) ? { yaw: e.yaw + i, still: !0 } : {}) })); // v222: festival satıcısı tezgâhında, tezgâha dönük
 }
 function KIe(e, t, n, r = 5.2) {
   let i = Math.hypot(n[0] - t[0], n[1] - t[1]),
