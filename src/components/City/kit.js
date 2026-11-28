@@ -481,6 +481,7 @@ const LG = (key, mk) => {
   return lowGeo.get(key);
 };
 let bulbMat = null;
+let chBulbM = null; // v226: düşük poligonlu avizenin ampulleri (ortak)
 function lpMesh(g, geo, m, x, y, z, rot, sc) {
   const o = new THREE.Mesh(geo, m);
   o.position.set(x, y, z);
@@ -549,6 +550,31 @@ const LOW = {
     const geo = LG('ti_t', () => new THREE.TorusGeometry(0.26, 0.1, 6, 12));
     const m = M('#151517', 0.9);
     for (let i = 0; i < 4; i++) lpMesh(g, geo, m, (i % 2) * 0.03, 0.1 + i * 0.2, 0, [Math.PI / 2, 0, i * 0.3]);
+  },
+  // v226 — kristal avize (şehirdeki mekânlar: belediye, restoran…). Asıl model 64 küre + 2 halka
+  // (telefonda avize başına ~17.000 üçgen, 48 saydam parça); belediyedeki 4 avize salonun üçgenlerinin
+  // yarısından fazlasıydı. Aynı görünüş ~700 üçgen. Oyuncunun evindeki avize (dyn) asıl modelle kalır.
+  chandelier(g) {
+    const H = 3.4; // buildItem varsayılanı (şehirde avize hep bu yükseklikten asılı)
+    const gold = M('#d9a93c', 0.25, 1);
+    lpMesh(g, LG('ch_cap', () => new THREE.CylinderGeometry(0.12, 0.12, 0.05, 10)), gold, 0, H - 0.025, 0).castShadow = false;
+    lpMesh(g, LG('ch_rod', () => new THREE.CylinderGeometry(0.01, 0.01, 0.6, 4)), gold, 0, H - 0.3, 0).castShadow = false;
+    chBulbM ||= new THREE.MeshStandardMaterial({ color: '#fff', emissive: '#ffd9a0', emissiveIntensity: 2 });
+    const bulb = LG('ch_bulb', () => new THREE.IcosahedronGeometry(0.035, 0));
+    const crys = LG('ch_crys', () => new THREE.OctahedronGeometry(0.03, 0));
+    const crysM = M('#e8f4ff', 0.02, 0.1, { transparent: true, opacity: 0.6 });
+    [0.5, 0.33].forEach((r, ri) => {
+      const y = H - 0.65 - ri * 0.2;
+      const ring = lpMesh(g, LG(`ch_ring${ri}`, () => new THREE.TorusGeometry(r, 0.015, 4, 20)), gold, 0, y, 0, [Math.PI / 2, 0, 0]);
+      ring.castShadow = false;
+      const n = ri ? 6 : 10;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        lpMesh(g, bulb, chBulbM, Math.cos(a) * r, y + 0.05, Math.sin(a) * r).castShadow = false;
+        lpMesh(g, crys, crysM, Math.cos(a) * r, y - 0.11, Math.sin(a) * r, null, [1, 2.6, 1]).castShadow = false; // 3 küçük kristal yerine tek uzun kristal
+      }
+    });
+    return { light: { x: 0, y: H - 0.9, z: 0, color: '#ffd9a0', intensity: 8, distance: 10 } };
   },
 };
 function lowItem(k) {

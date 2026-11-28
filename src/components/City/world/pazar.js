@@ -48,8 +48,16 @@ const PAZAR_TEZGAH = [
     `Yusuf`,
     `Selma`,
   ],
-  __PZC = [`#c8141e`, `#1f6fd0`, `#1f8a4c`, `#ff7a1a`, `#7a2ad0`, `#2b3550`, `#e0a020`, `#14161b`],
-  __PZTX = new Map();
+  __PZTX = new Map(),
+  // v226 — pazarcıların ortak görünüşleri. Eskiden her tezgâhta ayrı renk / şapka (≈30 farklı avatar):
+  // her biri için ayrı dokular + 3D model çiziliyordu; pazarda yürürken telefon kasıp oyundan atıyordu.
+  // Aynı nesne → aynı doku önbelleği (avatarTextures anahtarı aynı).
+  PZ_LOOKS = [
+    { clothing: `hoodie`, clothColor: `#c8141e`, pantsColor: `#2b3550` },
+    { clothing: `jacket`, clothColor: `#1f6fd0`, pantsColor: `#2b3550`, hat: `cap`, hatColor: `#14161b` },
+    { clothing: `hoodie`, clothColor: `#1f8a4c`, pantsColor: `#2b3550` },
+    { clothing: `jacket`, clothColor: `#e0a020`, pantsColor: `#2b3550`, hat: `cap`, hatColor: `#14161b` },
+  ];
 function awnTex(c1, c2) {
   var key = c1 + c2;
   if (__PZTX.has(key)) return __PZTX.get(key);
@@ -116,12 +124,8 @@ function stall(k, x, z, f, ti, si) {
     x: lx(-0.95),
     z: z + (si % 2 ? 0.4 : -0.4),
     name: `${T[2]} ${__PZN[(ti * 3 + si) % __PZN.length]}`,
-    av: {
-      clothing: si % 2 ? `jacket` : `hoodie`,
-      clothColor: __PZC[(ti + si) % __PZC.length],
-      pantsColor: `#2b3550`,
-      ...(si % 3 == 0 ? { hat: `cap`, hatColor: `#14161b` } : {}),
-    },
+    flat: !0, // v226: telefonda 3D model yok — hep kâğıt figür (kasma / bellekten atma)
+    av: PZ_LOOKS[ti % PZ_LOOKS.length], // v226: 72 pazarcı 4 ortak görünüş paylaşır (doku bir kez çizilir)
     lines: [`Buyur abla, buyur abi! Taze taze!`, `Gel gel, bugün her şey yarı fiyat!`, `Pazarın en tazesi bizde!`, `Tadına bak, beğenmezsen alma!`].slice(
       si % 2,
       (si % 2) + 3,
@@ -207,9 +211,8 @@ export function buildPazar(E) {
   ];
   var ti = 0,
     si = 0;
-  SG.forEach(function (s, bi) {
-    var cx = (s.xl + s.xr) / 2,
-      wide = s.xr - s.xl > 10;
+  SG.forEach(function (s) {
+    var cx = (s.xl + s.xr) / 2;
     var hit = function (x, z, r) {
       return s.av.some(function (p) {
         return Math.abs(p[0] - x) < r + 0.35 && Math.abs(p[1] - z) < 1.45 + 0.4;
@@ -246,30 +249,7 @@ export function buildPazar(E) {
     for (var p = 0; p < pts.length - 1; p++) bulbs(k, pts[p], pts[p + 1], 5.6);
     for (var z3 = s.z0 + 5; z3 < s.z1 - 4; z3 += 10) k.light(cx, 3.6, z3, `#ffd9a0`, 5, 11);
     // v221: ortadaki çimler (saksılar) ve banklar kaldırıldı — yürüme yolu boş
-    var AV = [
-      { clothing: `hoodie`, clothColor: `#ff2d8a`, pantsColor: `#1a1a1c` },
-      { clothing: `jacket`, clothColor: `#2b3550`, pantsColor: `#3a3d42` },
-      { clothing: `hoodie`, clothColor: `#39b54a`, pantsColor: `#1a1a1c` },
-      { clothing: `jacket`, clothColor: `#e0a020`, pantsColor: `#2b3550`, hat: `cap`, hatColor: `#c8141e` },
-    ];
-    for (var w = 0; w < (wide ? 2 : 1); w++) { // v220: gezen müşteri sayısı azaldı (kasma)
-      var ox = cx + (w - 1) * 0.9,
-        za = s.z0 + 3 + w * 2,
-        zb2 = s.z1 - 3 - w * 1.5;
-      k.npcs.push({
-        outer: !0,
-        x: ox,
-        z: za,
-        name: [`Pazarcı Teyze`, `Müşteri Can`, `Müşteri Derya`, `Emekli Rıza`][(bi + w) % 4],
-        av: AV[(bi + w) % 4],
-        lines: [`Domatesler bugün çok güzel!`, `Şu pazarı çok seviyorum.`, `Bir kilo portakal aldım, bayağı ucuz.`, `Akşam pazarı başka güzel oluyor.`],
-        route: [
-          { x: ox, z: za },
-          { x: ox + (w % 2 ? 0.6 : -0.6), z: (za + zb2) / 2 },
-          { x: ox, z: zb2 },
-        ],
-      });
-    }
+    // v226: pazarda gezen müşteriler kaldırıldı (telefonda kasma — pazarcılar tezgâhında durur)
   });
 }
 const SIGN_TEX = new Map();
